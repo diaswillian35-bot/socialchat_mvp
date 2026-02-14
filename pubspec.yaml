@@ -1,0 +1,52 @@
+name: socialchat_mvp
+description: "A new Flutter project."
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.17.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+
+  flutter_localizations:
+    sdk: flutter
+
+
+  shared_preferences: ^2.2.3
+  cupertino_icons: ^1.0.8
+
+
+  firebase_messaging: ^14.9.4
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.8
+  cloud_firestore: ^4.15.8
+  firebase_storage: ^11.7.0
+
+
+  
+  sign_in_with_apple: ^6.1.0
+  flutter_local_notifications: ^17.0.0
+  image_picker: ^1.1.2
+  uuid: ^4.5.1
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/remdy_icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/remdy_logo.png
+    - assets/remdy_icon.png

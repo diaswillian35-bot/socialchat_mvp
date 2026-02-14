@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "384686982032",
+    "project_id": "socialchatmvp",
+    "storage_bucket": "socialchatmvp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:384686982032:android:eb927e40b8cb775fbf2915",
+        "android_client_info": {
+          "package_name": "com.example.admin_talksy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTXJmemWYLDrdpgjADv9dP5dK9DpHpFzo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "384686982032-pevcnfea1dbk4p5o2lngoa56darfgjip.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.adminTalksy"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:384686982032:android:3382052a7126b4b3bf2915",
+        "android_client_info": {
+          "package_name": "com.example.socialchat_mvp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "384686982032-pkl5vim1c1rb376nf95s89k617o2nobh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.socialchat_mvp",
+            "certificate_hash": "fdf08986d283d4605ccd49530119a4e4a63c4417"
+          }
+        },
+        {
+          "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTXJmemWYLDrdpgjADv9dP5dK9DpHpFzo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "384686982032-pevcnfea1dbk4p5o2lngoa56darfgjip.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.adminTalksy"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+
+    // aceita participants OU members (compatibilidade com docs antigos)
+    function partsFrom(data) {
+      return (data.participants is list) ? data.participants
+           : (data.members is list) ? data.members
+           : [];
+    }
+
+    function conv(cid) {
+      return get(/databases/$(database)/documents/conversations/$(cid));
+    }
+
+    function isParticipantById(cid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/conversations/$(cid))
+        && uid() in partsFrom(conv(cid).data);
+    }
+
+    function isParticipantData(data) {
+      return signedIn() && uid() in partsFrom(data);
+    }
+
+    // =========================
+    // USERS
+    // =========================
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && uid() == userId;
+      allow update: if signedIn() && uid() == userId;
+      allow delete: if false;
+    }
+
+    // =========================
+    // CONVERSATIONS
+    // =========================
+    match /conversations/{cid} {
+      allow read: if isParticipantData(resource.data);
+
+      // cria: precisa ter 2 pessoas e incluir quem cria
+      allow create: if signedIn()
+        && uid() in partsFrom(request.resource.data)
+        && partsFrom(request.resource.data).size() == 2;
+
+      allow update: if isParticipantData(resource.data);
+      allow delete: if false;
+
+      // =========================
+      // MESSAGES (subcoleção)
+      // =========================
+      match /messages/{mid} {
+        allow read: if isParticipantById(cid);
+
+        allow create: if isParticipantById(cid)
+          && request.resource.data.fromUid == uid()
+          && request.resource.data.toUid in partsFrom(conv(cid).data)
+          && request.resource.data.toUid != uid()
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 800;
+
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+  }
+}
