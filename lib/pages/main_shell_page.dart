@@ -6,8 +6,9 @@ import 'home_page.dart';
 import 'messages_page.dart';
 import 'groups_page.dart';
 import 'events_page.dart';
+import 'create_group_page.dart'; // ✅ NOVO (ajuste o caminho se estiver em outra pasta)
 
-import '../services/presence_service.dart'; // ✅ NOVO
+import '../services/presence_service.dart'; // ✅
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.initialIndex = 0});
@@ -62,8 +63,6 @@ class _MainShellState extends State<MainShell> {
     _index = widget.initialIndex;
     if (_index < 0 || _index > 3) _index = 0;
 
-    // ✅ ISSO garante o Ao Vivo SEM depender da Home
-    // ✅ evita quebrar por timing (start depois do primeiro frame)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PresenceService.instance.start();
     });
@@ -72,7 +71,7 @@ class _MainShellState extends State<MainShell> {
   @override
   void dispose() {
     // ✅ quando sai do Shell (logout/fechar), marca offline corretamente
-        super.dispose();
+    super.dispose();
   }
 
   @override
@@ -89,6 +88,20 @@ class _MainShellState extends State<MainShell> {
         index: _index,
         children: pages,
       ),
+
+      // ✅ BOTÃO + só na aba "Grupos"
+      floatingActionButton: _index == 2
+          ? FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CreateGroupPage()),
+                );
+              },
+              child: const Icon(Icons.add),
+            )
+          : null,
+
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: const Color(0xFFF1F5F9),
         selectedItemColor: const Color(0xFF313A5F),

@@ -1,8 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'group_chat_page.dart';
+import '../widget/remdy_app.dart';
+import 'create_group_page.dart';
+import 'group_chat_page.dart'; // ✅ NOVO: abre o chat do grupo
 
 class GroupsPage extends StatefulWidget {
   const GroupsPage({super.key});
@@ -12,267 +13,264 @@ class GroupsPage extends StatefulWidget {
 }
 
 class _GroupsPageState extends State<GroupsPage> {
-  final db = FirebaseFirestore.instance;
+  String _countryFilter = 'all'; // 'all' ou 'ca', 'br', etc.
 
-  String? get _uid => FirebaseAuth.instance.currentUser?.uid;
+  // ✅ lista simples de países (ajusta como quiser)
+  final _countries = const <String>[
+    'all',
+    'ca',
+    'br',
+    'us',
+    'fr',
+    'es',
+    'it',
+    'pt',
+    'uk',
+    'ie',
+    'au',
+  ];
 
-  DocumentReference<Map<String, dynamic>> _userDoc(String uid) =>
-      db.collection('users').doc(uid);
-
-  // Visual padrão Remdy (igual suas páginas)
-  static const Color _bg = Colors.white;
-  static const Color _text = Color(0xFF111827);
-  static const Color _muted = Color(0xFF6B7280);
-  static const Color _border = Color(0xFFE5E7EB);
-  static const Color _remdyBlue = Color(0xFF313A5F);
-
-  void _toast(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  String _labelCountry(String code) {
+    if (code == 'all') return 'Todos';
+    return code.toUpperCase();
   }
 
-  /// ✅ Entra no grupo sem duplicar contagem:
-  /// - se o uid já estiver em members, NÃO incrementa
-  /// - se não estiver, adiciona e incrementa membersCount
-  Future<void> _joinAndOpen({
-    required String groupId,
-    required String groupName,
-  }) async {
-    final uid = _uid;
-    if (uid == null) {
-      _toast('Você precisa estar logado.');
-      return;
+  String _prettyName(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return 'Grupo';
+    return s[0].toUpperCase() + s.substring(1);
+  }
+
+  // ✅ filtra por "country" (igual você salva no CreateGroupPage)
+  Query<Map<String, dynamic>> _query() {
+    final ref = FirebaseFirestore.instance.collection('groups');
+    if (_countryFilter == 'all') {
+      return ref.orderBy('updatedAt', descending: true);
     }
+    return ref
+        .where('country', isEqualTo: _countryFilter)
+        .orderBy('updatedAt', descending: true);
+  }
 
-    final ref = db.collection('groups').doc(groupId);
+  // ✅ só pra exibir bonitinho
+  String _countryBadge(String country) {
+    final c = country.trim().toLowerCase();
+    if (c.isEmpty) return '--';
 
-    try {
-      await db.runTransaction((tx) async {
-        final snap = await tx.get(ref);
-        final data = snap.data() as Map<String, dynamic>? ?? {};
+    if (c.length <= 3) return c.toUpperCase();
 
-        final membersRaw = (data['members'] is List) ? (data['members'] as List) : [];
-        final members = membersRaw.map((e) => e.toString()).toList();
+    const map = <String, String>{
+      'canada': 'CA',
+      'brasil': 'BR',
+      'brazil': 'BR',
+      'estados unidos': 'US',
+      'usa': 'US',
+      'united states': 'US',
+      'franca': 'FR',
+      'france': 'FR',
+      'espanha': 'ES',
+      'spain': 'ES',
+      'italia': 'IT',
+      'italy': 'IT',
+      'portugal': 'PT',
+      'reino unido': 'UK',
+      'uk': 'UK',
+      'irelanda': 'IE',
+      'ireland': 'IE',
+      'australia': 'AU',
+    };
 
-        final already = members.contains(uid);
+    return (map[c] ?? c).toUpperCase();
+  }
 
-        if (!already) {
-          tx.set(ref, {
-            'members': FieldValue.arrayUnion([uid]),
-            'membersCount': FieldValue.increment(1),
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        } else {
-          // só atualiza updatedAt (opcional)
-          tx.set(ref, {
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        }
-      });
-
-      if (!mounted) return;
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => GroupChatPage(
-            groupId: groupId,
-            groupName: groupName,
-          ),
-        ),
-      );
-    } catch (e) {
-      _toast('Erro ao entrar no grupo: $e');
-    }
+  int _membersCountFromData(Map<String, dynamic> data) {
+    final m = data['members'];
+    if (m is List) return m.length;
+    final mc = data['membersCount'];
+    if (mc is int) return mc;
+    return 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = _uid;
-    if (uid == null) {
-      return const Scaffold(
-        body: Center(child: Text('Precisa estar logado.')),
-      );
-    }
-
     return Scaffold(
-      backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _bg,
-        elevation: 0,
-        title: const Text(
-          'Grupos',
-          style: TextStyle(
-            color: _text,
-            fontWeight: FontWeight.w900,
-            fontSize: 20,
-          ),
-        ),
-        iconTheme: const IconThemeData(color: _muted),
-      ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: _userDoc(uid).snapshots(),
-        builder: (context, userSnap) {
-          final u = userSnap.data?.data() ?? {};
-          final bool isPremium = u['isPremium'] == true;
-          final String myCountryCode =
-              (u['countryCode'] ?? 'ca').toString().trim().toLowerCase();
-
-          final groupsStream = db
-              .collection('groups')
-              .orderBy('createdAt', descending: true)
-              .snapshots();
-
-          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: groupsStream,
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError) {
-                return Center(child: Text('Erro: ${snap.error}'));
-              }
-
-              final docs = snap.data?.docs ?? [];
-
-              // ✅ Filtro: mundo só premium, país só do país
-              final visible = docs.where((d) {
-                final data = d.data();
-                final scope = (data['scope'] ?? 'country').toString().toLowerCase();
-
-                if (scope == 'world') {
-                  return isPremium;
-                }
-
-                final code = (data['countryCode'] ?? '')
-                    .toString()
-                    .trim()
-                    .toLowerCase();
-
-                return code.isNotEmpty && code == myCountryCode;
-              }).toList();
-
-              if (visible.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: _border),
-                      borderRadius: BorderRadius.circular(16),
+      appBar: const RemdyAppBar(title: 'Grupos'),
+      body: Column(
+        children: [
+          // ✅ filtro país
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.public, color: Color(0xFF6B7280), size: 18),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'País:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111827),
                     ),
-                    child: Text(
-                      isPremium
-                          ? 'Nenhum grupo disponível ainda.'
-                          : 'Nenhum grupo do seu país ainda.',
-                      style: const TextStyle(
-                        color: _muted,
-                        fontWeight: FontWeight.w700,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _countryFilter,
+                        isExpanded: true,
+                        items: _countries
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c,
+                                child: Text(_labelCountry(c)),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setState(() => _countryFilter = v);
+                        },
                       ),
                     ),
                   ),
-                );
-              }
+                ],
+              ),
+            ),
+          ),
 
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                itemCount: visible.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, i) {
-                  final doc = visible[i];
-                  final data = doc.data();
-
-                  final groupId = doc.id;
-                  final name = (data['name'] ?? 'Grupo').toString();
-                  final scope = (data['scope'] ?? 'country').toString().toLowerCase();
-                  final countryCode =
-                      (data['countryCode'] ?? '').toString().toUpperCase();
-
-                  final membersCount = (data['membersCount'] is int)
-                      ? data['membersCount'] as int
-                      : 0;
-
-                  final subtitle = scope == 'world'
-                      ? 'Mundo • Premium'
-                      : 'País: $countryCode • $membersCount membros';
-
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(18),
-                    onTap: () => _joinAndOpen(
-                      groupId: groupId,
-                      groupName: name,
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: _border),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x06000000),
-                            blurRadius: 10,
-                            offset: Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Icon(
-                              scope == 'world' ? Icons.public : Icons.flag,
-                              color: _remdyBlue,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: _text,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 15.5,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  subtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: _muted,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(
-                            Icons.chevron_right_rounded,
-                            color: Color(0xFFCBD5E1),
-                          ),
-                        ],
-                      ),
+          // ✅ lista
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _query().snapshots(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snap.hasError) {
+                  return Center(
+                    child: Text(
+                      'Erro: ${snap.error}',
+                      style: const TextStyle(color: Color(0xFF6B7280)),
+                      textAlign: TextAlign.center,
                     ),
                   );
-                },
-              );
-            },
+                }
+
+                final docs = snap.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'Nenhum grupo ainda.',
+                      style: TextStyle(color: Color(0xFF6B7280)),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, i) {
+                    final d = docs[i];
+                    final data = d.data();
+
+                    final name = _prettyName((data['name'] ?? '').toString());
+                    final countryRaw = (data['country'] ?? '').toString();
+                    final country = _countryBadge(countryRaw);
+                    final membersCount = _membersCountFromData(data);
+
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(16),
+
+                      // ✅ AQUI: abre o chat do grupo
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GroupChatPage(
+                              groupId: d.id,
+                              groupName: name,
+                            ),
+                          ),
+                        );
+                      },
+
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFE5E7EB)),
+                              ),
+                              child: const Icon(Icons.flag_rounded, color: Color(0xFF313A5F)),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF111827),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'País: ${country.isEmpty ? '--' : country} · $membersCount membros',
+                                    style: const TextStyle(
+                                      color: Color(0xFF6B7280),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+
+      // ✅ botão criar grupo
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: const Color(0xFF313A5F),
+        foregroundColor: Colors.white,
+        onPressed: () async {
+          final ok = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CreateGroupPage()),
           );
+          if (ok == true && mounted) setState(() {});
         },
+        child: const Icon(Icons.add),
       ),
     );
   }

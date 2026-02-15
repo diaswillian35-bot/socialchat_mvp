@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// ✅ ajuste o caminho se precisar
+import 'group_info_page.dart';
+
 class GroupChatPage extends StatefulWidget {
   final String groupId;
   final String groupName;
@@ -36,7 +39,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
-  static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
   DocumentReference<Map<String, dynamic>> get groupDoc =>
@@ -49,9 +51,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   void _warn(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(12),
+      ),
+    );
   }
 
+  // =========================
+  // ✅ MODERAÇÃO
+  // =========================
   bool _containsLink(String text) {
     final t = text.toLowerCase();
     return t.contains('http://') ||
@@ -68,6 +79,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final intl = RegExp(r'\+\s?\d{1,3}');
     final generic = RegExp(r'\d[\d\s().-]{7,}\d');
     return intl.hasMatch(t) || generic.hasMatch(t);
+  }
+
+  // =========================
+  // ✅ ABRIR INFO DO GRUPO
+  // =========================
+  void _openInfo() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupInfoPage(groupId: widget.groupId),
+      ),
+    );
   }
 
   Future<void> _send() async {
@@ -146,22 +169,47 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _bg,
-        elevation: 0,
-        titleSpacing: 0,
-        iconTheme: const IconThemeData(color: _muted),
-        title: Text(
-          widget.groupName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _text,
-            fontWeight: FontWeight.w900,
-            fontSize: 16,
-          ),
-        ),
+     appBar: AppBar(
+  backgroundColor: _bg,
+  elevation: 0,
+  titleSpacing: 0,
+  iconTheme: const IconThemeData(color: _muted),
+  title: GestureDetector(
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupInfoPage(groupId: widget.groupId),
       ),
+    );
+  },
+  child: Text(
+    widget.groupName,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: const TextStyle(
+      color: _text,
+      fontWeight: FontWeight.w900,
+      fontSize: 16,
+    ),
+  ),
+),
+
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.info_outline_rounded),
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => GroupInfoPage(groupId: widget.groupId),
+          ),
+        );
+      },
+    ),
+  ],
+),
+
       body: Column(
         children: [
           Expanded(

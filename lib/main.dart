@@ -2,11 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 
-import 'pages/login_page.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
+
 import 'widget/remdy_app.dart';
+import 'pages/main_shell_page.dart';
 
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+
   runApp(const RemdyApp(child: MyApp()));
 }
 
@@ -22,16 +32,12 @@ class MyApp extends StatelessWidget {
 
 
       locale: RemdyApp.localeOf(context),
-
-
       supportedLocales: const [
         Locale('pt'),
         Locale('en'),
         Locale('es'),
         Locale('fr'),
       ],
-
-
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -39,7 +45,7 @@ class MyApp extends StatelessWidget {
       ],
 
 
-      home: const LoginPage(),
+      home: const MainShell(initialIndex: 0), // ou LoginPage()
     );
   }
 }
