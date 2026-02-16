@@ -12,9 +12,7 @@ class CreateGroupPage extends StatefulWidget {
 }
 
 class _CreateGroupPageState extends State<CreateGroupPage> {
-  // =========================
-  // ✅ Remdy style
-  // =========================
+
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -23,11 +21,9 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   static const Color _remdyBlue = Color(0xFF313A5F);
   static const Color _logoBlue = Color(0xFF264E9A);
 
-  // =========================
-  // ✅ Controllers
-  // =========================
   final _nameC = TextEditingController();
   final _countryC = TextEditingController();
+  final _cityC = TextEditingController(); // NOVO
   final _bioC = TextEditingController();
 
   bool _loading = false;
@@ -36,22 +32,16 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   void dispose() {
     _nameC.dispose();
     _countryC.dispose();
+    _cityC.dispose();
     _bioC.dispose();
     super.dispose();
   }
 
   void _toast(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(12),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // ✅ convite curto e estável
   String _generateInviteCode() {
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     final rand = Random();
@@ -62,46 +52,40 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
   Future<void> _create() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _toast('Você precisa estar logado.');
-      return;
-    }
+    if (user == null) return _toast('Você precisa estar logado.');
 
     final name = _nameC.text.trim();
-    final country = _countryC.text.trim().toLowerCase(); // ✅ tudo minúsculo
+    final country = _countryC.text.trim().toLowerCase();
+    final city = _cityC.text.trim(); // NOVO
     final bio = _bioC.text.trim();
 
     if (name.isEmpty) return _toast('Digite o nome do grupo.');
-    if (country.isEmpty) return _toast('Digite o país (minúsculo).');
+    if (country.isEmpty) return _toast('Digite o país.');
+    if (city.isEmpty) return _toast('Digite a cidade.');
 
-    if (_loading) return;
     setState(() => _loading = true);
 
     try {
       final inviteCode = _generateInviteCode();
 
-      // ✅ cria documento
       await FirebaseFirestore.instance.collection('groups').add({
         'name': name,
-        'country': country, // ✅ country (não countryCode)
+        'country': country,
+        'city': city, // NOVO
         'bio': bio,
         'avatarUrl': '',
         'ownerId': user.uid,
         'admins': [user.uid],
         'members': [user.uid],
-
-        // ✅ convite
         'inviteCode': inviteCode,
         'isPrivate': false,
-        'joinPolicy': 'open', // open | approval | inviteOnly (depois)
-
-        // ✅ timestamps
+        'joinPolicy': 'open',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
-      Navigator.pop(context, true); // ✅ volta pra lista e atualiza
+      Navigator.pop(context, true);
     } catch (e) {
       _toast('Erro ao criar grupo: $e');
     } finally {
@@ -115,16 +99,9 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
       hintText: hint,
       filled: true,
       fillColor: const Color(0xFFF9FAFB),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      enabledBorder: OutlineInputBorder(
+      border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _border),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _logoBlue),
-      ),
-      labelStyle: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
     );
   }
 
@@ -134,95 +111,48 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: _bg,
-        surfaceTintColor: _bg,
-        scrolledUnderElevation: 0,
         elevation: 0,
-        foregroundColor: _text,
+        title: const Text('Criar grupo', style: TextStyle(color: _text)),
         iconTheme: const IconThemeData(color: _muted),
-        centerTitle: true,
-        title: const Text(
-          'Criar grupo',
-          style: TextStyle(
-            color: _text,
-            fontWeight: FontWeight.w900,
-            fontSize: 16,
-          ),
-        ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.all(16),
         children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [_remdyBlue, _logoBlue]),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Text(
-              'Crie seu grupo (estilo WhatsApp)\nDepois a gente adiciona: foto, admins, link privado e aprovação.',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                height: 1.3,
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
           TextField(
             controller: _nameC,
-            textInputAction: TextInputAction.next,
-            decoration: _dec('Nome do grupo', hint: 'Ex: Brasileiros em Toronto'),
+            decoration: _dec('Nome do grupo'),
           ),
           const SizedBox(height: 12),
 
           TextField(
             controller: _countryC,
-            textInputAction: TextInputAction.next,
-            decoration: _dec('País (minúsculo)', hint: 'ex: canada, brasil, portugal'),
+            decoration: _dec('País'),
+          ),
+          const SizedBox(height: 12),
+
+          TextField(
+            controller: _cityC,
+            decoration: _dec('Cidade'), // NOVO
           ),
           const SizedBox(height: 12),
 
           TextField(
             controller: _bioC,
-            maxLines: 4,
-            decoration: _dec('Bio do grupo (opcional)', hint: 'Ex: encontros, futebol, amizade...'),
+            maxLines: 3,
+            decoration: _dec('Bio'),
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
 
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(colors: [_remdyBlue, _logoBlue]),
+          ElevatedButton(
+            onPressed: _loading ? null : _create,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _remdyBlue,
+              padding: const EdgeInsets.symmetric(vertical: 14),
             ),
-            child: ElevatedButton(
-              onPressed: _loading ? null : _create,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: _loading
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text(
-                      'Criar grupo',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-            ),
+            child: _loading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text('Criar grupo'),
           ),
         ],
       ),

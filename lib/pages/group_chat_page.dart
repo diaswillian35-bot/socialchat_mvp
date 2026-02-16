@@ -1,10 +1,8 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-// ✅ ajuste o caminho se precisar
+// ✅ AJUSTE o import conforme seu projeto
 import 'group_info_page.dart';
 
 class GroupChatPage extends StatefulWidget {
@@ -22,34 +20,40 @@ class GroupChatPage extends StatefulWidget {
 }
 
 class _GroupChatPageState extends State<GroupChatPage> {
-  final db = FirebaseFirestore.instance;
+  static const Color _bg = Colors.white;
+  static const Color _text = Color(0xFF111827);
+  static const Color _muted = Color(0xFF6B7280);
+  static const Color _border = Color(0xFFE5E7EB);
+  static const Color _remdyBlue = Color(0xFF313A5F);
 
   final _textC = TextEditingController();
   final _scrollC = ScrollController();
 
-  String? get myUidOrNull => FirebaseAuth.instance.currentUser?.uid;
+  String? get uid => FirebaseAuth.instance.currentUser?.uid;
 
-  bool _sending = false;
-  DateTime? _lastSentAt;
-  static const int _cooldownMs = 700;
+  DocumentReference<Map<String, dynamic>> get _groupRef =>
+      FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
 
-  int _lastMsgCount = 0;
+  CollectionReference<Map<String, dynamic>> get _msgsRef =>
+      _groupRef.collection('messages');
 
-  // Visual padrão Remdy
-  static const Color _bg = Colors.white;
-  static const Color _text = Color(0xFF111827);
-  static const Color _muted = Color(0xFF6B7280);
-  static const Color _remdyBlue = Color(0xFF313A5F);
+  bool _isAdmin = false; // ✅ cache local
+  bool _loadingRole = true;
 
-  DocumentReference<Map<String, dynamic>> get groupDoc =>
-      db.collection('groups').doc(widget.groupId);
+  @override
+  void initState() {
+    super.initState();
+    _loadMyRole();
+  }
 
-  CollectionReference<Map<String, dynamic>> get msgsCol =>
-      groupDoc.collection('messages');
+  @override
+  void dispose() {
+    _textC.dispose();
+    _scrollC.dispose();
+    super.dispose();
+  }
 
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _msgsStream;
-
-  void _warn(String msg) {
+  void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -60,30 +64,94 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  // =========================
-  // ✅ MODERAÇÃO
-  // =========================
-  bool _containsLink(String text) {
-    final t = text.toLowerCase();
-    return t.contains('http://') ||
-        t.contains('https://') ||
-        t.contains('www.') ||
-        t.contains('.com') ||
-        t.contains('.net') ||
-        t.contains('.ca') ||
-        t.contains('.br');
+  Future<void> _loadMyRole() async {
+    final myUid = uid;
+    if (myUid == null) {
+      setState(() {
+        _isAdmin = false;
+        _loadingRole = false;
+      });
+      return;
+    }
+
+    try {
+      final g = await _groupRef.get();
+      final gd = g.data() ?? {};
+      final ownerId = (gd['ownerId'] ?? '').toString();
+      final adminsRaw = gd['admins'];
+
+      final admins = (adminsRaw is List)
+          ? adminsRaw
+              .map((e) => e.toString())
+              .where((e) => e.trim().isNotEmpty)
+              .toList()
+          : <String>[];
+
+      final isAdmin = (myUid == ownerId) || admins.contains(myUid);
+
+      if (!mounted) return;
+      setState(() {
+        _isAdmin = isAdmin;
+        _loadingRole = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isAdmin = false;
+        _loadingRole = false;
+      });
+    }
   }
 
-  bool _containsPhone(String text) {
-    final t = text.trim();
-    final intl = RegExp(r'\+\s?\d{1,3}');
-    final generic = RegExp(r'\d[\d\s().-]{7,}\d');
-    return intl.hasMatch(t) || generic.hasMatch(t);
+  Future<void> _send() async {
+    final myUid = uid;
+    if (myUid == null) return;
+
+    final text = _textC.text.trim();
+    if (text.isEmpty) return;
+
+    _textC.clear();
+
+    try {
+      await _msgsRef.add({
+        'text': text,
+        'senderId': myUid, // ✅ mantém seu padrão
+        'createdAt': FieldValue.serverTimestamp(),
+
+        // ✅ suporte a soft-delete
+        'deleted': false,
+        'deletedBy': '',
+        'deletedText': '',
+        'deletedAt': null,
+      });
+
+      // ✅ atualizar updatedAt do grupo (opcional mas bom)
+      await _groupRef.set({
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      _toast('Erro ao enviar: $e');
+    }
   }
 
-  // =========================
-  // ✅ ABRIR INFO DO GRUPO
-  // =========================
+  Future<void> _softDeleteMessage({
+    required String messageId,
+    required bool byAdmin,
+  }) async {
+    final myUid = uid;
+    if (myUid == null) return;
+
+    final label = byAdmin ? 'Mensagem apagada pelo admin' : 'Mensagem apagada';
+
+    await _msgsRef.doc(messageId).set({
+      'deleted': true,
+      'deletedBy': myUid,
+      'deletedText': label,
+      'deletedAt': FieldValue.serverTimestamp(),
+      'text': '', // ✅ apaga o texto original
+    }, SetOptions(merge: true));
+  }
+
   void _openInfo() {
     Navigator.push(
       context,
@@ -93,175 +161,209 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  Future<void> _send() async {
-    if (_sending) return;
+  Future<void> _openActions({
+    required String messageId,
+    required bool isMyMessage,
+  }) async {
+    final myUid = uid;
+    if (myUid == null) return;
 
-    final uid = myUidOrNull;
-    if (uid == null) {
-      _warn('Você precisa estar logado.');
-      return;
-    }
+    final canDeleteForAll = _isAdmin; // ✅ admin apaga de qualquer um
 
-    final now = DateTime.now();
-    if (_lastSentAt != null) {
-      final diff = now.difference(_lastSentAt!).inMilliseconds;
-      if (diff < _cooldownMs) return;
-    }
-
-    final text = _textC.text.trim();
-    if (text.isEmpty) return;
-
-    if (_containsLink(text)) {
-      _warn('Links não são permitidos no chat.');
-      return;
-    }
-
-    if (_containsPhone(text)) {
-      _warn('Por segurança, não é permitido enviar número de telefone.');
-      return;
-    }
-
-    _sending = true;
-    _lastSentAt = now;
-    _textC.clear();
-
-    try {
-      await msgsCol.add({
-        'text': text,
-        'senderId': uid,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      await groupDoc.set({
-        'lastMessage': text,
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // com reverse:true, o topo é 0
-      Future.delayed(const Duration(milliseconds: 80), () {
-        if (!_scrollC.hasClients) return;
-        _scrollC.jumpTo(0);
-      });
-    } catch (e) {
-      _warn('Erro ao enviar: $e');
-    } finally {
-      _sending = false;
-    }
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Wrap(
+          children: [
+            if (isMyMessage)
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Apagar'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _softDeleteMessage(
+                    messageId: messageId,
+                    byAdmin: false,
+                  );
+                },
+              ),
+            if (canDeleteForAll)
+              ListTile(
+                leading:
+                    const Icon(Icons.delete_forever_rounded, color: Colors.red),
+                title: const Text('Apagar (admin)'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _softDeleteMessage(
+                    messageId: messageId,
+                    byAdmin: true,
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _msgsStream = msgsCol.orderBy('createdAt', descending: true).snapshots();
-  }
-
-  @override
-  void dispose() {
-    _textC.dispose();
-    _scrollC.dispose();
-    super.dispose();
+  // ✅ avatar do grupo (AppBar)
+  Widget _groupAvatarFromData(Map<String, dynamic>? data) {
+    final url = (data?['avatarUrl'] ?? '').toString().trim();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: 34,
+        height: 34,
+        color: const Color(0xFFF1F5F9),
+        child: url.isNotEmpty
+            ? Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.groups_rounded,
+                  size: 18,
+                  color: Color(0xFF94A3B8),
+                ),
+              )
+            : const Icon(
+                Icons.groups_rounded,
+                size: 18,
+                color: Color(0xFF94A3B8),
+              ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = myUidOrNull;
-
     return Scaffold(
       backgroundColor: _bg,
-     appBar: AppBar(
-  backgroundColor: _bg,
-  elevation: 0,
-  titleSpacing: 0,
-  iconTheme: const IconThemeData(color: _muted),
-  title: GestureDetector(
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => GroupInfoPage(groupId: widget.groupId),
-      ),
-    );
-  },
-  child: Text(
-    widget.groupName,
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-    style: const TextStyle(
-      color: _text,
-      fontWeight: FontWeight.w900,
-      fontSize: 16,
-    ),
-  ),
-),
 
-  actions: [
-    IconButton(
-      icon: const Icon(Icons.info_outline_rounded),
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => GroupInfoPage(groupId: widget.groupId),
-          ),
-        );
-      },
-    ),
-  ],
-),
+      appBar: AppBar(
+        backgroundColor: _bg,
+        surfaceTintColor: _bg,
+        scrolledUnderElevation: 0,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: _muted),
+        centerTitle: true,
+
+        // ✅ REMOVIDO O (i) — agora é SÓ título (clicável) + avatar do grupo
+        title: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: _groupRef.snapshots(),
+          builder: (context, snap) {
+            final gd = snap.data?.data();
+            final name = (gd?['name'] ?? widget.groupName).toString().trim();
+
+            return InkWell(
+              onTap: _openInfo,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _groupAvatarFromData(gd),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        name.isEmpty ? widget.groupName : name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _text,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
 
       body: Column(
         children: [
           Expanded(
-            child: Container(
-              color: const Color(0xFFF8FAFC),
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _msgsStream,
-                builder: (context, snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snap.hasError) {
-                    return Center(child: Text('Erro: ${snap.error}'));
-                  }
-
-                  final docs = snap.data?.docs ?? [];
-                  if (docs.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'Nenhuma mensagem ainda.',
-                        style: TextStyle(
-                          color: _muted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    );
-                  }
-
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!_scrollC.hasClients) return;
-                    if (docs.length != _lastMsgCount) {
-                      _lastMsgCount = docs.length;
-                      _scrollC.jumpTo(0);
-                    }
-                  });
-
-                  return ListView.builder(
-                    controller: _scrollC,
-                    reverse: true,
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                    itemCount: docs.length,
-                    itemBuilder: (context, i) {
-                      final d = docs[i].data();
-                      final text = (d['text'] ?? '').toString();
-                      final senderId = (d['senderId'] ?? '').toString();
-                      final isMe = (uid != null && senderId == uid);
-
-                      return _Bubble(text: text, isMe: isMe);
-                    },
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _msgsRef.orderBy('createdAt', descending: true).snapshots(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snap.hasError) {
+                  return Center(
+                    child: Text(
+                      'Erro: ${snap.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: _muted),
+                    ),
                   );
-                },
-              ),
+                }
+
+                final docs = snap.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'Sem mensagens ainda.',
+                      style: TextStyle(
+                        color: _muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  controller: _scrollC,
+                  reverse: true,
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  itemCount: docs.length,
+                  itemBuilder: (context, i) {
+                    final doc = docs[i];
+                    final d = doc.data();
+
+                    final senderId = (d['senderId'] ?? '').toString();
+                    final isMe = (uid != null && senderId == uid);
+
+                    final deleted = (d['deleted'] == true);
+                    final deletedText =
+                        (d['deletedText'] ?? '').toString().trim();
+
+                    final text = deleted
+                        ? (deletedText.isNotEmpty
+                            ? deletedText
+                            : 'Mensagem apagada pelo admin')
+                        : (d['text'] ?? '').toString();
+
+                    final bubble = _MessageRow(
+                      senderId: senderId,
+                      isMe: isMe,
+                      text: text,
+                      isDeleted: deleted,
+                    );
+
+                    return GestureDetector(
+                      onLongPress: () async {
+                        if (_loadingRole) return;
+
+                        final isMyMessage = isMe;
+                        final canDelete = isMyMessage || _isAdmin;
+                        if (!canDelete) return;
+
+                        await _openActions(
+                          messageId: doc.id,
+                          isMyMessage: isMyMessage,
+                        );
+                      },
+                      child: bubble,
+                    );
+                  },
+                );
+              },
             ),
           ),
 
@@ -323,23 +425,153 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 }
 
+class _MessageRow extends StatelessWidget {
+  final String senderId;
+  final bool isMe;
+  final String text;
+  final bool isDeleted;
+
+  const _MessageRow({
+    required this.senderId,
+    required this.isMe,
+    required this.text,
+    required this.isDeleted,
+  });
+
+  static const Color _textColor = Color(0xFF111827);
+  static const Color _muted = Color(0xFF6B7280);
+  static const Color _border = Color(0xFFE5E7EB);
+  static const Color _remdyBlue = Color(0xFF313A5F);
+
+  @override
+  Widget build(BuildContext context) {
+    // ✅ busca nome/foto do usuário (sem mudar o layout do bubble)
+    final userRef = FirebaseFirestore.instance.collection('users').doc(senderId);
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: userRef.snapshots(),
+      builder: (context, snap) {
+        final ud = snap.data?.data();
+        final name = (ud?['name'] ?? 'Usuário').toString().trim();
+
+        final photoUrl = (ud?['photoUrl'] ?? '').toString().trim();
+        final avatarUrl = (ud?['avatarUrl'] ?? '').toString().trim();
+        final pic = photoUrl.isNotEmpty ? photoUrl : avatarUrl;
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            mainAxisAlignment:
+                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    color: const Color(0xFFF1F5F9),
+                    child: pic.isNotEmpty
+                        ? Image.network(
+                            pic,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.person,
+                              size: 16,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.person,
+                            size: 16,
+                            color: Color(0xFF94A3B8),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+
+              Flexible(
+                child: Column(
+                  crossAxisAlignment:
+                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  children: [
+                    // ✅ Nome do remetente (discreto)
+                    if (!isMe)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 2, bottom: 2),
+                        child: Text(
+                          name.isEmpty ? 'Usuário' : name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: _muted,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+
+                    _Bubble(
+                      text: text,
+                      isMe: isMe,
+                      isDeleted: isDeleted,
+                    ),
+                  ],
+                ),
+              ),
+
+              if (isMe) ...[
+                const SizedBox(width: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    color: const Color(0xFFF1F5F9),
+                    child: const Icon(
+                      Icons.person,
+                      size: 16,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _Bubble extends StatelessWidget {
   final String text;
   final bool isMe;
+  final bool isDeleted;
 
   const _Bubble({
     required this.text,
     required this.isMe,
+    this.isDeleted = false,
   });
 
   static const Color _remdyBlue = Color(0xFF313A5F);
 
   @override
   Widget build(BuildContext context) {
+    final style = TextStyle(
+      color: isMe ? Colors.white : const Color(0xFF111827),
+      fontWeight: FontWeight.w600,
+      fontSize: isDeleted ? 12.5 : 14,
+      fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal,
+    );
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: 2),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isMe ? _remdyBlue : Colors.white,
@@ -348,13 +580,7 @@ class _Bubble extends StatelessWidget {
             color: isMe ? _remdyBlue : const Color(0xFFE5E7EB),
           ),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isMe ? Colors.white : const Color(0xFF111827),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        child: Text(text, style: style),
       ),
     );
   }

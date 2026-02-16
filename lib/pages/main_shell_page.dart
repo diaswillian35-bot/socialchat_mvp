@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'home_page.dart';
 import 'messages_page.dart';
-import 'groups_page.dart';
+import 'groups_list_page.dart';
 import 'events_page.dart';
 import 'create_group_page.dart'; // ✅ NOVO (ajuste o caminho se estiver em outra pasta)
 
@@ -79,7 +79,7 @@ class _MainShellState extends State<MainShell> {
     final pages = <Widget>[
       const HomePage(),
       const MessagesPage(),
-      const GroupsPage(),
+      const GroupsListPage(),
       const EventsPage(),
     ];
 
@@ -92,14 +92,17 @@ class _MainShellState extends State<MainShell> {
       // ✅ BOTÃO + só na aba "Grupos"
       floatingActionButton: _index == 2
           ? FloatingActionButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CreateGroupPage()),
-                );
-              },
-              child: const Icon(Icons.add),
-            )
+    backgroundColor: const Color(0xFF313A5F), // azul Remdy
+    foregroundColor: Colors.white,
+    onPressed: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CreateGroupPage()),
+      );
+    },
+    child: const Icon(Icons.add),
+)
+
           : null,
 
       bottomNavigationBar: BottomNavigationBar(

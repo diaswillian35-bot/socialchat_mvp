@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../widget/remdy_app.dart';
 import 'create_group_page.dart';
-import 'group_chat_page.dart'; // ✅ NOVO: abre o chat do grupo
+import 'group_chat_page.dart';
 
 class GroupsPage extends StatefulWidget {
   const GroupsPage({super.key});
@@ -42,11 +42,14 @@ class _GroupsPageState extends State<GroupsPage> {
   }
 
   // ✅ filtra por "country" (igual você salva no CreateGroupPage)
+  // ✅ ordena por updatedAt (se não existir, não quebra — só ordena “vazio” primeiro)
   Query<Map<String, dynamic>> _query() {
     final ref = FirebaseFirestore.instance.collection('groups');
+
     if (_countryFilter == 'all') {
       return ref.orderBy('updatedAt', descending: true);
     }
+
     return ref
         .where('country', isEqualTo: _countryFilter)
         .orderBy('updatedAt', descending: true);
@@ -86,8 +89,10 @@ class _GroupsPageState extends State<GroupsPage> {
   int _membersCountFromData(Map<String, dynamic> data) {
     final m = data['members'];
     if (m is List) return m.length;
+
     final mc = data['membersCount'];
     if (mc is int) return mc;
+
     return 0;
   }
 
@@ -109,7 +114,8 @@ class _GroupsPageState extends State<GroupsPage> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.public, color: Color(0xFF6B7280), size: 18),
+                  const Icon(Icons.public,
+                      color: Color(0xFF6B7280), size: 18),
                   const SizedBox(width: 10),
                   const Text(
                     'País:',
@@ -152,12 +158,16 @@ class _GroupsPageState extends State<GroupsPage> {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
                 if (snap.hasError) {
                   return Center(
-                    child: Text(
-                      'Erro: ${snap.error}',
-                      style: const TextStyle(color: Color(0xFF6B7280)),
-                      textAlign: TextAlign.center,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'Erro: ${snap.error}',
+                        style: const TextStyle(color: Color(0xFF6B7280)),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   );
                 }
@@ -180,7 +190,8 @@ class _GroupsPageState extends State<GroupsPage> {
                     final d = docs[i];
                     final data = d.data();
 
-                    final name = _prettyName((data['name'] ?? '').toString());
+                    final name =
+                        _prettyName((data['name'] ?? '').toString());
                     final countryRaw = (data['country'] ?? '').toString();
                     final country = _countryBadge(countryRaw);
                     final membersCount = _membersCountFromData(data);
@@ -188,7 +199,7 @@ class _GroupsPageState extends State<GroupsPage> {
                     return InkWell(
                       borderRadius: BorderRadius.circular(16),
 
-                      // ✅ AQUI: abre o chat do grupo
+                      // ✅ abre o chat do grupo
                       onTap: () {
                         Navigator.push(
                           context,
@@ -216,9 +227,11 @@ class _GroupsPageState extends State<GroupsPage> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFFE5E7EB)),
+                                border:
+                                    Border.all(color: const Color(0xFFE5E7EB)),
                               ),
-                              child: const Icon(Icons.flag_rounded, color: Color(0xFF313A5F)),
+                              child: const Icon(Icons.flag_rounded,
+                                  color: Color(0xFF313A5F)),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -246,7 +259,8 @@ class _GroupsPageState extends State<GroupsPage> {
                                 ],
                               ),
                             ),
-                            const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
+                            const Icon(Icons.chevron_right_rounded,
+                                color: Color(0xFF9CA3AF)),
                           ],
                         ),
                       ),
