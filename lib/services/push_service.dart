@@ -8,6 +8,9 @@ class PushService {
   static final navKey = GlobalKey<NavigatorState>();
 
 
+  static bool _tokenRefreshListening = false;
+
+
   static Future<void> init() async {
     // ✅ pede permissão (iOS) e mantém listeners do seu projeto
     try {
@@ -16,7 +19,7 @@ class PushService {
   }
 
 
-  /// ✅ Liga push de verdade e garante token no Firestore
+  /// ✅ Liga push e garante token no Firestore
   /// Retorna true se tiver permissão (autorizado/provisional).
   static Future<bool> enableAndSyncToken(String uid) async {
     // liga o AutoInit (Android principalmente)
@@ -42,19 +45,12 @@ class PushService {
         settings.authorizationStatus == AuthorizationStatus.provisional;
 
 
-    // tenta pegar token e salvar
-    try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.trim().isNotEmpty) {
-        await FirebaseFirestore.instance.collection('users').doc(uid).set(
-          {
-            'fcmToken': token.trim(),
-            'fcmUpdatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-      }
-    } catch (_) {}
+    // ✅ 1) salva token atual
+    await _saveToken(uid);
+
+
+    // ✅ 2) escuta refresh de token (MUITO importante no Android)
+    _listenTokenRefresh(uid);
 
 
     return authorized;
@@ -68,6 +64,13 @@ class PushService {
     } catch (_) {}
 
 
+    // tenta apagar token local (não é garantido em todos devices)
+    try {
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {}
+
+
+    // remove token "principal" do user (mantém seu padrão)
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).set(
         {
@@ -76,6 +79,90 @@ class PushService {
         },
         SetOptions(merge: true),
       );
+    } catch (_) {}
+
+
+    // opcional: você pode também limpar a subcoleção users/{uid}/fcmTokens
+    // (eu deixei sem mexer pra não quebrar nada do seu sistema atual)
+  }
+
+
+  // =========================
+  // ✅ NOVO (grupo / multi-device)
+  // =========================
+
+
+  static Future<void> _saveToken(String uid) async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.trim().isEmpty) return;
+
+
+      final t = token.trim();
+
+
+      // ✅ mantém compatível com o que você já usa hoje
+      await FirebaseFirestore.instance.collection('users').doc(uid).set(
+        {
+          'fcmToken': t,
+          'fcmUpdatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+
+      // ✅ recomendado p/ grupos: salvar por-device (não sobrescreve emulador/celular)
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('fcmTokens')
+          .doc(t)
+          .set({
+        'token': t,
+        'platform': 'unknown', // se quiser, depois colocamos android/ios
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+
+  static void _listenTokenRefresh(String uid) {
+    if (_tokenRefreshListening) return;
+    _tokenRefreshListening = true;
+
+
+    try {
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+        final t = newToken.trim();
+        if (t.isEmpty) return;
+
+
+        // atualiza user principal
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(uid).set(
+            {
+              'fcmToken': t,
+              'fcmUpdatedAt': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true),
+          );
+        } catch (_) {}
+
+
+        // atualiza por-device
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .collection('fcmTokens')
+              .doc(t)
+              .set({
+            'token': t,
+            'platform': 'unknown',
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (_) {}
+      });
     } catch (_) {}
   }
 }

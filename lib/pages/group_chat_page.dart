@@ -2,12 +2,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-// ✅ AJUSTE o import conforme seu projeto
+
 import 'group_info_page.dart';
+
 
 class GroupChatPage extends StatefulWidget {
   final String groupId;
   final String groupName;
+
 
   const GroupChatPage({
     super.key,
@@ -15,36 +17,52 @@ class GroupChatPage extends StatefulWidget {
     required this.groupName,
   });
 
+
   @override
   State<GroupChatPage> createState() => _GroupChatPageState();
 }
+
 
 class _GroupChatPageState extends State<GroupChatPage> {
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
-  static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
+
 
   final _textC = TextEditingController();
   final _scrollC = ScrollController();
 
+
   String? get uid => FirebaseAuth.instance.currentUser?.uid;
+
 
   DocumentReference<Map<String, dynamic>> get _groupRef =>
       FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
 
+
   CollectionReference<Map<String, dynamic>> get _msgsRef =>
       _groupRef.collection('messages');
 
-  bool _isAdmin = false; // ✅ cache local
+
+  bool _isAdmin = false;
   bool _loadingRole = true;
+
 
   @override
   void initState() {
     super.initState();
+
+
     _loadMyRole();
+
+
+    // ✅ Ao entrar: marca como lido + limpa campos lixo "unread.<uid>"
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _markGroupAsRead();
+    });
   }
+
 
   @override
   void dispose() {
@@ -52,6 +70,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     _scrollC.dispose();
     super.dispose();
   }
+
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -64,9 +83,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
+
   Future<void> _loadMyRole() async {
     final myUid = uid;
     if (myUid == null) {
+      if (!mounted) return;
       setState(() {
         _isAdmin = false;
         _loadingRole = false;
@@ -74,11 +95,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
       return;
     }
 
+
     try {
       final g = await _groupRef.get();
       final gd = g.data() ?? {};
+
+
       final ownerId = (gd['ownerId'] ?? '').toString();
       final adminsRaw = gd['admins'];
+
 
       final admins = (adminsRaw is List)
           ? adminsRaw
@@ -87,7 +112,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
               .toList()
           : <String>[];
 
+
       final isAdmin = (myUid == ownerId) || admins.contains(myUid);
+
 
       if (!mounted) return;
       setState(() {
@@ -103,36 +130,162 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
   }
 
+
+  // ✅ pega membros do grupo (sempre lista final)
+  Future<List<String>> _getMembers() async {
+    final g = await _groupRef.get();
+    final gd = g.data() ?? {};
+    final membersRaw = gd['members'];
+
+
+    final members = (membersRaw is List)
+        ? membersRaw
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList()
+        : <String>[];
+
+
+    return members;
+  }
+
+
+  // ✅ APAGA o lixo "unread.<uid>" (campo literal com ponto no nome)
+  Future<void> _cleanupUnreadJunk(List<String> uids) async {
+    if (uids.isEmpty) return;
+
+
+    // DocumentReference.update aceita FieldPath como chave
+    final Map<Object, Object?> patch = {};
+    for (final u in uids) {
+      final s = u.trim();
+      if (s.isEmpty) continue;
+      patch[FieldPath(['unread.$s'])] = FieldValue.delete();
+    }
+
+
+    if (patch.isEmpty) return;
+
+
+    try {
+      await _groupRef.update(patch);
+    } catch (_) {
+      // se não existir, ignora
+    }
+  }
+
+
+  // ✅ Marca leitura: zera unread[uid] no MAP + limpa lixo
+  Future<void> _markGroupAsRead() async {
+    final myUid = uid;
+    if (myUid == null) return;
+
+
+    // mantém reads (ok)
+    await _groupRef.collection('reads').doc(myUid).set({
+      'lastReadAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+
+    // zera no MAP (correto)
+    try {
+      await _groupRef.update({
+        'unread.$myUid': 0,
+      });
+    } catch (_) {
+      await _groupRef.set({
+        'unread': {myUid: 0},
+      }, SetOptions(merge: true));
+    }
+
+
+    // limpa o lixo "unread.<uid>"
+    await _cleanupUnreadJunk([myUid]);
+  }
+
+
   Future<void> _send() async {
     final myUid = uid;
     if (myUid == null) return;
 
+
     final text = _textC.text.trim();
     if (text.isEmpty) return;
 
+
     _textC.clear();
 
-    try {
-      await _msgsRef.add({
-        'text': text,
-        'senderId': myUid, // ✅ mantém seu padrão
-        'createdAt': FieldValue.serverTimestamp(),
 
-        // ✅ suporte a soft-delete
+    try {
+      // membros
+      final members = await _getMembers();
+
+
+      // garante que eu estou na lista (pra não falhar)
+      if (!members.contains(myUid)) {
+        members.add(myUid);
+      }
+
+
+      final batch = FirebaseFirestore.instance.batch();
+
+
+      // cria msg
+      final msgRef = _msgsRef.doc();
+      batch.set(msgRef, {
+        'text': text,
+        'senderId': myUid,
+        'createdAt': FieldValue.serverTimestamp(),
         'deleted': false,
         'deletedBy': '',
         'deletedText': '',
         'deletedAt': null,
       });
 
-      // ✅ atualizar updatedAt do grupo (opcional mas bom)
-      await _groupRef.set({
+
+      // patch do grupo (SÓ STRING KEYS no batch.update)
+      final Map<String, dynamic> patch = {
+        'lastMessage': text,
+        'lastSenderId': myUid,
+        'lastMessageAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+
+
+        // quem enviou: sempre 0
+        'unread.$myUid': 0,
+      };
+
+
+      // outros: incrementa
+      for (final m in members) {
+        if (m == myUid) continue;
+        patch['unread.$m'] = FieldValue.increment(1);
+      }
+
+
+      // ✅ update (não cria lixo)
+      batch.update(_groupRef, patch);
+
+
+      // mantém reads
+      final readRef = _groupRef.collection('reads').doc(myUid);
+      batch.set(
+        readRef,
+        {'lastReadAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+
+
+      await batch.commit();
+
+
+      // ✅ depois do commit: limpa campos lixo antigos (dos dois uids)
+      await _cleanupUnreadJunk(members);
     } catch (e) {
       _toast('Erro ao enviar: $e');
     }
   }
+
 
   Future<void> _softDeleteMessage({
     required String messageId,
@@ -141,16 +294,19 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final myUid = uid;
     if (myUid == null) return;
 
+
     final label = byAdmin ? 'Mensagem apagada pelo admin' : 'Mensagem apagada';
+
 
     await _msgsRef.doc(messageId).set({
       'deleted': true,
       'deletedBy': myUid,
       'deletedText': label,
       'deletedAt': FieldValue.serverTimestamp(),
-      'text': '', // ✅ apaga o texto original
+      'text': '',
     }, SetOptions(merge: true));
   }
+
 
   void _openInfo() {
     Navigator.push(
@@ -161,14 +317,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
+
   Future<void> _openActions({
     required String messageId,
     required bool isMyMessage,
   }) async {
-    final myUid = uid;
-    if (myUid == null) return;
+    if (_loadingRole) return;
+    final canDeleteForAll = _isAdmin;
 
-    final canDeleteForAll = _isAdmin; // ✅ admin apaga de qualquer um
 
     showModalBottomSheet(
       context: context,
@@ -181,23 +337,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 title: const Text('Apagar'),
                 onTap: () async {
                   Navigator.pop(context);
-                  await _softDeleteMessage(
-                    messageId: messageId,
-                    byAdmin: false,
-                  );
+                  await _softDeleteMessage(messageId: messageId, byAdmin: false);
                 },
               ),
             if (canDeleteForAll)
               ListTile(
-                leading:
-                    const Icon(Icons.delete_forever_rounded, color: Colors.red),
+                leading: Icon(Icons.delete_forever_rounded, color: _remdyBlue),
                 title: const Text('Apagar (admin)'),
                 onTap: () async {
                   Navigator.pop(context);
-                  await _softDeleteMessage(
-                    messageId: messageId,
-                    byAdmin: true,
-                  );
+                  await _softDeleteMessage(messageId: messageId, byAdmin: true);
                 },
               ),
           ],
@@ -206,7 +355,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  // ✅ avatar do grupo (AppBar)
+
   Widget _groupAvatarFromData(Map<String, dynamic>? data) {
     final url = (data?['avatarUrl'] ?? '').toString().trim();
     return ClipRRect(
@@ -234,11 +383,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-
       appBar: AppBar(
         backgroundColor: _bg,
         surfaceTintColor: _bg,
@@ -246,20 +395,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
         elevation: 0,
         iconTheme: const IconThemeData(color: _muted),
         centerTitle: true,
-
-        // ✅ REMOVIDO O (i) — agora é SÓ título (clicável) + avatar do grupo
         title: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: _groupRef.snapshots(),
           builder: (context, snap) {
             final gd = snap.data?.data();
             final name = (gd?['name'] ?? widget.groupName).toString().trim();
 
+
             return InkWell(
               onTap: _openInfo,
               borderRadius: BorderRadius.circular(10),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -284,7 +431,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
           },
         ),
       ),
-
       body: Column(
         children: [
           Expanded(
@@ -304,18 +450,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   );
                 }
 
+
                 final docs = snap.data?.docs ?? [];
                 if (docs.isEmpty) {
                   return const Center(
                     child: Text(
                       'Sem mensagens ainda.',
-                      style: TextStyle(
-                        color: _muted,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: TextStyle(color: _muted, fontWeight: FontWeight.w600),
                     ),
                   );
                 }
+
 
                 return ListView.builder(
                   controller: _scrollC,
@@ -326,38 +471,41 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     final doc = docs[i];
                     final d = doc.data();
 
-                    final senderId = (d['senderId'] ?? '').toString();
+
+                    final senderId = (d['senderId'] ?? '').toString().trim();
                     final isMe = (uid != null && senderId == uid);
 
+
                     final deleted = (d['deleted'] == true);
-                    final deletedText =
-                        (d['deletedText'] ?? '').toString().trim();
+                    final deletedText = (d['deletedText'] ?? '').toString().trim();
+
 
                     final text = deleted
-                        ? (deletedText.isNotEmpty
-                            ? deletedText
-                            : 'Mensagem apagada pelo admin')
+                        ? (deletedText.isNotEmpty ? deletedText : 'Mensagem apagada pelo admin')
                         : (d['text'] ?? '').toString();
 
-                    final bubble = _MessageRow(
-                      senderId: senderId,
-                      isMe: isMe,
+
+                    final bubbleWidget = _Bubble(
                       text: text,
+                      isMe: isMe,
                       isDeleted: deleted,
                     );
 
+
+                    final Widget bubble = senderId.isEmpty
+                        ? bubbleWidget
+                        : MessageRow(
+                            senderUid: senderId,
+                            isMe: isMe,
+                            bubble: bubbleWidget,
+                          );
+
+
                     return GestureDetector(
                       onLongPress: () async {
-                        if (_loadingRole) return;
-
-                        final isMyMessage = isMe;
-                        final canDelete = isMyMessage || _isAdmin;
+                        final canDelete = isMe || _isAdmin;
                         if (!canDelete) return;
-
-                        await _openActions(
-                          messageId: doc.id,
-                          isMyMessage: isMyMessage,
-                        );
+                        await _openActions(messageId: doc.id, isMyMessage: isMe);
                       },
                       child: bubble,
                     );
@@ -366,7 +514,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
               },
             ),
           ),
-
           SafeArea(
             top: false,
             child: Container(
@@ -387,7 +534,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       child: TextField(
                         controller: _textC,
-                        enabled: uid != null, // ✅ não quebra se deslogar
+                        enabled: uid != null,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _send(),
                         decoration: InputDecoration(
@@ -425,131 +572,12 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 }
 
-class _MessageRow extends StatelessWidget {
-  final String senderId;
-  final bool isMe;
-  final String text;
-  final bool isDeleted;
-
-  const _MessageRow({
-    required this.senderId,
-    required this.isMe,
-    required this.text,
-    required this.isDeleted,
-  });
-
-  static const Color _textColor = Color(0xFF111827);
-  static const Color _muted = Color(0xFF6B7280);
-  static const Color _border = Color(0xFFE5E7EB);
-  static const Color _remdyBlue = Color(0xFF313A5F);
-
-  @override
-  Widget build(BuildContext context) {
-    // ✅ busca nome/foto do usuário (sem mudar o layout do bubble)
-    final userRef = FirebaseFirestore.instance.collection('users').doc(senderId);
-
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: userRef.snapshots(),
-      builder: (context, snap) {
-        final ud = snap.data?.data();
-        final name = (ud?['name'] ?? 'Usuário').toString().trim();
-
-        final photoUrl = (ud?['photoUrl'] ?? '').toString().trim();
-        final avatarUrl = (ud?['avatarUrl'] ?? '').toString().trim();
-        final pic = photoUrl.isNotEmpty ? photoUrl : avatarUrl;
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            mainAxisAlignment:
-                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (!isMe) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    color: const Color(0xFFF1F5F9),
-                    child: pic.isNotEmpty
-                        ? Image.network(
-                            pic,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.person,
-                              size: 16,
-                              color: Color(0xFF94A3B8),
-                            ),
-                          )
-                        : const Icon(
-                            Icons.person,
-                            size: 16,
-                            color: Color(0xFF94A3B8),
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-
-              Flexible(
-                child: Column(
-                  crossAxisAlignment:
-                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                  children: [
-                    // ✅ Nome do remetente (discreto)
-                    if (!isMe)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 2, bottom: 2),
-                        child: Text(
-                          name.isEmpty ? 'Usuário' : name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: _muted,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-
-                    _Bubble(
-                      text: text,
-                      isMe: isMe,
-                      isDeleted: isDeleted,
-                    ),
-                  ],
-                ),
-              ),
-
-              if (isMe) ...[
-                const SizedBox(width: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    color: const Color(0xFFF1F5F9),
-                    child: const Icon(
-                      Icons.person,
-                      size: 16,
-                      color: Color(0xFF94A3B8),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
 
 class _Bubble extends StatelessWidget {
   final String text;
   final bool isMe;
   final bool isDeleted;
+
 
   const _Bubble({
     required this.text,
@@ -557,7 +585,9 @@ class _Bubble extends StatelessWidget {
     this.isDeleted = false,
   });
 
+
   static const Color _remdyBlue = Color(0xFF313A5F);
+
 
   @override
   Widget build(BuildContext context) {
@@ -567,6 +597,7 @@ class _Bubble extends StatelessWidget {
       fontSize: isDeleted ? 12.5 : 14,
       fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal,
     );
+
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -582,6 +613,106 @@ class _Bubble extends StatelessWidget {
         ),
         child: Text(text, style: style),
       ),
+    );
+  }
+}
+
+
+class MessageRow extends StatelessWidget {
+  final String senderUid;
+  final bool isMe;
+  final Widget bubble;
+
+
+  const MessageRow({
+    required this.senderUid,
+    required this.isMe,
+    required this.bubble,
+  });
+
+
+  static const Color _muted = Color(0xFF6B7280);
+
+
+  @override
+  Widget build(BuildContext context) {
+    final safeUid = senderUid.trim();
+    if (safeUid.isEmpty) {
+      return Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: bubble,
+      );
+    }
+
+
+    if (isMe) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: bubble,
+      );
+    }
+
+
+    final userRef = FirebaseFirestore.instance.collection('users').doc(safeUid);
+
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: userRef.snapshots(),
+          builder: (context, snap) {
+            final data = snap.data?.data();
+            final photoUrl = (data?['photoUrl'] ?? '').toString().trim();
+            final avatarUrl = (data?['avatarUrl'] ?? '').toString().trim();
+            final pic = photoUrl.isNotEmpty ? photoUrl : avatarUrl;
+
+
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                width: 22,
+                height: 22,
+                color: const Color(0xFFF1F5F9),
+                child: pic.isNotEmpty
+                    ? Image.network(pic, fit: BoxFit.cover)
+                    : const Icon(Icons.person, size: 14, color: _muted),
+              ),
+            );
+          },
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: userRef.snapshots(),
+            builder: (context, snap) {
+              final data = snap.data?.data();
+              final name = (data?['name'] ?? 'Usuário').toString().trim();
+
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 2),
+                    child: Text(
+                      name.isEmpty ? 'Usuário' : name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Align(alignment: Alignment.centerLeft, child: bubble),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

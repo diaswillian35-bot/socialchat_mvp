@@ -321,6 +321,7 @@ class _EventsPageState extends State<EventsPage> {
           gradient: const LinearGradient(colors: [_remdyBlue, _logoBlue]),
         ),
         child: FloatingActionButton.extended(
+          heroTag: null,
           onPressed: _createEventStub,
           backgroundColor: Colors.transparent,
           elevation: 0,

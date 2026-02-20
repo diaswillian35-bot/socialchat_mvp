@@ -25,7 +25,7 @@ dependencies:
   firebase_auth: ^4.17.8
   cloud_firestore: ^4.15.8
   firebase_storage: ^11.7.0
-
+  purchases_flutter: ^8.0.0
 
   
   sign_in_with_apple: ^6.1.0
