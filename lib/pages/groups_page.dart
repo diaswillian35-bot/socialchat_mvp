@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 
 import 'group_info_page.dart';
+import '../widget/group_online_dot.dart';
 
 
 class GroupChatPage extends StatefulWidget {
@@ -295,31 +296,44 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
 
   Widget _groupAvatarFromData(Map<String, dynamic>? data) {
-    final url = (data?['avatarUrl'] ?? '').toString().trim();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        width: 34,
-        height: 34,
-        color: const Color(0xFFF1F5F9),
-        child: url.isNotEmpty
-            ? Image.network(
-                url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(
-                  Icons.groups_rounded,
-                  size: 18,
-                  color: Color(0xFF94A3B8),
-                ),
-              )
-            : const Icon(
-                Icons.groups_rounded,
-                size: 18,
-                color: Color(0xFF94A3B8),
-              ),
+final url = (data?['avatarUrl'] ?? '').toString().trim();
+
+
+// members pode vir null ou não ser List, então protege:
+final membersRaw = data?['members'];
+final List members = (membersRaw is List) ? membersRaw : <dynamic>[];
+final memberIds = members.map((e) => e.toString()).toList();
+
+
+
+  return Stack(
+    clipBehavior: Clip.none,
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 34,
+          height: 34,
+          color: const Color(0xFFF1F5F9),
+          child: url.isNotEmpty
+              ? Image.network(url, fit: BoxFit.cover)
+              : const Icon(Icons.groups, size: 18),
+        ),
       ),
-    );
-  }
+    
+
+      Positioned(
+        right: -1,
+        bottom: -1,
+        child: GroupOnlineDot(
+          memberIds: memberIds,
+          size: 11,
+        ),
+      ),
+    ],
+  );
+}
+
 
 
   @override

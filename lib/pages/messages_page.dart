@@ -2,12 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+
 import 'chat_page.dart';
+
 
 class MessagesPage extends StatelessWidget {
   const MessagesPage({super.key});
 
+
   String get _myUid => FirebaseAuth.instance.currentUser!.uid;
+
 
   // ✅ Visual padrão Remdy (igual Home)
   static const Color _bg = Colors.white;
@@ -16,18 +20,18 @@ class MessagesPage extends StatelessWidget {
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
+
   @override
   Widget build(BuildContext context) {
     final db = FirebaseFirestore.instance;
 
-    // ✅ IMPORTANTE:
-    // Seu app antigo usa "participants" e "lastMessageAt".
-    // (A bolinha vermelha no MainShell está usando members/unreadCount etc,
-    // mas isso é separado e você pediu pra NÃO mexer nela.)
+
+    // ✅ seu app usa "participants" e "lastMessageAt".
     final convQuery = db
         .collection('conversations')
         .where('participants', arrayContains: _myUid)
         .orderBy('lastMessageAt', descending: true);
+
 
     return Scaffold(
       backgroundColor: _bg,
@@ -55,6 +59,7 @@ class MessagesPage extends StatelessWidget {
             return Center(child: Text('Erro: ${snap.error}'));
           }
 
+
           final docs = snap.data?.docs ?? [];
           if (docs.isEmpty) {
             return const Center(
@@ -65,6 +70,7 @@ class MessagesPage extends StatelessWidget {
             );
           }
 
+
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: docs.length,
@@ -73,30 +79,44 @@ class MessagesPage extends StatelessWidget {
               final convDoc = docs[i];
               final data = convDoc.data();
 
+
               final participants =
                   (data['participants'] as List?)?.cast<String>() ?? [];
+
 
               final otherUid = participants.firstWhere(
                 (u) => u != _myUid,
                 orElse: () => '',
               );
 
+
               final lastMessage = (data['lastMessage'] ?? '').toString();
 
+
               // ✅ unread por usuário
-              final unreadMap =
-                  (data['unread'] is Map) ? Map<String, dynamic>.from(data['unread']) : {};
-              final myUnread = (unreadMap[_myUid] is int) ? unreadMap[_myUid] as int : 0;
+              final unreadMap = (data['unread'] is Map)
+                  ? Map<String, dynamic>.from(data['unread'])
+                  : <String, dynamic>{};
+
+
+              final myUnread =
+                  (unreadMap[_myUid] is int) ? unreadMap[_myUid] as int : 0;
+
 
               // fallback
               final myUnread2 = (myUnread == 0 && data['unreadCount'] is Map)
-                  ? ((data['unreadCount'][_myUid] is int) ? data['unreadCount'][_myUid] as int : 0)
+                  ? ((data['unreadCount'][_myUid] is int)
+                      ? data['unreadCount'][_myUid] as int
+                      : 0)
                   : 0;
+
 
               final unreadFinal = myUnread > 0 ? myUnread : myUnread2;
 
+
               if (otherUid.isEmpty) {
                 return _ConversationTile(
+                  uid: '',
                   name: 'Usuário',
                   photoUrl: '',
                   subtitle: lastMessage,
@@ -116,6 +136,7 @@ class MessagesPage extends StatelessWidget {
                 );
               }
 
+
               return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 stream: db.collection('users').doc(otherUid).snapshots(),
                 builder: (context, userSnap) {
@@ -123,7 +144,9 @@ class MessagesPage extends StatelessWidget {
                   final name = (u['name'] ?? 'Usuário').toString();
                   final photoUrl = (u['photoUrl'] ?? '').toString();
 
+
                   return _ConversationTile(
+                    uid: otherUid,
                     name: name,
                     photoUrl: photoUrl,
                     subtitle: lastMessage,
@@ -151,14 +174,18 @@ class MessagesPage extends StatelessWidget {
   }
 }
 
+
 class _ConversationTile extends StatelessWidget {
+  final String uid; // ✅ para ler online
   final String name;
   final String photoUrl;
   final String subtitle;
   final int unread;
   final VoidCallback onTap;
 
+
   const _ConversationTile({
+    required this.uid,
     required this.name,
     required this.photoUrl,
     required this.subtitle,
@@ -166,15 +193,18 @@ class _ConversationTile extends StatelessWidget {
     required this.onTap,
   });
 
+
   static const Color _card = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
+
   @override
   Widget build(BuildContext context) {
     final hasUnread = unread > 0;
+
 
     return InkWell(
       onTap: onTap,
@@ -195,26 +225,17 @@ class _ConversationTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Avatar
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFF1F5F9),
-                image: photoUrl.isNotEmpty
-                    ? DecorationImage(
-                        image: NetworkImage(photoUrl),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-              ),
-              child: photoUrl.isEmpty
-                  ? const Icon(Icons.person, color: _muted)
-                  : null,
+            // ✅ Avatar + bolinha (online por lastSeenAt/updatedAt)
+            _AvatarOnline(
+              uid: uid,
+              photoUrl: photoUrl,
+              size: 52,
+              onlineSeconds: 90,
             ),
 
+
             const SizedBox(width: 12),
+
 
             // Textos
             Expanded(
@@ -246,7 +267,9 @@ class _ConversationTile extends StatelessWidget {
               ),
             ),
 
+
             const SizedBox(width: 10),
+
 
             // Badge + chevron
             Column(
@@ -254,7 +277,8 @@ class _ConversationTile extends StatelessWidget {
               children: [
                 if (hasUnread)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                     decoration: BoxDecoration(
                       color: _remdyBlue,
                       borderRadius: BorderRadius.circular(999),
@@ -281,6 +305,176 @@ class _ConversationTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+/// Avatar circular com bolinha.
+/// ✅ ONLINE = baseado em lastSeenAt/updatedAt (90s)
+/// ❌ ignora isOnline/online para não ficar “travado verde”.
+class _AvatarOnline extends StatelessWidget {
+  final String uid;
+  final String photoUrl;
+  final double size;
+  final int onlineSeconds;
+
+
+  const _AvatarOnline({
+    required this.uid,
+    required this.photoUrl,
+    required this.size,
+    required this.onlineSeconds,
+  });
+
+
+  DateTime? _toDateTime(dynamic v) {
+    if (v == null) return null;
+    if (v is Timestamp) return v.toDate();
+    if (v is int) {
+      if (v < 2000000000) return DateTime.fromMillisecondsSinceEpoch(v * 1000);
+      return DateTime.fromMillisecondsSinceEpoch(v);
+    }
+    if (v is num) {
+      final n = v.toInt();
+      if (n < 2000000000) return DateTime.fromMillisecondsSinceEpoch(n * 1000);
+      return DateTime.fromMillisecondsSinceEpoch(n);
+    }
+    if (v is String) return DateTime.tryParse(v);
+    return null;
+  }
+
+
+  bool _isOnlineFrom(Map<String, dynamic> data) {
+    final now = DateTime.now();
+    final lastSeen = _toDateTime(data['lastSeenAt']);
+    final updated = _toDateTime(data['updatedAt']);
+
+
+    bool recent(DateTime? dt) {
+      if (dt == null) return false;
+      final diff = now.difference(dt).inSeconds;
+      return diff <= onlineSeconds;
+    }
+
+
+    return recent(lastSeen) || recent(updated);
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUid = uid.trim().isNotEmpty;
+
+
+    final avatar = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFFF1F5F9),
+        image: photoUrl.isNotEmpty
+            ? DecorationImage(
+                image: NetworkImage(photoUrl),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: photoUrl.isEmpty
+          ? const Icon(Icons.person, color: Color(0xFF6B7280))
+          : null,
+    );
+
+
+    if (!hasUid) {
+      return Stack(clipBehavior: Clip.none, children: [avatar]);
+    }
+
+
+    final db = FirebaseFirestore.instance;
+
+
+    // prioridade: publicUsers (PresenceService escreve)
+    final pubStream = db.collection('publicUsers').doc(uid).snapshots();
+
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: pubStream,
+      builder: (context, snap) {
+        Map<String, dynamic> data = {};
+        if (snap.hasData && (snap.data?.exists ?? false)) {
+          data = snap.data?.data() ?? {};
+        }
+
+
+        // fallback: users/{uid}
+        // (se publicUsers não existir, ou vier vazio)
+       // fallback: users/{uid}
+if (data.isEmpty) {
+  return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+    stream: db.collection('users').doc(uid).snapshots(),
+    builder: (context, s2) {
+      final Map<String, dynamic> d2 =
+          (s2.hasData && (s2.data?.exists ?? false))
+              ? (s2.data?.data() ?? <String, dynamic>{})
+              : <String, dynamic>{};
+
+
+      final isOnline = _isOnlineFrom(d2);
+
+
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          avatar,
+          Positioned(
+            right: 2,
+            bottom: 2,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: isOnline
+                    ? const Color(0xFF22C55E)
+                    : const Color(0xFFCBD5E1),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+
+
+        final isOnline = _isOnlineFrom(data);
+
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            avatar,
+            Positioned(
+              right: 2,
+              bottom: 2,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: isOnline
+                      ? const Color(0xFF22C55E)
+                      : const Color(0xFFCBD5E1),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

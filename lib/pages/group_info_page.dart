@@ -136,65 +136,71 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
 
   // ✅ trocar foto do grupo (admin/owner)
   Future<void> _changeGroupAvatar({
-    required DocumentReference<Map<String, dynamic>> groupRef,
-    required bool canEdit,
-  }) async {
-    if (!canEdit) {
-      _toast('Somente admin pode trocar a foto.');
-      return;
-    }
-
-
-    try {
-      final XFile? picked = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-        maxWidth: 1200,
-      );
-      if (picked == null) return;
-
-
-      setState(() => _uploading = true);
-
-
-      // Storage path
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final storagePath = 'groups/${widget.groupId}/avatar_$ts.jpg';
-      final ref = FirebaseStorage.instance.ref(storagePath);
-
-
-      if (kIsWeb) {
-        final bytes = await picked.readAsBytes();
-        await ref.putData(
-          bytes,
-          SettableMetadata(contentType: 'image/jpeg'),
-        );
-      } else {
-        await ref.putFile(
-          File(picked.path),
-          SettableMetadata(contentType: 'image/jpeg'),
-        );
-      }
-
-
-      final url = await ref.getDownloadURL();
-
-
-      await groupRef.set({
-        'avatarUrl': url,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-
-      if (!mounted) return;
-      _toast('Foto do grupo atualizada ✅');
-    } catch (e) {
-      if (!mounted) return;
-      _toast('Erro ao trocar foto: $e');
-    } finally {
-      if (mounted) setState(() => _uploading = false);
-    }
+  required DocumentReference<Map<String, dynamic>> groupRef,
+  required bool canEdit,
+}) async {
+  if (!canEdit) {
+    _toast('Somente admin pode trocar a foto.');
+    return;
   }
+
+
+  try {
+    final XFile? picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1200,
+    );
+    if (picked == null) return;
+
+
+    setState(() => _uploading = true);
+
+
+    // ✅ Storage path (grupo)
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final storagePath = 'groups/${widget.groupId}/avatar_$ts.jpg';
+    final ref = FirebaseStorage.instance.ref(storagePath);
+
+
+    // ✅ upload
+    if (kIsWeb) {
+      final bytes = await picked.readAsBytes();
+      await ref.putData(
+        bytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+    } else {
+      final file = File(picked.path);
+      await ref.putFile(
+        file,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+    }
+
+
+    // ✅ pega URL e salva no Firestore
+    final url = await ref.getDownloadURL();
+
+
+    await groupRef.set(
+      {
+        'avatarUrl': url,
+        'avatarPath': storagePath, // opcional (ajuda debug)
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+
+
+    _toast('Foto do grupo atualizada ✅');
+  } catch (e) {
+    _toast('Erro ao trocar foto: $e');
+  } finally {
+    if (mounted) setState(() => _uploading = false);
+  }
+}
+
 
 
   @override

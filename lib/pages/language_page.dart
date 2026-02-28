@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 
 import '../widget/remdy_app.dart';
+import '../services/locale_controller.dart';
 
 
 class LanguagePage extends StatefulWidget {
@@ -26,7 +27,8 @@ class _LanguagePageState extends State<LanguagePage> {
   static const Color _logoBlue = Color(0xFF264E9A);
 
 
-  static const String _prefsKey = 'remdy_app_locale';
+  // ✅ agora usa a mesma key do LocaleController
+  static const String _prefsKey = 'app_lang';
 
 
   final List<_LangItem> _langs = const [
@@ -37,7 +39,7 @@ class _LanguagePageState extends State<LanguagePage> {
   ];
 
 
-  String _selectedCode = 'pt';
+  String _selectedCode = 'en'; // ✅ default global
   bool _loading = true;
 
 
@@ -51,11 +53,20 @@ class _LanguagePageState extends State<LanguagePage> {
   Future<void> _loadSaved() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString(_prefsKey);
-      if (saved != null && _langs.any((e) => e.code == saved)) {
+      final saved = (prefs.getString(_prefsKey) ?? '').trim().toLowerCase();
+
+
+      if (saved.isNotEmpty && _langs.any((e) => e.code == saved)) {
         _selectedCode = saved;
+      } else {
+        // ✅ se não tiver salvo, pega do controller (default en)
+        _selectedCode = LocaleController.instance.locale.languageCode;
       }
-    } catch (_) {}
+    } catch (_) {
+      _selectedCode = LocaleController.instance.locale.languageCode;
+    }
+
+
     if (mounted) setState(() => _loading = false);
   }
 
@@ -64,17 +75,23 @@ class _LanguagePageState extends State<LanguagePage> {
     setState(() => _selectedCode = code);
 
 
-    // 1) salva no celular
+    // 1) salva no celular (mantém — mas agora com a key correta)
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsKey, code);
     } catch (_) {}
 
 
-    // 2) aplica na hora (se RemdyApp estiver ligado no MaterialApp.locale)
+    // 2) ✅ aplica de verdade no app (controller que liga no MaterialApp.locale)
     try {
-      final locale = Locale(code);
-      RemdyApp.setLocale(context, locale);
+      await LocaleController.instance.setLocale(code);
+
+
+      // opcional: se você ainda usa RemdyApp.setLocale em algum lugar, não atrapalha.
+      // (mantém o comportamento antigo sem depender dele)
+      try {
+        RemdyApp.setLocale(context, LocaleController.instance.locale);
+      } catch (_) {}
 
 
       if (!mounted) return;
@@ -107,21 +124,18 @@ class _LanguagePageState extends State<LanguagePage> {
 
     // ✅ THEME LOCAL (remove rosa de vez)
     final fixedTheme = Theme.of(context).copyWith(
-      // cores “fantasma” que deixam rosa no dropdown
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
       hoverColor: Colors.transparent,
-      focusColor: const Color(0xFFF1F5F9), // cinza claro (não rosa)
+      focusColor: const Color(0xFFF1F5F9),
 
 
-      // garante que nada puxe rosa do tema global
       colorScheme: Theme.of(context).colorScheme.copyWith(
             primary: _remdyBlue,
             secondary: _remdyBlue,
           ),
 
 
-      // fundo do menu do dropdown
       canvasColor: Colors.white,
     );
 
@@ -141,9 +155,9 @@ class _LanguagePageState extends State<LanguagePage> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: _border),
                   ),
-                  child: Column(
+                  child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text(
                         'Escolha o idioma do app',
                         style: TextStyle(
@@ -165,8 +179,6 @@ class _LanguagePageState extends State<LanguagePage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-
-
                 Theme(
                   data: fixedTheme,
                   child: Container(
@@ -179,13 +191,8 @@ class _LanguagePageState extends State<LanguagePage> {
                     child: DropdownButtonFormField<String>(
                       value: current.code,
                       isExpanded: true,
-
-
-                      // ✅ menu branco + sem rosa
                       dropdownColor: Colors.white,
                       iconEnabledColor: _muted,
-
-
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: const Color(0xFFF9FAFB),
@@ -202,8 +209,6 @@ class _LanguagePageState extends State<LanguagePage> {
                           borderSide: const BorderSide(color: _logoBlue),
                         ),
                       ),
-
-
                       items: _langs
                           .map(
                             (e) => DropdownMenuItem<String>(
@@ -218,8 +223,6 @@ class _LanguagePageState extends State<LanguagePage> {
                             ),
                           )
                           .toList(),
-
-
                       onChanged: (v) {
                         if (v == null) return;
                         _applyLanguage(v);

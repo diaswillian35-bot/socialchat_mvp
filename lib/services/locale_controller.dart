@@ -1,7 +1,4 @@
-import 'dart:ui';
-
-
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 
@@ -10,58 +7,70 @@ class LocaleController extends ChangeNotifier {
   static final LocaleController instance = LocaleController._();
 
 
-  static const _kPrefKey = 'appLang'; // 'pt', 'en', 'es', 'fr'
+  static const _kPrefKey = 'app_lang';
 
 
-  Locale _locale = const Locale('pt');
+  // Idiomas suportados do app (ajuste se quiser)
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('pt'),
+    Locale('es'),
+    Locale('fr'),
+  ];
+
+
+  Locale _locale = const Locale('en'); // ✅ default global
+
+
   Locale get locale => _locale;
 
 
-  /// Carrega idioma salvo; se não tiver, usa idioma do celular.
+  /// Carrega o idioma salvo (se existir)
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = (prefs.getString(_kPrefKey) ?? '').trim().toLowerCase();
+    final code = (prefs.getString(_kPrefKey) ?? '').trim().toLowerCase();
 
 
-    if (saved.isNotEmpty) {
-      _locale = Locale(saved);
-      notifyListeners();
-      return;
-    }
-
-
-    // ✅ Primeiro acesso: usa idioma do celular
-    final device = PlatformDispatcher.instance.locale;
-    final code = (device.languageCode).toLowerCase();
-
-
-    // limita aos idiomas que você suporta (evita ficar "quebrado")
-    const supported = {'pt', 'en', 'es', 'fr'};
-    _locale = Locale(supported.contains(code) ? code : 'en');
+    final next = _safeLocale(code.isEmpty ? 'en' : code);
+    _locale = next;
     notifyListeners();
   }
 
 
-  Future<void> setLocale(Locale locale) async {
-    final code = locale.languageCode.toLowerCase();
+  /// Define e salva o idioma
+  Future<void> setLocale(String code) async {
+    final next = _safeLocale(code);
 
 
-    // mantém só os suportados
-    const supported = {'pt', 'en', 'es', 'fr'};
-    final safeCode = supported.contains(code) ? code : 'en';
+    // evita rebuild desnecessário
+    if (_locale.languageCode == next.languageCode) return;
 
 
-    _locale = Locale(safeCode);
+    _locale = next;
     notifyListeners();
 
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kPrefKey, safeCode);
+    await prefs.setString(_kPrefKey, next.languageCode);
   }
 
 
+  /// Reset para inglês
   Future<void> clearSaved() async {
+    _locale = const Locale('en');
+    notifyListeners();
+
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kPrefKey);
+  }
+
+
+  Locale _safeLocale(String code) {
+    final c = code.trim().toLowerCase();
+    for (final l in supportedLocales) {
+      if (l.languageCode == c) return l;
+    }
+    return const Locale('en');
   }
 }

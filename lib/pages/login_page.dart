@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:google_sign_in/google_sign_in.dart';
+import 'forgot_password_page.dart';
 
 import 'splash_page.dart';
 
@@ -33,8 +34,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _rememberMe = true;
 
 
-  // ✅ CONTAS DE TESTE (defina aqui)
-  // Crie esse usuário no Firebase Auth (Email/Password) e coloque aqui.
+  // ✅ CONTAS DE TESTE
   static const String _testEmail = 'diaswillian35@gmail.com';
   static const String _testPass = '123456';
 
@@ -55,17 +55,42 @@ class _LoginPageState extends State<LoginPage> {
   }
 
 
-  void _toast(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(12),
-        duration: const Duration(seconds: 4),
+  void _toast(String message, {bool success = false}) {
+  if (!mounted) return;
+
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Row(
+        children: [
+          Icon(
+            success ? Icons.check_circle : Icons.info_outline,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
-    );
-  }
+      backgroundColor: success
+          ? const Color(0xFF16A34A) // verde sucesso
+          : const Color(0xFF313A5F), // azul Remdy
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      duration: const Duration(seconds: 3),
+    ),
+  );
+}
+
 
 
   bool _isValidEmail(String email) {
@@ -112,7 +137,8 @@ class _LoginPageState extends State<LoginPage> {
       await ref.set({
         'uid': user.uid,
         'email': email,
-        'name': '',
+        'name': (user.displayName ?? '').toString(),
+        'photoUrl': (user.photoURL ?? '').toString(),
         'countryCode': 'ca',
         'isPremium': false,
         'createdAt': FieldValue.serverTimestamp(),
@@ -127,6 +153,9 @@ class _LoginPageState extends State<LoginPage> {
       'email': email,
       'updatedAt': FieldValue.serverTimestamp(),
       'lastSeenAt': FieldValue.serverTimestamp(),
+      // atualiza nome/foto se vier do Google e estiver vazio no seu doc
+      'name': (user.displayName ?? '').toString(),
+      'photoUrl': (user.photoURL ?? '').toString(),
     }, SetOptions(merge: true));
 
 
@@ -136,7 +165,8 @@ class _LoginPageState extends State<LoginPage> {
 
 
       if (d['uid'] == null) patch['uid'] = user.uid;
-      if (d['name'] == null) patch['name'] = '';
+      if (d['name'] == null) patch['name'] = (user.displayName ?? '').toString();
+      if (d['photoUrl'] == null) patch['photoUrl'] = (user.photoURL ?? '').toString();
       if (d['countryCode'] == null) patch['countryCode'] = 'ca';
       if (d['isPremium'] == null) patch['isPremium'] = false;
       if (d['createdAt'] == null) patch['createdAt'] = FieldValue.serverTimestamp();
@@ -239,7 +269,66 @@ class _LoginPageState extends State<LoginPage> {
   }
 
 
-  // ✅ Entrar como Teste (pra você finalizar o app sem perder tempo com providers)
+  // ✅ Google Sign-In (funcionando)
+  Future<void> _loginGoogle() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+
+
+    try {
+      // 1) abre o seletor do Google
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        // usuário cancelou
+        return;
+      }
+
+
+      // 2) pega tokens
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+
+      // 3) login no Firebase
+      final cred = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = cred.user;
+
+
+      if (user == null) {
+        _toast('Erro: usuário do Google veio vazio.');
+        return;
+      }
+
+
+      final isNewUser = (cred.additionalUserInfo?.isNewUser == true);
+
+
+      // 4) garante user doc
+      await _ensureUserDoc(user, isNewUser: isNewUser);
+
+
+      // 5) “lembrar e-mail” (opcional)
+      if (user.email != null && user.email!.trim().isNotEmpty) {
+        _emailC.text = user.email!.trim();
+      }
+      await _saveRemembered();
+
+
+      await _goToApp();
+    } on FirebaseAuthException catch (e) {
+      _toast(e.message ?? 'Erro no Google.');
+    } catch (e) {
+      _toast('Erro no Google: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+
+  // ✅ Entrar como Teste
   Future<void> _loginTest() async {
     if (_loading) return;
 
@@ -254,16 +343,12 @@ class _LoginPageState extends State<LoginPage> {
 
       final user = cred.user;
       if (user != null) {
-        // garante doc (pode ser existente)
         await _ensureUserDoc(user, isNewUser: false);
       }
 
 
-      // opcional: preenche email na UI e salva “remember”
       _emailC.text = _testEmail;
       await _saveRemembered();
-
-
       await _goToApp();
     } on FirebaseAuthException catch (e) {
       _toast(e.message ?? "Erro ao entrar com Teste.");
@@ -388,9 +473,19 @@ class _LoginPageState extends State<LoginPage> {
                         const Text("Lembrar de mim"),
                         const Spacer(),
                         TextButton(
-                          onPressed: (!_isLogin || _loading) ? null : _forgotPassword,
-                          child: const Text("Esqueceu a senha?"),
-                        ),
+  onPressed: (!_isLogin || _loading)
+      ? null
+      : () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const ForgotPasswordPage(),
+            ),
+          );
+        },
+  child: const Text("Esqueceu a senha?"),
+),
+
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -422,50 +517,26 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 10),
 
 
-                    // ✅ BOTÃO PRA VOCÊ ENTRAR E FINALIZAR O APP SEM SOFRER
+                    // ✅ Google (novo)
                     OutlinedButton.icon(
-                   onPressed: _loading ? null : () async {
-  debugPrint('🟦 TEST MODE: CLICK');
-
-
-  setState(() => _loading = true);
-
-
-  try {
-    debugPrint('🟦 TEST MODE: calling signIn...');
-    await _loginTest(); // <-- sua função do modo teste
-    debugPrint('✅ TEST MODE: login ok');
-  } on FirebaseAuthException catch (e, st) {
-    debugPrint('❌ TEST MODE FirebaseAuthException code=${e.code} message=${e.message}');
-    debugPrint('STACK: $st');
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Auth: ${e.code}')),
-    );
-  } catch (e, st) {
-    debugPrint('❌ TEST MODE ERROR: $e');
-    debugPrint('STACK: $st');
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Erro: $e')),
-    );
-  } finally {
-    if (mounted) setState(() => _loading = false);
-  }
-},
-
-                      icon: const Icon(Icons.build),
+                      onPressed: _loading ? null : _loginGoogle,
+                      icon: const Icon(Icons.g_mobiledata),
                       label: const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Text("Entrar como Teste"),
+                        child: Text("Continue with Google"),
                       ),
                     ),
+
+
+                    const SizedBox(height: 10),
+
+
+                    
 
 
                     const SizedBox(height: 14),
 
 
-                    // ✅ Mantive Apple/Facebook só como UI (sem mexer em provider agora)
                     OutlinedButton.icon(
                       onPressed: _loading ? null : _loginApple,
                       icon: const Icon(Icons.apple),

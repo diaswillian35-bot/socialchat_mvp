@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:socialchat_mvp/pages/public_profile_page.dart';
 import 'package:socialchat_mvp/services/block_service.dart';
 import 'package:socialchat_mvp/pages/Premium_page.dart';
+import '../widget/online_dot.dart';
 
 class ChatPage extends StatefulWidget {
   final String conversationId;
@@ -501,10 +502,15 @@ class _ChatPageState extends State<ChatPage> {
                 );
 
                 return InkWell(
-                  onTap: _openPublicProfile,
-                  borderRadius: BorderRadius.circular(999),
-                  child: avatar,
-                );
+  onTap: _openPublicProfile,
+  borderRadius: BorderRadius.circular(999),
+  child: AvatarWithOnlineDot(
+    uid: widget.otherUid,
+    dotSize: 10,
+    avatar: avatar,
+  ),
+);
+
               },
             ),
             const SizedBox(width: 10),

@@ -98,34 +98,7 @@ class AboutPage extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          Container(
-            height: 46,
-            decoration: BoxDecoration(
-              gradient: _primaryGradient,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                if (Navigator.canPop(context)) Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              label: const Text(
-                'Voltar',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
+          
         ],
       ),
     );

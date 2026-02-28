@@ -1,5 +1,6 @@
   import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'suport_contact_page.dart';
 
 
 class ContactPage extends StatelessWidget {
@@ -210,19 +211,7 @@ class ContactPage extends StatelessWidget {
           const SizedBox(height: 14),
 
 
-          // ✅ WhatsApp
-          _btn(
-            context: context,
-            icon: Icons.chat_bubble_outline,
-            title: 'WhatsApp',
-            subtitle: 'Atendimento rápido',
-            enabled: enableWhatsApp,
-            onTap: () {
-              final msg = Uri.encodeComponent(whatsappMessage);
-              _open(context, 'https://wa.me/$whatsappNumberE164?text=$msg');
-            },
-          ),
-          const SizedBox(height: 10),
+     
 
 
           // ✅ Email
@@ -233,12 +222,14 @@ class ContactPage extends StatelessWidget {
             subtitle: supportEmail,
             enabled: enableEmail,
             onTap: () {
-              final subject = Uri.encodeComponent('Suporte Remdy');
-              final body = Uri.encodeComponent(
-                'Olá, preciso de ajuda com o aplicativo Remdy.',
-              );
-              _open(context, 'mailto:$supportEmail?subject=$subject&body=$body');
-            },
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => const SupportContactPage(),
+    ),
+  );
+},
+
           ),
           const SizedBox(height: 10),
 

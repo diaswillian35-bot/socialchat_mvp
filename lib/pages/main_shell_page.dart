@@ -40,10 +40,21 @@ class _MainShellState extends State<MainShell> {
     if (_index < 0 || _index > 3) _index = 0;
 
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      PresenceService.instance.start();
-      
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+  () async {
+    // ✅ presença continua igual
+    await PresenceService.instance.start();
+
+
+    // ✅ push: só inicia se tiver usuário logado
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await PushService.init();
+      await PushService.start(uid);
+    }
+  }();
+});
+
   }
 
 
@@ -128,8 +139,7 @@ class _MainShellState extends State<MainShell> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                      builder: (_) => const CreateGroupPage()),
+                  MaterialPageRoute(builder: (_) => const CreateGroupPage()),
                 );
               },
               child: const Icon(Icons.add),
@@ -144,12 +154,8 @@ class _MainShellState extends State<MainShell> {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: _remdyBlue,
         unselectedItemColor: const Color(0xFF9CA3AF),
-        selectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w700),
-        unselectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w600),
-
-
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
+        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
         items: [
           const BottomNavigationBarItem(
             icon: Icon(Icons.home_rounded),
@@ -225,7 +231,7 @@ class _Badge extends StatelessWidget {
 
   const _Badge({required this.count});
 
-
+    
   @override
   Widget build(BuildContext context) {
     return Container(

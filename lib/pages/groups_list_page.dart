@@ -57,6 +57,8 @@ class _GroupsListPageState extends State<GroupsListPage> {
   int _membersCount(Map<String, dynamic> data) {
     final m = data["members"];
     if (m is List) return m.length;
+
+
     final mc = data["membersCount"];
     if (mc is int) return mc;
     if (mc is num) return mc.toInt();
@@ -73,9 +75,10 @@ class _GroupsListPageState extends State<GroupsListPage> {
     }
 
 
-    return ref
-        .where("country", isEqualTo: _selectedCountry)
-        .orderBy("updatedAt", descending: true);
+    return ref.where("country", isEqualTo: _selectedCountry).orderBy(
+          "updatedAt",
+          descending: true,
+        );
   }
 
 
@@ -149,7 +152,7 @@ class _GroupsListPageState extends State<GroupsListPage> {
         scrolledUnderElevation: 0,
         centerTitle: true,
         title: const Text(
-          " Grupo ",
+          " Grupos ",
           style: TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
@@ -262,7 +265,7 @@ class _GroupsListPageState extends State<GroupsListPage> {
                     final name = (data["name"] ?? "Grupo").toString().trim();
                     final bio = (data["bio"] ?? "").toString().trim();
                     final country = (data["country"] ?? "").toString().trim();
-                    final city = (data["city"] ?? "").toString();
+                    final city = (data["city"] ?? "").toString().trim();
                     final members = _membersCount(data);
 
 
@@ -287,6 +290,9 @@ class _GroupsListPageState extends State<GroupsListPage> {
                     final bool hasUnread = myUnread > 0;
 
 
+                    final avatarUrl = (data['avatarUrl'] ?? '').toString().trim();
+
+
                     return InkWell(
                       borderRadius: BorderRadius.circular(16),
                       onTap: () {
@@ -309,50 +315,78 @@ class _GroupsListPageState extends State<GroupsListPage> {
                         ),
                         child: Row(
                           children: [
-                            Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF1F5F9),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: _border),
-                                  ),
-                                  child: const Icon(Icons.flag_rounded,
-                                      color: _remdyBlue),
-                                ),
-                                if (isMember)
-                                  const Positioned(
-                                    right: -4,
-                                    top: -4,
-                                    child: Icon(
-                                      Icons.check_circle,
-                                      color: _remdyBlue,
-                                      size: 18,
-                                    ),
-                                  ),
-                              ],
+                            // Avatar do grupo (com foto)
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: _border),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: avatarUrl.isNotEmpty
+                                    ? Image.network(
+                                        avatarUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Icon(Icons.groups_rounded),
+                                      )
+                                    : const Icon(Icons.groups_rounded,
+                                        color: _remdyBlue),
+                              ),
                             ),
+
+
                             const SizedBox(width: 12),
+
+
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    name.isEmpty ? "Grupo" : name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: _text,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 15,
-                                    ),
+                                  // Nome + "Membro"
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          name.isEmpty ? "Grupo" : name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: _text,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isMember) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF3F4F6),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                            border: Border.all(color: _border),
+                                          ),
+                                          child: const Text(
+                                            "Membro",
+                                            style: TextStyle(
+                                              color: _muted,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 11.5,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'País: ${country.isEmpty ? '--' : _pretty(country)} · $city · $members membros',
+                                    'País: ${country.isEmpty ? '--' : _pretty(country)} · ${city.isEmpty ? '--' : city} · $members membros',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
@@ -377,6 +411,12 @@ class _GroupsListPageState extends State<GroupsListPage> {
                                 ],
                               ),
                             ),
+
+
+                            const SizedBox(width: 10),
+
+
+                            // ✅ Badge azul + chevron (como era)
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
