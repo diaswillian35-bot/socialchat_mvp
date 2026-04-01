@@ -58,7 +58,18 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
 
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      await FirebaseAuth.instance.sendPasswordResetEmail(
+  email: email,
+  actionCodeSettings: ActionCodeSettings(
+    url: 'https://remdy.app/reset-done',
+    handleCodeInApp: false,
+    androidPackageName: 'com.example.socialchatmvp',
+    androidInstallApp: true,
+    androidMinimumVersion: '1',
+    iOSBundleId: 'com.example.socialchatmvp',
+  ),
+);
+
       _toast("Enviei um e-mail para redefinir sua senha ✅");
       if (!mounted) return;
       Navigator.pop(context);

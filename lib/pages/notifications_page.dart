@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 
 import '../services/push_service.dart';
+import '../l10n/app_texts.dart';
 
 
 class NotificationsPage extends StatefulWidget {
@@ -19,7 +20,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
   final db = FirebaseFirestore.instance;
 
 
-  // Remdy style
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -28,8 +28,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   static const LinearGradient _primaryGradient = LinearGradient(
     colors: [
-      Color(0xFF313A5F), // azul Remdy
-      Color(0xFF264E9A), // azul logo
+      Color(0xFF313A5F),
+      Color(0xFF264E9A),
     ],
   );
 
@@ -42,9 +42,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
 
   bool _saving = false;
+  String _loadedLocaleCode = '';
 
 
-  // prefs
   bool _enabled = true;
   bool _chat = true;
   bool _groups = true;
@@ -55,6 +55,25 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+
+    final locale = Localizations.localeOf(context);
+    final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
+
+
+    if (_loadedLocaleCode == nextCode) return;
+    _loadedLocaleCode = nextCode;
+
+
+    AppTexts.load(locale).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
 
@@ -81,7 +100,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
       final data = snap.data() ?? {};
 
 
-      // defaults caso não exista
       final enabled = (data['notifEnabled'] ?? true) == true;
       final chat = (data['notifChat'] ?? true) == true;
       final groups = (data['notifGroups'] ?? true) == true;
@@ -95,13 +113,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
         _groups = groups;
         _events = events;
       });
-    } catch (_) {
-      // silencioso
-    }
+    } catch (_) {}
   }
 
 
   Future<void> _save() async {
+    final t = AppTexts.current;
     final uid = _uid;
     if (uid == null) return;
 
@@ -110,7 +127,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
 
     try {
-      // salva prefs (backup no Firestore)
       await _userDoc(uid).set({
         'notifEnabled': _enabled,
         'notifChat': _chat,
@@ -120,7 +136,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
       }, SetOptions(merge: true));
 
 
-      // aplica efeito real no push (o principal)
       if (_enabled) {
         final ok = await PushService.enableAndSyncToken(uid);
         if (!mounted) return;
@@ -128,9 +143,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(ok
-                ? 'Notificações ativadas ✅'
-                : 'Ativado, mas sem permissão no celular. Libere em Ajustes.'),
+            content: Text(
+              ok
+                  ? t.get('notifications_enabled')
+                  : t.get('notifications_enabled_but_no_permission'),
+            ),
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(12),
             duration: const Duration(seconds: 2),
@@ -142,23 +159,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Notificações desativadas ✅'),
+          SnackBar(
+            content: Text(t.get('notifications_disabled')),
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.all(12),
-            duration: Duration(seconds: 1),
+            margin: const EdgeInsets.all(12),
+            duration: const Duration(seconds: 1),
           ),
         );
       }
 
 
-      // seu fluxo: salva e volta pro menu
       if (Navigator.canPop(context)) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao salvar: $e'),
+          content: Text('${t.get('save_error')}: $e'),
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(12),
         ),
@@ -171,10 +187,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
     final uid = _uid;
+
+
     if (uid == null) {
-      return const Scaffold(
-        body: Center(child: Text('Você precisa estar logado.')),
+      return Scaffold(
+        body: Center(child: Text(t.get('you_need_to_be_logged_in'))),
       );
     }
 
@@ -187,10 +206,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: true, // ✅ flecha voltar
-        title: const Text(
-          'Notificações',
-          style: TextStyle(
+        automaticallyImplyLeading: true,
+        title: Text(
+          t.get('notifications'),
+          style: const TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
             fontSize: 20,
@@ -206,51 +225,44 @@ class _NotificationsPageState extends State<NotificationsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Preferências',
-                    style: TextStyle(
+                  Text(
+                    t.get('preferences'),
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
                       color: _text,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Controle quais notificações você quer receber.',
-                    style: TextStyle(
+                  Text(
+                    t.get('notifications_preferences_subtitle'),
+                    style: const TextStyle(
                       fontSize: 13,
                       color: _muted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 10),
-
-
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: _enabled,
                     onChanged: (v) => setState(() => _enabled = v),
-                    title: const Text(
-                      'Ativar notificações',
-                      style: TextStyle(
+                    title: Text(
+                      t.get('enable_notifications'),
+                      style: const TextStyle(
                         color: _text,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    subtitle: const Text(
-                      'Se desligar, o app para de receber push.',
-                      style: TextStyle(
+                    subtitle: Text(
+                      t.get('disable_notifications_subtitle'),
+                      style: const TextStyle(
                         color: _muted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-
-
                   const Divider(height: 14),
-
-
-                  // desabilita opções se _enabled=false (visual)
                   Opacity(
                     opacity: _enabled ? 1 : 0.45,
                     child: Column(
@@ -258,10 +270,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: _chat,
-                          onChanged: _enabled ? (v) => setState(() => _chat = v) : null,
-                          title: const Text(
-                            'Mensagens',
-                            style: TextStyle(
+                          onChanged:
+                              _enabled ? (v) => setState(() => _chat = v) : null,
+                          title: Text(
+                            t.get('messages'),
+                            style: const TextStyle(
                               color: _text,
                               fontWeight: FontWeight.w700,
                             ),
@@ -270,10 +283,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: _groups,
-                          onChanged: _enabled ? (v) => setState(() => _groups = v) : null,
-                          title: const Text(
-                            'Grupos',
-                            style: TextStyle(
+                          onChanged: _enabled
+                              ? (v) => setState(() => _groups = v)
+                              : null,
+                          title: Text(
+                            t.get('groups'),
+                            style: const TextStyle(
                               color: _text,
                               fontWeight: FontWeight.w700,
                             ),
@@ -282,10 +297,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: _events,
-                          onChanged: _enabled ? (v) => setState(() => _events = v) : null,
-                          title: const Text(
-                            'Eventos',
-                            style: TextStyle(
+                          onChanged: _enabled
+                              ? (v) => setState(() => _events = v)
+                              : null,
+                          title: Text(
+                            t.get('events'),
+                            style: const TextStyle(
                               color: _text,
                               fontWeight: FontWeight.w700,
                             ),
@@ -297,12 +314,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 ],
               ),
             ),
-
-
             const SizedBox(height: 14),
-
-
-            // ✅ botão salvar (Remdy)
             SizedBox(
               height: 46,
               child: Container(
@@ -326,12 +338,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                       : const Icon(Icons.save, color: Colors.white),
                   label: Text(
-                    _saving ? 'Salvando...' : 'Salvar',
+                    _saving ? t.get('saving') : t.get('save'),
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
                       color: Colors.white,

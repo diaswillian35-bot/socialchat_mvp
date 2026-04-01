@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_texts.dart';
 
 
 class FaqPage extends StatelessWidget {
   const FaqPage({super.key});
 
 
-  // Remdy style (igual padrão)
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -14,8 +14,8 @@ class FaqPage extends StatelessWidget {
 
   static const LinearGradient _primaryGradient = LinearGradient(
     colors: [
-      Color(0xFF313A5F), // azul Remdy
-      Color(0xFF264E9A), // azul logo
+      Color(0xFF313A5F),
+      Color(0xFF264E9A),
     ],
   );
 
@@ -77,6 +77,9 @@ class FaqPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
+
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -85,15 +88,10 @@ class FaqPage extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-
-
-        // ✅ flecha voltar (volta pro menu)
         automaticallyImplyLeading: true,
-
-
-        title: const Text(
-          'FAQ',
-          style: TextStyle(
+        title: Text(
+          t.get('faq'),
+          style: const TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
             fontSize: 20,
@@ -106,19 +104,19 @@ class FaqPage extends StatelessWidget {
           _card(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
-                  'Dúvidas frequentes',
-                  style: TextStyle(
+                  t.get('frequently_asked_questions'),
+                  style: const TextStyle(
                     color: _text,
                     fontWeight: FontWeight.w900,
                     fontSize: 14,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'Aqui você encontra respostas rápidas sobre o Remdy.',
-                  style: TextStyle(
+                  t.get('faq_intro'),
+                  style: const TextStyle(
                     color: _muted,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
@@ -128,47 +126,31 @@ class FaqPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-
-
           _qa(
-            q: 'O que é o Remdy?',
-            a: 'Um app de amizade e prática de idiomas com pessoas reais.',
+            q: t.get('faq_what_is_remdy_q'),
+            a: t.get('faq_what_is_remdy_a'),
           ),
           const SizedBox(height: 10),
-
-
           _qa(
-            q: 'Como funciona o Premium?',
-            a: 'O Premium libera recursos extras. Você pode ver os detalhes na tela Premium.',
+            q: t.get('faq_how_premium_works_q'),
+            a: t.get('faq_how_premium_works_a'),
           ),
           const SizedBox(height: 10),
-
-
           _qa(
-            q: 'Por que não consigo falar com alguns países?',
-            a: 'No plano grátis, você conversa apenas com seu país. Outros países aparecem como Premium.',
+            q: t.get('faq_why_cant_talk_some_countries_q'),
+            a: t.get('faq_why_cant_talk_some_countries_a'),
           ),
           const SizedBox(height: 10),
-
-
           _qa(
-            q: 'Como mudar o idioma do app?',
-            a: 'Abra o Menu > Idioma e selecione Português, English, Español ou Français.',
+            q: t.get('faq_change_language_q'),
+            a: t.get('faq_change_language_a'),
           ),
           const SizedBox(height: 10),
-
-
           _qa(
-            q: 'Como ativar/desativar notificações?',
-            a: 'Abra o Menu > Notificações e ajuste as opções. No celular, também verifique as permissões do app.',
+            q: t.get('faq_notifications_q'),
+            a: t.get('faq_notifications_a'),
           ),
-
-
           const SizedBox(height: 16),
-
-
-          // ✅ botão padrão Remdy (opcional: só “Voltar”)
-          
         ],
       ),
     );

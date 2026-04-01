@@ -1,20 +1,19 @@
 import 'dart:async';
 
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
-
-import 'language_users_page.dart' as lusers; // ✅ FIX: alias único
+import 'language_users_page.dart' as lusers;
 import 'profile_page.dart';
 import 'invite_page.dart';
 import 'login_page.dart';
 import 'premium_page.dart';
 import 'menu_page.dart';
 import 'language_page.dart';
-
+import 'edit_profile_page.dart';
+import '../l10n/app_texts.dart';
 
 import 'package:socialchat_mvp/pages/notifications_page.dart';
 import 'package:socialchat_mvp/pages/faq_page.dart';
@@ -23,35 +22,32 @@ import 'package:socialchat_mvp/pages/terms_page.dart';
 import 'package:socialchat_mvp/pages/privacy_page.dart';
 import 'package:socialchat_mvp/pages/about_page.dart';
 
-
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
-
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
-
 class _HomePageState extends State<HomePage> {
   final db = FirebaseFirestore.instance;
 
-
-  // ✅ controla o Drawer (você usa pra reabrir o menu)
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
-
-  // ✅ FCM token
   StreamSubscription<String>? _tokenSub;
 
+  bool _syncedPublicOnce = false;
+  Timer? _presenceTimer;
+bool _presenceStarted = false;
+String _localeLoaded = '';
 
-  // ✅ Auth helpers
+
   String? get uidOrNull => FirebaseAuth.instance.currentUser?.uid;
-
 
   DocumentReference<Map<String, dynamic>> _userDoc(String uid) =>
       db.collection('users').doc(uid);
 
+  DocumentReference<Map<String, dynamic>> _publicDoc(String uid) =>
+      db.collection('publicUsers').doc(uid);
 
   @override
   void initState() {
@@ -59,30 +55,43 @@ class _HomePageState extends State<HomePage> {
     _initFcmTokenFlow();
   }
 
-
   @override
   void dispose() {
     _tokenSub?.cancel();
     super.dispose();
   }
+ 
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+
+
+  final locale = Localizations.localeOf(context);
+  final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
+
+
+  
+  AppTexts.load(locale).then((_) {
+    if (mounted) setState(() {});
+  });
+}
 
 
   Future<void> _initFcmTokenFlow() async {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+     
       final uid = uidOrNull;
       if (uid == null) return;
-
 
       try {
         await FirebaseMessaging.instance.requestPermission();
       } catch (_) {}
 
-
       await _saveFcmToken(uid);
 
-
       _tokenSub?.cancel();
-      _tokenSub = FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      _tokenSub =
+          FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
         final uid2 = uidOrNull;
         if (uid2 == null) return;
         await _saveFcmToken(uid2, tokenOverride: newToken);
@@ -90,12 +99,10 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-
   Future<void> _saveFcmToken(String uid, {String? tokenOverride}) async {
     try {
       final token = tokenOverride ?? await FirebaseMessaging.instance.getToken();
       if (token == null || token.trim().isEmpty) return;
-
 
       await _userDoc(uid).set({
         'fcmToken': token.trim(),
@@ -104,19 +111,38 @@ class _HomePageState extends State<HomePage> {
     } catch (_) {}
   }
 
-
-  // ✅ UI constants (padrão Remdy)
   static const _bg = Colors.white;
   static const _text = Color(0xFF111827);
   static const _muted = Color(0xFF6B7280);
   static const _border = Color(0xFFE5E7EB);
 
-
   static const _remdyBlue = Color(0xFF313A5F);
   static const _logoBlue = Color(0xFF264E9A);
 
+ String _countryName(String code) {
+  final t = AppTexts.current;
 
-  // ✅ Premium dialog (mantém)
+
+  switch (code.toLowerCase()) {
+    case 'br':
+      return t.get('country_brazil');
+    case 'ca':
+      return t.get('country_canada');
+    case 'pt':
+      return t.get('country_portugal');
+    default:
+      return t.get('your_country');
+  }
+}
+
+
+  List<_Country> get countries => [
+  _Country(code: 'BR', name: AppTexts.current.get('country_brazil'), flag: 'BR'),
+  _Country(code: 'CA', name: AppTexts.current.get('country_canada'), flag: 'CA'),
+  _Country(code: 'PT', name: AppTexts.current.get('country_portugal'), flag: 'PT'),
+];
+
+
   void showPremiumDialog(String countryName) {
     showModalBottomSheet(
       context: context,
@@ -166,9 +192,10 @@ class _HomePageState extends State<HomePage> {
                       child: const Icon(Icons.star_rounded, size: 24),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Premium',
+                   Expanded(
+  child: Text(
+    AppTexts.current.get('premium'),
+
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
@@ -185,14 +212,15 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Para conversar com $countryName, você precisa do Premium.',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.35,
-                    color: Color(0xFF374151),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+  '${AppTexts.current.get('premium_country_message_prefix')} $countryName, ${AppTexts.current.get('premium_country_message_suffix')}',
+  style: const TextStyle(
+    fontSize: 14,
+    height: 1.35,
+    color: Color(0xFF374151),
+    fontWeight: FontWeight.w600,
+  ),
+),
+
                 const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -201,33 +229,34 @@ class _HomePageState extends State<HomePage> {
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: const Color(0xFFF1F5F9)),
                   ),
-                  child: const Column(
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.public, size: 18, color: Color(0xFF2563EB)),
-                          SizedBox(width: 10),
-                          Expanded(child: Text('Fale com todos os países liberados')),
-                        ],
-                      ),
-                      SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(Icons.flash_on, size: 18, color: Color(0xFF2563EB)),
-                          SizedBox(width: 10),
-                          Expanded(child: Text('Sem bloqueio por país')),
-                        ],
-                      ),
-                      SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(Icons.support_agent, size: 18, color: Color(0xFF2563EB)),
-                          SizedBox(width: 10),
-                          Expanded(child: Text('Prioridade no suporte')),
-                        ],
-                      ),
-                    ],
-                  ),
+                  child: Column(
+  children: [
+    Row(
+      children: [
+        const Icon(Icons.public, size: 18, color: Color(0xFF2563EB)),
+        const SizedBox(width: 10),
+        Expanded(child: Text(AppTexts.current.get('premium_benefit_all_countries'))),
+      ],
+    ),
+    const SizedBox(height: 8),
+    Row(
+      children: [
+        const Icon(Icons.flash_on, size: 18, color: Color(0xFF2563EB)),
+        const SizedBox(width: 10),
+        Expanded(child: Text(AppTexts.current.get('premium_benefit_no_country_block'))),
+      ],
+    ),
+    const SizedBox(height: 8),
+    Row(
+      children: [
+        const Icon(Icons.support_agent, size: 18, color: Color(0xFF2563EB)),
+        const SizedBox(width: 10),
+        Expanded(child: Text(AppTexts.current.get('premium_benefit_priority_support'))),
+      ],
+    ),
+  ],
+),
+
                 ),
                 const SizedBox(height: 14),
                 Row(
@@ -242,8 +271,8 @@ class _HomePageState extends State<HomePage> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        child: const Text(
-                          'Fechar',
+                        child: Text(
+                          AppTexts.current.get('close'),
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: Color(0xFF2563EB),
@@ -276,8 +305,8 @@ class _HomePageState extends State<HomePage> {
                               borderRadius: BorderRadius.circular(14),
                             ),
                           ),
-                          child: const Text(
-                            'Ver Premium',
+                          child: Text(
+                            AppTexts.current.get('see_premium'),
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
                               color: Colors.white,
@@ -296,23 +325,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
-  // ✅ Countries
-  final countries = const [
-    _Country(code: 'CA', name: 'Canadá', flag: 'CA'),
-    _Country(code: 'BR', name: 'Brasil', flag: 'BR'),
-    _Country(code: 'US', name: 'Estados Unidos', flag: 'US'),
-    _Country(code: 'FR', name: 'França', flag: 'FR'),
-    _Country(code: 'ES', name: 'Espanha', flag: 'ES'),
-    _Country(code: 'IT', name: 'Itália', flag: 'IT'),
-  ];
-
-
-  // ✅ Actions
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
-
 
     Navigator.pushAndRemoveUntil(
       context,
@@ -321,7 +336,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
   void _openProfile() {
     Navigator.push(
       context,
@@ -329,18 +343,16 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
   void _openCountry({required _Country item, required bool canOpen}) {
     if (!canOpen) {
       showPremiumDialog(item.name);
       return;
     }
 
-
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => lusers.LanguageUsersPage( // ✅ FIX: usa alias correto
+        builder: (_) => lusers.LanguageUsersPage(
           languageCode: item.code,
           languageName: item.name,
           flag: item.flag,
@@ -348,7 +360,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
 
   String _flagEmoji(String code) {
     final upper = code.toUpperCase();
@@ -358,13 +369,34 @@ class _HomePageState extends State<HomePage> {
     return String.fromCharCodes([first, second]);
   }
 
+Future<void> _ensurePublicCountryCodeOnce({
+  required String uid,
+  required String homeCode,
+  required String name,
+  required String photoUrl,
+}) async {
+  if (_syncedPublicOnce) return;
+  _syncedPublicOnce = true;
+
+
+  try {
+    await _publicDoc(uid).set({
+      'uid': uid,
+      'countryCode': homeCode,
+      'name': name,
+      'photoUrl': photoUrl,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'lastSeenAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  } catch (_) {}
+}
+
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
     final uid = uidOrNull;
 
-
-    // ✅ BLOQUEIO: sem login -> manda pro LoginPage (isso já está aqui)
     if (uid == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -377,38 +409,76 @@ class _HomePageState extends State<HomePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _userDoc(uid).snapshots(),
       builder: (context, snap) {
-        final data = snap.data?.data() ?? {};
+        if (!snap.hasData || snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
+        final data = snap.data!.data() ?? {};
+
+        final homeCode = (data['homeCountryCode'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+
+        if (homeCode.isEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const EditProfilePage()),
+            );
+          });
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final nameRaw = (data['name'] ?? '').toString().trim();
+        final name = nameRaw.isEmpty ? t.get('user') : nameRaw;
+
+        final isPremium = data['isPremium'] == true;
 
         final int invites = (data['invitesCount'] is int)
             ? data['invitesCount'] as int
             : ((data['invites'] is int) ? data['invites'] as int : 0);
 
-
         final int limit =
             (data['invitesGoal'] is int) ? data['invitesGoal'] as int : 5;
 
+        final photoUrl = (data['photoUrl'] ?? '').toString();
 
-        final name = (data['name'] ?? 'Usuário').toString();
-        final isPremium = data['isPremium'] == true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _ensurePublicCountryCodeOnce(
+            uid: uid,
+            homeCode: homeCode,
+            name: name,
+            photoUrl: photoUrl,
+          );
+        });
+
+        
 
 
-        final userCountryName = (data['country'] ?? '').toString();
 
+final userCountryName = _countryName(homeCode);
+
+
+        final sortedCountries = [...countries];
+        sortedCountries.sort((a, b) {
+          final aIsMine = a.code.trim().toLowerCase() == homeCode;
+          final bIsMine = b.code.trim().toLowerCase() == homeCode;
+          if (aIsMine == bIsMine) return 0;
+          return aIsMine ? -1 : 1;
+        });
 
         final now = DateTime.now();
         final since =
-            Timestamp.fromDate(now.subtract(const Duration(seconds: 180)));
-
-
-        final userCountryCodeRaw = (data['countryCode'] ?? '').toString().trim();
-        final userCountryCode =
-            userCountryCodeRaw.isEmpty ? 'ca' : userCountryCodeRaw.toLowerCase();
-
+            Timestamp.fromDate(now.subtract(const Duration(seconds: 30)));
 
         final onlineStream = db
             .collection('publicUsers')
@@ -416,34 +486,19 @@ class _HomePageState extends State<HomePage> {
             .snapshots();
 
 
-        bool canOpenCountry(_Country item) {
-          if (isPremium) return true;
+  
 
 
-          if (userCountryCode.isNotEmpty) {
-            return item.code.trim().toLowerCase() ==
-                userCountryCode.trim().toLowerCase();
-          }
+bool canOpenCountry(_Country item) {
+  if (isPremium) return true;
+  return item.code.trim().toLowerCase() == homeCode;
+}
 
-
-          if (userCountryName.isNotEmpty) {
-            return item.name.toLowerCase() == userCountryName.toLowerCase();
-          }
-
-
-          return item.code == 'BR';
-        }
-
-
-        final photoUrl = (data['photoUrl'] ?? '').toString();
 
 
         return Scaffold(
           key: _scaffoldKey,
           backgroundColor: _bg,
-
-
-          // ✅ AppBar: menu esquerda / logo centro / foto direita
           appBar: AppBar(
             backgroundColor: _bg,
             elevation: 0,
@@ -452,7 +507,6 @@ class _HomePageState extends State<HomePage> {
             leading: IconButton(
               icon: const Icon(Icons.menu_rounded),
               onPressed: () {
-                // ✅ FIX: passa TODOS os parâmetros obrigatórios do MenuPage
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -462,8 +516,6 @@ class _HomePageState extends State<HomePage> {
                       isPremium: isPremium,
                       invites: invites,
                       limit: limit,
-
-
                       profilePage: const ProfilePage(),
                       invitePage: InvitePage(invites: invites, limit: limit, myUid: uid),
                       premiumPage: const PremiumPage(),
@@ -474,8 +526,6 @@ class _HomePageState extends State<HomePage> {
                       termsPage: const TermsPage(),
                       policyPage: const PrivacyPage(),
                       aboutPage: const AboutPage(),
-
-
                       onLogout: _logout,
                     ),
                   ),
@@ -508,13 +558,12 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
-
-
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
             children: [
               Text(
-                'Olá, $name',
+  '${t.get('hello')}, $name',
+
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
@@ -522,7 +571,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(height: 10),
-
 
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -534,8 +582,8 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Agora ao vivo',
+                     Text(
+                      t.get('live_now'),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
@@ -544,17 +592,14 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 10),
 
-
+                    // ✅ Meu país
                     Row(
                       children: [
-                        Text(
-                          _flagEmoji(userCountryCode.isNotEmpty ? userCountryCode : 'BR'),
-                          style: const TextStyle(fontSize: 16),
-                        ),
+                        Text(_flagEmoji(homeCode), style: const TextStyle(fontSize: 16)),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            userCountryName.isNotEmpty ? userCountryName : 'Seu país',
+                            userCountryName,
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
@@ -567,25 +612,29 @@ class _HomePageState extends State<HomePage> {
                           stream: onlineStream,
                           builder: (context, s) {
                             final docs = s.data?.docs ?? [];
-                            final myCode = userCountryCode.trim().toLowerCase();
-
 
                             final n = docs.where((doc) {
-                              final data = doc.data();
-                              final code = (data['countryCode'] ?? '')
+                              final d = doc.data();
+                              final code = (d['countryCode'] ?? '')
                                   .toString()
                                   .trim()
                                   .toLowerCase();
-                              return code.isNotEmpty && code == myCode;
-                            }).length;
+                              final isOnline = d['isOnline'] == true;
+                              final hasUid =
+                                  (d['uid'] ?? '').toString().trim().isNotEmpty;
 
+                              return hasUid &&
+                                  isOnline &&
+                                  code.isNotEmpty &&
+                                  code == homeCode;
+                            }).length;
 
                             return Row(
                               children: [
                                 const Icon(Icons.circle, size: 10, color: Colors.green),
                                 const SizedBox(width: 6),
                                 Text(
-                                  '$n online',
+                                  '$n ${t.get('online')}',
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -599,18 +648,17 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
 
-
                     const SizedBox(height: 10),
 
-
+                    // ✅ Mundo = outros países (não inclui o país do usuário)
                     Row(
                       children: [
                         const Text('🌍', style: TextStyle(fontSize: 16)),
                         const SizedBox(width: 10),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Mundo',
-                            style: TextStyle(
+                            isPremium ? t.get('world') : t.get('world_premium'),   
+                            style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                               color: _text,
@@ -622,25 +670,29 @@ class _HomePageState extends State<HomePage> {
                           stream: onlineStream,
                           builder: (context, s) {
                             final docs = s.data?.docs ?? [];
-                            final myCode = userCountryCode.trim().toLowerCase();
 
-
-                            final n = docs.where((doc) {
-                              final data = doc.data();
-                              final code = (data['countryCode'] ?? '')
+                            final world = docs.where((doc) {
+                              final d = doc.data();
+                              final code = (d['countryCode'] ?? '')
                                   .toString()
                                   .trim()
                                   .toLowerCase();
-                              return code.isNotEmpty && code != myCode;
-                            }).length;
+                              final isOnline = d['isOnline'] == true;
+                              final hasUid =
+                                  (d['uid'] ?? '').toString().trim().isNotEmpty;
 
+                              return hasUid &&
+                                  isOnline &&
+                                  code.isNotEmpty &&
+                                  code != homeCode;
+                            }).length;
 
                             return Row(
                               children: [
                                 const Icon(Icons.circle, size: 10, color: Colors.green),
                                 const SizedBox(width: 6),
                                 Text(
-                                  '$n online',
+                                  '$world ${t.get('online')}',
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -657,12 +709,10 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-
               const SizedBox(height: 16),
 
-
-              const Text(
-                'Escolha um país',
+               Text(
+                t.get('choose_country'),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -671,11 +721,10 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 12),
 
-
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: countries.length,
+                itemCount: sortedCountries.length,
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
                   mainAxisSpacing: 12,
@@ -683,9 +732,8 @@ class _HomePageState extends State<HomePage> {
                   childAspectRatio: 0.88,
                 ),
                 itemBuilder: (context, i) {
-                  final item = countries[i];
+                  final item = sortedCountries[i];
                   final canOpen = canOpenCountry(item);
-
 
                   return InkWell(
                     onTap: () => _openCountry(item: item, canOpen: canOpen),
@@ -727,8 +775,8 @@ class _HomePageState extends State<HomePage> {
                                   borderRadius: BorderRadius.circular(999),
                                   border: Border.all(color: const Color(0xFFE2E8F0)),
                                 ),
-                                child: const Text(
-                                  'Premium',
+                                child: Text(
+                                  t.get('premium'),
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
@@ -752,12 +800,10 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-
 class _Country {
   final String code;
   final String name;
   final String flag;
-
 
   const _Country({
     required this.code,

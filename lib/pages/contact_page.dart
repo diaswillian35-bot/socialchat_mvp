@@ -1,13 +1,13 @@
-  import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'suport_contact_page.dart';
+import '../l10n/app_texts.dart';
 
 
 class ContactPage extends StatelessWidget {
   const ContactPage({super.key});
 
 
-  // ✅ Remdy style (igual padrão)
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -16,33 +16,25 @@ class ContactPage extends StatelessWidget {
 
   static const LinearGradient _primaryGradient = LinearGradient(
     colors: [
-      Color(0xFF313A5F), // azul Remdy
-      Color(0xFF264E9A), // azul logo
+      Color(0xFF313A5F),
+      Color(0xFF264E9A),
     ],
   );
 
 
-  // =========================
-  // ✅ ATIVA/DESATIVA AQUI
-  // =========================
   static const bool enableWhatsApp = false;
   static const bool enableEmail = true;
   static const bool enableInstagram = true;
 
 
-  // =========================
-  // ✅ SEUS LINKS AQUI
-  // =========================
-  static const String whatsappNumberE164 = '+14160000000'; // ex: +1416...
+  static const String whatsappNumberE164 = '+14160000000';
   static const String whatsappMessage = 'Olá! Preciso de ajuda no Remdy.';
   static const String supportEmail = 'support@remdy.app';
-
-
-  // ✅ link limpo (abre o @remdy.app certo)
   static const String instagramUrl = 'https://www.instagram.com/remdy.app/';
 
 
   Future<void> _open(BuildContext context, String url) async {
+    final t = AppTexts.current;
     final uri = Uri.parse(url);
 
 
@@ -50,10 +42,10 @@ class ContactPage extends StatelessWidget {
     if (!ok) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Não foi possível abrir no seu celular.'),
+          SnackBar(
+            content: Text(t.get('cannot_open_link')),
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.all(12),
+            margin: const EdgeInsets.all(12),
           ),
         );
       }
@@ -86,16 +78,19 @@ class ContactPage extends StatelessWidget {
     required bool enabled,
     required VoidCallback onTap,
   }) {
+    final t = AppTexts.current;
+
+
     return InkWell(
       onTap: enabled
           ? onTap
           : () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Em breve ✅'),
-                  duration: Duration(seconds: 1),
+                SnackBar(
+                  content: Text(t.get('coming_soon')),
+                  duration: const Duration(seconds: 1),
                   behavior: SnackBarBehavior.floating,
-                  margin: EdgeInsets.all(12),
+                  margin: const EdgeInsets.all(12),
                 ),
               );
             },
@@ -116,7 +111,6 @@ class ContactPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 gradient: _primaryGradient,
               ),
-              // ✅ antes estava fixo no mail; agora usa o icon do botão
               child: Icon(icon, color: Colors.white),
             ),
             const SizedBox(width: 12),
@@ -159,11 +153,11 @@ class ContactPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
+
+
     return Scaffold(
       backgroundColor: _bg,
-
-
-      // ✅ AppBar branco (sem rosa / sem M3 tint)
       appBar: AppBar(
         backgroundColor: _bg,
         elevation: 0,
@@ -171,35 +165,33 @@ class ContactPage extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         centerTitle: true,
         iconTheme: const IconThemeData(color: _muted),
-        title: const Text(
-          'Contato',
-          style: TextStyle(
+        title: Text(
+          t.get('contact'),
+          style: const TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
           ),
         ),
       ),
-
-
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           _card(
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Fale com a gente',
-                  style: TextStyle(
+                  t.get('contact_title'),
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                     color: _text,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'Escolha um canal. Se estiver “bloqueado”, é só ativar depois.',
-                  style: TextStyle(
+                  t.get('contact_subtitle'),
+                  style: const TextStyle(
                     fontSize: 13,
                     color: _muted,
                     fontWeight: FontWeight.w600,
@@ -211,30 +203,24 @@ class ContactPage extends StatelessWidget {
           const SizedBox(height: 14),
 
 
-     
-
-
-          // ✅ Email
           _btn(
             context: context,
             icon: Icons.email_outlined,
-            title: 'E-mail',
+            title: t.get('email'),
             subtitle: supportEmail,
             enabled: enableEmail,
             onTap: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => const SupportContactPage(),
-    ),
-  );
-},
-
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SupportContactPage(),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 10),
 
 
-          // ✅ Instagram
           _btn(
             context: context,
             icon: Icons.camera_alt_outlined,

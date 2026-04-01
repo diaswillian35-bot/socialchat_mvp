@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_texts.dart';
+
 
 enum MenuAction {
   profile,
@@ -16,7 +18,7 @@ enum MenuAction {
 }
 
 
-class MenuPage extends StatelessWidget {
+class MenuPage extends StatefulWidget {
   final String name;
   final String photoUrl;
   final bool isPremium;
@@ -24,7 +26,6 @@ class MenuPage extends StatelessWidget {
   final int limit;
 
 
-  // ✅ páginas (passadas pela Home)
   final Widget profilePage;
   final Widget invitePage;
   final Widget premiumPage;
@@ -37,7 +38,6 @@ class MenuPage extends StatelessWidget {
   final Widget aboutPage;
 
 
-  // ✅ logout
   final Future<void> Function() onLogout;
 
 
@@ -62,6 +62,15 @@ class MenuPage extends StatelessWidget {
   });
 
 
+  @override
+  State<MenuPage> createState() => _MenuPageState();
+}
+
+
+class _MenuPageState extends State<MenuPage> {
+  String _loadedLocaleCode = '';
+
+
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -72,13 +81,31 @@ class MenuPage extends StatelessWidget {
   static const Color _logoBlue = Color(0xFF264E9A);
 
 
+  @override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+
+
+  final locale = Localizations.localeOf(context);
+  final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
+
+
+  if (_loadedLocaleCode == nextCode) return;
+  _loadedLocaleCode = nextCode;
+
+
+  AppTexts.load(locale).then((_) {
+    if (mounted) setState(() {});
+  });
+}
+
+
+
   Future<void> _open(BuildContext context, Widget page) async {
-    // ✅ abre a página sem fechar o menu
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => page),
     );
-    // ao voltar, você já está no Menu (sem piscar)
   }
 
 
@@ -105,6 +132,7 @@ class MenuPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -114,16 +142,17 @@ class MenuPage extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded, color: _muted),
-          onPressed: () => Navigator.pop(context), // ✅ fecha menu e volta pra Home
+          onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
-        title: const Text(
-          'Menu',
-          style: TextStyle(
-            color: _text,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+        title: Text(
+  t.get('menu'),
+  style: const TextStyle(
+    color: _text,
+    fontWeight: FontWeight.w900,
+  ),
+)
+ 
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
@@ -139,8 +168,9 @@ class MenuPage extends StatelessWidget {
                 CircleAvatar(
                   radius: 24,
                   backgroundColor: Colors.white.withOpacity(0.18),
-                  backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-                  child: photoUrl.isEmpty
+                  backgroundImage:
+                      widget.photoUrl.isNotEmpty ? NetworkImage(widget.photoUrl) : null,
+                  child: widget.photoUrl.isEmpty
                       ? const Icon(Icons.person, color: Colors.white)
                       : null,
                 ),
@@ -150,7 +180,7 @@ class MenuPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        name,
+                        widget.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -161,7 +191,9 @@ class MenuPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        isPremium ? 'Premium ativo' : 'Conta gratuita',
+                        widget.isPremium
+                            ? t.get('premium_active')
+                            : t.get('free_account'),
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.9),
                           fontWeight: FontWeight.w700,
@@ -174,11 +206,7 @@ class MenuPage extends StatelessWidget {
               ],
             ),
           ),
-
-
           const SizedBox(height: 14),
-
-
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -190,80 +218,76 @@ class MenuPage extends StatelessWidget {
                 _item(
                   context: context,
                   icon: Icons.person,
-                  title: 'Perfil',
-                  onTap: () => _open(context, profilePage),
+                  title: t.get('profile'),
+                  onTap: () => _open(context, widget.profilePage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.card_giftcard,
-                  title: 'Convites ($invites/$limit)',
-                  onTap: () => _open(context, invitePage),
+                  title: '${t.get('invite')} (${widget.invites}/${widget.limit})',
+                  onTap: () => _open(context, widget.invitePage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.star_rounded,
-                  title: 'Premium',
-                  onTap: () => _open(context, premiumPage),
+                  title: t.get('premium'),
+                  onTap: () => _open(context, widget.premiumPage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.language,
-                  title: 'Idioma',
-                  onTap: () => _open(context, languagePage),
+                  title: t.get('language'),
+                  onTap: () => _open(context, widget.languagePage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.notifications,
-                  title: 'Notificações',
-                  onTap: () => _open(context, notificationsPage),
+                  title: t.get('notifications'),
+                  onTap: () => _open(context, widget.notificationsPage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.help_outline,
-                  title: 'FAQ',
-                  onTap: () => _open(context, faqPage),
+                  title: t.get('faq'),
+                  onTap: () => _open(context, widget.faqPage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.mail_outline,
-                  title: 'Contato',
-                  onTap: () => _open(context, contactPage),
+                  title: t.get('contact'),
+                  onTap: () => _open(context, widget.contactPage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.description_outlined,
-                  title: 'Termos',
-                  onTap: () => _open(context, termsPage),
+                  title: t.get('terms'),
+                  onTap: () => _open(context, widget.termsPage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.privacy_tip_outlined,
-                  title: 'Política de Privacidade',
-                  onTap: () => _open(context, policyPage),
+                  title: t.get('privacy_policy'),
+                  onTap: () => _open(context, widget.policyPage),
                 ),
                 const Divider(height: 1),
                 _item(
                   context: context,
                   icon: Icons.info_outline,
-                  title: 'Sobre',
-                  onTap: () => _open(context, aboutPage),
+                  title: t.get('about'),
+                  onTap: () => _open(context, widget.aboutPage),
                 ),
               ],
             ),
           ),
-
-
           const SizedBox(height: 14),
-
-
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -273,9 +297,9 @@ class MenuPage extends StatelessWidget {
             child: _item(
               context: context,
               icon: Icons.logout_rounded,
-              title: 'Sair',
+              title: t.get('logout'),
               onTap: () async {
-                await onLogout();
+                await widget.onLogout();
               },
               color: Colors.red,
             ),

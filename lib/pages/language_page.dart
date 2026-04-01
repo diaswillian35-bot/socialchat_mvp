@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 
-import '../widget/remdy_app.dart';
+import '../l10n/app_texts.dart';
 import '../services/locale_controller.dart';
+import '../widget/remdy_app.dart';
 
 
 class LanguagePage extends StatefulWidget {
@@ -16,7 +17,6 @@ class LanguagePage extends StatefulWidget {
 
 
 class _LanguagePageState extends State<LanguagePage> {
-  // Remdy style
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -27,21 +27,25 @@ class _LanguagePageState extends State<LanguagePage> {
   static const Color _logoBlue = Color(0xFF264E9A);
 
 
-  // ✅ agora usa a mesma key do LocaleController
   static const String _prefsKey = 'app_lang';
 
 
   final List<_LangItem> _langs = const [
-    _LangItem('pt', 'Português'),
-    _LangItem('en', 'English'),
-    _LangItem('es', 'Español'),
-    _LangItem('fr', 'Français'),
-  ];
+  _LangItem('pt-BR', 'Português (Brasil)'),
+  _LangItem('pt-PT', 'Português (Portugal)'),
+  _LangItem('en', 'English'),
+  _LangItem('es', 'Español'),
+  _LangItem('fr', 'Français'),
+];
 
 
-  String _selectedCode = 'en'; // ✅ default global
+
+
+  String _selectedCode = 'en';
   bool _loading = true;
 
+
+ 
 
   @override
   void initState() {
@@ -50,71 +54,89 @@ class _LanguagePageState extends State<LanguagePage> {
   }
 
 
-  Future<void> _loadSaved() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final saved = (prefs.getString(_prefsKey) ?? '').trim().toLowerCase();
+ Future<void> _loadSaved() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = (prefs.getString(_prefsKey) ?? '').trim();
 
 
-      if (saved.isNotEmpty && _langs.any((e) => e.code == saved)) {
-        _selectedCode = saved;
+    if (saved.isNotEmpty && _langs.any((e) => e.code == saved)) {
+      _selectedCode = saved;
+    } else {
+      final locale = LocaleController.instance.locale;
+
+
+      if (locale.languageCode == 'pt' && locale.countryCode == 'PT') {
+        _selectedCode = 'pt-PT';
+      } else if (locale.languageCode == 'pt') {
+        _selectedCode = 'pt-BR';
       } else {
-        // ✅ se não tiver salvo, pega do controller (default en)
-        _selectedCode = LocaleController.instance.locale.languageCode;
+        _selectedCode = locale.languageCode;
       }
-    } catch (_) {
-      _selectedCode = LocaleController.instance.locale.languageCode;
     }
 
 
-    if (mounted) setState(() => _loading = false);
-  }
-
-
-  Future<void> _applyLanguage(String code) async {
-    setState(() => _selectedCode = code);
-
-
-    // 1) salva no celular (mantém — mas agora com a key correta)
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_prefsKey, code);
-    } catch (_) {}
-
-
-    // 2) ✅ aplica de verdade no app (controller que liga no MaterialApp.locale)
-    try {
-      await LocaleController.instance.setLocale(code);
-
-
-      // opcional: se você ainda usa RemdyApp.setLocale em algum lugar, não atrapalha.
-      // (mantém o comportamento antigo sem depender dele)
-      try {
-        RemdyApp.setLocale(context, LocaleController.instance.locale);
-      } catch (_) {}
-
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Idioma atualizado ✅'),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.all(12),
-          duration: Duration(seconds: 1),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Idioma salvo ✅ (se não aplicar agora, reinicie o app)'),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.all(12),
-          duration: Duration(seconds: 2),
-        ),
-      );
+    if (_selectedCode == 'pt-PT') {
+      await AppTexts.load(const Locale('pt', 'PT'));
+    } else if (_selectedCode == 'pt-BR') {
+      await AppTexts.load(const Locale('pt', 'BR'));
+    } else {
+      await AppTexts.load(Locale(_selectedCode));
     }
+  } catch (_) {
+    await AppTexts.load(const Locale('en'));
+    _selectedCode = 'en';
   }
+
+
+  if (mounted) {
+    setState(() => _loading = false);
+  }
+}
+
+
+Future<void> _applyLanguage(String code) async {
+  setState(() => _selectedCode = code);
+
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKey, code);
+
+
+    await LocaleController.instance.setLocale(code);
+
+
+    if (code == 'pt-PT') {
+      await AppTexts.load(const Locale('pt', 'PT'));
+      RemdyApp.setLocale(context, const Locale('pt', 'PT'));
+    } else if (code == 'pt-BR') {
+      await AppTexts.load(const Locale('pt', 'BR'));
+      RemdyApp.setLocale(context, const Locale('pt', 'BR'));
+    } else {
+      await AppTexts.load(Locale(code));
+      RemdyApp.setLocale(context, Locale(code));
+    }
+
+
+    if (!mounted) return;
+    Navigator.popUntil(context, (route) => route.isFirst);
+  } catch (_) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppTexts.current.get('language_update_error')),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(12),
+      ),
+    );
+  }
+}
+
+
+
+
+
 
 
   @override
@@ -122,27 +144,22 @@ class _LanguagePageState extends State<LanguagePage> {
     final current = _langs.firstWhere((e) => e.code == _selectedCode);
 
 
-    // ✅ THEME LOCAL (remove rosa de vez)
     final fixedTheme = Theme.of(context).copyWith(
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
       hoverColor: Colors.transparent,
       focusColor: const Color(0xFFF1F5F9),
-
-
       colorScheme: Theme.of(context).colorScheme.copyWith(
             primary: _remdyBlue,
             secondary: _remdyBlue,
           ),
-
-
       canvasColor: Colors.white,
     );
 
 
     return Scaffold(
       backgroundColor: _bg,
-      appBar: const RemdyAppBar(title: 'Idioma'),
+    appBar: RemdyAppBar(title: AppTexts.current.get('language')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -155,21 +172,21 @@ class _LanguagePageState extends State<LanguagePage> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: _border),
                   ),
-                  child: const Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Escolha o idioma do app',
-                        style: TextStyle(
+                        AppTexts.current.get('choose_app_language'),
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
                           color: _text,
                         ),
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
-                        'O app vai lembrar sua escolha.',
-                        style: TextStyle(
+                        AppTexts.current.get('app_remember_choice'),
+                        style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: _muted,

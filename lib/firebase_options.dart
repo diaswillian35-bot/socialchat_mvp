@@ -17,29 +17,20 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -57,6 +48,35 @@ class DefaultFirebaseOptions {
     appId: '1:384686982032:android:3382052a7126b4b3bf2915',
     messagingSenderId: '384686982032',
     projectId: 'socialchatmvp',
+    storageBucket: 'socialchatmvp.firebasestorage.app',
+  );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyAQUML4TdzB6H0UWEsSIyOfw9z5O7mseY0',
+    appId: '1:384686982032:web:2f9244e26d2a24a2bf2915',
+    messagingSenderId: '384686982032',
+    projectId: 'socialchatmvp',
+    authDomain: 'socialchatmvp.firebaseapp.com',
+    storageBucket: 'socialchatmvp.firebasestorage.app',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyAu3BS2aBpKGCXNEgSFBf4cdpgKM1vFyFI',
+    appId: '1:384686982032:ios:b54447b1941d35d6bf2915',
+    messagingSenderId: '384686982032',
+    projectId: 'socialchatmvp',
+    storageBucket: 'socialchatmvp.firebasestorage.app',
+    androidClientId: '384686982032-pkl5vim1c1rb376nf95s89k617o2nobh.apps.googleusercontent.com',
+    iosClientId: '384686982032-t0gf100tqvf27uircjudfbe6faavak02.apps.googleusercontent.com',
+    iosBundleId: 'com.example.socialchatMvp',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyBnOBGQr2odUIt2u7uGxaVV_1xK-7ZMgAc',
+    appId: '1:384686982032:web:2467ced6b4ca9149bf2915',
+    messagingSenderId: '384686982032',
+    projectId: 'socialchatmvp',
+    authDomain: 'socialchatmvp.firebaseapp.com',
     storageBucket: 'socialchatmvp.firebasestorage.app',
   );
 

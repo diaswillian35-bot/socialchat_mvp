@@ -9,10 +9,12 @@ import 'package:flutter/material.dart';
 // ✅ Ajuste esses imports se seus caminhos forem diferentes
 import '../pages/main_shell_page.dart';
 import '../pages/group_chat_page.dart';
+import '../pages/chat_page.dart';
 
 
 class PushService {
-  // ✅ Use exatamente esse navKey no MaterialApp: navigatorKey: PushService.navKey
+  // ✅ Use exatamente esse navKey no MaterialApp:
+  // navigatorKey: PushService.navKey
   static final navKey = GlobalKey<NavigatorState>();
 
 
@@ -20,7 +22,6 @@ class PushService {
 
 
   static Future<void> init() async {
-    // Só pede permissão, sem mexer no resto
     try {
       await FirebaseMessaging.instance.requestPermission();
     } catch (_) {}
@@ -119,6 +120,7 @@ class PushService {
         {
           'fcmUpdatedAt': FieldValue.serverTimestamp(),
           'hasPush': false,
+          'fcmToken': FieldValue.delete(),
         },
         SetOptions(merge: true),
       );
@@ -143,9 +145,11 @@ class PushService {
     );
 
 
+    // ✅ salva também no doc principal
     await userRef.set(
       {
         'hasPush': true,
+        'fcmToken': token,
         'fcmUpdatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
@@ -167,52 +171,107 @@ class PushService {
   // =========================
   static Future<void> _handleOpen(RemoteMessage message) async {
     final data = message.data;
-
-
     final type = (data['type'] ?? '').toString().trim();
-
-
-    // ✅ Só vamos tratar GROUP
-    if (type != 'group') return;
-
-
-    final groupId = (data['groupId'] ?? '').toString().trim();
-    if (groupId.isEmpty) return;
-
-
-    // ✅ tenta buscar nome do grupo (pra abrir certinho)
-    String groupName = 'Grupo';
-    try {
-      final snap = await FirebaseFirestore.instance.collection('groups').doc(groupId).get();
-      final gd = snap.data();
-      final n = (gd?['name'] ?? '').toString().trim();
-      if (n.isNotEmpty) groupName = n;
-    } catch (_) {}
 
 
     final nav = navKey.currentState;
     if (nav == null) return;
 
 
-    // ✅ 1) garante MainShell na aba Grupos (index 2)
-    nav.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 2)),
-      (route) => false,
-    );
+    // =========================
+    // GROUP
+    // =========================
+    if (type == 'group') {
+      final groupId = (data['groupId'] ?? '').toString().trim();
+      if (groupId.isEmpty) return;
 
 
-    // ✅ 2) micro delay pra garantir que MainShell montou
-    await Future.delayed(const Duration(milliseconds: 200));
+      String groupName = 'Grupo';
 
 
-    // ✅ 3) abre o chat do grupo
-    nav.push(
-      MaterialPageRoute(
-        builder: (_) => GroupChatPage(
-          groupId: groupId,
-          groupName: groupName,
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('groups')
+            .doc(groupId)
+            .get();
+
+
+        final gd = snap.data();
+        final n = (gd?['name'] ?? '').toString().trim();
+        if (n.isNotEmpty) groupName = n;
+      } catch (_) {}
+
+
+      nav.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 2)),
+        (route) => false,
+      );
+
+
+      await Future.delayed(const Duration(milliseconds: 200));
+
+
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => GroupChatPage(
+            groupId: groupId,
+            groupName: groupName,
+          ),
         ),
-      ),
-    );
+      );
+      return;
+    }
+
+
+    // =========================
+    // CHAT PRIVADO
+    // =========================
+    if (type == 'chat' || type == 'private') {
+      final conversationId =
+          (data['conversationId'] ?? '').toString().trim();
+      final otherUid = (data['otherUid'] ?? '').toString().trim();
+      String otherName = (data['otherName'] ?? '').toString().trim();
+
+
+      if (conversationId.isEmpty || otherUid.isEmpty) return;
+
+
+      if (otherName.isEmpty) {
+        try {
+          final snap = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(otherUid)
+              .get();
+
+
+          final ud = snap.data();
+          final n = (ud?['name'] ?? '').toString().trim();
+          if (n.isNotEmpty) otherName = n;
+        } catch (_) {}
+      }
+
+
+      if (otherName.isEmpty) otherName = 'Usuário';
+
+
+      nav.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 1)),
+        (route) => false,
+      );
+
+
+      await Future.delayed(const Duration(milliseconds: 200));
+
+
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => ChatPage(
+            conversationId: conversationId,
+            otherUid: otherUid,
+            otherName: otherName,
+          ),
+        ),
+      );
+    }
   }
 }

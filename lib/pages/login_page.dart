@@ -4,8 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'forgot_password_page.dart';
-
 import 'splash_page.dart';
+import 'email_verification_page.dart';
+import '../l10n/app_texts.dart';
+
 
 
 class LoginPage extends StatefulWidget {
@@ -21,9 +23,27 @@ class _LoginPageState extends State<LoginPage> {
   final _emailC = TextEditingController();
   final _passC = TextEditingController();
   final _confirmC = TextEditingController();
+  
+  @override
+void didChangeDependencies() {
+  super.didChangeDependencies();
 
 
-  bool _isLogin = true; // true = entrar | false = criar conta
+  final locale = Localizations.localeOf(context);
+  final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
+
+
+  if (_loadedLocaleCode == nextCode) return;
+  _loadedLocaleCode = nextCode;
+
+
+  AppTexts.load(locale).then((_) {
+    if (mounted) setState(() {});
+  });
+}
+
+
+  bool _isLogin = true;
   bool _loading = false;
 
 
@@ -32,9 +52,8 @@ class _LoginPageState extends State<LoginPage> {
 
 
   bool _rememberMe = true;
+  String _loadedLocaleCode = '';
 
-
-  // ✅ CONTAS DE TESTE
   static const String _testEmail = 'diaswillian35@gmail.com';
   static const String _testPass = '123456';
 
@@ -42,7 +61,13 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    _loadRemembered();
+    _bootLoginPage();
+  }
+
+
+  Future<void> _bootLoginPage() async {
+    await _clearStaleSession();
+    await _loadRemembered();
   }
 
 
@@ -56,47 +81,48 @@ class _LoginPageState extends State<LoginPage> {
 
 
   void _toast(String message, {bool success = false}) {
-  if (!mounted) return;
+    if (!mounted) return;
 
 
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Row(
-        children: [
-          Icon(
-            success ? Icons.check_circle : Icons.info_outline,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              success ? Icons.check_circle : Icons.info_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
+        backgroundColor:
+            success ? const Color(0xFF16A34A) : const Color(0xFF313A5F),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        duration: const Duration(seconds: 3),
       ),
-      backgroundColor: success
-          ? const Color(0xFF16A34A) // verde sucesso
-          : const Color(0xFF313A5F), // azul Remdy
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.all(16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
-      duration: const Duration(seconds: 3),
-    ),
-  );
-}
-
+    );
+  }
 
 
   bool _isValidEmail(String email) {
     final e = email.trim();
     if (e.isEmpty) return false;
-    return RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(e);
+
+
+    final rx = RegExp(
+      r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$',
+    );
+    return rx.hasMatch(e);
   }
 
 
@@ -109,7 +135,9 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
     setState(() {
       _rememberMe = remember;
-      if (remember && savedEmail.isNotEmpty) _emailC.text = savedEmail;
+      if (remember && savedEmail.isNotEmpty) {
+        _emailC.text = savedEmail;
+      }
     });
   }
 
@@ -117,11 +145,25 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _saveRemembered() async {
     final sp = await SharedPreferences.getInstance();
     await sp.setBool('remember_me', _rememberMe);
+
+
     if (_rememberMe) {
       await sp.setString('remember_email', _emailC.text.trim());
     } else {
       await sp.remove('remember_email');
     }
+  }
+
+
+  Future<void> _clearStaleSession() async {
+    try {
+      await GoogleSignIn().signOut();
+    } catch (_) {}
+
+
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {}
   }
 
 
@@ -131,15 +173,19 @@ class _LoginPageState extends State<LoginPage> {
 
 
     final email = (user.email ?? _emailC.text.trim()).trim().toLowerCase();
+    final displayName = (user.displayName ?? '').trim();
+    final profilePhotoUrl = (user.photoURL ?? '').trim();
 
 
     if (!snap.exists) {
       await ref.set({
         'uid': user.uid,
         'email': email,
-        'name': (user.displayName ?? '').toString(),
-        'photoUrl': (user.photoURL ?? '').toString(),
-        'countryCode': 'ca',
+        'name': displayName,
+        'profilePhotoUrl': profilePhotoUrl,
+        'countryCode': '',
+        'homeCountryCode': '',
+        'countryLocked': false,
         'isPremium': false,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -149,35 +195,30 @@ class _LoginPageState extends State<LoginPage> {
     }
 
 
-    await ref.set({
+    final d = snap.data() ?? {};
+
+
+    final Map<String, dynamic> patch = {
+      'uid': user.uid,
       'email': email,
       'updatedAt': FieldValue.serverTimestamp(),
       'lastSeenAt': FieldValue.serverTimestamp(),
-      // atualiza nome/foto se vier do Google e estiver vazio no seu doc
-      'name': (user.displayName ?? '').toString(),
-      'photoUrl': (user.photoURL ?? '').toString(),
-    }, SetOptions(merge: true));
+    };
 
 
-    if (isNewUser) {
-      final d = snap.data() ?? {};
-      final Map<String, dynamic> patch = {};
-
-
-      if (d['uid'] == null) patch['uid'] = user.uid;
-      if (d['name'] == null) patch['name'] = (user.displayName ?? '').toString();
-      if (d['photoUrl'] == null) patch['photoUrl'] = (user.photoURL ?? '').toString();
-      if (d['countryCode'] == null) patch['countryCode'] = 'ca';
-      if (d['isPremium'] == null) patch['isPremium'] = false;
-      if (d['createdAt'] == null) patch['createdAt'] = FieldValue.serverTimestamp();
-
-
-      if (patch.isNotEmpty) {
-        patch['updatedAt'] = FieldValue.serverTimestamp();
-        patch['lastSeenAt'] = FieldValue.serverTimestamp();
-        await ref.set(patch, SetOptions(merge: true));
-      }
+    if (displayName.isNotEmpty) patch['name'] = displayName;
+    if (profilePhotoUrl.isNotEmpty) {
+      patch['profilePhotoUrl'] = profilePhotoUrl;
     }
+
+
+    if (d['homeCountryCode'] == null) patch['homeCountryCode'] = '';
+    if (d['countryCode'] == null) patch['countryCode'] = '';
+    if (d['countryLocked'] == null) patch['countryLocked'] = false;
+    if (d['isPremium'] == null) patch['isPremium'] = false;
+
+
+    await ref.set(patch, SetOptions(merge: true));
   }
 
 
@@ -192,7 +233,7 @@ class _LoginPageState extends State<LoginPage> {
 
 
   Future<void> _submitEmailPass() async {
-    final email = _emailC.text.trim();
+    final email = _emailC.text.trim().toLowerCase();
     final pass = _passC.text;
 
 
@@ -200,13 +241,17 @@ class _LoginPageState extends State<LoginPage> {
 
 
     if (email.isEmpty) return _toast("Digite o e-mail.");
-    if (!_isValidEmail(email)) return _toast("E-mail inválido.");
-    if (pass.length < 6) return _toast("Senha precisa ter no mínimo 6 caracteres.");
+    if (!_isValidEmail(email)) return _toast("Digite um e-mail válido.");
+    if (pass.length < 6) {
+      return _toast("Senha precisa ter no mínimo 6 caracteres.");
+    }
 
 
     if (!_isLogin) {
       final confirm = _confirmC.text;
-      if (confirm.trim() != pass.trim()) return _toast("As senhas não conferem.");
+      if (confirm.trim() != pass.trim()) {
+        return _toast("As senhas não conferem.");
+      }
     }
 
 
@@ -214,6 +259,9 @@ class _LoginPageState extends State<LoginPage> {
 
 
     try {
+      await _clearStaleSession();
+
+
       UserCredential cred;
 
 
@@ -225,9 +273,22 @@ class _LoginPageState extends State<LoginPage> {
 
 
         final user = cred.user;
-        if (user != null) {
-          await _ensureUserDoc(user, isNewUser: false);
+        if (user == null) {
+          _toast('Erro ao entrar.');
+          return;
         }
+
+
+        await user.reload();
+        final freshUser = FirebaseAuth.instance.currentUser;
+
+
+        
+
+
+     
+
+        await _ensureUserDoc(freshUser ?? user, isNewUser: false);
       } else {
         cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email,
@@ -235,13 +296,33 @@ class _LoginPageState extends State<LoginPage> {
         );
 
 
-        await cred.user?.sendEmailVerification();
-
-
         final user = cred.user;
-        if (user != null) {
-          await _ensureUserDoc(user, isNewUser: true);
+        if (user == null) {
+          _toast('Erro ao criar conta.');
+          return;
         }
+
+
+       await user.sendEmailVerification();
+await _ensureUserDoc(user, isNewUser: true);
+
+
+if (!mounted) return;
+
+
+Navigator.pushReplacement(
+  context,
+  MaterialPageRoute(
+    builder: (_) => const EmailVerificationPage(),
+  ),
+);
+
+
+return;
+
+
+
+
       }
 
 
@@ -258,8 +339,13 @@ class _LoginPageState extends State<LoginPage> {
 
 
   Future<void> _forgotPassword() async {
-    final email = _emailC.text.trim();
+    final email = _emailC.text.trim().toLowerCase();
+
+
     if (email.isEmpty) return _toast("Digite seu e-mail primeiro.");
+    if (!_isValidEmail(email)) return _toast("Digite um e-mail válido.");
+
+
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
       _toast("Enviei um e-mail para redefinir sua senha.");
@@ -269,30 +355,28 @@ class _LoginPageState extends State<LoginPage> {
   }
 
 
-  // ✅ Google Sign-In (funcionando)
   Future<void> _loginGoogle() async {
     if (_loading) return;
     setState(() => _loading = true);
 
 
     try {
-      // 1) abre o seletor do Google
+      await _clearStaleSession();
+
+
       final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
-        // usuário cancelou
-        return;
-      }
+      if (googleUser == null) return;
 
 
-      // 2) pega tokens
       final googleAuth = await googleUser.authentication;
+
+
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
 
-      // 3) login no Firebase
       final cred = await FirebaseAuth.instance.signInWithCredential(credential);
       final user = cred.user;
 
@@ -303,20 +387,18 @@ class _LoginPageState extends State<LoginPage> {
       }
 
 
-      final isNewUser = (cred.additionalUserInfo?.isNewUser == true);
+      final isNewUser = cred.additionalUserInfo?.isNewUser == true;
 
 
-      // 4) garante user doc
       await _ensureUserDoc(user, isNewUser: isNewUser);
 
 
-      // 5) “lembrar e-mail” (opcional)
       if (user.email != null && user.email!.trim().isNotEmpty) {
         _emailC.text = user.email!.trim();
       }
+
+
       await _saveRemembered();
-
-
       await _goToApp();
     } on FirebaseAuthException catch (e) {
       _toast(e.message ?? 'Erro no Google.');
@@ -328,7 +410,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 
 
-  // ✅ Entrar como Teste
   Future<void> _loginTest() async {
     if (_loading) return;
 
@@ -372,11 +453,13 @@ class _LoginPageState extends State<LoginPage> {
 
 
   @override
-  Widget build(BuildContext context) {
-    final title = _isLogin ? "Entrar" : "Criar conta";
+Widget build(BuildContext context) {
+ final t = AppTexts.current;
+final title =
+    _isLogin ? t.get('login_title') : t.get('create_account_title');
 
+   return Scaffold(
 
-    return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
       body: SafeArea(
         child: Center(
@@ -409,8 +492,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     const SizedBox(height: 14),
-
-
                     Center(
                       child: Image.asset(
                         'assets/remdy_logo.png',
@@ -419,79 +500,83 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
-
                     TextField(
                       controller: _emailC,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'E-mail',
+                      decoration: InputDecoration(
+                        labelText: t.get('email'),
                         border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
-
-
                     TextField(
                       controller: _passC,
                       obscureText: _hidePass,
                       decoration: InputDecoration(
-                        labelText: 'Senha',
+                        labelText: t.get('password'),
                         border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
-                          onPressed: () => setState(() => _hidePass = !_hidePass),
-                          icon: Icon(_hidePass ? Icons.visibility_off : Icons.visibility),
+                          onPressed: () =>
+                              setState(() => _hidePass = !_hidePass),
+                          icon: Icon(
+                            _hidePass ? Icons.visibility_off : Icons.visibility,
+                          ),
                         ),
                       ),
                     ),
-
-
                     if (!_isLogin) ...[
                       const SizedBox(height: 12),
                       TextField(
                         controller: _confirmC,
                         obscureText: _hideConfirm,
                         decoration: InputDecoration(
-                          labelText: 'Confirmar senha',
+                          labelText:t.get ('confirm_password'),
                           border: const OutlineInputBorder(),
                           suffixIcon: IconButton(
-                            onPressed: () => setState(() => _hideConfirm = !_hideConfirm),
-                            icon: Icon(_hideConfirm ? Icons.visibility_off : Icons.visibility),
+                            onPressed: () => setState(
+                              () => _hideConfirm = !_hideConfirm,
+                            ),
+                            icon: Icon(
+                              _hideConfirm
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                            ),
                           ),
                         ),
                       ),
                     ],
-
-
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: _rememberMe,
-                          onChanged: (v) => setState(() => _rememberMe = v ?? true),
-                        ),
-                        const Text("Lembrar de mim"),
-                        const Spacer(),
-                        TextButton(
-  onPressed: (!_isLogin || _loading)
-      ? null
-      : () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const ForgotPasswordPage(),
-            ),
-          );
-        },
-  child: const Text("Esqueceu a senha?"),
+         Row(
+  children: [
+    Checkbox(
+      value: _rememberMe,
+      onChanged: (v) => setState(() => _rememberMe = v ?? true),
+    ),
+    Expanded(
+      child: Text(
+        t.get('remember_me'),
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+    TextButton(
+      onPressed: (!_isLogin || _loading)
+          ? null
+          : () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ForgotPasswordPage(),
+                ),
+              );
+            },
+      child: Text(t.get('forgot_password')),
+    ),
+  ],
 ),
 
-                      ],
-                    ),
-                    const SizedBox(height: 6),
+const SizedBox(height: 6),
+ElevatedButton(
 
-
-                    ElevatedButton(
                       onPressed: _loading ? null : _submitEmailPass,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF1E3A8A),
@@ -510,52 +595,41 @@ class _LoginPageState extends State<LoginPage> {
                                 color: Colors.white,
                               ),
                             )
-                          : Text(_isLogin ? "Entrar" : "Criar conta"),
+                          : Text(
+  _isLogin
+      ? t.get('login_button')
+      : t.get('create_account_button'),
+),
+
                     ),
-
-
                     const SizedBox(height: 10),
-
-
-                    // ✅ Google (novo)
                     OutlinedButton.icon(
                       onPressed: _loading ? null : _loginGoogle,
                       icon: const Icon(Icons.g_mobiledata),
-                      label: const Padding(
+                      label:  Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Text("Continue with Google"),
+                        child:Text(t.get('continue_google')),
+
                       ),
                     ),
-
-
-                    const SizedBox(height: 10),
-
-
-                    
-
-
                     const SizedBox(height: 14),
-
-
                     OutlinedButton.icon(
                       onPressed: _loading ? null : _loginApple,
                       icon: const Icon(Icons.apple),
-                      label: const Padding(
+                      label:  Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Text("Continue with Apple"),
+                        child:Text(t.get('continue_apple')),
                       ),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
                       onPressed: _loading ? null : _loginFacebook,
                       icon: const Icon(Icons.facebook),
-                      label: const Padding(
+                      label: Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Text("Continue with Facebook"),
+                        child: Text(t.get('continue_facebook')),
                       ),
                     ),
-
-
                     const SizedBox(height: 12),
                     Center(
                       child: TextButton(
@@ -568,22 +642,24 @@ class _LoginPageState extends State<LoginPage> {
                                   _confirmC.clear();
                                 });
                               },
-                        child: Text(
-                          _isLogin ? " Não tem conta? Criar agora" : "Já tem conta? Entrar",
-                        ),
+                       child: Text(
+  _isLogin
+      ? t.get('no_account')
+      : t.get('already_account'),
+),
+
                       ),
                     ),
-
-
                     if (!_isLogin)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Text(
-                          "Ao criar conta, você receberá um e-mail de verificação.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: Colors.black54),
-                        ),
-                      ),
+  Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: Text(
+      t.get('verify_email_notice'),
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 12, color: Colors.black54),
+    ),
+  ),
+
                   ],
                 ),
               ),

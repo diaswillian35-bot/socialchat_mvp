@@ -2,26 +2,56 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'event_details_page.dart';
+import '../l10n/app_texts.dart';
+
 
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key});
+
 
   @override
   State<EventsPage> createState() => _EventsPageState();
 }
 
+
 class _EventsPageState extends State<EventsPage> {
   final db = FirebaseFirestore.instance;
+
 
   static const _bg = Colors.white;
   static const _text = Color(0xFF111827);
   static const _muted = Color(0xFF6B7280);
   static const _border = Color(0xFFE5E7EB);
 
+
   static const _remdyBlue = Color(0xFF313A5F);
   static const _logoBlue = Color(0xFF264E9A);
 
+
+  String _loadedLocaleCode = '';
+
+
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
+
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+
+    final locale = Localizations.localeOf(context);
+    final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
+
+
+    if (_loadedLocaleCode == nextCode) return;
+    _loadedLocaleCode = nextCode;
+
+
+    AppTexts.load(locale).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _eventsStream() {
     return db
@@ -32,6 +62,7 @@ class _EventsPageState extends State<EventsPage> {
         .snapshots();
   }
 
+
   String _flagEmoji(String code) {
     final upper = code.trim().toUpperCase();
     if (upper.length != 2) return '🏳️';
@@ -40,89 +71,102 @@ class _EventsPageState extends State<EventsPage> {
     return String.fromCharCodes([first, second]);
   }
 
+
   String _fmtDate(Timestamp? ts) {
-    if (ts == null) return 'Sem data';
+    final t = AppTexts.current;
+    if (ts == null) return t.get('no_date');
     final d = ts.toDate();
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(d.day)}/${two(d.month)}/${d.year} • ${two(d.hour)}:${two(d.minute)}';
   }
 
+
   Future<void> _createEventStub() async {
+    final t = AppTexts.current;
     final uid = _uid;
     if (uid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Você precisa estar logado.')),
+        SnackBar(content: Text(t.get('you_need_to_be_logged_in'))),
       );
       return;
     }
 
+
     final now = DateTime.now().add(const Duration(hours: 2));
 
+
     await db.collection('events').add({
-      'title': 'Encontro Remdy (teste)',
+      'title': t.get('remdy_meeting_test'),
       'city': 'Toronto',
       'countryCode': 'ca',
-      'placeName': 'Local a definir',
+      'placeName': t.get('place_to_be_defined'),
       'startAt': Timestamp.fromDate(now),
-      'description': 'Evento de teste. Depois vamos criar a tela completa.',
+      'description': t.get('event_test_description'),
       'isActive': true,
       'createdAt': FieldValue.serverTimestamp(),
       'createdBy': uid,
       'attendeesCount': 0,
-
-      // ✅ imagens (você pode editar depois no Firestore)
-      'coverUrl': '', // foto principal
-      'photoUrls': <String>[], // carrossel
+      'coverUrl': '',
+      'photoUrls': <String>[],
     });
+
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Evento teste criado ✅')),
+      SnackBar(content: Text(t.get('test_event_created'))),
     );
   }
 
+
   Future<void> _joinEvent(String eventId) async {
+    final t = AppTexts.current;
     final uid = _uid;
     if (uid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Você precisa estar logado.')),
+        SnackBar(content: Text(t.get('you_need_to_be_logged_in'))),
       );
       return;
     }
 
+
     final eventRef = db.collection('events').doc(eventId);
     final attendeeRef = eventRef.collection('attendees').doc(uid);
+
 
     try {
       final snap = await attendeeRef.get();
       if (snap.exists) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Você já está participando ✅')),
+          SnackBar(content: Text(t.get('already_joined_event'))),
         );
         return;
       }
+
 
       await attendeeRef.set({
         'uid': uid,
         'joinedAt': FieldValue.serverTimestamp(),
       });
 
+
       await eventRef.set({
         'attendeesCount': FieldValue.increment(1),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Confirmado! Você vai ao evento ✅')),
+        SnackBar(content: Text(t.get('event_join_confirmed'))),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao participar: $e')),
+        SnackBar(content: Text('${t.get('error_joining_event')}: $e')),
       );
     }
   }
+
 
   void _openDetails({
     required String eventId,
@@ -136,10 +180,14 @@ class _EventsPageState extends State<EventsPage> {
     required String coverUrl,
     required List<String> photoUrls,
   }) {
+    final t = AppTexts.current;
+
+
     final images = <String>[
       if (coverUrl.trim().isNotEmpty) coverUrl.trim(),
       ...photoUrls.where((e) => e.trim().isNotEmpty).map((e) => e.trim()),
     ];
+
 
     showModalBottomSheet(
       context: context,
@@ -176,8 +224,6 @@ class _EventsPageState extends State<EventsPage> {
                     ),
                   ),
                 ),
-
-                // ✅ carrossel
                 if (images.isNotEmpty) ...[
                   SizedBox(
                     height: 190,
@@ -213,10 +259,12 @@ class _EventsPageState extends State<EventsPage> {
                   ),
                   const SizedBox(height: 12),
                 ],
-
                 Row(
                   children: [
-                    Text(_flagEmoji(cc.isEmpty ? 'BR' : cc), style: const TextStyle(fontSize: 20)),
+                    Text(
+                      _flagEmoji(cc.isEmpty ? 'BR' : cc),
+                      style: const TextStyle(fontSize: 20),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -237,10 +285,14 @@ class _EventsPageState extends State<EventsPage> {
                 ),
                 const SizedBox(height: 10),
                 _InfoRow(icon: Icons.schedule_rounded, text: _fmtDate(startAt)),
-                if (city.isNotEmpty) _InfoRow(icon: Icons.location_city_rounded, text: city),
-                if (place.isNotEmpty) _InfoRow(icon: Icons.place_rounded, text: place),
-                _InfoRow(icon: Icons.people_alt_rounded, text: '$attendees participando'),
-
+                if (city.isNotEmpty)
+                  _InfoRow(icon: Icons.location_city_rounded, text: city),
+                if (place.isNotEmpty)
+                  _InfoRow(icon: Icons.place_rounded, text: place),
+                _InfoRow(
+                  icon: Icons.people_alt_rounded,
+                  text: '$attendees ${t.get('participating')}',
+                ),
                 if (desc.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Text(
@@ -253,7 +305,6 @@ class _EventsPageState extends State<EventsPage> {
                   ),
                 ],
                 const SizedBox(height: 14),
-
                 StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                   stream: (_uid == null)
                       ? const Stream.empty()
@@ -266,6 +317,7 @@ class _EventsPageState extends State<EventsPage> {
                   builder: (context, snap) {
                     final joined = snap.data?.exists == true;
                     final disabled = (_uid == null) || joined;
+
 
                     return SizedBox(
                       width: double.infinity,
@@ -281,8 +333,8 @@ class _EventsPageState extends State<EventsPage> {
                         ),
                         child: Text(
                           _uid == null
-                              ? 'Faça login para participar'
-                              : (joined ? 'Você vai ✔' : 'Participar'),
+                              ? t.get('login_to_join')
+                              : (joined ? t.get('you_are_going') : t.get('join')),
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                       ),
@@ -297,8 +349,12 @@ class _EventsPageState extends State<EventsPage> {
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
+
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -306,9 +362,9 @@ class _EventsPageState extends State<EventsPage> {
         surfaceTintColor: _bg,
         scrolledUnderElevation: 0,
         elevation: 0,
-        title: const Text(
-          'Eventos',
-          style: TextStyle(
+        title: Text(
+          t.get('events'),
+          style: const TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
           ),
@@ -325,9 +381,12 @@ class _EventsPageState extends State<EventsPage> {
           onPressed: _createEventStub,
           backgroundColor: Colors.transparent,
           elevation: 0,
-          label: const Text(
-            'Criar',
-            style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white),
+          label: Text(
+            t.get('create'),
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
           ),
           icon: const Icon(Icons.add, color: Colors.white),
         ),
@@ -339,18 +398,23 @@ class _EventsPageState extends State<EventsPage> {
             return const Center(child: CircularProgressIndicator());
           }
 
+
           if (snap.hasError) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'Erro: ${snap.error}',
+                  '${t.get('error')}: ${snap.error}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    color: _muted,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             );
           }
+
 
           final docs = snap.data?.docs ?? [];
           if (docs.isEmpty) {
@@ -363,26 +427,33 @@ class _EventsPageState extends State<EventsPage> {
                   border: Border.all(color: _border),
                   color: Colors.white,
                 ),
-                child: const Column(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.event_busy_rounded, size: 38, color: _muted),
-                    SizedBox(height: 10),
+                    const Icon(Icons.event_busy_rounded, size: 38, color: _muted),
+                    const SizedBox(height: 10),
                     Text(
-                      'Nenhum evento ainda',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      t.get('no_events_yet'),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
                     ),
-                    SizedBox(height: 6),
+                    const SizedBox(height: 6),
                     Text(
-                      'Toque em “Criar” para adicionar o primeiro evento.',
+                      t.get('tap_create_first_event'),
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: _muted, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: _muted,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
               ),
             );
           }
+
 
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
@@ -392,34 +463,38 @@ class _EventsPageState extends State<EventsPage> {
               final d = docs[i];
               final data = d.data();
 
-              final title = (data['title'] ?? 'Evento').toString();
+
+              final title = (data['title'] ?? t.get('event')).toString();
               final city = (data['city'] ?? '').toString();
               final place = (data['placeName'] ?? '').toString();
               final cc = (data['countryCode'] ?? '').toString();
               final startAt = data['startAt'] as Timestamp?;
               final desc = (data['description'] ?? '').toString();
-              final attendees = (data['attendeesCount'] is int) ? data['attendeesCount'] as int : 0;
+              final attendees = (data['attendeesCount'] is int)
+                  ? data['attendeesCount'] as int
+                  : 0;
 
-              // ✅ imagens
+
               final coverUrl = (data['coverUrl'] ?? '').toString().trim();
               final rawPhotos = data['photoUrls'];
               final photoUrls = (rawPhotos is List)
-                  ? rawPhotos.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList()
+                  ? rawPhotos
+                      .map((e) => e.toString())
+                      .where((e) => e.trim().isNotEmpty)
+                      .toList()
                   : <String>[];
+
 
               return InkWell(
                 borderRadius: BorderRadius.circular(18),
-               
-onTap: () {
-Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (_) => EventDetailPage(eventId: d.id),
-  ),
-);
-},
-
-
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EventDetailPage(eventId: d.id),
+                    ),
+                  );
+                },
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -428,7 +503,6 @@ Navigator.push(
                   ),
                   child: Row(
                     children: [
-                      // ✅ FOTO PRINCIPAL (layout antigo)
                       ClipRRect(
                         borderRadius: const BorderRadius.only(
                           topLeft: Radius.circular(18),
@@ -447,7 +521,10 @@ Navigator.push(
                                   ),
                                 )
                               : const Center(
-                                  child: Icon(Icons.photo_rounded, color: Color(0xFF94A3B8)),
+                                  child: Icon(
+                                    Icons.photo_rounded,
+                                    color: Color(0xFF94A3B8),
+                                  ),
                                 ),
                         ),
                       ),
@@ -481,7 +558,7 @@ Navigator.push(
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                place.isEmpty ? 'Local a definir' : place,
+                                place.isEmpty ? t.get('place_to_be_defined') : place,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -495,8 +572,6 @@ Navigator.push(
                         ),
                       ),
                       const SizedBox(width: 8),
-
-                      // ✅ contador (direita)
                       Padding(
                         padding: const EdgeInsets.only(right: 12),
                         child: Column(
@@ -507,11 +582,16 @@ Navigator.push(
                             ),
                             const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF9FAFB),
                                 borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: const Color(0xFFF1F5F9)),
+                                border: Border.all(
+                                  color: const Color(0xFFF1F5F9),
+                                ),
                               ),
                               child: Text(
                                 '$attendees',
@@ -536,12 +616,15 @@ Navigator.push(
   }
 }
 
+
 class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String text;
   const _InfoRow({required this.icon, required this.text});
 
+
   static const Color _remdyBlue = Color(0xFF313A5F);
+
 
   @override
   Widget build(BuildContext context) {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/app_texts.dart';
+import 'package:flutter/widgets.dart';
 
 
 class LocaleController extends ChangeNotifier {
@@ -10,54 +12,64 @@ class LocaleController extends ChangeNotifier {
   static const _kPrefKey = 'app_lang';
 
 
-  // Idiomas suportados do app (ajuste se quiser)
   static const List<Locale> supportedLocales = <Locale>[
     Locale('en'),
-    Locale('pt'),
+    Locale('pt', 'BR'),
+    Locale('pt', 'PT'),
     Locale('es'),
     Locale('fr'),
   ];
 
 
-  Locale _locale = const Locale('en'); // ✅ default global
+  Locale _locale = const Locale('en');
 
 
   Locale get locale => _locale;
 
 
-  /// Carrega o idioma salvo (se existir)
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final code = (prefs.getString(_kPrefKey) ?? '').trim().toLowerCase();
+    final saved = (prefs.getString(_kPrefKey) ?? '').trim();
 
 
-    final next = _safeLocale(code.isEmpty ? 'en' : code);
-    _locale = next;
+    if (saved.isNotEmpty) {
+      _locale = _safeLocale(saved);
+      AppTexts.setLang(_langCode(_locale));
+      notifyListeners();
+      return;
+    }
+
+
+    final device = WidgetsBinding.instance.platformDispatcher.locale;
+    _locale = _safeLocale(_langCode(device));
+    AppTexts.setLang(_langCode(_locale));
     notifyListeners();
   }
 
 
-  /// Define e salva o idioma
   Future<void> setLocale(String code) async {
     final next = _safeLocale(code);
 
 
-    // evita rebuild desnecessário
-    if (_locale.languageCode == next.languageCode) return;
+    if (_locale.languageCode == next.languageCode &&
+        _locale.countryCode == next.countryCode) {
+      return;
+    }
 
 
     _locale = next;
+    AppTexts.setLang(_langCode(_locale));
     notifyListeners();
 
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kPrefKey, next.languageCode);
+    await prefs.setString(_kPrefKey, _langCode(next));
   }
 
 
-  /// Reset para inglês
   Future<void> clearSaved() async {
     _locale = const Locale('en');
+    AppTexts.setLang(_langCode(_locale));
     notifyListeners();
 
 
@@ -67,10 +79,27 @@ class LocaleController extends ChangeNotifier {
 
 
   Locale _safeLocale(String code) {
-    final c = code.trim().toLowerCase();
-    for (final l in supportedLocales) {
-      if (l.languageCode == c) return l;
-    }
+    final c = code.trim();
+
+
+    if (c == 'pt-PT') return const Locale('pt', 'PT');
+    if (c == 'pt-BR' || c == 'pt') return const Locale('pt', 'BR');
+    if (c == 'es') return const Locale('es');
+    if (c == 'fr') return const Locale('fr');
+    if (c == 'en') return const Locale('en');
+
+
     return const Locale('en');
+  }
+
+
+  String _langCode(Locale locale) {
+    final lang = locale.languageCode.toLowerCase();
+    final country = (locale.countryCode ?? '').toUpperCase();
+
+
+    if (lang == 'pt' && country == 'PT') return 'pt-PT';
+    if (lang == 'pt') return 'pt-BR';
+    return lang;
   }
 }

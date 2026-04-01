@@ -12,6 +12,7 @@ import 'create_group_page.dart';
 
 import '../services/presence_service.dart';
 import '../services/push_service.dart';
+import '../l10n/app_texts.dart';
 
 
 class MainShell extends StatefulWidget {
@@ -31,6 +32,9 @@ class _MainShellState extends State<MainShell> {
   static const Color _remdyBlue = Color(0xFF313A5F);
 
 
+  String _loadedLocaleCode = '';
+
+
   @override
   void initState() {
     super.initState();
@@ -40,27 +44,71 @@ class _MainShellState extends State<MainShell> {
     if (_index < 0 || _index > 3) _index = 0;
 
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-  () async {
-    // ✅ presença continua igual
-    await PresenceService.instance.start();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await PresenceService.instance.start();
 
 
-    // ✅ push: só inicia se tiver usuário logado
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      await PushService.init();
-      await PushService.start(uid);
-    }
-  }();
-});
-
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await PushService.init();
+        await PushService.start(uid);
+      }
+    });
   }
 
 
-  // ==========================
-  // 🔴 UNREAD MENSAGENS
-  // ==========================
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+
+    final locale = Localizations.localeOf(context);
+    final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
+
+
+    if (_loadedLocaleCode == nextCode) return;
+    _loadedLocaleCode = nextCode;
+
+
+    AppTexts.load(locale).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+
+  @override
+  void dispose() {
+    PresenceService.instance.stop();
+    super.dispose();
+  }
+
+
+  int _readUnreadFromMap(Map<String, dynamic> data, String uid) {
+    final unreadRaw = data['unread'];
+
+
+    if (unreadRaw is Map<String, dynamic>) {
+      final value = unreadRaw[uid];
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
+    }
+
+
+    if (unreadRaw is Map) {
+      final value = unreadRaw[uid];
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
+    }
+
+
+    return 0;
+  }
+
+
   Stream<int> _unreadMessagesStream() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return Stream.value(0);
@@ -74,10 +122,10 @@ class _MainShellState extends State<MainShell> {
       int total = 0;
 
 
-      for (final d in snap.docs) {
-        final data = d.data();
-        final unread = (data['unread'] ?? {})[uid] ?? 0;
-        if (unread is num && unread > 0) total++;
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final unread = _readUnreadFromMap(data, uid);
+        if (unread > 0) total++;
       }
 
 
@@ -86,9 +134,6 @@ class _MainShellState extends State<MainShell> {
   }
 
 
-  // ==========================
-  // 🔴 UNREAD GRUPOS
-  // ==========================
   Stream<int> _unreadGroupsStream() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return Stream.value(0);
@@ -97,15 +142,16 @@ class _MainShellState extends State<MainShell> {
     return FirebaseFirestore.instance
         .collection('groups')
         .where('members', arrayContains: uid)
+        .where('deleted', isEqualTo: false)
         .snapshots()
         .map((snap) {
       int total = 0;
 
 
-      for (final d in snap.docs) {
-        final data = d.data();
-        final unread = (data['unread'] ?? {})[uid] ?? 0;
-        if (unread is num && unread > 0) total++;
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final unread = _readUnreadFromMap(data, uid);
+        if (unread > 0) total++;
       }
 
 
@@ -116,6 +162,9 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
+
+
     final pages = <Widget>[
       const HomePage(),
       const MessagesPage(),
@@ -129,9 +178,6 @@ class _MainShellState extends State<MainShell> {
         index: _index,
         children: pages,
       ),
-
-
-      // FAB só na aba grupos
       floatingActionButton: _index == 2
           ? FloatingActionButton(
               backgroundColor: _remdyBlue,
@@ -139,14 +185,14 @@ class _MainShellState extends State<MainShell> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const CreateGroupPage()),
+                  MaterialPageRoute(
+                    builder: (_) => const CreateGroupPage(),
+                  ),
                 );
               },
               child: const Icon(Icons.add),
             )
           : null,
-
-
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: const Color(0xFFF1F5F9),
         currentIndex: _index,
@@ -157,18 +203,17 @@ class _MainShellState extends State<MainShell> {
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
         unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
         items: [
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'Home',
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.home_rounded),
+            label: t.get('home'),
           ),
-
-
-          // 🔴 MENSAGENS
           BottomNavigationBarItem(
             icon: StreamBuilder<int>(
               stream: _unreadMessagesStream(),
               builder: (context, snap) {
                 final n = snap.data ?? 0;
+
+
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -183,16 +228,15 @@ class _MainShellState extends State<MainShell> {
                 );
               },
             ),
-            label: 'Mensagens',
+            label: t.get('messages'),
           ),
-
-
-          // 🔴 GRUPOS
           BottomNavigationBarItem(
             icon: StreamBuilder<int>(
               stream: _unreadGroupsStream(),
               builder: (context, snap) {
                 final n = snap.data ?? 0;
+
+
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -207,13 +251,11 @@ class _MainShellState extends State<MainShell> {
                 );
               },
             ),
-            label: 'Grupos',
+            label: t.get('groups'),
           ),
-
-
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.event_rounded),
-            label: 'Eventos',
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.event_rounded),
+            label: t.get('events'),
           ),
         ],
       ),
@@ -222,16 +264,13 @@ class _MainShellState extends State<MainShell> {
 }
 
 
-// ==========================
-// 🔴 Badge widget reutilizável
-// ==========================
 class _Badge extends StatelessWidget {
   final int count;
 
 
   const _Badge({required this.count});
 
-    
+
   @override
   Widget build(BuildContext context) {
     return Container(

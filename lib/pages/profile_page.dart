@@ -1,6 +1,5 @@
 import 'dart:io';
 
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,45 +7,47 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import '../l10n/app_texts.dart';
 
 
 import 'Premium_page.dart'; // <-- se o seu for "premium_page.dart", troque aqui
 
-
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
-
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-
 class _ProfilePageState extends State<ProfilePage> {
   final _nameC = TextEditingController();
-  final _countryC = TextEditingController();
+  final _cityC = TextEditingController();
   final _aboutC = TextEditingController();
-
+  String _stateName = '';
+  String _cityName = '';
+  String _displayLocation = '';
 
   bool _loading = false;
-
-
+ 
   String _photoUrl = '';
   List<String> _gallery = []; // máx 9
   bool _isPremium = false;
 
+  // ✅ país travado (somente visual)
+  String _homeCountryCode = '';
+  String _countryName = '';
+  bool _localeLoaded = false;
+  
 
   String get _uid => FirebaseAuth.instance.currentUser!.uid;
   DocumentReference<Map<String, dynamic>> get _ref =>
       FirebaseFirestore.instance.collection('users').doc(_uid);
-
 
   // ✅ Padrão Home (visual apenas)
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
-
 
   static const LinearGradient _primaryGradient = LinearGradient(
     colors: [
@@ -55,22 +56,41 @@ class _ProfilePageState extends State<ProfilePage> {
     ],
   );
 
+  static const Map<String, String> _countryNames = {
+    'br': 'Brasil',
+    'ca': 'Canadá',
+    'pt': 'Portugal',
+  };
 
   @override
   void initState() {
     super.initState();
     _load();
   }
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
 
+
+  if (_localeLoaded) return;
+  _localeLoaded = true;
+
+
+  final locale = Localizations.localeOf(context);
+
+
+  AppTexts.load(locale).then((_) {
+    if (mounted) setState(() {});
+  });
+}
 
   @override
   void dispose() {
     _nameC.dispose();
-    _countryC.dispose();
+    _cityC.dispose();
     _aboutC.dispose();
     super.dispose();
   }
-
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -78,25 +98,33 @@ class _ProfilePageState extends State<ProfilePage> {
       final snap = await _ref.get();
       final data = snap.data() ?? {};
 
-
       _nameC.text = (data['name'] ?? '').toString();
-      _countryC.text = (data['country'] ?? '').toString();
-      _aboutC.text = (data['about'] ?? '').toString();
+      _stateName = (data['stateName'] ?? '').toString().trim();
+_cityName = (data['cityName'] ?? '').toString().trim();
+_displayLocation = (data['displayLocation'] ?? '').toString().trim();
 
+
+_cityC.text = _displayLocation.isNotEmpty
+    ? _displayLocation
+    : (_cityName.isNotEmpty ? _cityName : (data['city'] ?? '').toString());
+
+      _aboutC.text = (data['about'] ?? '').toString();
 
       _photoUrl = (data['photoUrl'] ?? '').toString();
       _isPremium = data['isPremium'] == true;
 
-
       final g = data['gallery'];
       if (g is List) {
-        _gallery = g
-            .map((e) => e.toString())
-            .where((e) => e.isNotEmpty)
-            .toList();
+        _gallery = g.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
       } else {
         _gallery = [];
       }
+
+      // ✅ país vem do homeCountryCode (travado)
+      _homeCountryCode =
+          (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
+
+      _countryName = _countryNames[_homeCountryCode] ?? AppTexts.current.get('your_country');
     } catch (_) {
       // silencioso
     } finally {
@@ -104,28 +132,11 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-
-  // padroniza: "canada" -> "Canada", "estados unidos" -> "Estados Unidos"
-  String _capitalizeWords(String input) {
-    final s = input.trim().replaceAll(RegExp(r'\s+'), ' ');
-    if (s.isEmpty) return s;
-    return s
-        .split(' ')
-        .map((w) {
-          if (w.isEmpty) return w;
-          final lower = w.toLowerCase();
-          return lower[0].toUpperCase() + lower.substring(1);
-        })
-        .join(' ');
-  }
-
-
   Future<String> _uploadImage(XFile file, {required String folder}) async {
     final storage = FirebaseStorage.instance;
     final id = const Uuid().v4();
     final path = 'users/$_uid/$folder/$id.jpg';
     final ref = storage.ref().child(path);
-
 
     if (kIsWeb) {
       final bytes = await file.readAsBytes();
@@ -137,10 +148,8 @@ class _ProfilePageState extends State<ProfilePage> {
       );
     }
 
-
     return await ref.getDownloadURL();
   }
-
 
   Future<void> _pickMainPhoto() async {
     if (_loading) return;
@@ -149,12 +158,10 @@ class _ProfilePageState extends State<ProfilePage> {
         await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (file == null) return;
 
-
     setState(() => _loading = true);
     try {
       final url = await _uploadImage(file, folder: 'profile');
       _photoUrl = url;
-
 
       await _ref.set(
         {
@@ -170,28 +177,24 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-
   Future<void> _addGalleryPhoto() async {
     if (_loading) return;
     if (_gallery.length >= 9) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Você já tem 9 fotos na galeria.')),
+         SnackBar(content: Text(AppTexts.current.get('gallery_limit_reached'))),
       );
       return;
     }
-
 
     final picker = ImagePicker();
     final file =
         await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (file == null) return;
 
-
     setState(() => _loading = true);
     try {
       final url = await _uploadImage(file, folder: 'gallery');
       _gallery = [..._gallery, url];
-
 
       await _ref.set(
         {
@@ -207,18 +210,15 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-
   Future<void> _removeGalleryPhoto(int index) async {
     if (_loading) return;
     if (index < 0 || index >= _gallery.length) return;
-
 
     setState(() => _loading = true);
     try {
       final newList = [..._gallery]..removeAt(index);
       _gallery = newList;
 
-
       await _ref.set(
         {
           'gallery': _gallery,
@@ -233,59 +233,80 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-
   Future<void> _save() async {
     if (_loading) return;
 
-
     final name = _nameC.text.trim();
-    final country = _capitalizeWords(_countryC.text);
+ final city = _cityC.text.trim();
+
+
+// padrão novo
+_displayLocation = city;
+if (_cityName.isEmpty) {
+  _cityName = city;
+}
+
     final about = _aboutC.text.trim();
 
+    if (city.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+         SnackBar(
+          content: Text(AppTexts.current.get('city_required_events')),
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(12),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
 
     setState(() => _loading = true);
 
-
     try {
-      await _ref.set(
-        {
-          'name': name,
-          'country': country,
-          'about': about,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      // ✅ country é salvo automaticamente a partir do homeCountryCode
+    await _ref.set({
+  'name': name,
+  'city': city, // compatibilidade antiga
+  'cityName': _cityName.isNotEmpty ? _cityName : city,
+  'stateName': _stateName,
+  'displayLocation': _displayLocation.isNotEmpty ? _displayLocation : city,
+  'country': _countryName,
+  'about': about,
+  'updatedAt': FieldValue.serverTimestamp(),
+}, SetOptions(merge: true));
 
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Salvo'),
-          duration: Duration(seconds: 1),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.all(12),
-        ),
+       SnackBar(
+  content: Text(AppTexts.current.get('saved')),
+  duration: const Duration(seconds: 1),
+  behavior: SnackBarBehavior.floating,
+  margin: const EdgeInsets.all(12),
+),
+
       );
 
-
-      // ✅ mantém seu fluxo: salva e volta
-      if (Navigator.canPop(context)) Navigator.pop(context, true); // ✅ REABRE MENU
+      if (Navigator.canPop(context)) Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao salvar: $e')),
-      );
+   ScaffoldMessenger.of(context).showSnackBar(
+  SnackBar(
+    content: Text('${AppTexts.current.get('save_error')}: $e'),
+  ),
+);
+
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-
-  // ✅ Input padrão Remdy (visual apenas)
-  InputDecoration _inputDeco(String label) {
+  InputDecoration _inputDeco(String label, {String? hint, String? helper}) {
     return InputDecoration(
       labelText: label,
+      hintText: hint,
+      helperText: helper,
+      helperStyle: const TextStyle(color: _muted, fontWeight: FontWeight.w600),
       labelStyle: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
       filled: true,
       fillColor: const Color(0xFFF9FAFB),
@@ -301,8 +322,43 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  String _flagEmoji(String code) {
+    final upper = code.toUpperCase();
+    if (upper.length != 2) return '🏳️';
+    final int first = upper.codeUnitAt(0) - 0x41 + 0x1F1E6;
+    final int second = upper.codeUnitAt(1) - 0x41 + 0x1F1E6;
+    return String.fromCharCodes([first, second]);
+  }
 
-  // ✅ Carrossel: foto principal (se existir) + galeria
+  Widget _lockedCountryField() {
+    return InputDecorator(
+      decoration: _inputDeco( AppTexts.current.get('country'),
+       
+        helper: AppTexts.current.get('country_locked_helper'),
+      ),
+      child: Row(
+        children: [
+          Text(
+            _flagEmoji(_homeCountryCode.isEmpty ? 'BR' : _homeCountryCode),
+            style: const TextStyle(fontSize: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _countryName,
+              style: const TextStyle(
+                color: _text,
+                fontWeight: FontWeight.w700,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Icon(Icons.lock_outline_rounded, color: _muted, size: 18),
+        ],
+      ),
+    );
+  }
+
   List<String> _carouselUrls() {
     return <String>[
       if (_photoUrl.isNotEmpty) _photoUrl,
@@ -310,11 +366,9 @@ class _ProfilePageState extends State<ProfilePage> {
     ];
   }
 
-
   void _openCarousel({required int initialIndex}) {
     final urls = _carouselUrls();
     if (urls.isEmpty) return;
-
 
     Navigator.push(
       context,
@@ -326,7 +380,6 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
-
 
   Widget _mainPhoto() {
     return Stack(
@@ -368,13 +421,11 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-
   Widget _galleryGrid() {
     final slots = List<String?>.filled(9, null);
     for (int i = 0; i < _gallery.length && i < 9; i++) {
       slots[i] = _gallery[i];
     }
-
 
     return GridView.builder(
       shrinkWrap: true,
@@ -387,7 +438,6 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       itemBuilder: (context, i) {
         final url = slots[i];
-
 
         if (url == null) {
           return InkWell(
@@ -406,10 +456,8 @@ class _ProfilePageState extends State<ProfilePage> {
           );
         }
 
-
         return InkWell(
           onTap: () {
-            // se tem foto principal, ela é índice 0
             final offset = _photoUrl.isNotEmpty ? 1 : 0;
             _openCarousel(initialIndex: offset + i);
           },
@@ -417,16 +465,16 @@ class _ProfilePageState extends State<ProfilePage> {
             final ok = await showDialog<bool>(
               context: context,
               builder: (_) => AlertDialog(
-                title: const Text('Remover foto?'),
-                content: const Text('Essa foto será removida da sua galeria.'),
+                title: Text(AppTexts.current.get('remove_photo_title')),
+                content: Text( AppTexts.current.get('remove_photo_content')),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancelar'),
+                    child:  Text(AppTexts.current.get('cancel')),
                   ),
                   TextButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Remover'),
+                    child: Text( AppTexts.current.get('remove')),
                   ),
                 ],
               ),
@@ -443,9 +491,36 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Widget _infoBar(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, size: 18, color: _muted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: _muted,
+                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -454,25 +529,18 @@ class _ProfilePageState extends State<ProfilePage> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-
-
-        // ✅ VOLTAR pedindo reabrir menu (true)
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.pop(context, true), // ✅ REABRE MENU
+          onPressed: () => Navigator.pop(context, true),
         ),
-
-
-        title: const Text(
-          'Perfil',
+        title: Text(
+          AppTexts.current.get('profile'),
           style: TextStyle(
             color: Color(0xFF111827),
             fontWeight: FontWeight.w900,
             fontSize: 20,
           ),
         ),
-
-
         actions: const [],
       ),
       body: AbsorbPointer(
@@ -483,44 +551,44 @@ class _ProfilePageState extends State<ProfilePage> {
             Center(child: _mainPhoto()),
             const SizedBox(height: 18),
 
-
             TextField(
               controller: _nameC,
-              decoration: _inputDeco('Nome'),
+              decoration: _inputDeco ( AppTexts.current.get ('name')),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
 
+            // ✅ país travado
+            _lockedCountryField(),
+            const SizedBox(height: 12),
 
             TextField(
-              controller: _countryC,
-              decoration: _inputDeco('País (ex: Canadá, Brasil, França...)'),
-              textInputAction: TextInputAction.next,
-              onChanged: (v) {},
-              onEditingComplete: () {
-                final fixed = _capitalizeWords(_countryC.text);
-                if (fixed != _countryC.text) {
-                  _countryC.value = _countryC.value.copyWith(
-                    text: fixed,
-                    selection: TextSelection.collapsed(offset: fixed.length),
-                  );
-                }
-                FocusScope.of(context).nextFocus();
-              },
-            ),
-            const SizedBox(height: 12),
+              controller: _cityC,
+              decoration: _inputDeco(AppTexts.current.get('city'),hint:AppTexts.current.get('city_example'),
+),
 
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
+
+            _infoBar(AppTexts.current.get('city_required_info')),
+            const SizedBox(height: 12),
 
             TextField(
               controller: _aboutC,
               maxLines: 4,
-              decoration: _inputDeco('Sobre você'),
+            
+
+decoration: _inputDeco(
+  AppTexts.current.get('about_you'),
+  helper:AppTexts.current.get('about_you_helper'),
+),
+
             ),
 
-
             const SizedBox(height: 18),
-            const Text(
-              'Galeria (até 9 fotos)',
+             Text(
+             AppTexts.current.get('gallery_up_to_9'),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
@@ -530,11 +598,8 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 10),
             _galleryGrid(),
 
-
             const SizedBox(height: 18),
 
-
-            // ✅ Premium (como estava)
             SizedBox(
               height: 46,
               child: OutlinedButton.icon(
@@ -556,7 +621,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   color: const Color(0xFF313A5F),
                 ),
                 label: Text(
-                  _isPremium ? 'Premium (ativo)' : 'Virar Premium',
+                 
+  _isPremium ? AppTexts.current.get('premium_active_short') : AppTexts.current.get('go_premium'),
+
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF111827),
@@ -565,11 +632,8 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
 
-
             const SizedBox(height: 12),
 
-
-            // ✅ Botão salvar (fica só aqui)
             SizedBox(
               height: 46,
               child: Container(
@@ -587,8 +651,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                   icon: const Icon(Icons.save, color: Colors.white),
-                  label: const Text(
-                    'Salvar alterações',
+                  label: Text(
+                    AppTexts.current.get('save_changes'),
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
@@ -597,7 +661,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
             ),
-
 
             if (_loading) ...[
               const SizedBox(height: 14),
@@ -610,7 +673,6 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-
 // ======================
 // ✅ Tela do carrossel
 // ======================
@@ -618,21 +680,17 @@ class _PhotoCarouselPage extends StatefulWidget {
   final List<String> urls;
   final int initialIndex;
 
-
   const _PhotoCarouselPage({
     required this.urls,
     required this.initialIndex,
   });
 
-
   @override
   State<_PhotoCarouselPage> createState() => _PhotoCarouselPageState();
 }
 
-
 class _PhotoCarouselPageState extends State<_PhotoCarouselPage> {
   late final PageController _controller;
-
 
   @override
   void initState() {
@@ -640,23 +698,22 @@ class _PhotoCarouselPageState extends State<_PhotoCarouselPage> {
     _controller = PageController(initialPage: widget.initialIndex);
   }
 
-
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Fotos'),
+        title: Text(AppTexts.current.get('photos')),
       ),
       body: PageView.builder(
         controller: _controller,

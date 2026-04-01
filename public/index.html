@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Remdy</title>
+
+
+  <script>
+    function openApp() {
+      const path = window.location.pathname;
+      const code = path.split('/g/')[1];
+
+
+      if (!code) return;
+
+
+      const deepLink = `remdy://group/${code}`;
+
+
+      // tenta abrir o app
+      window.location.href = deepLink;
+
+
+      // fallback (Play Store)
+      setTimeout(() => {
+        window.location.href = "https://play.google.com/store/apps/details?id=com.remdy.app";
+      }, 1500);
+    }
+  </script>
+</head>
+
+
+<body onload="openApp()" style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+  <div>
+    <h2>Abrindo o Remdy...</h2>
+  </div>
+</body>
+</html>

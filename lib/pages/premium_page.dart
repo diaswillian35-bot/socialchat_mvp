@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 
 import '../services/purchase_service.dart';
+import '../l10n/app_texts.dart';
 
 
 class PremiumPage extends StatefulWidget {
@@ -24,12 +25,13 @@ class _PremiumPageState extends State<PremiumPage> {
   bool _loading = false;
 
 
-  // ✅ preço real vindo do RevenueCat (ex: "$9.99")
   String? _priceString;
-  bool _hasPackage = true; // assume true, mas valida no init
+  bool _hasPackage = true;
 
 
-  // Remdy colors
+  String _loadedLocaleCode = '';
+
+
   static const Color _bg = Color(0xFFF8FAFC);
   static const Color _card = Colors.white;
   static const Color _text = Color(0xFF111827);
@@ -39,7 +41,8 @@ class _PremiumPageState extends State<PremiumPage> {
   static const Color _logoBlue = Color(0xFF264E9A);
 
 
-  DocumentReference<Map<String, dynamic>> get _userDoc => db.collection('users').doc(uid);
+  DocumentReference<Map<String, dynamic>> get _userDoc =>
+      db.collection('users').doc(uid);
 
 
   @override
@@ -47,11 +50,29 @@ class _PremiumPageState extends State<PremiumPage> {
     super.initState();
 
 
-    // ✅ ao abrir a tela: configura revenuecat, puxa preço, valida pacote e sincroniza premium
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (uid == null) return;
       await _prepareRevenueCat();
       await _syncPremiumFromRevenueCat();
+    });
+  }
+
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+
+    final locale = Localizations.localeOf(context);
+    final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
+
+
+    if (_loadedLocaleCode == nextCode) return;
+    _loadedLocaleCode = nextCode;
+
+
+    AppTexts.load(locale).then((_) {
+      if (mounted) setState(() {});
     });
   }
 
@@ -74,7 +95,6 @@ class _PremiumPageState extends State<PremiumPage> {
         _priceString = price;
       });
     } catch (_) {
-      // Se der erro aqui, não quebra layout.
       if (!mounted) return;
       setState(() {
         _hasPackage = false;
@@ -84,7 +104,6 @@ class _PremiumPageState extends State<PremiumPage> {
   }
 
 
-  // ✅ Sincroniza Premium (RevenueCat -> Firestore isPremium)
   Future<void> _syncPremiumFromRevenueCat() async {
     if (uid == null) return;
 
@@ -98,9 +117,7 @@ class _PremiumPageState extends State<PremiumPage> {
         'isPremium': premium,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-    } catch (_) {
-      // não explode
-    }
+    } catch (_) {}
   }
 
 
@@ -116,14 +133,13 @@ class _PremiumPageState extends State<PremiumPage> {
   }
 
 
-  // ✅ Comprar Premium real
   Future<void> _buyPremiumReal() async {
+    final t = AppTexts.current;
     if (uid == null) return;
 
 
-    // ✅ Se ainda não tem produto (Google Play não conectado), mostra mensagem clara
     if (!_hasPackage) {
-      _snack('Premium em configuração. Tente novamente mais tarde ✅');
+      _snack(t.get('premium_in_setup_try_later'));
       return;
     }
 
@@ -131,29 +147,23 @@ class _PremiumPageState extends State<PremiumPage> {
     setState(() => _loading = true);
     try {
       await PurchaseService.instance.configure(appUserId: uid!);
-
-
-      // Faz a compra
       await PurchaseService.instance.buyPremium();
-
-
-      // Atualiza Firestore com base no RevenueCat
       await _syncPremiumFromRevenueCat();
 
 
       if (!mounted) return;
-      _snack('Premium ativado ✅');
+      _snack(t.get('premium_activated'));
     } catch (e) {
       if (!mounted) return;
-      _snack('Erro na compra: $e');
+      _snack('${t.get('purchase_error')}: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
 
-  // ✅ Restaurar compra real
   Future<void> _restorePremiumReal() async {
+    final t = AppTexts.current;
     if (uid == null) return;
 
 
@@ -167,10 +177,10 @@ class _PremiumPageState extends State<PremiumPage> {
 
 
       if (!mounted) return;
-      _snack('Compras restauradas ✅');
+      _snack(t.get('purchases_restored'));
     } catch (e) {
       if (!mounted) return;
-      _snack('Erro ao restaurar: $e');
+      _snack('${t.get('restore_error')}: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -178,26 +188,32 @@ class _PremiumPageState extends State<PremiumPage> {
 
 
   void _premiumAlreadyActiveInfo() {
-    _snack('Seu Premium já está ativo ✅');
+    final t = AppTexts.current;
+    _snack(t.get('premium_already_active'));
   }
-String _userCountryName(Map<String, dynamic> data) {
-  final country = (data['country'] ?? '').toString().trim();
 
 
-  if (country.isEmpty) return 'Seu país';
+  String _userCountryName(Map<String, dynamic> data) {
+    final t = AppTexts.current;
+    final country = (data['country'] ?? '').toString().trim();
 
 
-  return country;
-}
+    if (country.isEmpty) return t.get('your_country');
+
+
+    return country;
+  }
 
 
   @override
   Widget build(BuildContext context) {
-    // ✅ trava o estilo da STATUS BAR (não muda ao rolar)
+    final t = AppTexts.current;
+
+
     const overlay = SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light, // iOS
+      statusBarBrightness: Brightness.light,
     );
 
 
@@ -213,12 +229,12 @@ String _userCountryName(Map<String, dynamic> data) {
             surfaceTintColor: Colors.transparent,
             systemOverlayStyle: overlay,
             iconTheme: const IconThemeData(color: _text),
-            title: const Text(
-              'Premium',
-              style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+            title: Text(
+              t.get('premium'),
+              style: const TextStyle(color: _text, fontWeight: FontWeight.w900),
             ),
           ),
-          body: const Center(child: Text('Você precisa estar logado.')),
+          body: Center(child: Text(t.get('you_need_to_be_logged_in'))),
         ),
       );
     }
@@ -242,9 +258,9 @@ String _userCountryName(Map<String, dynamic> data) {
               surfaceTintColor: Colors.transparent,
               systemOverlayStyle: overlay,
               iconTheme: const IconThemeData(color: _text),
-              title: const Text(
-                'Premium',
-                style: TextStyle(
+              title: Text(
+                t.get('premium'),
+                style: const TextStyle(
                   color: _text,
                   fontWeight: FontWeight.w900,
                   fontSize: 20,
@@ -254,7 +270,6 @@ String _userCountryName(Map<String, dynamic> data) {
             body: ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
-                // Header
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -284,7 +299,9 @@ String _userCountryName(Map<String, dynamic> data) {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          isPremium ? 'Seu Premium está ATIVO ✅' : 'Ative o Premium e libere o Mundo 🌍',
+                          isPremium
+                              ? t.get('your_premium_is_active')
+                              : t.get('activate_premium_unlock_world'),
                           style: const TextStyle(
                             fontSize: 15.5,
                             fontWeight: FontWeight.w900,
@@ -295,49 +312,38 @@ String _userCountryName(Map<String, dynamic> data) {
                     ],
                   ),
                 ),
-
-
                 const SizedBox(height: 14),
-
-
-                const Text(
-                  'O que você ganha com Premium',
-                  style: TextStyle(
+                Text(
+                  t.get('what_you_get_with_premium'),
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     color: _text,
                   ),
                 ),
                 const SizedBox(height: 10),
-
-
-               _BenefitTile(
-  icon: Icons.public,
-  title: '${_userCountryName(data)} + Mundo',
-  subtitle: 'Converse com pessoas de todos os países liberados.',
-),
-
-                const _BenefitTile(
+                _BenefitTile(
+                  icon: Icons.public,
+                  title:
+                      '${_userCountryName(data)} + ${t.get('world')}',
+                  subtitle: t.get('premium_benefit_all_countries_chat'),
+                ),
+                _BenefitTile(
                   icon: Icons.flash_on,
-                  title: 'Sem bloqueio por país',
-                  subtitle: 'Você não fica preso apenas ao seu país.',
+                  title: t.get('premium_benefit_no_country_block_title'),
+                  subtitle: t.get('premium_benefit_no_country_block_subtitle'),
                 ),
-                const _BenefitTile(
+                _BenefitTile(
                   icon: Icons.timer_off,
-                  title: 'Sem limite de tempo',
-                  subtitle: 'Chat livre (sem 1h/dia).',
+                  title: t.get('premium_benefit_no_time_limit_title'),
+                  subtitle: t.get('premium_benefit_no_time_limit_subtitle'),
                 ),
-                const _BenefitTile(
+                _BenefitTile(
                   icon: Icons.support_agent,
-                  title: 'Prioridade no suporte',
-                  subtitle: 'Ajuda mais rápida quando precisar.',
+                  title: t.get('premium_benefit_priority_support_title'),
+                  subtitle: t.get('premium_benefit_priority_support_subtitle'),
                 ),
-
-
                 const SizedBox(height: 16),
-
-
-                // CTA
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -349,7 +355,9 @@ String _userCountryName(Map<String, dynamic> data) {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isPremium ? 'Você já é Premium ✅' : 'Pronto para liberar o Mundo?',
+                        isPremium
+                            ? t.get('you_are_already_premium')
+                            : t.get('ready_to_unlock_world'),
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
@@ -359,10 +367,10 @@ String _userCountryName(Map<String, dynamic> data) {
                       const SizedBox(height: 6),
                       Text(
                         isPremium
-                            ? 'Se trocar de celular, use "Restaurar compra".'
+                            ? t.get('if_change_phone_restore_purchase')
                             : (_hasPackage
-                                ? 'Assine e comece a conversar fora do seu país.'
-                                : 'Premium em configuração (produtos ainda não conectados).'),
+                                ? t.get('subscribe_and_chat_outside_country')
+                                : t.get('premium_products_not_connected')),
                         style: const TextStyle(
                           fontSize: 13,
                           color: _muted,
@@ -370,8 +378,6 @@ String _userCountryName(Map<String, dynamic> data) {
                         ),
                       ),
                       const SizedBox(height: 14),
-
-
                       if (!isPremium)
                         Container(
                           width: double.infinity,
@@ -386,8 +392,10 @@ String _userCountryName(Map<String, dynamic> data) {
                             icon: const Icon(Icons.star, size: 18),
                             label: Text(
                               _loading
-                                  ? 'Aguarde...'
-                                  : (_priceString == null ? 'Assinar Premium' : 'Assinar Premium • $_priceString'),
+                                  ? t.get('please_wait')
+                                  : (_priceString == null
+                                      ? t.get('subscribe_premium')
+                                      : '${t.get('subscribe_premium')} • $_priceString'),
                               style: const TextStyle(fontWeight: FontWeight.w900),
                             ),
                             style: ElevatedButton.styleFrom(
@@ -405,9 +413,9 @@ String _userCountryName(Map<String, dynamic> data) {
                         OutlinedButton.icon(
                           onPressed: _loading ? null : _premiumAlreadyActiveInfo,
                           icon: const Icon(Icons.star_rounded, size: 18),
-                          label: const Text(
-                            'Premium ativo ✅',
-                            style: TextStyle(fontWeight: FontWeight.w900),
+                          label: Text(
+                            t.get('premium_active_short'),
+                            style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _remdyBlue,
@@ -418,17 +426,13 @@ String _userCountryName(Map<String, dynamic> data) {
                             ),
                           ),
                         ),
-
-
                       const SizedBox(height: 10),
-
-
                       OutlinedButton.icon(
                         onPressed: _loading ? null : _restorePremiumReal,
                         icon: const Icon(Icons.restore, size: 18),
-                        label: const Text(
-                          'Restaurar compra',
-                          style: TextStyle(fontWeight: FontWeight.w900),
+                        label: Text(
+                          t.get('restore_purchase'),
+                          style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: _remdyBlue,
@@ -442,15 +446,10 @@ String _userCountryName(Map<String, dynamic> data) {
                     ],
                   ),
                 ),
-
-
                 const SizedBox(height: 12),
-
-
-                const Text(
-                  'Observação: Premium via Apple/Google (RevenueCat). '
-                  'Se você trocar de celular, use "Restaurar compra".',
-                  style: TextStyle(
+                Text(
+                  t.get('premium_observation_store_restore'),
+                  style: const TextStyle(
                     fontSize: 12,
                     color: _muted,
                     fontWeight: FontWeight.w600,

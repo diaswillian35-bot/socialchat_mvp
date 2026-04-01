@@ -84,6 +84,50 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:384686982032:android:1bc018915f16701dbf2915",
+        "android_client_info": {
+          "package_name": "com.remdy.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "384686982032-s60n7ej467ks5isffa1fpdm30umhigmb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.remdy.app",
+            "certificate_hash": "fdf08986d283d4605ccd49530119a4e4a63c4417"
+          }
+        },
+        {
+          "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTXJmemWYLDrdpgjADv9dP5dK9DpHpFzo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "384686982032-pevcnfea1dbk4p5o2lngoa56darfgjip.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.adminTalksy"
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"

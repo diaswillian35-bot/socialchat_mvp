@@ -2,41 +2,44 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+
 import '../widget/remdy_app.dart';
+import 'group_chat_page.dart';
 
-// ✅ Ajuste se você quiser abrir o chat direto após entrar:
-// import 'group_chat_page.dart';
-
-// ✅ Se você já tem PremiumPage, ajuste o import:
-// import 'premium_page.dart';
 
 class JoinGroupPage extends StatefulWidget {
-  final String inviteCode; // vem do link ?code=XXXXXX
+  final String inviteCode;
+
 
   const JoinGroupPage({
     super.key,
     required this.inviteCode,
   });
 
+
   @override
   State<JoinGroupPage> createState() => _JoinGroupPageState();
 }
 
+
 class _JoinGroupPageState extends State<JoinGroupPage> {
-  // ✅ Remdy style
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
+
   bool _loading = true;
   bool _joining = false;
+
 
   DocumentSnapshot<Map<String, dynamic>>? _groupDoc;
   String? _error;
 
+
   String get _code => widget.inviteCode.trim().toUpperCase();
+
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -49,18 +52,24 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     );
   }
 
+
   @override
   void initState() {
     super.initState();
     _loadGroupByCode();
   }
 
+
   Future<void> _loadGroupByCode() async {
+    if (!mounted) return;
+
+
     setState(() {
       _loading = true;
       _error = null;
       _groupDoc = null;
     });
+
 
     try {
       final q = await FirebaseFirestore.instance
@@ -69,7 +78,9 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
           .limit(1)
           .get();
 
+
       if (q.docs.isEmpty) {
+        if (!mounted) return;
         setState(() {
           _error = 'Convite inválido ou expirado.';
           _loading = false;
@@ -77,11 +88,29 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
         return;
       }
 
+
+      final doc = q.docs.first;
+      final data = doc.data();
+      final deleted = data['deleted'] == true;
+
+
+      if (deleted) {
+        if (!mounted) return;
+        setState(() {
+          _error = 'Convite inválido ou expirado.';
+          _loading = false;
+        });
+        return;
+      }
+
+
+      if (!mounted) return;
       setState(() {
-        _groupDoc = q.docs.first;
+        _groupDoc = doc;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = 'Erro ao carregar convite: $e';
         _loading = false;
@@ -89,56 +118,105 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     }
   }
 
+
   Future<bool> _isUserPremium(String uid) async {
     try {
       final snap =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final data = snap.data();
-      final v = data?['isPremium'];
-      return v == true;
+      final data = snap.data() ?? {};
+      return data['isPremium'] == true;
     } catch (_) {
       return false;
     }
   }
 
+
+  Future<void> _openGroupChat({
+    required String groupId,
+    required String groupName,
+  }) async {
+    if (!mounted) return;
+
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupChatPage(
+          groupId: groupId,
+          groupName: groupName,
+        ),
+      ),
+    );
+  }
+
+
   Future<void> _join() async {
     final user = FirebaseAuth.instance.currentUser;
+
+
     if (user == null) {
       _toast('Faça login primeiro para entrar no grupo.');
       return;
     }
-    if (_groupDoc == null) return;
 
-    if (_joining) return;
+
+    if (_groupDoc == null || _joining) return;
+
+
     setState(() => _joining = true);
+
 
     try {
       final doc = _groupDoc!;
       final groupId = doc.id;
       final data = doc.data() ?? {};
 
-      final String name = (data['name'] ?? 'Grupo').toString().trim();
-      final bool isPremiumGroup = (data['isPremiumGroup'] == true);
-      final String joinPolicy = (data['joinPolicy'] ?? 'open').toString().trim();
-      // joinPolicy: open | approval | inviteOnly
 
-      // ✅ grupo premium -> exige premium
+      final String name = (data['name'] ?? 'Grupo').toString().trim();
+      final bool isPremiumGroup = data['isPremiumGroup'] == true;
+      final String joinPolicy =
+          (data['joinPolicy'] ?? 'open').toString().trim();
+
+
+      final membersRaw = data['members'];
+      final members = (membersRaw is List)
+          ? membersRaw
+              .map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty)
+              .toList()
+          : <String>[];
+
+
+      final alreadyMember = members.contains(user.uid);
+
+
       if (isPremiumGroup) {
         final premium = await _isUserPremium(user.uid);
         if (!premium) {
           _toast('Esse grupo é Premium. Faça upgrade para entrar.');
-          // Navigator.push(context, MaterialPageRoute(builder: (_) => const PremiumPage()));
-          setState(() => _joining = false);
+          if (mounted) setState(() => _joining = false);
           return;
         }
       }
 
+
       final groupRef =
           FirebaseFirestore.instance.collection('groups').doc(groupId);
 
-      // ✅ approval: cria solicitação (não entra direto)
-      if (joinPolicy == 'approval') {
+
+      if (joinPolicy == 'approval' && !alreadyMember) {
         final reqRef = groupRef.collection('joinRequests').doc(user.uid);
+        final reqSnap = await reqRef.get();
+        final reqData = reqSnap.data();
+        final currentStatus = (reqData?['status'] ?? '').toString().trim();
+
+
+        if (currentStatus == 'pending') {
+          _toast('Seu pedido já está pendente de aprovação.');
+          if (mounted) setState(() => _joining = false);
+          return;
+        }
+
 
         await reqRef.set({
           'uid': user.uid,
@@ -146,41 +224,50 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
+
         _toast('Pedido enviado ✅ Aguardando aprovação do admin.');
-        if (!mounted) return;
-        Navigator.pop(context);
+        if (mounted) setState(() => _joining = false);
         return;
       }
 
-      // ✅ open OU inviteOnly (aqui o convite é válido, então pode entrar direto)
-      // 🔒 não duplica: arrayUnion já protege
-      await groupRef.set({
-        'members': FieldValue.arrayUnion([user.uid]),
-        'updatedAt': FieldValue.serverTimestamp(),
-        // ✅ PATCH: mantém contador coerente
-        'membersCount': FieldValue.increment(1),
+
+      if (!alreadyMember) {
+        await groupRef.set({
+          'members': FieldValue.arrayUnion([user.uid]),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'membersCount': FieldValue.increment(1),
+          'unread.${user.uid}': 0,
+        }, SetOptions(merge: true));
+      } else {
+        await groupRef.set({
+          'updatedAt': FieldValue.serverTimestamp(),
+          'unread.${user.uid}': 0,
+        }, SetOptions(merge: true));
+      }
+
+
+      await groupRef.collection('reads').doc(user.uid).set({
+        'lastReadAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // ✅ opcional: salva “último join” no user
+
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'lastJoinedGroupId': groupId,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      _toast('Entrou no grupo ✅');
 
-      if (!mounted) return;
+      if (!alreadyMember) {
+        _toast('Entrou no grupo ✅');
+      } else {
+        _toast('Você já faz parte deste grupo ✅');
+      }
 
-      // ✅ Melhor UX: abre chat direto (descomente quando tiver o import certo)
-      // Navigator.pushReplacement(
-      //   context,
-      //   MaterialPageRoute(
-      //     builder: (_) => GroupChatPage(groupId: groupId, groupName: name),
-      //   ),
-      // );
 
-      // ✅ Alternativa: só voltar pra tela anterior
-      Navigator.pop(context, true);
+      await _openGroupChat(
+        groupId: groupId,
+        groupName: name.isEmpty ? 'Grupo' : name,
+      );
     } catch (e) {
       _toast('Erro ao entrar: $e');
     } finally {
@@ -188,15 +275,32 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     final group = _groupDoc?.data() ?? {};
+
+
     final name = (group['name'] ?? 'Grupo').toString().trim();
     final country = (group['country'] ?? '').toString().trim();
+    final city = (group['city'] ?? '').toString().trim();
     final bio = (group['bio'] ?? '').toString().trim();
+    final avatarUrl = (group['avatarUrl'] ?? '').toString().trim();
 
-    final isPremiumGroup = (group['isPremiumGroup'] == true);
+
+    final isPremiumGroup = group['isPremiumGroup'] == true;
     final joinPolicy = (group['joinPolicy'] ?? 'open').toString().trim();
+
+
+    final joinButtonText = joinPolicy == 'approval'
+        ? 'Pedir para entrar'
+        : 'Entrar no grupo';
+
+
+    final joinPolicyLabel = joinPolicy == 'approval'
+        ? 'Aprovação'
+        : (joinPolicy == 'inviteOnly' ? 'Somente convite' : 'Entrada livre');
+
 
     return Scaffold(
       backgroundColor: _bg,
@@ -227,54 +331,85 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: _border),
                       ),
-                      child: Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            name.isEmpty ? 'Grupo' : name,
-                            style: const TextStyle(
-                              color: _text,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: _border),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: avatarUrl.isNotEmpty
+                                  ? Image.network(
+                                      avatarUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.groups_rounded),
+                                    )
+                                  : const Icon(
+                                      Icons.groups_rounded,
+                                      color: _remdyBlue,
+                                    ),
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'País: ${country.isEmpty ? '--' : country}',
-                            style: const TextStyle(
-                              color: _muted,
-                              fontWeight: FontWeight.w700,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name.isEmpty ? 'Grupo' : name,
+                                  style: const TextStyle(
+                                    color: _text,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'País: ${country.isEmpty ? '--' : country} • Cidade: ${city.isEmpty ? '--' : city}',
+                                  style: const TextStyle(
+                                    color: _muted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                if (bio.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    bio,
+                                    style: const TextStyle(
+                                      color: _muted,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _Tag(
+                                      text: isPremiumGroup ? 'Premium' : 'Free',
+                                      filled: isPremiumGroup,
+                                    ),
+                                    _Tag(
+                                      text: joinPolicyLabel,
+                                      filled: false,
+                                    ),
+                                    _Tag(
+                                      text: 'Code: $_code',
+                                      filled: false,
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          if (bio.isNotEmpty)
-                            Text(
-                              bio,
-                              style: const TextStyle(
-                                color: _muted,
-                                fontWeight: FontWeight.w600,
-                                height: 1.3,
-                              ),
-                            ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _Tag(
-                                text: isPremiumGroup ? 'Premium' : 'Free',
-                                filled: isPremiumGroup,
-                              ),
-                              _Tag(
-                                text: joinPolicy == 'approval'
-                                    ? 'Aprovação'
-                                    : (joinPolicy == 'inviteOnly'
-                                        ? 'Somente convite'
-                                        : 'Entrada livre'),
-                                filled: false,
-                              ),
-                              _Tag(text: 'Code: $_code', filled: false),
-                            ],
                           ),
                         ],
                       ),
@@ -305,9 +440,7 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                                 ),
                               )
                             : Text(
-                                joinPolicy == 'approval'
-                                    ? 'Pedir para entrar'
-                                    : 'Entrar no grupo',
+                                joinButtonText,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w900,
                                   color: Colors.white,
@@ -330,13 +463,20 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
   }
 }
 
+
 class _Tag extends StatelessWidget {
   final String text;
   final bool filled;
 
-  const _Tag({required this.text, required this.filled});
+
+  const _Tag({
+    required this.text,
+    required this.filled,
+  });
+
 
   static const Color _remdyBlue = Color(0xFF313A5F);
+
 
   @override
   Widget build(BuildContext context) {

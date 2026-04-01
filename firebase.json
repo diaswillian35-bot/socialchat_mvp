@@ -59,10 +59,33 @@
         "lib/firebase_options.dart": {
           "projectId": "socialchatmvp",
           "configurations": {
-            "android": "1:384686982032:android:3382052a7126b4b3bf2915"
+            "android": "1:384686982032:android:3382052a7126b4b3bf2915",
+            "ios": "1:384686982032:ios:b54447b1941d35d6bf2915",
+            "web": "1:384686982032:web:2f9244e26d2a24a2bf2915",
+            "windows": "1:384686982032:web:2467ced6b4ca9149bf2915"
           }
         }
       }
     }
+  },
+  "hosting": {
+  "public": "public",
+  "ignore": [
+    "firebase.json",
+    "**/.*",
+    "**/node_modules/**"
+  ],
+ "rewrites": [
+  {
+    "source": "/g/**",
+    "destination": "/index.html"
+  },
+  {
+    "source": "/invite",
+    "destination": "/index.html"
   }
+]
+
+}
+
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_texts.dart';
 
 
 class AboutPage extends StatelessWidget {
@@ -32,8 +33,37 @@ class AboutPage extends StatelessWidget {
   }
 
 
+  String _aboutText() {
+    final t = AppTexts.current;
+
+
+    return '${t.get('about_remdy_paragraph_1')}\n\n'
+        '${t.get('about_remdy_paragraph_2')}\n\n'
+        '${t.get('about_remdy_our_idea_title')}\n'
+        '${t.get('about_remdy_paragraph_3')}\n\n'
+        '${t.get('about_remdy_paragraph_4')}\n\n'
+        '${t.get('about_remdy_paragraph_5')}\n'
+        '• ${t.get('about_remdy_bullet_1')}\n'
+        '• ${t.get('about_remdy_bullet_2')}\n'
+        '• ${t.get('about_remdy_bullet_3')}\n'
+        '• ${t.get('about_remdy_bullet_4')}\n\n'
+        '${t.get('about_remdy_paragraph_6')}\n\n'
+        '${t.get('about_remdy_global_title')}\n'
+        '${t.get('about_remdy_paragraph_7')}\n\n'
+        '${t.get('about_remdy_safety_title')}\n'
+        '${t.get('about_remdy_paragraph_8')}\n\n'
+        '${t.get('about_remdy_getting_started_title')}\n'
+        '${t.get('about_remdy_paragraph_9')}\n\n'
+        '${t.get('about_remdy_thanks_title')}\n'
+        '${t.get('about_remdy_paragraph_10')}';
+  }
+
+
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
+
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -42,9 +72,9 @@ class AboutPage extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Sobre',
-          style: TextStyle(
+        title: Text(
+          t.get('about'),
+          style: const TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
             fontSize: 20,
@@ -57,38 +87,19 @@ class AboutPage extends StatelessWidget {
           _card(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
-                  'Sobre o Remdy',
-                  style: TextStyle(
+                  t.get('about_remdy_title'),
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     color: _text,
                   ),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 Text(
-                  'O Remdy é um aplicativo criado para conectar pessoas reais ao redor do mundo de forma simples, natural e segura.\n\n'
-                  'Vivemos em uma era em que existem muitas redes sociais, mas poucas realmente ajudam as pessoas a criar conexões verdadeiras. '
-                  'O Remdy nasceu com um propósito diferente: aproximar pessoas, culturas e idiomas através de conversas reais.\n\n'
-                  'Nossa ideia\n'
-                  'Aprender um idioma, fazer amigos em outros países ou conhecer novas culturas não deveria ser difícil.\n\n'
-                  'Acreditamos que a melhor forma de aprender é conversando, trocando experiências e vivendo o idioma no dia a dia.\n\n'
-                  'Por isso, o Remdy foi criado para permitir que qualquer pessoa possa:\n'
-                  '• Conversar com pessoas reais\n'
-                  '• Praticar idiomas naturalmente\n'
-                  '• Fazer novas amizades\n'
-                  '• Descobrir culturas diferentes\n\n'
-                  'Sem complicações. Sem algoritmos confusos. Apenas pessoas conectando com pessoas.\n\n'
-                  'Um aplicativo global desde o início\n'
-                  'O Remdy foi pensado para o mundo. Desde o primeiro dia, o objetivo sempre foi criar uma comunidade internacional.\n\n'
-                  'Segurança e respeito\n'
-                  'Criar um ambiente saudável é prioridade. Trabalhamos com regras claras, moderação e controles para proteger os usuários.\n\n'
-                  'Estamos apenas começando\n'
-                  'O Remdy ainda está em crescimento, e muitas novidades estão a caminho.\n\n'
-                  'Obrigado por fazer parte\n'
-                  'O Remdy não é apenas um aplicativo. É uma comunidade global construída por pessoas, para pessoas.',
-                  style: TextStyle(
+                  _aboutText(),
+                  style: const TextStyle(
                     fontSize: 13,
                     height: 1.35,
                     color: _muted,
@@ -98,7 +109,6 @@ class AboutPage extends StatelessWidget {
               ],
             ),
           ),
-          
         ],
       ),
     );
