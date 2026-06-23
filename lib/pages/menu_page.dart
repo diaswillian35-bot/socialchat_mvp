@@ -1,7 +1,12 @@
+
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
 
+import '../pages/system_inbox_page.dart';
 
 enum MenuAction {
   profile,
@@ -17,7 +22,6 @@ enum MenuAction {
   logout,
 }
 
-
 class MenuPage extends StatefulWidget {
   final String name;
   final String photoUrl;
@@ -25,21 +29,19 @@ class MenuPage extends StatefulWidget {
   final int invites;
   final int limit;
 
-
   final Widget profilePage;
   final Widget invitePage;
   final Widget premiumPage;
   final Widget languagePage;
   final Widget notificationsPage;
+  final Widget systemInboxPage;
   final Widget faqPage;
   final Widget contactPage;
   final Widget termsPage;
   final Widget policyPage;
   final Widget aboutPage;
 
-
   final Future<void> Function() onLogout;
-
 
   const MenuPage({
     super.key,
@@ -53,6 +55,7 @@ class MenuPage extends StatefulWidget {
     required this.premiumPage,
     required this.languagePage,
     required this.notificationsPage,
+    required this.systemInboxPage,
     required this.faqPage,
     required this.contactPage,
     required this.termsPage,
@@ -61,45 +64,42 @@ class MenuPage extends StatefulWidget {
     required this.onLogout,
   });
 
-
   @override
   State<MenuPage> createState() => _MenuPageState();
 }
 
-
 class _MenuPageState extends State<MenuPage> {
   String _loadedLocaleCode = '';
-
 
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
 
-
   static const Color _remdyBlue = Color(0xFF313A5F);
   static const Color _logoBlue = Color(0xFF264E9A);
 
-
   @override
-void didChangeDependencies() {
-  super.didChangeDependencies();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
+    final locale = Localizations.localeOf(context);
+    final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
 
-  final locale = Localizations.localeOf(context);
-  final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
+    if (_loadedLocaleCode == nextCode) return;
+    _loadedLocaleCode = nextCode;
 
+    AppTexts.load(locale).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
 
-  if (_loadedLocaleCode == nextCode) return;
-  _loadedLocaleCode = nextCode;
-
-
-  AppTexts.load(locale).then((_) {
-    if (mounted) setState(() {});
-  });
-}
-
-
+  int _nextInviteTarget(int invites) {
+    if (invites < 3) return 3;
+    if (invites < 15) return 15;
+    if (invites < 30) return 30;
+    return 30;
+  }
 
   Future<void> _open(BuildContext context, Widget page) async {
     await Navigator.push(
@@ -107,7 +107,20 @@ void didChangeDependencies() {
       MaterialPageRoute(builder: (_) => page),
     );
   }
+String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
+Stream<int> _unreadSystemCount() {
+  final uid = _uid;
+  if (uid == null) return const Stream<int>.empty();
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('systemInbox')
+      .where('isRead', isEqualTo: false)
+      .snapshots()
+      .map((snap) => snap.docs.length);
+}
 
   Widget _item({
     required BuildContext context,
@@ -129,10 +142,11 @@ void didChangeDependencies() {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
+    final inviteTarget = _nextInviteTarget(widget.invites);
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -146,13 +160,12 @@ void didChangeDependencies() {
         ),
         centerTitle: true,
         title: Text(
-  t.get('menu'),
-  style: const TextStyle(
-    color: _text,
-    fontWeight: FontWeight.w900,
-  ),
-)
- 
+          t.get('menu'),
+          style: const TextStyle(
+            color: _text,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
@@ -225,7 +238,7 @@ void didChangeDependencies() {
                 _item(
                   context: context,
                   icon: Icons.card_giftcard,
-                  title: '${t.get('invite')} (${widget.invites}/${widget.limit})',
+                  title: '${t.get('invite')} (${widget.invites}/$inviteTarget)',
                   onTap: () => _open(context, widget.invitePage),
                 ),
                 const Divider(height: 1),
@@ -249,6 +262,47 @@ void didChangeDependencies() {
                   title: t.get('notifications'),
                   onTap: () => _open(context, widget.notificationsPage),
                 ),
+                const Divider(height: 1),
+StreamBuilder<int>(
+  stream: _unreadSystemCount(),
+  builder: (context, snap) {
+    final hasUnread = (snap.data ?? 0) > 0;
+
+    return ListTile(
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.campaign_outlined, color: _muted),
+          if (hasUnread)
+            Positioned(
+              right: -1,
+              top: -1,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+        ],
+      ),
+      title: Text(
+        t.get('remdy_notices'),
+        style: const TextStyle(
+          color: _text,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      onTap: () => _open(context, const SystemInboxPage()),
+    );
+  },
+),
+
+const Divider(height: 1),
+
+
                 const Divider(height: 1),
                 _item(
                   context: context,

@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'home_page.dart';
 import 'messages_page.dart';
 import 'groups_list_page.dart';
-import 'events_page.dart';
+import 'events_page_new.dart';
 import 'create_group_page.dart';
 
 
@@ -34,17 +34,35 @@ class _MainShellState extends State<MainShell> {
 
   String _loadedLocaleCode = '';
 
+Future<void> _checkBannedUser() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
 
-  @override
-  void initState() {
-    super.initState();
+  final snap = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .get();
+
+  if (snap.data()?['isBanned'] == true) {
+    await FirebaseAuth.instance.signOut();
+  }
+}
 
 
-    _index = widget.initialIndex;
-    if (_index < 0 || _index > 3) _index = 0;
+
+  
+@override
+void initState() {
+  super.initState();
+
+  _index = widget.initialIndex;
+  if (_index < 0 || _index > 3) _index = 0;
+
+  _checkBannedUser();
+
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
 
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
       await PresenceService.instance.start();
 
 
@@ -158,6 +176,33 @@ class _MainShellState extends State<MainShell> {
       return total;
     });
   }
+Stream<int> _activeEventsStream() {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(0);
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .snapshots()
+      .asyncExpand((userSnap) {
+    final lastSeen = userSnap.data()?['lastEventsSeenAt'];
+
+    final lastSeenAt = lastSeen is Timestamp
+        ? lastSeen
+        : Timestamp.fromDate(DateTime(2020));
+
+    return FirebaseFirestore.instance
+        .collection('events')
+        .where('isActive', isEqualTo: true)
+        .where('createdAt', isGreaterThan: lastSeenAt)
+        .orderBy('createdAt', descending: true)
+        .limit(20)
+        .snapshots()
+        .map((snap) => snap.docs.length);
+  });
+}
+
+
 
 
   @override
@@ -179,7 +224,9 @@ class _MainShellState extends State<MainShell> {
         children: pages,
       ),
       floatingActionButton: _index == 2
-          ? FloatingActionButton(
+         ? FloatingActionButton(
+    heroTag: null,
+
               backgroundColor: _remdyBlue,
               foregroundColor: Colors.white,
               onPressed: () {
@@ -196,7 +243,24 @@ class _MainShellState extends State<MainShell> {
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: const Color(0xFFF1F5F9),
         currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
+        onTap: (i) async {
+  setState(() => _index = i);
+
+  if (i == 3) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid != null) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .set({
+        'lastEventsSeenAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+  }
+},
+
+
         type: BottomNavigationBarType.fixed,
         selectedItemColor: _remdyBlue,
         unselectedItemColor: const Color(0xFF9CA3AF),
@@ -253,10 +317,40 @@ class _MainShellState extends State<MainShell> {
             ),
             label: t.get('groups'),
           ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.event_rounded),
-            label: t.get('events'),
-          ),
+BottomNavigationBarItem(
+  icon: StreamBuilder<int>(
+    stream: _activeEventsStream(),
+    builder: (context, snap) {
+      final n = snap.data ?? 0;
+
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.event_rounded),
+
+          if (n > 0)
+            Positioned(
+              right: -2,
+              top: -2,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+        ],
+      );
+    },
+  ),
+  label: t.get('events'),
+),
+
+
+
+
         ],
       ),
     );

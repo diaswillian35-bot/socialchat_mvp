@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+
 import 'forgot_password_page.dart';
 import 'splash_page.dart';
 import 'email_verification_page.dart';
@@ -23,6 +24,10 @@ class _LoginPageState extends State<LoginPage> {
   final _emailC = TextEditingController();
   final _passC = TextEditingController();
   final _confirmC = TextEditingController();
+  
+
+
+
   
   @override
 void didChangeDependencies() {
@@ -66,8 +71,7 @@ void didChangeDependencies() {
 
 
   Future<void> _bootLoginPage() async {
-    await _clearStaleSession();
-    await _loadRemembered();
+      await _loadRemembered();
   }
 
 
@@ -166,6 +170,26 @@ void didChangeDependencies() {
     } catch (_) {}
   }
 
+String _generateInviteCode(String name, String uid) {
+  final clean = name
+      .trim()
+      .toUpperCase()
+      .replaceAll(RegExp(r'[^A-Z0-9 ]'), '')
+      .replaceAll(RegExp(r'\s+'), '-');
+
+
+  final base = clean.isEmpty ? 'REMDY' : clean.split('-').first;
+  final short = uid.substring(0, 4).toUpperCase();
+
+
+  return '$base-$short';
+}
+
+
+
+
+
+
 
   Future<void> _ensureUserDoc(User user, {required bool isNewUser}) async {
     final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
@@ -173,26 +197,37 @@ void didChangeDependencies() {
 
 
     final email = (user.email ?? _emailC.text.trim()).trim().toLowerCase();
-    final displayName = (user.displayName ?? '').trim();
+    final displayName = ((user.displayName ?? '').trim().isNotEmpty)
+    ? (user.displayName ?? '').trim()
+    : ((snap.data()?['name'] ?? '').toString().trim());
+;
     final profilePhotoUrl = (user.photoURL ?? '').trim();
 
 
     if (!snap.exists) {
-      await ref.set({
-        'uid': user.uid,
-        'email': email,
-        'name': displayName,
-        'profilePhotoUrl': profilePhotoUrl,
-        'countryCode': '',
-        'homeCountryCode': '',
-        'countryLocked': false,
-        'isPremium': false,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'lastSeenAt': FieldValue.serverTimestamp(),
+
+
+
+  await ref.set({
+    'uid': user.uid,
+    'email': email,
+    'name': displayName,
+    'profilePhotoUrl': profilePhotoUrl,
+   'inviteCode': _generateInviteCode(
+  displayName,
+  user.uid,
+),
+
+    'countryCode': '',
+    'homeCountryCode': '',
+    'countryLocked': false,
+    'isPremium': false,
+    'createdAt': FieldValue.serverTimestamp(),
+    'updatedAt': FieldValue.serverTimestamp(),
+    'lastSeenAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      return;
-    }
+  return;
+}
 
 
     final d = snap.data() ?? {};
@@ -206,6 +241,7 @@ void didChangeDependencies() {
     };
 
 
+
     if (displayName.isNotEmpty) patch['name'] = displayName;
     if (profilePhotoUrl.isNotEmpty) {
       patch['profilePhotoUrl'] = profilePhotoUrl;
@@ -213,9 +249,21 @@ void didChangeDependencies() {
 
 
     if (d['homeCountryCode'] == null) patch['homeCountryCode'] = '';
-    if (d['countryCode'] == null) patch['countryCode'] = '';
-    if (d['countryLocked'] == null) patch['countryLocked'] = false;
-    if (d['isPremium'] == null) patch['isPremium'] = false;
+if (d['countryCode'] == null) patch['countryCode'] = '';
+if (d['countryLocked'] == null) patch['countryLocked'] = false;
+if (d['isPremium'] == null) patch['isPremium'] = false;
+
+
+final currentInviteCode = (d['inviteCode'] ?? '').toString().trim();
+if (currentInviteCode.isEmpty) {
+  patch['inviteCode'] = _generateInviteCode(
+    displayName,
+    user.uid,
+  );
+}
+
+
+
 
 
     await ref.set(patch, SetOptions(merge: true));
@@ -326,9 +374,11 @@ return;
       }
 
 
-      await _saveRemembered();
-      await _goToApp();
-    } on FirebaseAuthException catch (e) {
+     await _saveRemembered();
+await _goToApp();
+return;
+
+      } on FirebaseAuthException catch (e) {
       _toast(e.message ?? 'Erro ao autenticar.');
     } catch (_) {
       _toast('Erro inesperado.');
@@ -398,8 +448,10 @@ return;
       }
 
 
-      await _saveRemembered();
-      await _goToApp();
+     await _saveRemembered();
+await _goToApp();
+return;
+
     } on FirebaseAuthException catch (e) {
       _toast(e.message ?? 'Erro no Google.');
     } catch (e) {
@@ -429,8 +481,10 @@ return;
 
 
       _emailC.text = _testEmail;
-      await _saveRemembered();
-      await _goToApp();
+     await _saveRemembered();
+await _goToApp();
+return;
+
     } on FirebaseAuthException catch (e) {
       _toast(e.message ?? "Erro ao entrar com Teste.");
       _toast("Dica: crie o usuário $_testEmail no Firebase Auth (Email/Senha).");

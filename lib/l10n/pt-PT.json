@@ -79,9 +79,306 @@
 "confirmLeaveGroup": "Tem certeza que deseja sair do grupo?",
 "leave": "Sair",
  "group_search_messages": "Buscar mensagens...",
-  "group_no_search_results": "Nenhuma mensagem encontrada."
+  "group_no_search_results": "Nenhuma mensagem encontrada.",
+  "invite_reward_1_day": "🎁 1 dia de Premium desbloqueado",
+  "invite_reward_7_days": "🔥 7 dias de Premium desbloqueados",
+  "invite_reward_30_days": "🚀 30 dias de Premium desbloqueados",
+  "invite_reward_60_days": "💎 60 dias de Premium desbloqueados",
+  "invite_reward_90_days": "👑 90 dias de Premium desbloqueados",
+  "invite_reward_not_unlocked": "Convide amigos para desbloquear recompensas",
+  "reward": "Recompensa",
+   "invite_current_reward_label": "Recompensa atual",
+  "invite_next_goal_label": "Próxima meta",
+  "invite_rewards_table_title": "Metas de recompensa:",
+  "invite_rewards_table_text": "• 3 convites = 1 dia Premium\n• 10 convites = 7 dias Premium\n• 20 convites = 30 dias Premium\n• 50 convites = 60 dias Premium\n• 100 convites = 90 dias Premium + Embaixador",
+  "invite_all_rewards_unlocked": "Todas as recompensas desbloqueadas",
+  "invite_next_reward_3": "3 convites = 1 dia Premium",
+  "invite_next_reward_10": "10 convites = 7 dias Premium",
+  "invite_next_reward_20": "20 convites = 30 dias Premium",
+  "invite_next_reward_50": "50 convites = 60 dias Premium",
+  "invite_next_reward_100": "100 convites = 90 dias Premium + Embaixador",
+  "invite_missing_one_for_next_reward": "Falta 1 convite para a próxima recompensa.",
+  "invite_missing_many_for_next_reward": "Faltam {count} convites para a próxima recompensa.",
+  "invite_reward_auto_unlock_info": "Ao atingir as metas, a sua recompensa Premium é desbloqueada automaticamente.",
+  "support_contact_appbar_title": "Fale com a Remdy",
+  "support_contact_title": "Suporte Remdy",
+  "support_contact_subtitle": "Envie a sua mensagem e entraremos em contacto por e-mail.",
+  "support_contact_email_label": "O seu e-mail (para resposta)",
+  "support_contact_email_hint": "ex: seuemail@gmail.com",
+  "support_contact_phone_label": "Telefone (opcional)",
+  "support_contact_phone_hint": "ex: +351 900 000 000",
+  "support_contact_subject_label": "Assunto",
+  "support_contact_subject_hint": "Ex: Não consigo entrar / Erro em grupos",
+  "support_contact_message_label": "Mensagem",
+  "support_contact_message_hint": "Explique o que aconteceu e onde…",
+  "support_contact_send": "Enviar",
+  "support_contact_footer": "Ao tocar em enviar, o app abrirá o seu e-mail para concluir o envio.",
+  "support_contact_subject_required": "Introduza um assunto.",
+  "support_contact_message_required": "Introduza a sua mensagem.",
+  "support_contact_invalid_email": "Introduza um e-mail válido para resposta.",
+  "support_contact_email_for_reply": "E-mail para resposta",
+  "support_contact_not_informed": "Não informado",
+  "support_contact_email_app_error": "Não foi possível abrir a aplicação de e-mail.",
+  "support_contact_open_email_error": "Erro ao abrir o e-mail.",
+  "chat_sending_audio": "A enviar áudio...",
+  "group_back": "Voltar",
+"group_join": "Entrar no grupo",
+"remdy_notices": "Avisos Remdy",
+"no_notices_yet": "Nenhum aviso ainda",
+"notice": "Aviso",
+"invite_title": "Convidar amigos",
+"invite_subtitle": "Convide amigos e desbloqueie recompensas",
+"invite_current_reward": "Recompensa atual:",
+"invite_next_goal": "Próxima meta:",
+"invite_missing": "Faltam {count} convites para a próxima recompensa.",
+"invite_rewards_title": "Metas de recompensa:",
+"invite_reward_3": "3 convites = 3 dias Premium",
+"invite_reward_15": "15 convites = 15 dias Premium",
+"invite_reward_30": "30 convites = 30 dias Premium + Embaixador",
+"invite_auto_unlock": "Ao atingir as metas, a sua recompensa Premium é desbloqueada automaticamente.",
+"invite_copy": "Copiar",
+"invite_share": "Partilhar",
+"invite_reward_current_3": "🎁 3 dias de Premium desbloqueados",
+"invite_reward_current_15": "🎁 15 dias de Premium desbloqueados",
+"invite_reward_current_30": "🎁 30 dias de Premium + Embaixador",
+"invite_reward_current_none": "Convide amigos para desbloquear recompensas",
+"invite_missing_one": "Falta 1 convite para a próxima recompensa.",
+"premium_country_message_prefix": "Para conversar com",
+"premium_country_message_suffix": "precisa de Premium.",
+  "remi_practice_title": "Pratique idiomas com a Remi",
+  "remi_message_hint": "Mensagem para a Remi...",
+  "remi_listen": "Ouvir",
+  "remi_intro_title": "Bem-vindo à Remi 👋",
+  "remi_intro_body": "Pratique conversas reais com a Remi.\n\nPode:\n🔊 Ouvir as respostas\n🌐 Traduzir as respostas\n🗣️ Ver a pronúncia\n\nEscreva naturalmente. A Remi irá ajudá-lo passo a passo.",
+  "remi_intro_button": "Percebi",
+  "remi_speaking": "A falar...",
+"remi_thinking": "A Remi está a pensar...",
+"lesson_small_talk": "Conversa",
+"lesson_coffee_shop": "Cafetaria",
+"lesson_job_interview": "Entrevista de emprego",
+"lesson_introductions": "Apresentações",
+"lesson_meeting_people": "Conhecer pessoas",
+"lesson_daily_life": "Vida diária",
+"events_no_date": "Sem data",
+"events_map_error": "Não foi possível abrir o mapa.",
+"events_today_badge": "HOJE",
+"events_tomorrow_badge": "AMANHÃ",
+"events_title": "Eventos",
+"events_subtitle": "Descubra eventos incríveis perto de si ou pelo mundo.",
+"events_my_events": "Os meus eventos",
+"events_search_hint": "Pesquisar eventos...",
+"events_all": "Todos",
+"events_today": "Hoje",
+"events_week": "Semana",
+"events_music": "Música",
+"events_sports": "Desportos",
+"events_restaurant": "Restaurante",
+"events_city": "Cidade",
+"events_nearby": "Arredores",
+"events_country": "País",
+"events_cancel_attendance": "Cancelar presença",
+"events_join": "Participar",
+"events_confirmed": "Confirmado",
+"events_sponsored": "PATROCINADO",
+"events_default_category": "Evento",
+"events_regional_event": "Evento regional",
+"events_login_required": "Tem de iniciar sessão.",
+"events_empty_city": "Nenhum evento nesta cidade.",
+"events_empty_nearby": "Nenhum evento nos arredores.",
+"events_empty_country": "Nenhum evento neste país.",
+"events_attending": "a participar",
+"events_share_text": "Veja este evento no Remdy:",
+"events_search": "Pesquisar eventos...",
+"events_no_city": "Nenhum evento nesta cidade.",
+"events_no_nearby": "Nenhum evento nos arredores.",
+"events_no_country": "Nenhum evento neste país.",
+
+"events_open_map_error": "Não foi possível abrir o mapa.",
+
+"events_regional": "Evento regional",
+"remi_practice_together": "Vamos praticar juntos com a Remi.",
+"remi_hello": "Olá!",
+"remi_today_practice": "Hoje vamos praticar",
+"chat_sending_image": "A enviar imagem...",
+"create_event_place_search_hint": "Introduza o nome do local ou morada",
+"create_event_city_search_hint": "Introduza Toronto, York...",
+"create_event_type_2_letters": "Introduza pelo menos 2 letras",
+
+"event_category_restaurant": "Restaurante",
+"event_category_cafe": "Café",
+"event_category_sports": "Desporto",
+"event_category_show": "Espetáculo",
+
+"my_events_title": "Os meus eventos",
+"my_events_login_required": "Tem de iniciar sessão.",
+"my_events_empty": "Ainda não criou eventos.",
+"my_events_attending": "participantes",
+"my_events_edit": "Editar",
+"my_events_cancel": "Cancelar",
+
+"my_events_approved": "Aprovado",
+"my_events_rejected": "Rejeitado",
+"my_events_cancelled": "Cancelado",
+"my_events_pending": "Pendente",
+
+"my_events_cancel_title": "Cancelar evento",
+"my_events_cancel_message": "Este evento será desativado e deixará de aparecer na aplicação.",
+"my_events_cancel_button": "Cancelar evento",
+"my_events_cancelled_message": "Evento cancelado.",
+
+"events_culture": "Cultura",
+"events_languages": "Idiomas",
+"events_general": "Geral",
+"create_event_title": "Crear evento",
+"create_event_intro": "Crea un evento para tu comunidad. Será enviado para aprobación antes de aparecer en la aplicación.",
+"create_event_name": "Título del evento",
+"create_event_name_hint": "Ej: Fiesta brasileña en Toronto",
+"create_event_category": "Categoría",
+"create_event_city": "Ciudad",
+"create_event_city_hint": "Elegir ciudad",
+"create_event_place": "Lugar",
+"create_event_place_hint": "Ej: Restaurante, bar o dirección",
+"create_event_add_photos": "Agregar hasta 5 fotos del evento",
+"create_event_pick_date": "Elegir fecha",
+"create_event_pick_time": "Elegir horario",
+"create_event_description": "Descripción",
+"create_event_description_hint": "Explica el evento, horario, público y detalles importantes.",
+"create_event_promote_title": "¿Quieres destacar tu evento?",
+"create_event_promote_text": "Los eventos promocionados pueden aparecer con mayor visibilidad en Remdy y llegar a más personas de tu ciudad o región.",
+"create_event_promote_checkbox": "Estoy interesado en promocionar este evento",
+"create_event_submit": "Enviar para aprobación",
+"create_event_success": "Evento enviado para aprobación.",
+"create_event_error": "Error al crear el evento",
+"create_event_required_title": "Introduce el título.",
+"create_event_required_description": "Introduce una descripción.",
+"create_event_required_date_time": "Elige la fecha y la hora del evento.",
+"event_detail_title": "Evento",
+
+"event_detail_login_required": "Tem de iniciar sessão.",
+"event_detail_already_joined": "Já está a participar ✅",
+"event_detail_join_success": "Confirmado! Vai participar neste evento ✅",
+"event_detail_join_error": "Erro ao participar",
+"event_detail_leave_success": "Participação cancelada.",
+"event_detail_leave_error": "Erro ao cancelar participação",
+
+"event_detail_delete_comment_title": "Eliminar comentário?",
+"event_detail_delete_comment_message": "Esta ação não pode ser anulada.",
+
+"event_detail_cancel": "Cancelar",
+"event_detail_delete": "Eliminar",
+
+"event_detail_place_tbd": "Local por definir",
+"event_detail_directions": "Como chegar",
+
+"event_detail_attending": "participantes",
+"event_detail_about": "Sobre o evento",
+
+"event_detail_login_to_join": "Inicie sessão para participar",
+"event_detail_leave": "Cancelar participação",
+"event_detail_join": "Participar",
+
+"event_detail_comments": "Comentários",
+"event_detail_replying_to": "A responder a",
+"event_detail_write_comment": "Escreva um comentário...",
+"event_detail_first_comment": "Seja o primeiro a comentar 👋",
+
+"event_detail_reply": "Responder",
+"event_detail_user": "Utilizador",
+"event_detail_photos": "fotografia(s)",
+"report_group": "Denunciar grupo",
+
+"report_reason_spam": "Spam",
+
+"report_reason_inappropriate": "Conteúdo impróprio",
+
+"report_reason_harassment": "Assédio",
+
+"report_sent": "Denúncia enviada",
+
+"group_message_reported_success": "Mensagem denunciada com sucesso",
+
+"group_request_sent_to_admin": "O seu pedido foi enviado ao administrador.",
+
+"group_invite_only_message": "Este grupo aceita apenas membros convidados.",
+
+"user_temporarily_silenced": "A sua conta foi temporariamente silenciada.",
+
+"error_prefix": "Erro:",
+
+"settings": "Definições",
+
+"delete": "Eliminar",
+
+"delete_message": "Eliminar mensagem",
+
+"delete_for_me": "Eliminar para mim",
+
+"delete_for_all": "Eliminar para todos",
+
+"profile": "Perfil",
+
+"notifications": "Notificações",
+
+"phone": "Telemóvel",
+
+"join_group": "Aderir ao grupo",
+
+"join_request_sent": "Pedido enviado",
+
+"report_user": "Denunciar utilizador",
+
+"reported_successfully": "Denunciado com sucesso",
+
+"message_sent": "Mensagem enviada",
+
+"event_created": "Evento criado com sucesso",
+
+"event_updated": "Evento atualizado com sucesso",
+
+"event_deleted": "Evento eliminado com sucesso",
+"chat_today": "Hoje",
+"chat_yesterday": "Ontem",
+"chat_error_loading_messages": "Erro ao carregar mensagens",
+"chat_report_sent": "Denúncia enviada. Obrigado!",
+"chat_report_error": "Erro ao enviar denúncia",
+"chat_report_user": "Denunciar utilizador",
+"chat_report_inappropriate": "Conteúdo impróprio",
+"chat_report_spam": "Spam",
+"chat_report_harassment": "Assédio",
+"chat_report_threat": "Ameaça",
+"chat_report_other": "Outro",
+
+"chat_search_message": "Procurar mensagem",
+"chat_search_hint": "Escreva uma palavra...",
+"chat_search_empty": "Escreva algo para procurar",
+"chat_search_no_results": "Nenhuma mensagem encontrada",
+
+"chat_you_label": "Você",
+
+"chat_premium_user": "Utilizador Premium",
+
+"chat_account_muted": "A sua conta foi temporariamente silenciada.",
+"chat_user_is_premium": "Este utilizador é Premium",
+"event_detail_now": "agora",
+"event_detail_minutes_ago": "minutos atrás",
+"event_detail_hours_ago": "horas atrás",
+"event_detail_days_ago": "dias atrás"
+
+
+
+
+
+
+
+
+
+
 
 }
+
+
+
+
 
 
 

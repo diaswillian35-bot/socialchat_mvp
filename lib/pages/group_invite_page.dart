@@ -41,15 +41,15 @@ class GroupInvitePage extends StatelessWidget {
 
 
     // você pode trocar esse texto depois por link real
-    final shareText = '''
+final groupInviteLink = 'https://remdy.app/group?code=$code';
+
+final shareText = '''
 Entre no meu grupo no Remdy!
 
-
 Grupo: $groupName
-Código: $code
 
-
-Abra o app e use esse código para entrar.
+Acesse pelo link:
+$groupInviteLink
 ''';
 
 
@@ -181,7 +181,9 @@ Abra o app e use esse código para entrar.
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: code));
+                    
+await Clipboard.setData(ClipboardData(text: groupInviteLink));
+
                     if (!context.mounted) return;
                     _toast(context, 'Código copiado!');
                   },

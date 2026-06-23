@@ -47,6 +47,11 @@ class _ChatPageState extends State<ChatPage> {
   final _textC = TextEditingController();
   final _scrollC = ScrollController();
   final ImagePicker _picker = ImagePicker();
+  bool _searchMode = false;
+String _searchText = '';
+final TextEditingController _searchController = TextEditingController();
+
+
 
 
   final db = FirebaseFirestore.instance;
@@ -121,16 +126,38 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  
+String _messagePreviewText(Map<String, dynamic> d, String fallbackType) {
+  final t = AppTexts.current;
+  final type = (d['type'] ?? fallbackType).toString();
+
+  if (d['deleted'] == true) {
+    return t.get('chat_message_deleted');
+  }
+
+  if (type == 'audio') return t.get('chat_audio_label');
+  if (type == 'image') return t.get('chat_photo_label');
+
+  final text = (d['text'] ?? '').toString().trim();
+  if (text.isNotEmpty) return text;
+
+  return t.get('chat_message_generic');
+}
+
+
 
   CollectionReference<Map<String, dynamic>> get _presenceRef =>
       convDoc.collection('presence');
 
 
   // ===== Premium =====
-  bool _isPremium = false;
-  bool _isPremiumPaid = false;
-  bool _isPremiumTrial = false;
-  DateTime? _premiumUntil;
+bool _isPremium = false;
+bool _isMaster = false;
+
+bool _isPremiumPaid = false;
+bool _hasActiveTimePremium = false;
+DateTime? _premiumUntil;
+
 
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _premiumSub;
@@ -144,10 +171,12 @@ class _ChatPageState extends State<ChatPage> {
 
   // ===== Tempo trial (MUNDO) =====
   Timer? _usageTimer;
-  int _dailySecondsUsed = 0;
-  int _dailyLimitSeconds = 3600;
-  bool _limitReached = false;
-  DateTime? _lastUsageWriteAt;
+int _dailySecondsUsed = 0;
+int _dailyLimitSeconds = 3600;
+bool _limitReached = false;
+DateTime? _lastUsageWriteAt;
+static const int _freeWorldLimitSeconds = 3600;
+
 
 
   final ValueNotifier<int> _remainingVN = ValueNotifier<int>(0);
@@ -217,24 +246,28 @@ class _ChatPageState extends State<ChatPage> {
 
   int get _remainingSeconds =>
       (_dailyLimitSeconds - _dailySecondsUsed).clamp(0, _dailyLimitSeconds);
+      bool get _canUseWorldChat {
+  return !_isWorldChat || _isPremium;
+}
 
 
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
+
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
 
 
-  void _warn(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(12),
-      ),
-    );
-  }
 
+ void _warn(String msg) {
+  if (!mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(msg),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(12),
+    ),
+  );
+}
 
   void _startReply({
     required String messageId,
@@ -375,219 +408,213 @@ class _ChatPageState extends State<ChatPage> {
   }
 
 
-  void _listenPremium() {
-    _premiumSub?.cancel();
+ void _listenPremium() {
+  _premiumSub?.cancel();
+
+  _premiumSub = myUserDoc.snapshots().listen((snap) {
+    final data = snap.data() ?? {};
+
+    final paid = (data['isPremium'] ?? false) == true;
+    final master = data['isMaster'] == true;
 
 
-    _premiumSub = myUserDoc.snapshots().listen((snap) {
-      final data = snap.data() ?? {};
+    final untilRaw = data['premiumUntil'];
+    DateTime? until;
+    if (untilRaw is Timestamp) until = untilRaw.toDate();
+
+    final timePremiumActive =
+        (until != null) && until.isAfter(DateTime.now());
+
+    _isPremiumPaid = paid;
+    _hasActiveTimePremium = timePremiumActive;
+    _premiumUntil = until;
+
+   
+final active = _isPremiumPaid || master;
 
 
-      final paid = (data['isPremium'] ?? false) == true;
 
+    if (!mounted) return;
+    setState(() {
+    
+_isPremium = active;
+_isMaster = master;
 
-      final type = (data['premiumType'] ?? '').toString();
-      final untilRaw = data['premiumUntil'];
-      DateTime? until;
-      if (untilRaw is Timestamp) until = untilRaw.toDate();
-
-
-      final trialActive =
-          (type == 'trial') && (until != null) && until.isAfter(DateTime.now());
-
-
-      _isPremiumPaid = paid;
-      _isPremiumTrial = trialActive;
-      _premiumUntil = until;
-
-
-      final active = _isPremiumPaid || _isPremiumTrial;
-
-
-      if (!mounted) return;
-      setState(() {
-        _isPremium = active;
-      });
-
-
-      _applyTimerRules();
     });
-  }
+
+    _applyTimerRules();
+  });
+}
 
 
   Future<void> _loadChatScope() async {
-    try {
-      final mySnap = await myUserDoc.get();
-      final otherSnap = await otherUserDoc.get();
+  try {
+    final mySnap = await myUserDoc.get();
+
+    final otherSnap = await otherUserDoc.get();
+
+    final publicOtherSnap = await db
+        .collection('publicUsers')
+        .doc(widget.otherUid)
+        .get();
+
+    final myData = mySnap.data() ?? {};
+    final isMaster = myData['isMaster'] == true;
+
+if (isMaster) {
+  _isPremium = true;
+}
 
 
-      final myData = mySnap.data() ?? {};
-      final otherData = otherSnap.data() ?? {};
+    final otherData = {
+      ...?publicOtherSnap.data(),
+      ...?otherSnap.data(),
+    };
 
+    String readHomeCode(Map<String, dynamic> data) {
+      final home =
+          (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
+      if (home.isNotEmpty) return home;
 
-      String readHomeCode(Map<String, dynamic> data) {
-        final home =
-            (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
-        if (home.isNotEmpty) return home;
+      final code =
+          (data['countryCode'] ?? '').toString().trim().toLowerCase();
+      if (code.isNotEmpty) return code;
 
+      final country =
+          (data['country'] ?? '').toString().trim().toLowerCase();
 
-        final legacy =
-            (data['countryCode'] ?? '').toString().trim().toLowerCase();
-        return legacy;
-      }
+      if (country == 'canada' || country == 'canadá') return 'ca';
+      if (country == 'brazil' || country == 'brasil') return 'br';
+      if (country == 'portugal') return 'pt';
 
-
-      _myCountryCode = readHomeCode(myData);
-      _otherCountryCode = readHomeCode(otherData);
-
-
-      _isWorldChat = _myCountryCode.isNotEmpty &&
-          _otherCountryCode.isNotEmpty &&
-          _myCountryCode != _otherCountryCode;
-
-
-      debugPrint(
-        'CHAT SCOPE => my=$_myCountryCode other=$_otherCountryCode world=$_isWorldChat',
-      );
-
-
-      if (!mounted) return;
-      setState(() {});
-    } catch (e) {
-      debugPrint('Erro _loadChatScope: $e');
+      return country;
     }
+
+    _myCountryCode = readHomeCode(myData);
+    _otherCountryCode = readHomeCode(otherData);
+
+    _isWorldChat = _myCountryCode.isNotEmpty &&
+        _otherCountryCode.isNotEmpty &&
+        _myCountryCode != _otherCountryCode;
+
+    debugPrint(
+      'CHAT SCOPE => my=$_myCountryCode other=$_otherCountryCode world=$_isWorldChat',
+    );
+
+    if (!mounted) return;
+    setState(() {});
+  } catch (e) {
+    debugPrint('Erro _loadChatScope: $e');
   }
+}
+
 
 
   void _applyTimerRules() {
-    if (!_isWorldChat) {
-      _limitReached = false;
-      _usageTimer?.cancel();
-      _usageTimer = null;
-      _remainingVN.value = 0;
-      if (mounted) setState(() {});
-      return;
-    }
-
-
-    if (_isPremiumPaid) {
-      _limitReached = false;
-      _usageTimer?.cancel();
-      _usageTimer = null;
-      _remainingVN.value = 0;
-      if (mounted) setState(() {});
-      return;
-    }
-
-
-    if (_isPremiumTrial) {
-      _loadWorldDailyLimitAndStartTimer();
-      return;
-    }
-
-
-    _limitReached = true;
+  if (!_isWorldChat) {
+    _limitReached = false;
     _usageTimer?.cancel();
     _usageTimer = null;
+    _remainingVN.value = 0;
     if (mounted) setState(() {});
+    return;
   }
 
+  if (_isPremium) {
+    _limitReached = false;
+    _usageTimer?.cancel();
+    _usageTimer = null;
+    _remainingVN.value = 0;
+    if (mounted) setState(() {});
+    return;
+  }
 
-  Future<void> _loadWorldDailyLimitAndStartTimer() async {
-    try {
-      if (!_isWorldChat || !_isPremiumTrial) return;
-
-
-      final snap = await myUserDoc.get();
-      final data = snap.data() ?? {};
-
-
-      final used = (data['dailySecondsUsedWorld'] is int)
-          ? data['dailySecondsUsedWorld'] as int
-          : 0;
+  _loadWorldDailyLimitAndStartTimer();
+}
 
 
-      final rawLimit = (data['worldDailyLimitSeconds'] is int)
-          ? data['worldDailyLimitSeconds'] as int
-          : 3600;
 
+ Future<void> _loadWorldDailyLimitAndStartTimer() async {
+  try {
+    if (!_isWorldChat || _isPremium) return;
 
-      final limit = rawLimit < 60 ? 3600 : rawLimit;
+    final snap = await myUserDoc.get();
+    final data = snap.data() ?? {};
 
+    final used = (data['dailySecondsUsedWorld'] is int)
+        ? data['dailySecondsUsedWorld'] as int
+        : 0;
 
-      DateTime? lastReset;
-      final lr = data['lastDailyResetWorld'];
-      if (lr is Timestamp) lastReset = lr.toDate();
+    final rawLimit = (data['worldDailyLimitSeconds'] is int)
+        ? data['worldDailyLimitSeconds'] as int
+        : _freeWorldLimitSeconds;
 
+    final limit = rawLimit < 60 ? _freeWorldLimitSeconds : rawLimit;
 
-      final now = DateTime.now();
-      if (lastReset == null || !_isSameDay(lastReset, now)) {
-        await myUserDoc.set({
-          'dailySecondsUsedWorld': 0,
-          'lastDailyResetWorld': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-        _dailySecondsUsed = 0;
-      } else {
-        _dailySecondsUsed = used;
-      }
+    DateTime? lastReset;
+    final lr = data['lastDailyResetWorld'];
+    if (lr is Timestamp) lastReset = lr.toDate();
 
-
-      _dailyLimitSeconds = limit;
-      _limitReached = (_dailySecondsUsed >= _dailyLimitSeconds);
-
-
-      _remainingVN.value = _remainingSeconds;
-
-
-      if (!mounted) return;
-      setState(() {});
-
-
-      _startUsageTimerWorld();
-    } catch (e) {
-      debugPrint('Erro _loadWorldDailyLimitAndStartTimer: $e');
+    final now = DateTime.now();
+    if (lastReset == null || !_isSameDay(lastReset, now)) {
+      await myUserDoc.set({
+        'dailySecondsUsedWorld': 0,
+        'lastDailyResetWorld': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      _dailySecondsUsed = 0;
+    } else {
+      _dailySecondsUsed = used;
     }
+
+    _dailyLimitSeconds = limit;
+    _limitReached = (_dailySecondsUsed >= _dailyLimitSeconds);
+    _remainingVN.value = _remainingSeconds;
+
+    if (!mounted) return;
+    setState(() {});
+
+    _startUsageTimerWorld();
+  } catch (e) {
+    debugPrint('Erro _loadWorldDailyLimitAndStartTimer: $e');
   }
+}
 
 
-  void _startUsageTimerWorld() {
-    if (_usageTimer != null) return;
 
+void _startUsageTimerWorld() {
+  if (_usageTimer != null) return;
 
-    if (!_isWorldChat || !_isPremiumTrial || _limitReached) return;
+  if (!_isWorldChat || _isPremium || _limitReached) return;
 
+  _usageTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+    if (!mounted) return;
 
-    _usageTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      if (!mounted) return;
+    _dailySecondsUsed += 1;
+    _remainingVN.value = _remainingSeconds;
 
+    if (_dailySecondsUsed >= _dailyLimitSeconds) {
+      _limitReached = true;
+      _usageTimer?.cancel();
+      _usageTimer = null;
+      setState(() {});
+    }
 
-      _dailySecondsUsed += 1;
-      _remainingVN.value = _remainingSeconds;
-
-
-      if (_dailySecondsUsed >= _dailyLimitSeconds) {
-        _limitReached = true;
-        _usageTimer?.cancel();
-        _usageTimer = null;
-        setState(() {});
+    final now = DateTime.now();
+    if (_lastUsageWriteAt == null ||
+        now.difference(_lastUsageWriteAt!).inSeconds >= 10) {
+      _lastUsageWriteAt = now;
+      try {
+        await myUserDoc.set({
+          'dailySecondsUsedWorld': _dailySecondsUsed,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Erro ao salvar dailySecondsUsedWorld: $e');
       }
+    }
+  });
+}
 
-
-      final now = DateTime.now();
-      if (_lastUsageWriteAt == null ||
-          now.difference(_lastUsageWriteAt!).inSeconds >= 10) {
-        _lastUsageWriteAt = now;
-        try {
-          await myUserDoc.set({
-            'dailySecondsUsedWorld': _dailySecondsUsed,
-            'lastSeenAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        } catch (e) {
-          debugPrint('Erro ao salvar dailySecondsUsedWorld: $e');
-        }
-      }
-    });
-  }
 
 
   Future<void> _markAsRead() async {
@@ -699,22 +726,39 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _send() async {
     final t = AppTexts.current;
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+if (myUid == null) return;
+
+final mySnap = await FirebaseFirestore.instance
+    .collection('users')
+    .doc(myUid)
+    .get();
+
+if (mySnap.data()?['shadowBan'] == true) {
+ 
+_warn(t.get('user_temporarily_silenced'));
+
+  return;
+}
 
 
-    if (_isWorldChat) {
-      if (!_isPremium) {
-        if (!mounted) return;
-        Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const PremiumPage()));
-        return;
-      }
-      if (_limitReached && !_isPremiumPaid) {
-        if (!mounted) return;
-        Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const PremiumPage()));
-        return;
-      }
-    }
+    
+ if (_isWorldChat && !_isPremium) {
+    
+_warn(t.get('chat_user_is_premium'));
+
+    return;
+  }
+
+
+ if (_isWorldChat && _limitReached && !_isPremium) {
+  if (!mounted) return;
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const PremiumPage()),
+  );
+  return;
+}
 
 
     final blockedNow = await BlockService.isEitherBlocked(widget.otherUid);
@@ -820,23 +864,21 @@ class _ChatPageState extends State<ChatPage> {
 
 
   Future<void> _softDeleteMessage(String messageId) async {
-    final t = AppTexts.current;
+  final t = AppTexts.current;
 
-
-    try {
-      await msgsCol.doc(messageId).update({
-        'deleted': true,
-        'deletedBy': myUid,
-        'deletedText': t.get('chat_message_deleted'),
-        'deletedAt': FieldValue.serverTimestamp(),
-        'text': '',
-        'audioUrl': '',
-        'imageUrl': '',
-      });
-    } catch (e) {
-      debugPrint('Erro ao apagar mensagem: $e');
-    }
+  try {
+    await msgsCol.doc(messageId).update({
+      'deleted': true,
+      'deletedBy': myUid,
+      'deletedText': t.get('chat_message_deleted'),
+      'deletedAt': FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    debugPrint('Erro ao apagar mensagem: $e');
   }
+}
+
+
 
 
   Future<void> _hideMessageForMe(String messageId) async {
@@ -897,22 +939,24 @@ class _ChatPageState extends State<ChatPage> {
   // =======================
   Future<void> _sendAudio(String localPath) async {
     final t = AppTexts.current;
+final mySnap = await myUserDoc.get();
+
+if (mySnap.data()?['shadowBan'] == true) {
+  await _setRecording(false);
+  _warn(t.get('user_temporarily_silenced'));
+  return;
+}
 
 
-    if (_isWorldChat) {
-      if (!_isPremium) {
-        if (!mounted) return;
-        Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const PremiumPage()));
-        return;
-      }
-      if (_limitReached && !_isPremiumPaid) {
-        if (!mounted) return;
-        Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const PremiumPage()));
-        return;
-      }
-    }
+if (_isWorldChat && _limitReached && !_isPremium) {
+  if (!mounted) return;
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const PremiumPage()),
+  );
+  return;
+}
+
 
 
     final blockedNow = await BlockService.isEitherBlocked(widget.otherUid);
@@ -1073,26 +1117,23 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _sendImage(String localPath) async {
     final t = AppTexts.current;
+final mySnap = await myUserDoc.get();
+
+if (mySnap.data()?['shadowBan'] == true) {
+  _warn(t.get('user_temporarily_silenced'));
+  return;
+}
 
 
-    if (_isWorldChat) {
-      if (!_isPremium) {
-        if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PremiumPage()),
-        );
-        return;
-      }
-      if (_limitReached && !_isPremiumPaid) {
-        if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PremiumPage()),
-        );
-        return;
-      }
-    }
+ if (_isWorldChat && _limitReached && !_isPremium) {
+  if (!mounted) return;
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const PremiumPage()),
+  );
+  return;
+}
+
 
 
     final blockedNow = await BlockService.isEitherBlocked(widget.otherUid);
@@ -1312,6 +1353,25 @@ class _ChatPageState extends State<ChatPage> {
   }
 
 
+Future<void> _openReplySearch() async {
+  final result = await Navigator.push<_ReplySearchResult>(
+    context,
+    MaterialPageRoute(
+      builder: (_) => _ReplySearchPage(
+        conversationId: widget.conversationId,
+        myUid: myUid,
+        otherName: widget.otherName,
+      ),
+    ),
+  );
+
+  if (!mounted || result == null) return;
+
+  _handleReplyFromMessage(result.message, result.type);
+}
+
+
+
   String _formatTime(Timestamp? ts) {
     if (ts == null) return '';
     final d = ts.toDate();
@@ -1319,6 +1379,152 @@ class _ChatPageState extends State<ChatPage> {
     final m = d.minute.toString().padLeft(2, '0');
     return '$h:$m';
   }
+String _formatDayLabel(Timestamp? ts) {
+  final t = AppTexts.current;
+
+  if (ts == null) return t.get('chat_today');
+
+  final d = ts.toDate();
+  final now = DateTime.now();
+
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(d.year, d.month, d.day);
+
+  final diff = today.difference(day).inDays;
+
+  if (diff == 0) return t.get('chat_today');
+  if (diff == 1) return t.get('chat_yesterday');
+
+  const months = [
+    '',
+    'jan',
+    'fev',
+    'mar',
+    'abr',
+    'mai',
+    'jun',
+    'jul',
+    'ago',
+    'set',
+    'out',
+    'nov',
+    'dez',
+  ];
+
+  return '${d.day} ${months[d.month]}';
+}
+
+
+
+bool _shouldShowDateHeader(
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  int index,
+) {
+  if (index == docs.length - 1) return true;
+
+  final currentTs = docs[index].data()['createdAt'] as Timestamp?;
+  final nextTs = docs[index + 1].data()['createdAt'] as Timestamp?;
+
+  if (currentTs == null || nextTs == null) return false;
+
+  final a = currentTs.toDate();
+  final b = nextTs.toDate();
+
+  return a.year != b.year || a.month != b.month || a.day != b.day;
+}
+
+
+Future<void> _sendChatReport(BuildContext context, String reason) async {
+  final t = AppTexts.current;
+  try {
+    await FirebaseFirestore.instance.collection('reports').add({
+      'fromUid': myUid,
+      'reportedUid': widget.otherUid,
+      'reason': reason,
+      'status': 'open',
+      'contextType': 'dm',
+      'conversationId': widget.conversationId,
+      'source': 'chat_page',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(t.get('report_sent'))),
+
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      
+SnackBar(content: Text('${t.get('error_prefix')} $e')),
+
+    );
+  }
+}
+
+void _openChatReportSheet() {
+  final t = AppTexts.current;
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.report),
+           title: Text('${t.get('report_user')} ${widget.otherName}'),
+          ),
+          ListTile(
+            title: Text(t.get('report_reason_inappropriate')),
+            onTap: () {
+              Navigator.pop(context);
+              _sendChatReport(context, 'Conteúdo impróprio');
+            },
+          ),
+          ListTile(
+            title: Text(t.get('report_reason_spam')),
+            onTap: () {
+              Navigator.pop(context);
+             _sendChatReport(context, t.get('report_reason_spam'));
+            },
+          ),
+          ListTile(
+            title:Text(t.get('report_reason_harassment')),
+            onTap: () {
+              Navigator.pop(context);
+             _sendChatReport(context, t.get('report_reason_harassment'));
+            },
+          ),
+          ListTile(
+            title:Text(t.get('report_reason_threat')),
+            onTap: () {
+              Navigator.pop(context);
+          _sendChatReport(context, t.get('report_reason_threat'));
+            },
+          ),
+        ListTile(
+  title: Text(t.get('report_reason_other')),
+  onTap: () {
+    Navigator.pop(context);
+    _sendChatReport(
+      context,
+      t.get('report_reason_other'),
+    );
+  },
+),
+
+
+
+
+        ],
+      ),
+    ),
+  );
+}
 
 
   @override
@@ -1339,86 +1545,148 @@ class _ChatPageState extends State<ChatPage> {
         elevation: 0,
         titleSpacing: 0,
         iconTheme: const IconThemeData(color: _text),
-        title: Row(
-          children: [
-            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: _otherUserStream,
-              builder: (context, snap) {
-                final data = snap.data?.data() ?? {};
-                final photoUrl =
-                    (data['photoUrl'] ?? data['photoURL'] ?? data['photo'] ?? '')
-                        .toString()
-                        .trim();
-
-
-                final avatar = CircleAvatar(
-                  radius: 18,
-                  backgroundColor: const Color(0xFFF1F5F9),
-                  backgroundImage:
-                      photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-                  child: photoUrl.isEmpty
-                      ? Text(
-                          widget.otherName.isNotEmpty
-                              ? widget.otherName.substring(0, 1).toUpperCase()
-                              : '?',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: _text,
-                          ),
-                        )
-                      : null,
-                );
-
-
-                return InkWell(
-                  onTap: _openPublicProfile,
-                  borderRadius: BorderRadius.circular(999),
-                  child: AvatarWithOnlineDot(
-                    uid: widget.otherUid,
-                    dotSize: 10,
-                    avatar: avatar,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: InkWell(
-                onTap: _openPublicProfile,
-                child: Text(
-                  widget.otherName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 15.5,
-                    color: _text,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (_isPremium)
-              Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF7CC),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: const Color(0xFFFFE08A)),
-                ),
-                child: Text(
-                  t.get('chat_premium'),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                    color: _text,
-                  ),
-                ),
-              ),
-          ],
+      title: _searchMode
+    ? TextField(
+        controller: _searchController,
+        autofocus: true,
+        decoration:  InputDecoration(
+          hintText: t.get('chat_search_message_hint'),
+          border: InputBorder.none,
         ),
+        onChanged: (value) {
+          setState(() {
+            _searchText = value.trim().toLowerCase();
+          });
+        },
+        style: TextStyle( // ⚠️ tira o const aqui
+          color: _text,
+          fontWeight: FontWeight.w700,
+          fontSize: 16,
+        ),
+      )
+
+    : Row(
+        children: [
+          StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: _otherUserStream,
+            builder: (context, snap) {
+              final data = snap.data?.data() ?? {};
+              final photoUrl =
+                  (data['photoUrl'] ?? data['photoURL'] ?? data['photo'] ?? '')
+                      .toString()
+                      .trim();
+
+              final avatar = CircleAvatar(
+                radius: 18,
+                backgroundColor: const Color(0xFFF1F5F9),
+                backgroundImage:
+                    photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                child: photoUrl.isEmpty
+                    ? Text(
+                        widget.otherName.isNotEmpty
+                            ? widget.otherName.substring(0, 1).toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: _text,
+                        ),
+                      )
+                    : null,
+              );
+
+              return InkWell(
+                onTap: _openPublicProfile,
+                borderRadius: BorderRadius.circular(999),
+                child: AvatarWithOnlineDot(
+                  uid: widget.otherUid,
+                  dotSize: 10,
+                  avatar: avatar,
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: InkWell(
+              onTap: _openPublicProfile,
+              child: Text(
+                widget.otherName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15.5,
+                  color: _text,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (_isPremium)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7CC),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFFFE08A)),
+              ),
+              child: Text(
+                t.get('chat_premium'),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                  color: _text,
+                ),
+              ),
+            ),
+        ],
+      ),
+
+
+
+
+
+actions: [
+  if (!_searchMode)
+    IconButton(
+      onPressed: _openChatReportSheet,
+      icon: const Icon(
+        Icons.flag_outlined,
+        color: _text,
+      ),
+      tooltip: 'Reportar',
+    ),
+  _searchMode
+      ? IconButton(
+          onPressed: () {
+            setState(() {
+              _searchMode = false;
+              _searchText = '';
+              _searchController.clear();
+            });
+          },
+          icon: const Icon(
+            Icons.close,
+            color: _text,
+          ),
+        )
+      : IconButton(
+          onPressed: () {
+            setState(() {
+              _searchMode = true;
+            });
+          },
+          icon: const Icon(
+            Icons.search_rounded,
+            color: _text,
+          ),
+        ),
+],
+
+
+
+
       ),
       body: Column(
         children: [
@@ -1451,15 +1719,11 @@ class _ChatPageState extends State<ChatPage> {
               stream: _blockedStream,
               initialData: false,
               builder: (context, blockSnap) {
-                final isBlocked = blockSnap.data ?? false;
+               final isBlocked = blockSnap.data ?? false;
 
+final lockByCountry = _isWorldChat && !_isPremium;
+final locked = isBlocked || (_isWorldChat && !_isPremium);
 
-                final lockByLimit =
-                    _isWorldChat && (!_isPremiumPaid) && _limitReached;
-                final lockByNoPremium = _isWorldChat && !_isPremium;
-
-
-                final locked = isBlocked || lockByLimit || lockByNoPremium;
 
 
                 return Column(
@@ -1487,19 +1751,25 @@ class _ChatPageState extends State<ChatPage> {
                                 }
 
 
-                                final docs = snap.data?.docs ?? [];
-                                final pendingItems = _buildPendingItems();
-                                final totalCount =
-                                    pendingItems.length + docs.length;
+final docs = snap.data?.docs ?? [];
+final pendingItems = _buildPendingItems();
+final totalCount = pendingItems.length + docs.length;
 
 
-                                if (totalCount == 0) {
-                                  return Center(
-                                    child: Text(
-                                      t.get('chat_no_messages_yet'),
-                                    ),
-                                  );
-                                }
+
+
+
+
+
+if (totalCount == 0) {
+  return Center(
+    child: Text(
+      t.get('chat_no_messages_yet'),
+    ),
+  );
+}
+
+
 
 
                                 WidgetsBinding.instance
@@ -1536,8 +1806,24 @@ class _ChatPageState extends State<ChatPage> {
                                     }
 
 
-                                    final docIndex = i - pendingItems.length;
-                                    final d = docs[docIndex].data();
+final docIndex = i - pendingItems.length;
+
+if (docIndex < 0 || docIndex >= docs.length) {
+  return const SizedBox.shrink();
+}
+
+final d = docs[docIndex].data();
+
+final textSearch = (d['text'] ?? '').toString().toLowerCase();
+
+if (_searchMode && _searchText.isNotEmpty) {
+  if (!textSearch.contains(_searchText)) {
+    return const SizedBox(height: 0);
+  }
+}
+
+
+
 
 
                                     final msg = {
@@ -1703,35 +1989,61 @@ class _ChatPageState extends State<ChatPage> {
                                     }
 
 
-                                    return GestureDetector(
-                                      onHorizontalDragUpdate: (details) {
-                                        _dragDx += details.delta.dx;
-                                      },
-                                      onHorizontalDragEnd: (_) {
-                                        if (_dragDx > 35) {
-                                          _handleReplyFromMessage(msg, 'text');
-                                        }
-                                        _dragDx = 0;
-                                      },
-                                      onHorizontalDragCancel: () {
-                                        _dragDx = 0;
-                                      },
-                                      onLongPress: () {
-                                        if (!isMe) return;
-                                        _openMessageActions(
-                                            messageId: docs[docIndex].id);
-                                      },
-                                      child: _Bubble(
-                                        text: text,
-                                        isMe: isMe,
-                                        isDeleted: false,
-                                        timeText: timeText,
-                                        replyToText: replyToText,
-                                        replyToType: replyToType,
-                                        replyToIsMe: replyToIsMe,
-                                        replyToImageUrl: replyToImageUrl,
-                                      ),
-                                    );
+
+final showDate = _shouldShowDateHeader(docs, docIndex);
+
+return Column(
+  children: [
+    if (showDate)
+      _DateHeader(label: _formatDayLabel(createdAt)),
+
+    GestureDetector(
+      behavior: HitTestBehavior.opaque,
+
+  onTap: () {
+    if (!_searchMode) return;
+
+    _handleReplyFromMessage(msg, 'text');
+
+    setState(() {
+      _searchMode = false;
+      _searchText = '';
+      _searchController.clear();
+    });
+  },
+  onHorizontalDragUpdate: (details) {
+    _dragDx += details.delta.dx;
+  },
+  onHorizontalDragEnd: (_) {
+    if (_dragDx > 35) {
+      _handleReplyFromMessage(msg, 'text');
+    }
+    _dragDx = 0;
+  },
+  onHorizontalDragCancel: () {
+    _dragDx = 0;
+  },
+  onLongPress: () {
+    if (!isMe) return;
+    _openMessageActions(
+      messageId: docs[docIndex].id,
+    );
+  },
+  child: _Bubble(
+    text: text,
+    isMe: isMe,
+    isDeleted: false,
+    timeText: timeText,
+    replyToText: replyToText,
+    replyToType: replyToType,
+    replyToIsMe: replyToIsMe,
+    replyToImageUrl: replyToImageUrl,
+  ),
+  
+),
+],
+);
+
                                   },
                                 );
                               },
@@ -1739,7 +2051,9 @@ class _ChatPageState extends State<ChatPage> {
                     ),
 
 
-                    if (_isWorldChat && _isPremiumTrial && !_isPremiumPaid)
+                   
+if (_isWorldChat && !_isPremium && _limitReached)
+
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         child: ValueListenableBuilder<int>(
@@ -1803,15 +2117,54 @@ class _ChatPageState extends State<ChatPage> {
                                             ),
                                           ),
                                           const SizedBox(height: 2),
-                                          Text(
-                                            _replyToText,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              color: _muted,
-                                            ),
-                                          ),
+                                          if (_replyToType == 'image' && _replyToImageUrl.isNotEmpty)
+  Row(
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.network(
+          _replyToImageUrl,
+          width: 42,
+          height: 42,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            width: 42,
+            height: 42,
+            color: const Color(0xFFE5E7EB),
+            alignment: Alignment.center,
+            child: const Icon(Icons.image, size: 18),
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          t.get('chat_photo_label'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 13,
+            color: _muted,
+          ),
+        ),
+      ),
+    ],
+  )
+else
+  Text(
+    _replyToType == 'audio'
+        ? t.get('chat_audio_label')
+        : _replyToType == 'image'
+            ? t.get('chat_photo_label')
+            : _replyToText,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: const TextStyle(
+      fontSize: 13,
+      color: _muted,
+    ),
+  ),
+
                                         ],
                                       ),
                                     ),
@@ -1834,7 +2187,7 @@ class _ChatPageState extends State<ChatPage> {
   padding: const EdgeInsets.symmetric(horizontal: 14),
   child: TextField(
     controller: _textC,
-    enabled: !locked,
+   enabled: !(_isWorldChat && !_isPremium),
     textInputAction: TextInputAction.send,
     onSubmitted: (_) async {
       if (locked) return;
@@ -1842,13 +2195,16 @@ class _ChatPageState extends State<ChatPage> {
       await _send();
     },
     decoration: InputDecoration(
-      hintText: isBlocked
-          ? t.get('chat_cannot_send_blocked')
-          : lockByNoPremium
-              ? t.get('chat_world_is_premium')
-              : lockByLimit
-                  ? t.get('chat_world_time_ended_go_premium')
-                  : t.get('chat_type_message'),
+hintText: (_isWorldChat && !_isPremium)
+    ? t.get('chat_user_is_premium')
+    : isBlocked
+        ? t.get('chat_cannot_send_blocked')
+        : t.get('chat_type_message'),
+
+
+
+
+
       border: InputBorder.none,
     ),
   ),
@@ -1859,7 +2215,7 @@ class _ChatPageState extends State<ChatPage> {
                                 Opacity(
                                   opacity: locked ? 0.45 : 1.0,
                                   child: InkWell(
-                                    onTap: locked ? null : _openPlusMenu,
+                                    onTap: (_isWorldChat && !_isPremium) ? null : _openPlusMenu,
                                     borderRadius: BorderRadius.circular(999),
                                     child: Container(
                                       width: 40,
@@ -1890,7 +2246,7 @@ class _ChatPageState extends State<ChatPage> {
                                     ? Opacity(
                                         opacity: locked ? 0.45 : 1.0,
                                         child: IgnorePointer(
-                                          ignoring: locked,
+                                        ignoring: (_isWorldChat && !_isPremium),
                                           child: RecordingButton(
                                             onRecordStart: () async {
                                               await _setRecording(true);
@@ -1898,17 +2254,23 @@ class _ChatPageState extends State<ChatPage> {
                                             onRecordStop: () async {
                                               await _setRecording(false);
                                             },
-                                            onRecorded: (path) async {
-                                              if (path == null) return;
-                                              await _sendAudio(path);
-                                            },
+                                         
+onRecorded: (path) async {
+  await _setRecording(false);
+
+  if (path == null) return;
+
+  await _sendAudio(path);
+},
+
+
                                           ),
                                         ),
                                       )
                                     : Opacity(
-                                        opacity: locked ? 0.45 : 1.0,
+                                        opacity: (_isWorldChat && !_isPremium) ? 0.45 : 1.0,
                                         child: InkWell(
-                                          onTap: locked ? null : _send,
+                                          onTap: (_isWorldChat && !_isPremium) ? null : _send,
                                           borderRadius:
                                               BorderRadius.circular(999),
                                           child: Container(
@@ -2290,6 +2652,36 @@ class _FullScreenImagePage extends StatelessWidget {
   }
 }
 
+class _DateHeader extends StatelessWidget {
+  final String label;
+
+  const _DateHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 8),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _Bubble extends StatelessWidget {
   final String text;
@@ -2423,20 +2815,54 @@ class _Bubble extends StatelessWidget {
                         ],
                       )
                     else
-                      Text(
-                        replyToType == 'audio'
-                            ? t.get('chat_audio_label')
-                            : replyToType == 'image'
-                                ? t.get('chat_photo_label')
-                                : replyToText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color:
-                              isMe ? Colors.white70 : const Color(0xFF6B7280),
-                        ),
-                      ),
+                  if (replyToType == 'image' && replyToImageUrl.isNotEmpty)
+  Row(
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.network(
+          replyToImageUrl,
+          width: 42,
+          height: 42,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            width: 42,
+            height: 42,
+            color: const Color(0xFFE5E7EB),
+            alignment: Alignment.center,
+            child: const Icon(Icons.image, size: 18),
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          t.get('chat_photo_label'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13,
+            color: isMe ? Colors.white70 : const Color(0xFF6B7280),
+          ),
+        ),
+      ),
+    ],
+  )
+else
+  Text(
+    replyToType == 'audio'
+        ? t.get('chat_audio_label')
+        : replyToType == 'image'
+            ? t.get('chat_photo_label')
+            : replyToText,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: TextStyle(
+      fontSize: 13,
+      color: isMe ? Colors.white70 : const Color(0xFF6B7280),
+    ),
+  ),
+
                   ],
                 ),
               ),
@@ -2468,4 +2894,234 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReplySearchPage extends StatefulWidget {
+  final String conversationId;
+  final String myUid;
+  final String otherName;
+
+  const _ReplySearchPage({
+    required this.conversationId,
+    required this.myUid,
+    required this.otherName,
+  });
+
+  @override
+  State<_ReplySearchPage> createState() => _ReplySearchPageState();
+}
+
+class _ReplySearchPageState extends State<_ReplySearchPage> {
+  static const Color _text = Color(0xFF111827);
+  static const Color _muted = Color(0xFF6B7280);
+  static const Color _border = Color(0xFFE5E7EB);
+
+  final _searchC = TextEditingController();
+  String _query = '';
+
+  String _messagePreviewText(Map<String, dynamic> d, String fallbackType) {
+    final type = (d['type'] ?? fallbackType).toString();
+
+    if (d['deleted'] == true) return 'Mensagem apagada';
+    if (type == 'audio') return 'Áudio';
+    if (type == 'image') return 'Foto';
+
+    final text = (d['text'] ?? '').toString().trim();
+    if (text.isNotEmpty) return text;
+
+    return 'Mensagem';
+  }
+
+  String _formatTime(Timestamp? ts) {
+    if (ts == null) return '';
+    final d = ts.toDate();
+    final h = d.hour.toString().padLeft(2, '0');
+    final m = d.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  @override
+  void dispose() {
+    _searchC.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final msgsFuture = FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(widget.conversationId)
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+  AppTexts.current.get('chat_search_message'),
+
+          style: TextStyle(
+            color: _text,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: _text),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+      ),
+      backgroundColor: Colors.white,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: _border),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: TextField(
+                controller: _searchC,
+                autofocus: true,
+                decoration:  InputDecoration(
+                hintText: AppTexts.current.get('chat_search_hint'),
+
+                  border: InputBorder.none,
+                ),
+                onChanged: (v) {
+                  setState(() {
+                    _query = v.trim().toLowerCase();
+                  });
+                },
+              ),
+            ),
+          ),
+          Expanded(
+            child: FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              future: msgsFuture,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snap.hasError) {
+                  return  Center(
+              child: Text(
+  AppTexts.current.get('chat_error_loading_messages'),
+  style: const TextStyle(color: _muted),
+),
+
+                  );
+                }
+
+                final docs = snap.data?.docs ?? [];
+
+                final results = docs.where((doc) {
+                  final d = doc.data();
+
+                  final hiddenRaw = d['hiddenFor'];
+                  final hiddenFor = (hiddenRaw is List)
+                      ? hiddenRaw.map((e) => e.toString()).toList()
+                      : <String>[];
+
+                  if (hiddenFor.contains(widget.myUid)) return false;
+                  if (d['deleted'] == true) return false;
+                  if (_query.isEmpty) return false;
+
+                  final preview = _messagePreviewText(
+                    d,
+                    (d['type'] ?? 'text').toString(),
+                  ).toLowerCase();
+
+                  return preview.contains(_query);
+                }).toList();
+
+                if (_query.isEmpty) {
+                  return  Center(
+                    child: Text(
+                      AppTexts.current.get('chat_search_empty'),
+                      style: TextStyle(
+                        color: _muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                }
+
+                if (results.isEmpty) {
+                  return  Center(
+                    child: Text(
+                      AppTexts.current.get('chat_search_no_results'),
+                      style: TextStyle(
+                        color: _muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  itemCount: results.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final doc = results[i];
+                    final d = doc.data();
+                    final type = (d['type'] ?? 'text').toString();
+                    final preview = _messagePreviewText(d, type);
+                    final isMe =
+                        (d['senderId'] ?? '').toString() == widget.myUid;
+                    final timeText = _formatTime(d['createdAt'] as Timestamp?);
+
+                    return ListTile(
+                      leading: Icon(
+                        type == 'audio'
+                            ? Icons.mic_rounded
+                            : type == 'image'
+                                ? Icons.image_rounded
+                                : Icons.chat_bubble_outline_rounded,
+                        color: _muted,
+                      ),
+                      title: Text(
+                        preview,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${isMe ? "Você" : widget.otherName}${timeText.isNotEmpty ? " • $timeText" : ""}',
+                      ),
+                      onTap: () {
+                        Navigator.pop(
+                          context,
+                          _ReplySearchResult(
+                            message: {
+                              ...d,
+                              'id': doc.id,
+                            },
+                            type: type,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplySearchResult {
+  final Map<String, dynamic> message;
+  final String type;
+
+  const _ReplySearchResult({
+    required this.message,
+    required this.type,
+  });
 }

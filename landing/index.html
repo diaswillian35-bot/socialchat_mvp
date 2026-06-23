@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Remdy Events</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #F6F7FB;
+      color: #111827;
+    }
+
+    header {
+      width: 100%;
+      padding: 18px 7%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: white;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
+      color: #313A5F;
+      font-size: 22px;
+    }
+
+    .logo img {
+      height: 42px;
+    }
+
+    .nav-btn {
+      background: #313A5F;
+      color: white;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 999px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .hero {
+      padding: 70px 7%;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 50px;
+      align-items: center;
+      background: linear-gradient(135deg, #313A5F, #264E9A);
+      color: white;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 8px 14px;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 13px;
+      margin-bottom: 18px;
+    }
+
+    .hero h1 {
+      font-size: 50px;
+      line-height: 1.05;
+      margin: 0 0 18px;
+      letter-spacing: -1px;
+    }
+
+    .hero p {
+      font-size: 18px;
+      line-height: 1.6;
+      opacity: 0.93;
+      max-width: 620px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      margin-top: 28px;
+      flex-wrap: wrap;
+    }
+
+    .primary-btn {
+      background: white;
+      color: #313A5F;
+      border: none;
+      padding: 15px 22px;
+      border-radius: 14px;
+      font-weight: 900;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .secondary-btn {
+      background: transparent;
+      color: white;
+      border: 1px solid rgba(255,255,255,0.45);
+      padding: 15px 22px;
+      border-radius: 14px;
+      font-weight: 900;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .hero-card {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 30px;
+      padding: 18px;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+    }
+
+    .hero-card img {
+      width: 100%;
+      height: 430px;
+      object-fit: cover;
+      border-radius: 24px;
+      display: block;
+    }
+
+    .section {
+      padding: 70px 7%;
+    }
+
+    .section-title {
+      max-width: 760px;
+      margin: 0 auto 36px;
+      text-align: center;
+    }
+
+    .section-title h2 {
+      font-size: 36px;
+      margin: 0 0 12px;
+      color: #111827;
+    }
+
+    .section-title p {
+      color: #6B7280;
+      font-size: 17px;
+      line-height: 1.6;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+    }
+
+    .card {
+      background: white;
+      padding: 24px;
+      border-radius: 22px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+      border: 1px solid #E5E7EB;
+    }
+
+    .card .icon {
+      font-size: 28px;
+      margin-bottom: 12px;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      color: #313A5F;
+      font-size: 18px;
+    }
+
+    .card p {
+      margin: 0;
+      color: #6B7280;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 42px;
+      align-items: center;
+    }
+
+    .image-box img {
+      width: 100%;
+      height: 430px;
+      object-fit: cover;
+      border-radius: 30px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.12);
+    }
+
+    .text-box h2 {
+      font-size: 38px;
+      margin: 0 0 14px;
+      color: #111827;
+    }
+
+    .text-box p {
+      color: #6B7280;
+      font-size: 17px;
+      line-height: 1.7;
+    }
+
+    .list {
+      margin-top: 22px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .list-item {
+      background: white;
+      border: 1px solid #E5E7EB;
+      padding: 16px;
+      border-radius: 16px;
+      font-weight: 800;
+      color: #313A5F;
+    }
+
+    .how {
+      background: white;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    .step {
+      background: #F6F7FB;
+      border: 1px solid #E5E7EB;
+      border-radius: 22px;
+      padding: 26px;
+    }
+
+    .step-number {
+      width: 38px;
+      height: 38px;
+      background: #313A5F;
+      color: white;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      margin-bottom: 14px;
+    }
+
+    .cta {
+      padding: 70px 7%;
+      text-align: center;
+      background: linear-gradient(135deg, #313A5F, #264E9A);
+      color: white;
+    }
+
+    .cta h2 {
+      font-size: 38px;
+      margin: 0 0 12px;
+    }
+
+    .cta p {
+      opacity: 0.92;
+      font-size: 17px;
+      margin-bottom: 26px;
+    }
+
+    footer {
+      background: #111827;
+      color: white;
+      padding: 26px 7%;
+      text-align: center;
+      font-size: 14px;
+      opacity: 0.95;
+    }
+
+    @media (max-width: 900px) {
+      .hero,
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      .hero h1 {
+        font-size: 38px;
+      }
+
+      .cards,
+      .steps {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-card img,
+      .image-box img {
+        height: 330px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="logo">
+      <img src="assets/remdy_logo.png" alt="Remdy Logo">
+      <span>Remdy Events</span>
+    </div>
+
+    <button class="nav-btn" onclick="goToForm()">Publicar evento</button>
+  </header>
+
+  <section class="hero">
+    <div>
+      <div class="badge">Eventos locais • viajantes • comunidades reais</div>
+
+      <h1>Seu evento no lugar onde as pessoas já estão: no celular.</h1>
+
+      <p>
+        Publique seu evento na Remdy e alcance pessoas da sua cidade, viajantes,
+        imigrantes e comunidades internacionais que querem descobrir o que fazer,
+        conhecer pessoas e viver novas experiências.
+      </p>
+
+      <div class="hero-actions">
+        <button class="primary-btn" onclick="goToForm()">Publicar meu evento</button>
+        <button class="secondary-btn" onclick="goToHow()">Ver como funciona</button>
+      </div>
+    </div>
+
+    <div class="hero-card">
+      <img src="assets/person-phone.jpg" alt="Pessoa usando celular">
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title">
+      <h2>Transforme atenção digital em presença real.</h2>
+      <p>
+        As pessoas passam horas por dia no celular. A Remdy coloca seu evento
+        dentro de um app feito para descoberta local, amizade, viagens e conexão real.
+      </p>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="icon">📍</div>
+        <h3>Alcance local</h3>
+        <p>Seu evento aparece para pessoas da cidade ou região certa.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon">🌎</div>
+        <h3>Público global</h3>
+        <p>Ideal para viajantes, imigrantes e comunidades internacionais.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon">📱</div>
+        <h3>Atenção no app</h3>
+        <p>Seu negócio aparece onde as pessoas já passam tempo todos os dias.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon">🤝</div>
+        <h3>Conexão real</h3>
+        <p>Mais que visualizações: pessoas com vontade de sair e participar.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="split">
+      <div class="image-box">
+        <img src="assets/app-events-preview.jpg" alt="Eventos no app Remdy">
+      </div>
+
+      <div class="text-box">
+        <h2>Feito para quem quer viver a cidade.</h2>
+        <p>
+          A Remdy ajuda pessoas que gostam de viajar, morar fora, aprender idiomas
+          e descobrir experiências reais ao redor delas. Seu evento pode ser visto
+          por quem está procurando exatamente isso.
+        </p>
+
+        <div class="list">
+          <div class="list-item">🍻 Bares e restaurantes</div>
+          <div class="list-item">🎉 Festas e encontros sociais</div>
+          <div class="list-item">🗣️ Prática de idiomas</div>
+          <div class="list-item">⚽ Eventos esportivos e Copa do Mundo</div>
+          <div class="list-item">✈️ Experiências para viajantes</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section how" id="how">
+    <div class="section-title">
+      <h2>Como funciona</h2>
+      <p>Simples para publicar. Fácil para as pessoas encontrarem.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <h3>Você cria o evento</h3>
+        <p>Adicione fotos, local, data, descrição e escolha cidade, região ou país.</p>
+      </div>
+
+      <div class="step">
+        <div class="step-number">2</div>
+        <h3>A Remdy mostra ao público certo</h3>
+        <p>Seu evento aparece para pessoas da cidade ou comunidade ideal.</p>
+      </div>
+
+      <div class="step">
+        <div class="step-number">3</div>
+        <h3>Pessoas confirmam presença</h3>
+        <p>Usuários descobrem, salvam e participam do seu evento pelo app.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta" id="publish">
+    <h2>Comece a divulgar seu evento na Remdy</h2>
+    <p>Faça seu evento ser encontrado por pessoas que querem viver a cidade.</p>
+    <button class="primary-btn">Publicar evento agora</button>
+  </section>
+
+  <footer>
+    © 2026 Remdy. Eventos, comunidades e conexões reais.
+  </footer>
+
+  <script>
+    function goToForm() {
+      document.getElementById("publish").scrollIntoView({ behavior: "smooth" });
+    }
+
+    function goToHow() {
+      document.getElementById("how").scrollIntoView({ behavior: "smooth" });
+    }
+  </script>
+
+</body>
+</html>

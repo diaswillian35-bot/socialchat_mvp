@@ -37,12 +37,14 @@ dependencies:
   sign_in_with_apple: ^6.1.0
   google_sign_in: ^6.2.1
   flutter_local_notifications: ^17.0.0
-  image_picker: ^1.1.2
+  image_picker: ^1.2.2
   uuid: ^4.5.1
   url_launcher: ^6.3.0
   share_plus: ^10.0.0
   app_links: ^6.4.1
   http: ^1.2.2
+  cloud_functions: ^5.6.2
+  flutter_tts: ^4.2.5
  
 
 dev_dependencies:
@@ -68,7 +70,7 @@ flutter:
     - lib/l10n/fr.json
     - assets/remdy_logo.png
     - assets/remdy_icon.png
+    - assets/remdy_logo_s_fundo.png
 
-
-dependency_overrrides:
+dependency_overrides:
     record_linux: ^1.0.0    

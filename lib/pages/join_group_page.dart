@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../widget/remdy_app.dart';
 import 'group_chat_page.dart';
-
+import 'package:flutter/services.dart';
+import 'package:flutter/services.dart';
 
 class JoinGroupPage extends StatefulWidget {
   final String inviteCode;
@@ -205,29 +206,58 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
 
 
       if (joinPolicy == 'approval' && !alreadyMember) {
-        final reqRef = groupRef.collection('joinRequests').doc(user.uid);
+       final reqRef = groupRef.collection('pendingRequests').doc(user.uid);
         final reqSnap = await reqRef.get();
         final reqData = reqSnap.data();
         final currentStatus = (reqData?['status'] ?? '').toString().trim();
 
 
-        if (currentStatus == 'pending') {
-          _toast('Seu pedido já está pendente de aprovação.');
-          if (mounted) setState(() => _joining = false);
-          return;
-        }
+      if (currentStatus == 'pending') {
+  _toast('Seu pedido já está pendente de aprovação.');
+
+  await Future.delayed(const Duration(milliseconds: 700));
+
+  if (!mounted) return;
+
+  if (Navigator.of(context).canPop()) {
+    Navigator.of(context).pop();
+  } else {
+    SystemNavigator.pop();
+  }
+
+  return;
+}
 
 
-        await reqRef.set({
-          'uid': user.uid,
-          'status': 'pending',
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+
+      await reqRef.set({
+  'uid': user.uid,
+  'status': 'pending',
+  'createdAt': FieldValue.serverTimestamp(),
+}, SetOptions(merge: true));
+
+if (!mounted) return;
+
+ScaffoldMessenger.of(context).showSnackBar(
+  const SnackBar(
+    content: Text('Pedido enviado ✅ Aguardando aprovação do admin.'),
+  ),
+);
+
+await Future.delayed(const Duration(milliseconds: 700));
+
+if (!mounted) return;
+
+if (Navigator.of(context).canPop()) {
+  Navigator.of(context).pop();
+} else {
+  SystemNavigator.pop();
+}
+
+return;
 
 
-        _toast('Pedido enviado ✅ Aguardando aprovação do admin.');
-        if (mounted) setState(() => _joining = false);
-        return;
+
       }
 
 

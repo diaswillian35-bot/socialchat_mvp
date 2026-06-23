@@ -12,6 +12,12 @@ class UserBootstrap {
     final ref = FirebaseFirestore.instance.collection('users').doc(uid);
 
     final snap = await ref.get();
+    if (snap.exists && snap.data()?['isBanned'] == true) {
+  await FirebaseAuth.instance.signOut();
+  throw Exception('ACCOUNT_BANNED');
+}
+
+
 
     // dados mínimos (compatível com suas rules: uid/email não devem mudar)
     final baseData = <String, dynamic>{

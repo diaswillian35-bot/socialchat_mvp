@@ -64,6 +64,14 @@ final TextEditingController _searchController = TextEditingController();
 
   Timer? _typingDebounce;
 
+  String? _replyToMessageId;
+String _replyToText = '';
+String _replyToType = 'text';
+bool _replyToIsMe = false;
+String _replyToImageUrl = '';
+double _dragDx = 0;
+
+
 
   String _loadedLocaleCode = '';
 
@@ -87,8 +95,10 @@ final TextEditingController _searchController = TextEditingController();
   bool _loadingRole = true;
   bool _membershipChecked = false;
   bool _canSend = true;
-  bool _isPremium = false;
-  bool _isWorldGroup = false;
+ bool _isPremium = false;
+bool _isMaster = false;
+bool _isWorldGroup = false;
+
   String _myCountryCode = '';
   String _groupCountryCode = '';
 
@@ -189,11 +199,12 @@ _scrollC.dispose();
 
 
       if (!mounted) return;
-      setState(() {
-        _isMember = alreadyMember;
-        _previewMode = !alreadyMember;
-        _canSend = alreadyMember;
-      });
+   setState(() {
+  _isMember = alreadyMember;
+  _previewMode = !alreadyMember;
+  _canSend = alreadyMember && !(_isWorldGroup && !_isPremium);
+});
+
     } catch (e) {
       debugPrint('Erro _resolveMembershipMode: $e');
       if (!mounted) return;
@@ -206,75 +217,107 @@ _scrollC.dispose();
   }
 
 
-  Future<void> _joinGroup() async {
-    final t = AppTexts.current;
-    final myUid = uid;
-    if (myUid == null) {
-      _toast(t.get('group_login_to_join'));
-      return;
-    }
-    if (_isWorldGroup && !_isPremium) {
-      _toast(t.get('group_premium_other_country'));
-      return;
-    }
+ Future<void> _joinGroup() async {
+  final t = AppTexts.current;
+  final myUid = uid;
 
+  if (myUid == null) {
+    _toast(t.get('group_login_to_join'));
+    return;
+  }
 
-    try {
-      final snap = await _groupRef.get();
-      final data = snap.data() ?? {};
+  if (_isWorldGroup && !_isPremium) {
+    _toast(t.get('group_premium_other_country'));
+    return;
+  }
 
+  try {
+    final snap = await _groupRef.get();
+    final data = snap.data() ?? {};
 
-      final membersRaw = data['members'];
-      final members = (membersRaw is List)
-          ? membersRaw
-              .map((e) => e.toString().trim())
-              .where((e) => e.isNotEmpty)
-              .toList()
-          : <String>[];
+    final membersRaw = data['members'];
+    final members = (membersRaw is List)
+        ? membersRaw
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList()
+        : <String>[];
 
-
-      final alreadyMember = members.contains(myUid);
-
-
-      final unreadRaw = data['unread'];
-      final Map<String, dynamic> unreadMap =
-          unreadRaw is Map<String, dynamic>
-              ? Map<String, dynamic>.from(unreadRaw)
-              : unreadRaw is Map
-                  ? unreadRaw.map((k, v) => MapEntry(k.toString(), v))
-                  : <String, dynamic>{};
-
-
-      unreadMap[myUid] = 0;
-
-
-      await _groupRef.set({
-        'members': FieldValue.arrayUnion([myUid]),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'unread': unreadMap,
-        if (!alreadyMember) 'membersCount': FieldValue.increment(1),
-      }, SetOptions(merge: true));
-
-
-      await _groupRef.collection('reads').doc(myUid).set({
-        'lastReadAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-
-      if (!mounted) return;
+    final alreadyMember = members.contains(myUid);
+    if (alreadyMember) {
       setState(() {
         _isMember = true;
         _previewMode = false;
         _canSend = true;
-        _didInitialRead = true;
       });
-
-
-      await _markGroupAsRead();
-    } catch (e) {
-      _toast('${t.get('group_error_join_prefix')} $e');
+      return;
     }
+
+    final joinPolicy =
+        (data['joinPolicy'] ?? 'open').toString().trim().toLowerCase();
+debugPrint('JOIN POLICY => $joinPolicy');
+    // ✅ Grupo com aprovação do admin
+    if (joinPolicy == 'approval' || joinPolicy == 'adminapproval') {
+      final userSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(myUid)
+          .get();
+
+      final userData = userSnap.data() ?? {};
+
+      await _groupRef.collection('pendingRequests').doc(myUid).set({
+        'uid': myUid,
+        'name': (userData['name'] ?? '').toString(),
+        'photoUrl': (userData['photoUrl'] ?? userData['avatarUrl'] ?? '').toString(),
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      _toast(t.get('group_request_sent_to_admin'));
+      return;
+    }
+
+    // ✅ Grupo apenas por convite
+    if (joinPolicy == 'inviteonly' || joinPolicy == 'invite_only') {
+      _toast(t.get('group_invite_only_message'));
+      return;
+    }
+
+    // ✅ Open entry entra direto
+    final unreadRaw = data['unread'];
+    final Map<String, dynamic> unreadMap =
+        unreadRaw is Map<String, dynamic>
+            ? Map<String, dynamic>.from(unreadRaw)
+            : unreadRaw is Map
+                ? unreadRaw.map((k, v) => MapEntry(k.toString(), v))
+                : <String, dynamic>{};
+
+    unreadMap[myUid] = 0;
+
+    await _groupRef.set({
+      'members': FieldValue.arrayUnion([myUid]),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'unread': unreadMap,
+      'membersCount': FieldValue.increment(1),
+    }, SetOptions(merge: true));
+
+    await _groupRef.collection('reads').doc(myUid).set({
+      'lastReadAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (!mounted) return;
+    setState(() {
+      _isMember = true;
+      _previewMode = false;
+      _canSend = true;
+      _didInitialRead = true;
+    });
+
+    await _markGroupAsRead();
+  } catch (e) {
+    _toast('${t.get('group_error_join_prefix')} $e');
   }
+}
 
 
   Future<void> _openGroup({
@@ -314,7 +357,10 @@ _scrollC.dispose();
 );
 
 
+
 final premium = myData['isPremium'] == true;
+final master = myData['isMaster'] == true;
+
 
 
 final groupData = _groupData ?? (await _groupRef.get()).data() ?? {};
@@ -328,7 +374,9 @@ final groupCountry = _normalizeCountry(
       setState(() {
         _myCountryCode = myCountry;
         _groupCountryCode = groupCountry;
-        _isPremium = premium;
+        _isPremium = premium || master;
+_isMaster = master;
+
         _isWorldGroup = myCountry.isNotEmpty &&
             groupCountry.isNotEmpty &&
             myCountry != groupCountry;
@@ -366,6 +414,91 @@ final groupCountry = _normalizeCountry(
       ),
     );
   }
+void _startReply({
+  required String messageId,
+  required String text,
+  required String type,
+  required bool isMe,
+  String imageUrl = '',
+}) {
+  setState(() {
+    _replyToMessageId = messageId;
+    _replyToText = text;
+    _replyToType = type;
+    _replyToIsMe = isMe;
+    _replyToImageUrl = imageUrl;
+  });
+}
+
+Future<void> _reportMessage({
+  required String messageId,
+  required String reportedUid,
+}) async {
+  final myUid = uid;
+  if (myUid == null) return;
+
+  await FirebaseFirestore.instance.collection('reports').add({
+    'type': 'message',
+    'contextType': 'group',
+    'groupId': widget.groupId,
+    'messageId': messageId,
+    'reportedUid': reportedUid,
+    'reporterUid': myUid,
+    'fromUid': myUid,
+    'status': 'open',
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+
+ _toast(AppTexts.current.get('group_message_reported_success'));
+
+}
+
+
+void _cancelReply() {
+  setState(() {
+    _replyToMessageId = null;
+    _replyToText = '';
+    _replyToType = 'text';
+    _replyToIsMe = false;
+    _replyToImageUrl = '';
+  });
+}
+
+void _handleReplyFromMessage(Map<String, dynamic> d, String fallbackType) {
+  final t = AppTexts.current;
+
+  final senderId = (d['senderId'] ?? '').toString().trim();
+  final isMe = senderId == uid;
+
+  final type = (d['type'] ?? fallbackType).toString();
+
+  String preview = '';
+  String imageUrl = '';
+
+  if (type == 'text') {
+    preview = (d['text'] ?? '').toString().trim();
+  } else if (type == 'audio') {
+    preview = t.get('chat_audio_label');
+  } else if (type == 'image') {
+    preview = t.get('chat_photo_label');
+    imageUrl = (d['imageUrl'] ?? '').toString();
+  } else {
+    preview = t.get('chat_message_generic');
+  }
+
+  final messageId = (d['id'] ?? '').toString();
+  if (messageId.isEmpty) return;
+
+  _startReply(
+    messageId: messageId,
+    text: preview.isEmpty ? t.get('chat_message_generic') : preview,
+    type: type,
+    isMe: isMe,
+    imageUrl: imageUrl,
+  );
+}
+
+
 
 void _openSearch() {
   setState(() {
@@ -435,7 +568,11 @@ void _openSearch() {
     final myUid = uid;
     if (myUid == null) {
       if (!mounted) return;
-      setState(() => _canSend = false);
+      
+setState(() {
+  _canSend = !(_isWorldGroup && !_isPremium);
+});
+
       return;
     }
 
@@ -674,6 +811,18 @@ void _openSearch() {
     if (myUid == null || !_canSend) return;
 
 
+
+final mySnap = await FirebaseFirestore.instance
+    .collection('users')
+    .doc(myUid)
+    .get();
+if (mySnap.data()?['shadowBan'] == true) {
+  _toast(AppTexts.current.get('user_temporarily_silenced'));
+  return;
+}
+
+
+
     final text = _textC.text.trim();
     if (text.isEmpty) return;
 
@@ -691,17 +840,26 @@ void _openSearch() {
       final batch = FirebaseFirestore.instance.batch();
 
 
-      final msgRef = _msgsRef.doc();
-      batch.set(msgRef, {
-        'type': 'text',
-        'text': text,
-        'senderId': myUid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'deleted': false,
-        'deletedBy': '',
-        'deletedText': '',
-        'deletedAt': null,
-      });
+final msgRef = _msgsRef.doc();
+batch.set(msgRef, {
+  'id': msgRef.id,
+  'type': 'text',
+  'text': text,
+  'senderId': myUid,
+  'createdAt': FieldValue.serverTimestamp(),
+
+  'replyToMessageId': _replyToMessageId,
+  'replyToText': _replyToText,
+  'replyToType': _replyToType,
+  'replyToIsMe': _replyToIsMe,
+  'replyToImageUrl': _replyToImageUrl,
+
+  'deleted': false,
+  'deletedBy': '',
+  'deletedText': '',
+  'deletedAt': null,
+});
+
 
 
       final groupSnap = await _groupRef.get();
@@ -749,6 +907,7 @@ void _openSearch() {
 
 
       await batch.commit();
+      _cancelReply();
       final afterSnap = await _groupRef.get();
       print('GROUP AFTER SEND => ${afterSnap.data()}');
     } catch (e) {
@@ -841,6 +1000,19 @@ void _openSearch() {
     final t = AppTexts.current;
     final myUid = uid;
     if (myUid == null || !_canSend) return;
+    
+
+
+final mySnap = await FirebaseFirestore.instance
+    .collection('users')
+    .doc(myUid)
+    .get();
+
+if (mySnap.data()?['shadowBan'] == true) {
+  _toast(AppTexts.current.get('user_temporarily_silenced'));
+  return;
+}
+
 
 
     final pendingId = DateTime.now().microsecondsSinceEpoch.toString();
@@ -885,18 +1057,28 @@ void _openSearch() {
 
 
       final msgRef = _msgsRef.doc();
-      batch.set(msgRef, {
-        'type': 'audio',
-        'text': '🎤 Áudio',
-        'audioUrl': audioUrl,
-        'durationMs': dur?.inMilliseconds ?? 0,
-        'senderId': myUid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'deleted': false,
-        'deletedBy': '',
-        'deletedText': '',
-        'deletedAt': null,
-      });
+   batch.set(msgRef, {
+  'type': 'audio',
+  'text': '🎤 Áudio',
+  'audioUrl': audioUrl,
+  'durationMs': dur?.inMilliseconds ?? 0,
+  'senderId': myUid,
+  'createdAt': FieldValue.serverTimestamp(),
+
+  'replyToMessageId': _replyToMessageId,
+  'replyToText': _replyToText,
+  'replyToType': _replyToType,
+  'replyToIsMe': _replyToIsMe,
+  'replyToImageUrl': _replyToImageUrl,
+
+  'deleted': false,
+  'deletedBy': '',
+  'deletedText': '',
+  'deletedAt': null,
+});
+
+
+
 
 
       final groupSnap = await _groupRef.get();
@@ -944,6 +1126,7 @@ void _openSearch() {
 
 
       await batch.commit();
+      _cancelReply();
       final afterSnap = await _groupRef.get();
       print('GROUP AFTER SEND => ${afterSnap.data()}');
 
@@ -968,6 +1151,19 @@ void _openSearch() {
     final t = AppTexts.current;
     final myUid = uid;
     if (myUid == null || !_canSend) return;
+    
+
+
+final mySnap = await FirebaseFirestore.instance
+    .collection('users')
+    .doc(myUid)
+    .get();
+
+if (mySnap.data()?['shadowBan'] == true) {
+  _toast('Você está temporariamente impedido de enviar mensagens.');
+  return;
+}
+
 
 
     final pendingId = DateTime.now().microsecondsSinceEpoch.toString();
@@ -1004,17 +1200,26 @@ void _openSearch() {
 
 
       final msgRef = _msgsRef.doc();
-      batch.set(msgRef, {
-        'type': 'image',
-        'text': '',
-        'imageUrl': imageUrl,
-        'senderId': myUid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'deleted': false,
-        'deletedBy': '',
-        'deletedText': '',
-        'deletedAt': null,
-      });
+   
+batch.set(msgRef, {
+  'type': 'image',
+  'text': '',
+  'imageUrl': imageUrl,
+  'senderId': myUid,
+  'createdAt': FieldValue.serverTimestamp(),
+
+  'replyToMessageId': _replyToMessageId,
+  'replyToText': _replyToText,
+  'replyToType': _replyToType,
+  'replyToIsMe': _replyToIsMe,
+  'replyToImageUrl': _replyToImageUrl,
+
+  'deleted': false,
+  'deletedBy': '',
+  'deletedText': '',
+  'deletedAt': null,
+});
+
 
 
       final groupSnap = await _groupRef.get();
@@ -1054,6 +1259,7 @@ void _openSearch() {
 
 
       await batch.commit();
+      _cancelReply();
       final afterSnap = await _groupRef.get();
       print('GROUP AFTER SEND => ${afterSnap.data()}');
 
@@ -1145,38 +1351,24 @@ void _openSearch() {
 
 
   Future<void> _hardDeleteMessage({
-    required String messageId,
-  }) async {
-    final t = AppTexts.current;
-    try {
-      final snap = await _msgsRef.doc(messageId).get();
-      final data = snap.data() ?? {};
+  required String messageId,
+}) async {
+  final t = AppTexts.current;
+  final myUid = uid;
+  if (myUid == null) return;
 
-
-      final type = (data['type'] ?? 'text').toString().trim();
-      final audioUrl = (data['audioUrl'] ?? '').toString().trim();
-      final imageUrl = (data['imageUrl'] ?? '').toString().trim();
-
-
-      if (type == 'audio' && audioUrl.isNotEmpty) {
-        try {
-          await FirebaseStorage.instance.refFromURL(audioUrl).delete();
-        } catch (_) {}
-      }
-
-
-      if (type == 'image' && imageUrl.isNotEmpty) {
-        try {
-          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
-        } catch (_) {}
-      }
-
-
-      await _msgsRef.doc(messageId).delete();
-    } catch (e) {
-      _toast('${t.get('group_error_delete_message_prefix')} $e');
-    }
+  try {
+    await _msgsRef.doc(messageId).set({
+      'deleted': true,
+      'deletedBy': myUid,
+      'deletedText': t.get('group_message_deleted_by_admin'),
+      'deletedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  } catch (e) {
+    _toast('${t.get('group_error_delete_message_prefix')} $e');
   }
+}
+
 
 
   void _openInfo() {
@@ -1190,9 +1382,11 @@ void _openSearch() {
 
 
   Future<void> _openActions({
-    required String messageId,
-    required bool isMyMessage,
-  }) async {
+  required String messageId,
+  required bool isMyMessage,
+  required String senderId,
+}) async {
+
     final t = AppTexts.current;
     if (_loadingRole) return;
     final canDelete = isMyMessage || _isAdmin;
@@ -1206,6 +1400,18 @@ void _openSearch() {
       builder: (_) => SafeArea(
         child: Wrap(
           children: [
+            ListTile(
+  leading: const Icon(Icons.flag_outlined),
+  title: const Text('Reportar mensagem'),
+  onTap: () async {
+    Navigator.pop(context);
+    await _reportMessage(
+      messageId: messageId,
+      reportedUid: senderId,
+    );
+  },
+),
+
             ListTile(
               leading: const Icon(Icons.delete_outline),
               title: Text(t.get('group_delete_for_me')),
@@ -1231,6 +1437,72 @@ void _openSearch() {
       ),
     );
   }
+Future<void> _sendGroupReport(String reason) async {
+  final myUid = uid;
+  if (myUid == null) return;
+
+  try {
+    await FirebaseFirestore.instance.collection('reports').add({
+      'fromUid': myUid,
+      'reportedUid': '',
+      'reason': reason,
+      'status': 'open',
+      'contextType': 'group',
+      'groupId': widget.groupId,
+      'groupName': widget.groupName,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppTexts.current.get('report_sent'))),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${AppTexts.current.get('error_prefix')} $e')),
+    );
+  }
+}
+
+void _openGroupReportSheet() {
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => SafeArea(
+      child: Wrap(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.flag),
+            
+title: Text('${AppTexts.current.get('report_group')} ${widget.groupName}'),
+
+          ),
+          ListTile(
+            title: Text(AppTexts.current.get('report_reason_spam')),
+            onTap: () {
+              Navigator.pop(context);
+              _sendGroupReport('Spam');
+            },
+          ),
+          ListTile(
+            title: Text(AppTexts.current.get('report_reason_inappropriate')),
+            onTap: () {
+              Navigator.pop(context);
+              _sendGroupReport('Conteúdo impróprio');
+            },
+          ),
+          ListTile(
+            title: Text(AppTexts.current.get('report_reason_harassment')),
+            onTap: () {
+              Navigator.pop(context);
+              _sendGroupReport('Assédio');
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 
   Widget _groupAvatarFromData(Map<String, dynamic>? data) {
@@ -1419,62 +1691,132 @@ void _openSearch() {
 
 
   Widget _buildPreviewBottomBar() {
-    final t = AppTexts.current;
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+  final t = AppTexts.current;
+  return SafeArea(
+    top: false,
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade300),
+        ),
+      ),
+      child: Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    if (_replyToMessageId != null)
+      Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(10),
           border: Border(
-            top: BorderSide(color: Colors.grey.shade300),
+            left: BorderSide(
+              color: _replyToIsMe ? _remdyBlue : _muted,
+              width: 4,
+            ),
           ),
         ),
         child: Row(
           children: [
             Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.pop(context),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  side: BorderSide(color: Colors.grey.shade300),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _replyToIsMe ? t.get('chat_you') : t.get('chat_reply'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: _text,
+                    ),
                   ),
-                ),
-                child: Text(
-                  t.get('group_back'),
-                  style: const TextStyle(
-                    color: _muted,
-                    fontWeight: FontWeight.w800,
+                  const SizedBox(height: 2),
+                  Text(
+                    _replyToType == 'audio'
+                        ? t.get('chat_audio_label')
+                        : _replyToType == 'image'
+                            ? t.get('chat_photo_label')
+                            : _replyToText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: _muted,
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: _joinGroup,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _remdyBlue,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(50),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                child: Text(
-                  t.get('group_join_group'),
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
+            IconButton(
+              onPressed: _cancelReply,
+              icon: const Icon(Icons.close, size: 18),
             ),
           ],
         ),
       ),
-    );
-  }
+
+    Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                side: const BorderSide(color: _border),
+              ),
+              child: Text(
+                t.get('group_back'),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: _text,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _joinGroup,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _remdyBlue,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                t.get('group_join'),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  ],
+),
+
+    ),
+  );
+}
+
+
 
 
   @override
@@ -1496,6 +1838,12 @@ appBar: AppBar(
   iconTheme: const IconThemeData(color: _muted),
   centerTitle: true,
   actions: [
+    if (!_searchMode)
+  IconButton(
+    onPressed: _openGroupReportSheet,
+    icon: const Icon(Icons.flag_outlined, color: _muted),
+  ),
+
     _searchMode
         ? IconButton(
             onPressed: () {
@@ -1714,6 +2062,13 @@ final totalCount = docs.length +
 
                           Widget bubbleWidget;
 
+ final replyToText = (d['replyToText'] ?? '').toString();
+final replyToType = (d['replyToType'] ?? 'text').toString();
+final replyToIsMe = d['replyToIsMe'] == true;
+final replyToImageUrl = (d['replyToImageUrl'] ?? '').toString();
+
+
+
 
                           if (deleted) {
                             final text = deletedText.isNotEmpty
@@ -1721,12 +2076,17 @@ final totalCount = docs.length +
                                 : t.get('group_message_deleted_by_admin');
 
 
-                            bubbleWidget = _Bubble(
-                              text: text,
-                              isMe: isMe,
-                              isDeleted: true,
-                              timeText: _formatTime(createdAt),
-                            );
+                          bubbleWidget = _Bubble(
+  text: text,
+  isMe: isMe,
+  isDeleted: true,
+  timeText: _formatTime(createdAt),
+  replyToText: replyToText,
+  replyToType: replyToType,
+  replyToIsMe: replyToIsMe,
+  replyToImageUrl: replyToImageUrl,
+);
+;
                           } else if (type == 'audio') {
   final url = (d['audioUrl'] ?? '').toString();
   final raw = d['durationMs'] ?? 0;
@@ -1763,12 +2123,23 @@ final totalCount = docs.length +
                             );
                           } else {
                             final text = (d['text'] ?? '').toString();
-                            bubbleWidget = _Bubble(
-                              text: text,
-                              isMe: isMe,
-                              isDeleted: false,
-                              timeText: _formatTime(createdAt),
-                            );
+
+final replyToText = (d['replyToText'] ?? '').toString();
+final replyToType = (d['replyToType'] ?? 'text').toString();
+final replyToIsMe = d['replyToIsMe'] == true;
+final replyToImageUrl = (d['replyToImageUrl'] ?? '').toString();
+
+bubbleWidget = _Bubble(
+  text: text,
+  isMe: isMe,
+  isDeleted: false,
+  timeText: _formatTime(createdAt),
+  replyToText: replyToText,
+  replyToType: replyToType,
+  replyToIsMe: replyToIsMe,
+  replyToImageUrl: replyToImageUrl,
+);
+
                           }
 
 
@@ -1790,23 +2161,65 @@ final totalCount = docs.length +
                               _shouldShowDateHeader(docs, realIndex);
 
 
-                          return Column(
-                            children: [
-                              if (showDate)
-                                _DateHeader(label: _formatDayLabel(createdAt)),
-                              GestureDetector(
-                                onLongPress: () async {
-                                  final canDelete = isMe || _isAdmin;
-                                  if (!canDelete) return;
-                                  await _openActions(
-                                    messageId: doc.id,
-                                    isMyMessage: isMe,
-                                  );
-                                },
-                                child: bubble,
-                              ),
-                            ],
-                          );
+                       return Column(
+  children: [
+    if (showDate)
+      _DateHeader(label: _formatDayLabel(createdAt)),
+  
+GestureDetector(
+  behavior: HitTestBehavior.opaque,
+  onTap: () {
+    if (!_searchMode) return;
+
+    final msg = {
+      ...d,
+      'id': doc.id,
+    };
+
+    _handleReplyFromMessage(msg, type);
+
+    setState(() {
+      _searchMode = false;
+      _searchText = '';
+      _searchController.clear();
+    });
+  },
+  onHorizontalDragUpdate: (details) {
+    _dragDx += details.delta.dx;
+  },
+  onHorizontalDragEnd: (_) {
+    if (_dragDx > 35) {
+      final msg = {
+        ...d,
+        'id': doc.id,
+      };
+      _handleReplyFromMessage(msg, type);
+    }
+    _dragDx = 0;
+  },
+  onHorizontalDragCancel: () {
+    _dragDx = 0;
+  },
+  onLongPress: () async {
+    if (_searchMode) return;
+
+    final canDelete = isMe || _isAdmin;
+    if (!canDelete) return;
+   
+await _openActions(
+  messageId: doc.id,
+  isMyMessage: isMe,
+  senderId: senderId,
+);
+
+  },
+  child: bubble,
+),
+
+
+  ],
+);
+
                         },
                       );
                     },
@@ -1824,95 +2237,201 @@ final totalCount = docs.length +
                               top: BorderSide(color: Colors.grey.shade300),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: Colors.grey.shade300,
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                  ),
-                                  child: TextField(
-                                    controller: _textC,
-                                    enabled: uid != null && _canSend,
-                                    textInputAction: TextInputAction.send,
-                                    onSubmitted: (_) => _send(),
-                                    decoration: InputDecoration(
-                                      hintText: uid == null
-                                          ? t.get('group_login_to_chat')
-                                          : !_canSend
-                                              ? t.get(
-                                                  'group_cannot_send_in_this_group',
-                                                )
-                                              : t.get('group_type_message'),
-                                      border: InputBorder.none,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              InkWell(
-                                onTap:
-                                    (uid == null || !_canSend) ? null : _openPlusMenu,
-                                borderRadius: BorderRadius.circular(999),
-                                child: Opacity(
-                                  opacity: (uid == null || !_canSend) ? 0.5 : 1,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF1F5F9),
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(
-                                        color: const Color(0xFFE5E7EB),
-                                      ),
-                                    ),
-                                    child: const Icon(
-                                      Icons.add,
-                                      color: Color(0xFF6B7280),
-                                      size: 20,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _textC.text.trim().isEmpty
-                                  ? RecordingButton(
-                                      onRecordStart: () async {
-                                        await _setRecording(true);
-                                      },
-                                      onRecordStop: () async {
-                                        await _setRecording(false);
-                                      },
-                                      onRecorded: (path) async {
-                                        if (path == null) return;
-                                        await _sendGroupAudioMessage(path);
-                                      },
-                                    )
-                                  : InkWell(
-                                      onTap: _send,
-                                      borderRadius: BorderRadius.circular(999),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: _remdyBlue,
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
-                                        child: const Icon(
-                                          Icons.send,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
-                                      ),
-                                    ),
-                            ],
-                          ),
+                        child: Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    if (_replyToMessageId != null)
+      Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(10),
+          border: Border(
+            left: BorderSide(
+              color: _replyToIsMe ? _remdyBlue : _muted,
+              width: 4,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _replyToIsMe ? t.get('chat_you') : t.get('chat_reply'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: _text,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  if (_replyToType == 'image' && _replyToImageUrl.isNotEmpty)
+  Row(
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.network(
+          _replyToImageUrl,
+          width: 42,
+          height: 42,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            width: 42,
+            height: 42,
+            color: const Color(0xFFE5E7EB),
+            alignment: Alignment.center,
+            child: const Icon(Icons.image, size: 18),
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          t.get('chat_photo_label'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 13,
+            color: _muted,
+          ),
+        ),
+      ),
+    ],
+  )
+else
+  Text(
+    _replyToType == 'audio'
+        ? t.get('chat_audio_label')
+        : _replyToType == 'image'
+            ? t.get('chat_photo_label')
+            : _replyToText,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: const TextStyle(
+      fontSize: 13,
+      color: _muted,
+    ),
+  ),
+
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: _cancelReply,
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          ],
+        ),
+      ),
+
+    Row(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: Colors.grey.shade300,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+            ),
+            child: TextField(
+              controller: _textC,
+              enabled: uid != null && _canSend,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _send(),
+              decoration: InputDecoration(
+                hintText: uid == null
+                    ? t.get('group_login_to_chat')
+                    : !_canSend
+    ? (_isWorldGroup && !_isPremium
+        ? 'Grupo de outro país é Premium'
+        : t.get('group_cannot_send_in_this_group'))
+    : t.get('group_type_message'),
+
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        InkWell(
+          onTap: (uid == null || !_canSend) ? null : _openPlusMenu,
+          borderRadius: BorderRadius.circular(999),
+          child: Opacity(
+            opacity: (uid == null || !_canSend) ? 0.5 : 1,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: const Color(0xFFE5E7EB),
+                ),
+              ),
+              child: const Icon(
+                Icons.add,
+                color: Color(0xFF6B7280),
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        _textC.text.trim().isEmpty
+            ? Opacity(
+    opacity: (uid == null || !_canSend) ? 0.5 : 1,
+    child: IgnorePointer(
+      ignoring: uid == null || !_canSend,
+      child: RecordingButton(
+        onRecordStart: () async {
+          await _setRecording(true);
+        },
+        onRecordStop: () async {
+          await _setRecording(false);
+        },
+       
+onRecorded: (path) async {
+  await _setRecording(false);
+
+  if (path == null) return;
+
+  await _sendGroupAudioMessage(path);
+},
+
+      ),
+    ),
+  )
+
+            : InkWell(
+                onTap: _send,
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _remdyBlue,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Icon(
+                    Icons.send,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+      ],
+    ),
+  ],
+),
+
                         ),
                       ),
               ],
@@ -2269,17 +2788,25 @@ class _Bubble extends StatelessWidget {
   final bool isMe;
   final bool isDeleted;
   final String timeText;
-
+  final String replyToText;
+  final String replyToType;
+  final bool replyToIsMe;
+  final String replyToImageUrl;
 
   const _Bubble({
     required this.text,
     required this.isMe,
     required this.isDeleted,
     required this.timeText,
+    required this.replyToText,
+    required this.replyToType,
+    required this.replyToIsMe,
+    required this.replyToImageUrl,
   });
 
 
   static const Color _remdyBlue = Color(0xFF313A5F);
+
 
 
   @override
@@ -2316,7 +2843,62 @@ class _Bubble extends StatelessWidget {
           crossAxisAlignment:
               isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            Text(text, style: style),
+           if (replyToText.isNotEmpty) ...[
+  Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: isMe
+          ? Colors.white.withOpacity(0.14)
+          : const Color(0xFFF3F4F6),
+      borderRadius: BorderRadius.circular(10),
+      border: Border(
+        left: BorderSide(
+          color: isMe ? Colors.white70 : _remdyBlue,
+          width: 4,
+        ),
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          replyToIsMe ? AppTexts.current.get('chat_you') : AppTexts.current.get('chat_reply'),
+
+
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: isMe ? Colors.white70 : const Color(0xFF111827),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          replyToType == 'audio'
+            ? AppTexts.current.get('chat_audio_label')
+: replyToType == 'image'
+    ? AppTexts.current.get('chat_photo_label')
+
+
+
+                  : replyToText,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13,
+            color: isMe ? Colors.white70 : const Color(0xFF6B7280),
+          ),
+        ),
+      ],
+    ),
+  ),
+],
+Text(
+  text,
+  style: style,
+),
+
             if (timeText.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(timeText, style: timeStyle),

@@ -22,6 +22,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
 final _formKey = GlobalKey<FormState>();
 
+
+
+
+
 static const Color _bg = Color(0xFFF6F7FB);
 static const Color _text = Color(0xFF111827);
 static const Color _muted = Color(0xFF6B7280);
@@ -76,6 +80,8 @@ String _normalizeText(String value) {
 String _stateName = '';
 String _cityName = '';
 String _displayLocation = '';
+double? _selectedLat;
+double? _selectedLng;
 
 
 
@@ -387,6 +393,9 @@ final filteredCountries = _countries.where((c) {
   _cityName = '';
   _stateName = '';
   _displayLocation = '';
+  _selectedLat = null;
+_selectedLng = null;
+
   _citySearchC.clear();
 });
 
@@ -455,25 +464,7 @@ final filteredCountries = _countries.where((c) {
 
       final countryName = _countryNameFromCode(finalHomeCode);
 
-      final countryRef = _countriesCol.doc(finalHomeCode);
-final countrySnap = await countryRef.get();
-
-
-if (!countrySnap.exists) {
-  await countryRef.set({
-    'code': finalHomeCode,
-    'name': countryName,
-    'flag': finalHomeCode.toUpperCase(),
-    'createdBy': uid,
-    'createdAt': FieldValue.serverTimestamp(),
-    'usersCount': 1,
-  });
-} else {
-  await countryRef.update({
-    'usersCount': FieldValue.increment(1),
-  });
-}
-
+ 
 final userPayload = <String, dynamic>{
   'uid': uid,
   'name': name,
@@ -509,6 +500,9 @@ final userPayload = <String, dynamic>{
   'countryCode': finalHomeCode,
   'city': _cityName,
   'state': _stateName,
+  'lat': _selectedLat,
+'lng': _selectedLng,
+
   'location': _displayLocation,
   'nearbyEnabled': _nearbyEnabled,
   'about': about,
@@ -520,6 +514,21 @@ final userPayload = <String, dynamic>{
   'photoUrl': photoUrl,
   'updatedAt': now,
 };
+
+await FirebaseFirestore.instance
+    .collection('configCountries')
+    .doc(finalHomeCode)
+    .set({
+  'code': finalHomeCode,
+  'name': countryName,
+  'flag': _flagEmoji(finalHomeCode),
+  'enabled': false,
+  'autoDetected': true,
+  'usersCount': FieldValue.increment(1),
+  'createdAt': FieldValue.serverTimestamp(),
+  'updatedAt': FieldValue.serverTimestamp(),
+}, SetOptions(merge: true));
+
 
 
       if (!hasPubCreatedAt) {
@@ -686,7 +695,12 @@ Widget _cityField() {
       _cityName = result.cityName;
       _stateName = result.stateName;
       _displayLocation = result.display;
+      _selectedLat = result.lat;
+_selectedLng = result.lng;
+
       _citySearchC.text = result.display;
+
+
     });
   }
 },
@@ -742,7 +756,7 @@ if (q.length < 2) {
     return _CitySuggestion(
       cityName: cityName,
       stateName: stateName,
-      countryName: countryName,
+     
       display: description,
     );
   }).where((e) {
@@ -1089,15 +1103,16 @@ TextFormField(
 class _CitySuggestion {
   final String cityName;
   final String stateName;
-  final String countryName;
   final String display;
+  final double? lat;
+  final double? lng;
 
-
-  const _CitySuggestion({
+  _CitySuggestion({
     required this.cityName,
     required this.stateName,
-    required this.countryName,
     required this.display,
+    this.lat,
+    this.lng,
   });
 }
 

@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import '../pages/main_shell_page.dart';
 import '../pages/group_chat_page.dart';
 import '../pages/chat_page.dart';
-
+import '../pages/event_detail_page.dart';
 
 class PushService {
   // ✅ Use exatamente esse navKey no MaterialApp:
@@ -176,6 +176,30 @@ class PushService {
 
     final nav = navKey.currentState;
     if (nav == null) return;
+
+    // =========================
+// EVENT
+// =========================
+if (type == 'event') {
+  final eventId = (data['eventId'] ?? '').toString().trim();
+  if (eventId.isEmpty) return;
+
+  nav.pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 3)),
+    (route) => false,
+  );
+
+  await Future.delayed(const Duration(milliseconds: 200));
+
+  nav.push(
+    MaterialPageRoute(
+      builder: (_) => EventDetailPage(eventId: eventId),
+    ),
+  );
+
+  return;
+}
+
 
 
     // =========================

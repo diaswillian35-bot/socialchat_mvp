@@ -160,11 +160,27 @@ class LanguageUsersPage extends StatelessWidget {
                   final otherName = (data['name'] ?? 'Usuário').toString();
 
 
-                  final convoId = await _getOrCreateConversation(otherUid);
-                  if (!context.mounted) return;
+           String convoId = '';
+
+try {
+  convoId = await _getOrCreateConversation(otherUid);
+} catch (e) {
+  debugPrint('ERRO AO CRIAR CONVERSA: $e');
+
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erro ao abrir conversa: $e')),
+    );
+  }
+
+  return;
+}
+
+if (!context.mounted) return;
+
+Navigator.push(
 
 
-                  Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => ChatPage(

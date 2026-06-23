@@ -144,7 +144,10 @@ class PresenceService with WidgetsBindingObserver {
         'lastSeenAt': now,
         'updatedAt': now,
       }, SetOptions(merge: true));
-    } catch (_) {}
+    } catch (e) {
+  debugPrint('PresenceService _loadUserBasics error: $e');
+}
+
   }
 
 

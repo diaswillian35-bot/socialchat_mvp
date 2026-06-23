@@ -425,7 +425,7 @@ Future<void> _copyInviteCode() async {
       }, SetOptions(merge: true));
 
 
-      await _groupRef.collection('joinRequests').doc(requestUid).set({
+      await _groupRef.collection('pendingRequests').doc(requestUid).set({
         'status': 'approved',
         'approvedAt': FieldValue.serverTimestamp(),
         'approvedBy': _uid,
@@ -455,7 +455,7 @@ Future<void> _copyInviteCode() async {
       setState(() => _saving = true);
 
 
-      await _groupRef.collection('joinRequests').doc(requestUid).set({
+     await _groupRef.collection('pendingRequests').doc(requestUid).set({
         'status': 'rejected',
         'rejectedAt': FieldValue.serverTimestamp(),
         'rejectedBy': _uid,
@@ -997,11 +997,14 @@ Future<void> _copyInviteCode() async {
           ),
           const SizedBox(height: 12),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _groupRef
-                .collection('joinRequests')
-                .where('status', isEqualTo: 'pending')
-                .orderBy('createdAt', descending: false)
-                .snapshots(),
+        
+stream: _groupRef
+    .collection('pendingRequests')
+    .where('status', isEqualTo: 'pending')
+    .snapshots(),
+
+
+
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());

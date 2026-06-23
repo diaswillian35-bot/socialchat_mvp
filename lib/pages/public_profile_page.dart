@@ -87,31 +87,34 @@ class PublicProfilePage extends StatelessWidget {
  // ====== REPORT (perfil público) ======
  
 
-  Future<void> _sendReport(BuildContext context, String reason) async {
-    try {
-      final myUid = FirebaseAuth.instance.currentUser?.uid;
-      if (myUid == null) return;
+Future<void> _sendReport(BuildContext context, String reason) async {
+  try {
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    if (myUid == null) return;
 
-      await FirebaseFirestore.instance.collection('reports').add({
-        'fromUid': myUid,
-        'reportedUid': userUid,
-        'reason': reason,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+    await FirebaseFirestore.instance.collection('reports').add({
+      'fromUid': myUid,
+      'reportedUid': userUid,
+      'reason': reason,
+      'status': 'open',
+      'contextType': 'profile',
+      'source': 'public_profile',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
 
-      if (!context.mounted) return;
-      Navigator.pop(context); // fecha o bottom sheet
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report enviado. Obrigado!')),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao enviar report: $e')),
-      );
-    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Report enviado. Obrigado!')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erro ao enviar report: $e')),
+    );
   }
+}
+
+
 
   // ====== cores/estilo (somente visual) ======
   static const Color _primary = Color(0xFF313A5F); // azul Remdy
@@ -501,7 +504,7 @@ const SizedBox(width: 12),
       },
     );
   }
-  void _openReportSheet(BuildContext context, String name) {
+void _openReportSheet(BuildContext context, String name) {
   showModalBottomSheet(
     context: context,
     shape: const RoundedRectangleBorder(
@@ -518,11 +521,36 @@ const SizedBox(width: 12),
           ListTile(
             title: const Text('Conteúdo impróprio'),
             onTap: () {
-              Navigator.pop(context); // ✅ TEM ; AQUI
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Report enviado')),
-              ); // ✅ FECHA E TEM ; AQUI
+              Navigator.pop(context);
+              _sendReport(context, 'Conteúdo impróprio');
+            },
+          ),
+          ListTile(
+            title: const Text('Spam'),
+            onTap: () {
+              Navigator.pop(context);
+              _sendReport(context, 'Spam');
+            },
+          ),
+          ListTile(
+            title: const Text('Assédio'),
+            onTap: () {
+              Navigator.pop(context);
+              _sendReport(context, 'Assédio');
+            },
+          ),
+          ListTile(
+            title: const Text('Perfil falso'),
+            onTap: () {
+              Navigator.pop(context);
+              _sendReport(context, 'Perfil falso');
+            },
+          ),
+          ListTile(
+            title: const Text('Outro'),
+            onTap: () {
+              Navigator.pop(context);
+              _sendReport(context, 'Outro');
             },
           ),
         ],
@@ -530,6 +558,8 @@ const SizedBox(width: 12),
     ),
   );
 }
+
+
 }
 
 // ===== helpers visuais (não mexem na lógica) =====

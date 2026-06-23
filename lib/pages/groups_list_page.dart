@@ -30,6 +30,9 @@ class _GroupsListPageState extends State<GroupsListPage> {
   final TextEditingController _searchC = TextEditingController();
   bool _showBanner = true;
   String _myCity = '';
+String _myCountryCode = '';
+String _myCountryName = '';
+bool _isPremium = false;
 
 
   String _loadedLocaleCode = '';
@@ -45,31 +48,38 @@ class _GroupsListPageState extends State<GroupsListPage> {
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
+Future<void> _loadMyCity() async {
+  final myUid = _uid;
+  if (myUid == null) return;
 
-  Future<void> _loadMyCity() async {
-    final myUid = _uid;
-    if (myUid == null) return;
+  try {
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(myUid)
+        .get();
 
+    final data = snap.data() ?? {};
 
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(myUid)
-          .get();
+    final city = (data['city'] ?? data['cityName'] ?? '').toString().trim();
 
+    final code = (data['homeCountryCode'] ?? data['countryCode'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
 
-      final data = snap.data() ?? {};
-      final city = (data['city'] ?? data['cityName'] ?? '').toString().trim();
+    final country = (data['country'] ?? '').toString().trim().toLowerCase();
 
+    if (!mounted) return;
 
-      if (!mounted) return;
+    setState(() {
+      _myCity = city;
+      _myCountryCode = code;
+      _myCountryName = country;
+      _isPremium = data['isPremium'] == true || data['isMaster'] == true;
+    });
+  } catch (_) {}
+}
 
-
-      setState(() {
-        _myCity = city;
-      });
-    } catch (_) {}
-  }
 
 
   @override
@@ -132,6 +142,19 @@ class _GroupsListPageState extends State<GroupsListPage> {
     }
   }
 
+String _countryNameFromCode(String code) {
+  switch (code.trim().toLowerCase()) {
+    case 'br':
+      return 'brasil';
+    case 'ca':
+      return 'canada';
+    case 'pt':
+      return 'portugal';
+    default:
+      return code.trim().toLowerCase();
+  }
+}
+
 
   int _membersCount(Map<String, dynamic> data) {
     final m = data['members'];
@@ -160,22 +183,27 @@ class _GroupsListPageState extends State<GroupsListPage> {
   }
 
 
-  Query<Map<String, dynamic>> _query() {
-    final ref = FirebaseFirestore.instance.collection('groups');
+ 
 
+Query<Map<String, dynamic>> _query() {
+  final ref = FirebaseFirestore.instance.collection('groups');
 
-    if (_selectedCountry == 'all') {
-      return ref
-          .where('deleted', isEqualTo: false)
-          .orderBy('updatedAt', descending: true);
-    }
+  final myCountry = _myCountryName.isNotEmpty
+      ? _myCountryName
+      : _countryNameFromCode(_myCountryCode);
 
-
+  if (!_isPremium || _selectedCountry == 'all') {
     return ref
         .where('deleted', isEqualTo: false)
-        .where('country', isEqualTo: _selectedCountry)
+        .where('country', isEqualTo: myCountry)
         .orderBy('updatedAt', descending: true);
   }
+
+  return ref
+      .where('deleted', isEqualTo: false)
+      .where('country', isEqualTo: _selectedCountry)
+      .orderBy('updatedAt', descending: true);
+}
 
 
   Future<void> _openCreate() async {

@@ -26,7 +26,11 @@ class _PremiumPageState extends State<PremiumPage> {
 
 
   String? _priceString;
-  bool _hasPackage = true;
+bool _hasPackage = true;
+
+String _adminPriceText = '';
+bool _adminPremiumEnabled = true;
+
 
 
   String _loadedLocaleCode = '';
@@ -119,6 +123,52 @@ class _PremiumPageState extends State<PremiumPage> {
       }, SetOptions(merge: true));
     } catch (_) {}
   }
+Future<void> _loadAdminPremiumPrice(Map<String, dynamic> userData) async {
+  final code = (userData['homeCountryCode'] ??
+          userData['countryCode'] ??
+          userData['country'] ??
+          '')
+      .toString()
+      .trim()
+      .toLowerCase();
+
+  if (code.isEmpty) return;
+
+  try {
+    final snap = await db.collection('configCountries').doc(code).get();
+    final country = snap.data() ?? {};
+
+    final priceRaw = country['premiumPrice'];
+    final price = priceRaw is num ? priceRaw.toDouble() : 0.0;
+
+    final currency =
+        (country['premiumCurrency'] ?? '').toString().trim().toUpperCase();
+
+    final enabled = country['premiumEnabled'] != false;
+
+    if (!mounted) return;
+    setState(() {
+      _adminPremiumEnabled = enabled;
+      _adminPriceText =
+  price > 0 && currency.isNotEmpty
+    ? _formatPrice(currency, price)
+    : '';
+
+    });
+  } catch (_) {}
+}
+String _formatPrice(String currency, double price) {
+  switch (currency) {
+    case 'BRL':
+      return 'R\$ ${price.toStringAsFixed(2).replaceAll('.', ',')}';
+    case 'CAD':
+      return 'CA\$ ${price.toStringAsFixed(2)}';
+    case 'USD':
+      return 'US\$ ${price.toStringAsFixed(2)}';
+    default:
+      return '$currency ${price.toStringAsFixed(2)}';
+  }
+}
 
 
   void _snack(String msg) {
@@ -243,9 +293,14 @@ class _PremiumPageState extends State<PremiumPage> {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _userDoc.snapshots(),
       builder: (context, snap) {
-        final data = snap.data?.data() ?? {};
-        final isPremium = (data['isPremium'] ?? false) == true;
+      
+final data = snap.data?.data() ?? {};
 
+WidgetsBinding.instance.addPostFrameCallback((_) {
+  _loadAdminPremiumPrice(data);
+});
+
+final isPremium = (data['isPremium'] ?? false) == true;
 
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: overlay,
@@ -379,70 +434,77 @@ class _PremiumPageState extends State<PremiumPage> {
                       ),
                       const SizedBox(height: 14),
                       if (!isPremium)
-                        Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            gradient: const LinearGradient(
-                              colors: [_remdyBlue, _logoBlue],
-                            ),
-                          ),
-                          child: ElevatedButton.icon(
-                            onPressed: _loading ? null : _buyPremiumReal,
-                            icon: const Icon(Icons.star, size: 18),
-                            label: Text(
-                              _loading
-                                  ? t.get('please_wait')
-                                  : (_priceString == null
-                                      ? t.get('subscribe_premium')
-                                      : '${t.get('subscribe_premium')} • $_priceString'),
-                              style: const TextStyle(fontWeight: FontWeight.w900),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        OutlinedButton.icon(
-                          onPressed: _loading ? null : _premiumAlreadyActiveInfo,
-                          icon: const Icon(Icons.star_rounded, size: 18),
-                          label: Text(
-                            t.get('premium_active_short'),
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _remdyBlue,
-                            side: const BorderSide(color: _border),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _loading ? null : _restorePremiumReal,
-                        icon: const Icon(Icons.restore, size: 18),
-                        label: Text(
-                          t.get('restore_purchase'),
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: _remdyBlue,
-                          side: const BorderSide(color: _border),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
+  Container(
+    width: double.infinity,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(14),
+      gradient: const LinearGradient(
+        colors: [_remdyBlue, _logoBlue],
+      ),
+    ),
+    child: ElevatedButton.icon(
+      onPressed: (_loading || !_adminPremiumEnabled) ? null : _buyPremiumReal,
+      icon: const Icon(Icons.star, size: 18),
+      label: Text(
+        _loading
+            ? t.get('please_wait')
+            : (_adminPriceText.isNotEmpty
+                ? '${t.get('subscribe_premium')} • $_adminPriceText'
+                : (_priceString == null
+                    ? t.get('subscribe_premium')
+                    : '${t.get('subscribe_premium')} • $_priceString')),
+        style: const TextStyle(fontWeight: FontWeight.w900),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
+    ),
+  )
+else
+  OutlinedButton.icon(
+    onPressed: _loading ? null : _premiumAlreadyActiveInfo,
+    icon: const Icon(Icons.star_rounded, size: 18),
+    label: Text(
+      t.get('premium_active_short'),
+      style: const TextStyle(fontWeight: FontWeight.w900),
+    ),
+    style: OutlinedButton.styleFrom(
+      foregroundColor: _remdyBlue,
+      side: const BorderSide(color: _border),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+    ),
+  ),
+
+const SizedBox(height: 10),
+
+OutlinedButton.icon(
+  onPressed: (_loading || !_adminPremiumEnabled)
+      ? null
+      : _restorePremiumReal,
+  icon: const Icon(Icons.restore, size: 18),
+  label: Text(
+    t.get('restore_purchase'),
+    style: const TextStyle(fontWeight: FontWeight.w900),
+  ),
+  style: OutlinedButton.styleFrom(
+    foregroundColor: _remdyBlue,
+    side: const BorderSide(color: _border),
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+    ),
+  ),
+),
+
                     ],
                   ),
                 ),
@@ -530,6 +592,7 @@ class _BenefitTile extends StatelessWidget {
                   ),
                 ),
               ],
+              
             ),
           ),
         ],
