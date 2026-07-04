@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import '../l10n/app_texts.dart';
 
 import 'splash_page.dart';
 import 'login_page.dart';
@@ -37,6 +37,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 
 
   Future<void> _checkNow() async {
+    final t = AppTexts.current;
     if (_loading) return;
     setState(() => _loading = true);
 
@@ -46,6 +47,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 
 
       if (user == null) {
+        
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
@@ -72,8 +74,9 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 
 
       _toast(
-        'Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada ou a pasta SPAM.',
-      );
+  t.get('verify_email_not_confirmed'),
+);
+
     } on FirebaseAuthException catch (e) {
       _toast(e.message ?? 'Erro ao verificar e-mail.');
     } catch (_) {
@@ -85,6 +88,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 
 
   Future<void> _resendEmail() async {
+    final t = AppTexts.current;
     if (_loading) return;
     setState(() => _loading = true);
 
@@ -107,10 +111,11 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
       await user.sendEmailVerification();
 
 
-      _toast(
-        'E-mail reenviado. Verifique sua caixa de entrada ou a pasta SPAM.',
-        success: true,
-      );
+     _toast(
+  t.get('verify_email_resent'),
+  success: true,
+);
+
     } on FirebaseAuthException catch (e) {
       _toast(e.message ?? 'Erro ao reenviar e-mail.');
     } catch (_) {
@@ -139,7 +144,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
   @override
   Widget build(BuildContext context) {
     final email = FirebaseAuth.instance.currentUser?.email ?? '';
-
+final t = AppTexts.current;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
@@ -147,8 +152,10 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
-        title: const Text(
-          'Confirmar e-mail',
+        title: Text(
+  t.get('login_title'),
+
+
           style: TextStyle(color: Colors.black),
         ),
       ),
@@ -183,8 +190,8 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    const Text(
-                      'Confirme seu e-mail',
+                     Text(
+                     t.get('verify_email_appbar'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 20,
@@ -193,20 +200,43 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      email.isEmpty
-                          ? 'Enviamos um e-mail de confirmação para você.'
-                          : 'Enviamos um e-mail de confirmação para:\n$email',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        height: 1.4,
-                        color: Color(0xFF374151),
-                      ),
-                    ),
+                   
+if (email.isEmpty)
+  Text(
+    t.get('verify_email_sent'),
+    textAlign: TextAlign.center,
+    style: const TextStyle(
+      fontSize: 14,
+      height: 1.4,
+      color: Color(0xFF374151),
+    ),
+  )
+else ...[
+  Text(
+    t.get('verify_email_sent_to'),
+    textAlign: TextAlign.center,
+    style: const TextStyle(
+      fontSize: 14,
+      height: 1.4,
+      color: Color(0xFF374151),
+    ),
+  ),
+  const SizedBox(height: 4),
+  Text(
+    email,
+    textAlign: TextAlign.center,
+    style: const TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF313A5F),
+    ),
+  ),
+],
+
+
                     const SizedBox(height: 10),
-                    const Text(
-                      'Verifique sua caixa de entrada e também a pasta SPAM ou lixo eletrônico. Depois clique em "Já confirmei".',
+                     Text(
+                      t.get('verify_email_instruction'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
@@ -234,7 +264,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Text('Já confirmei'),
+                          :Text(t.get('verify_email_confirmed'))
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton(
@@ -245,12 +275,12 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text('Reenviar e-mail'),
+                     child: Text(t.get("verify_email_resend")),
                     ),
                     const SizedBox(height: 10),
                     TextButton(
                       onPressed: _loading ? null : _backToLogin,
-                      child: const Text('Voltar para login'),
+                      child: Text(t.get('verify_email_back_login')),
                     ),
                   ],
                 ),

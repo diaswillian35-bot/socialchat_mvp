@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'firebase_options.dart';
 import 'l10n/app_texts.dart';
@@ -31,7 +31,12 @@ Future<void> main() async {
 
 
   await LocaleController.instance.load();
-  await AppTexts.load(LocaleController.instance.locale);
+
+final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale;
+
+await AppTexts.load(deviceLocale);
+
+
 
 
   runApp(const MyApp());

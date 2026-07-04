@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_texts.dart';
 import 'package:flutter/widgets.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LocaleController extends ChangeNotifier {
   LocaleController._();
@@ -26,25 +26,23 @@ class LocaleController extends ChangeNotifier {
 
   Locale get locale => _locale;
 
+Future<void> load() async {
+  final prefs = await SharedPreferences.getInstance();
+  final saved = (prefs.getString(_kPrefKey) ?? '').trim();
 
-  Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = (prefs.getString(_kPrefKey) ?? '').trim();
+  final logged = FirebaseAuth.instance.currentUser != null;
 
-
-    if (saved.isNotEmpty) {
-      _locale = _safeLocale(saved);
-      AppTexts.setLang(_langCode(_locale));
-      notifyListeners();
-      return;
-    }
-
-
+  if (logged && saved.isNotEmpty) {
+    _locale = _safeLocale(saved);
+  } else {
     final device = WidgetsBinding.instance.platformDispatcher.locale;
     _locale = _safeLocale(_langCode(device));
-    AppTexts.setLang(_langCode(_locale));
-    notifyListeners();
   }
+
+  AppTexts.setLang(_langCode(_locale));
+  notifyListeners();
+}
+
 
 
   Future<void> setLocale(String code) async {

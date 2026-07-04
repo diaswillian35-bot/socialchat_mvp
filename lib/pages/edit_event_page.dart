@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
+import 'dart:io';
+
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 class EditEventPage extends StatefulWidget {
   final String eventId;
@@ -36,6 +40,13 @@ class _EditEventPageState extends State<EditEventPage> {
 
   bool _loading = true;
   bool _saving = false;
+ 
+final ImagePicker _picker = ImagePicker();
+
+List<String> _photoUrls = [];
+String _coverUrl = '';
+bool _uploadingPhoto = false;
+
 
   final List<String> _categories = const [
     'Geral',
@@ -85,6 +96,11 @@ class _EditEventPageState extends State<EditEventPage> {
           _categories.contains(savedCategory) ? savedCategory : 'Geral';
 
       _sponsorInterested = data['sponsorInterested'] == true;
+_photoUrls = (data['photoUrls'] is List)
+    ? List<String>.from((data['photoUrls'] as List).map((e) => e.toString()))
+    : <String>[];
+
+_coverUrl = (data['coverUrl'] ?? '').toString();
 
       if (eventDate != null) {
         _selectedDate = DateTime(
@@ -148,12 +164,83 @@ class _EditEventPageState extends State<EditEventPage> {
     }
   }
 
+Future<void> _addPhoto() async {
+  if (_photoUrls.length >= 5) {
+    ScaffoldMessenger.of(context).showSnackBar(
+   SnackBar(content: Text(AppTexts.current.get('max_5_photos')))
+    );
+    return;
+  }
+
+  final picked = await _picker.pickImage(
+    source: ImageSource.gallery,
+    imageQuality: 82,
+  );
+
+  if (picked == null) return;
+
+  setState(() => _uploadingPhoto = true);
+
+  try {
+    final file = File(picked.path);
+
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('events')
+        .child(widget.eventId)
+        .child('photos')
+        .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+    await ref.putFile(file);
+    final url = await ref.getDownloadURL();
+
+    setState(() {
+      _photoUrls.add(url);
+      if (_coverUrl.isEmpty) _coverUrl = url;
+    });
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+     SnackBar(content: Text('${AppTexts.current.get('photo_upload_error')}: $e'))
+    );
+  } finally {
+    if (mounted) setState(() => _uploadingPhoto = false);
+  }
+}
+
+
+Future<void> _removePhoto(String url) async {
+  final removedCover = (_coverUrl == url);
+
+  setState(() {
+    _photoUrls.remove(url);
+
+    if (removedCover) {
+      _coverUrl = _photoUrls.isNotEmpty ? _photoUrls.first : '';
+    }
+  });
+
+  try {
+    await FirebaseStorage.instance.refFromURL(url).delete();
+  } catch (_) {}
+
+  await FirebaseFirestore.instance
+      .collection('events')
+      .doc(widget.eventId)
+      .update({
+    'photoUrls': _photoUrls,
+    'coverUrl': _coverUrl,
+  });
+}
+
+
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedDate == null || _selectedTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Escolha data e horário')),
+     SnackBar(content: Text(AppTexts.current.get('choose_date_time'))),
       );
       return;
     }
@@ -178,6 +265,8 @@ class _EditEventPageState extends State<EditEventPage> {
       'placeName': _placeController.text.trim(),
       'description': _descriptionController.text.trim(),
       'category': _category,
+      'photoUrls': _photoUrls,
+'coverUrl': _coverUrl,
       'sponsorInterested': _sponsorInterested,
       'startAt': Timestamp.fromDate(startAt),
 
@@ -192,8 +281,9 @@ class _EditEventPageState extends State<EditEventPage> {
     setState(() => _saving = false);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Evento enviado novamente para aprovação'),
+       SnackBar(
+       content: Text(AppTexts.current.get('event_sent_for_approval')),
+
       ),
     );
 
@@ -201,7 +291,7 @@ class _EditEventPageState extends State<EditEventPage> {
   }
 
   String _dateText() {
-    if (_selectedDate == null) return 'Escolher data';
+  if (_selectedDate == null) return AppTexts.current.get('choose_date');
 
     final d = _selectedDate!;
     String two(int n) => n.toString().padLeft(2, '0');
@@ -210,7 +300,8 @@ class _EditEventPageState extends State<EditEventPage> {
   }
 
   String _timeText() {
-    if (_selectedTime == null) return 'Escolher horário';
+  if (_selectedTime == null) return AppTexts.current.get('choose_time');
+
 
     String two(int n) => n.toString().padLeft(2, '0');
 
@@ -313,8 +404,9 @@ class _EditEventPageState extends State<EditEventPage> {
         surfaceTintColor: _bg,
         elevation: 0,
         iconTheme: const IconThemeData(color: _text),
-        title: const Text(
-          'Editar evento',
+         title: Text(
+  t('edit_event'),
+
           style: TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
@@ -328,10 +420,10 @@ class _EditEventPageState extends State<EditEventPage> {
             key: _formKey,
             child: Column(
               children: [
-                const Align(
+                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Edite seu evento. Após salvar, ele será enviado novamente para aprovação.',
+                    t('edit_event_info'),
                     style: TextStyle(
                       color: _muted,
                       fontSize: 15,
@@ -343,16 +435,17 @@ class _EditEventPageState extends State<EditEventPage> {
 
                 const SizedBox(height: 18),
 
-                _field(
-                  controller: _titleController,
-                  hint: 'Título do evento',
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Digite o título';
-                    }
-                    return null;
-                  },
-                ),
+            _field(
+  controller: _titleController,
+  hint: t('event_title'),
+  validator: (v) {
+    if (v == null || v.trim().isEmpty) {
+      return t('enter_event_title');
+    }
+    return null;
+  },
+),
+
 
                 const SizedBox(height: 14),
 
@@ -394,10 +487,10 @@ class _EditEventPageState extends State<EditEventPage> {
 
                 _field(
                   controller: _cityController,
-                  hint: 'Cidade',
+                  hint: t('city'),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) {
-                      return 'Digite a cidade';
+                      return t('enter_city');
                     }
                     return null;
                   },
@@ -407,7 +500,9 @@ class _EditEventPageState extends State<EditEventPage> {
 
                 _field(
                   controller: _placeController,
-                  hint: 'Local',
+               
+hint: t('place'),
+
                 ),
 
                 const SizedBox(height: 14),
@@ -428,11 +523,107 @@ class _EditEventPageState extends State<EditEventPage> {
                   ],
                 ),
 
+if (_photoUrls.isNotEmpty || _uploadingPhoto) ...[
+  Wrap(
+    spacing: 10,
+    runSpacing: 10,
+    children: [
+      ..._photoUrls.map(
+        (url) => Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.network(
+                url,
+                width: 110,
+                height: 110,
+                fit: BoxFit.cover,
+              ),
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: InkWell(
+                onTap: () => _removePhoto(url),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: const Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+              ),
+            ),
+            
+Positioned(
+  top: 4,
+  left: 4,
+  child: InkWell(
+    onTap: () {
+      setState(() => _coverUrl = url);
+    },
+    child: Container(
+      decoration: BoxDecoration(
+        color: _coverUrl == url ? _remdyBlue : Colors.black54,
+        shape: BoxShape.circle,
+      ),
+      padding: const EdgeInsets.all(5),
+      child: Icon(
+        _coverUrl == url ? Icons.star : Icons.star_border,
+        color: Colors.white,
+        size: 18,
+      ),
+    ),
+  ),
+),
+
+
+          ],
+        ),
+      ),
+
+      if (_photoUrls.length < 5)
+        InkWell(
+          onTap: _uploadingPhoto ? null : _addPhoto,
+          child: Container(
+            width: 110,
+            height: 110,
+            decoration: BoxDecoration(
+              border: Border.all(color: _border),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: _uploadingPhoto
+                ? const Center(
+                    child: CircularProgressIndicator(),
+                  )
+               
+: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      const Icon(Icons.add_a_photo_outlined),
+      const SizedBox(height: 8),
+      Text(t('add_photo')),
+    ],
+  ),
+
+          ),
+        ),
+    ],
+  ),
+  const SizedBox(height: 14),
+],
+
+
                 const SizedBox(height: 14),
 
                 _field(
                   controller: _descriptionController,
-                  hint: 'Descrição',
+                hint: t('description'),
                   maxLines: 5,
                 ),
 
@@ -452,15 +643,18 @@ class _EditEventPageState extends State<EditEventPage> {
                     contentPadding: EdgeInsets.zero,
                     value: _sponsorInterested,
                     activeColor: _remdyBlue,
-                    title: const Text(
-                      'Quer destacar seu evento?',
+                   
+title: Text(
+  t('highlight_event'),
+
                       style: TextStyle(
                         color: _text,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    subtitle: const Text(
-                      'Tenho interesse em patrocínio',
+                   subtitle: Text(
+  t('sponsor_interest'),
+
                       style: TextStyle(
                         color: _muted,
                         fontWeight: FontWeight.w600,
@@ -496,8 +690,9 @@ class _EditEventPageState extends State<EditEventPage> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text(
-                            'Salvar alterações',
+                        : Text(
+  t('save_changes'),
+
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 15,

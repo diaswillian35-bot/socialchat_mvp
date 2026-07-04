@@ -187,13 +187,24 @@ exports.onGroupJoinRequestCreated = onDocumentWritten(
             channelId: "default",
           },
         },
-        apns: {
-          payload: {
-            aps: {
-              sound: "default",
-            },
-          },
-        },
+       apns: {
+  headers: {
+    "apns-priority": "10",
+  },
+  payload: {
+    aps: {
+      alert: {
+        title: senderName,
+        body: text,
+      },
+      sound: "default",
+      badge: 1,
+    },
+  },
+},
+
+
+
       };
 
 
@@ -303,7 +314,7 @@ exports.onPrivateMessageCreated = onDocumentCreated(
       const uniqueTokens = [...new Set(tokens)];
       if (uniqueTokens.length === 0) return;
 
-      await admin.messaging().sendEachForMulticast({
+      const response = await admin.messaging().sendEachForMulticast({
         tokens: uniqueTokens,
         notification: {
           title: senderName,
@@ -321,101 +332,31 @@ exports.onPrivateMessageCreated = onDocumentCreated(
             channelId: "default",
           },
         },
-        apns: {
-          payload: {
-            aps: {
-              sound: "default",
-            },
-          },
-        },
+       apns: {
+  headers: {
+    "apns-priority": "10",
+  },
+  payload: {
+    aps: {
+      alert: {
+        title: senderName,
+        body: text,
+      },
+      sound: "default",
+      badge: 1,
+    },
+  },
+},
+
+
       });
+console.log("TOKENS COUNT:", uniqueTokens.length);
+console.log("FCM RESPONSE:", JSON.stringify(response));
 
       console.log("Push privado enviado:", conversationId);
     } catch (e) {
       console.error("Erro onPrivateMessageCreated:", e);
-    }
-  }
-);
-
-
-exports.onEventUpdated = onDocumentUpdated(
-  "events/{eventId}",
-  async (event) => {
-    try {
-      const eventId = event.params.eventId;
-      const before = event.data?.before?.data();
-      const data = event.data?.after?.data();
-
-      if (!data) return;
-
-      if (before?.isActive === true) return;
-      if (data.isActive !== true) return;
-
-      const title = (data.title || "Novo evento").toString().trim();
-      const city = (data.city || "").toString().trim();
-      const category = (data.category || "").toString().trim();
-      const countryCode = (data.countryCode || "").toString().trim().toLowerCase();
-      const creatorUid = (data.createdBy || data.ownerUid || "").toString().trim();
-
-      if (!countryCode) return;
-
-      const usersSnap = await admin
-        .firestore()
-        .collection("users")
-        .where("homeCountryCode", "==", countryCode)
-        .get();
-
-      const tokens = [];
-
-      for (const userDoc of usersSnap.docs) {
-        if (userDoc.id === creatorUid) continue;
-
-        const tokensSnap = await userDoc.ref.collection("fcmTokens").get();
-
-        for (const tokenDoc of tokensSnap.docs) {
-          const token = (tokenDoc.data().token || "").toString().trim();
-          if (token) tokens.push(token);
-        }
-      }
-
-      const uniqueTokens = [...new Set(tokens)];
-
-      console.log("EVENT PUSH TOKENS:", uniqueTokens.length);
-
-      if (uniqueTokens.length === 0) return;
-
-      const response = await admin.messaging().sendEachForMulticast({
-        tokens: uniqueTokens,
-      notification: {
-  title: city ? `📍 Novo evento em ${city}` : "📍 Novo evento perto de você",
-  body: category ? `${title} • ${category}` : `${title} • Toque para ver detalhes`,
-},
-
-        data: {
-          type: "event",
-          eventId: eventId,
-        },
-        android: {
-          priority: "high",
-          notification: {
-            sound: "default",
-            channelId: "default",
-          },
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: "default",
-            },
-          },
-        },
-      });
-
-      console.log(
-        `Push evento update enviado. Success: ${response.successCount}, Fail: ${response.failureCount}`
-      );
-    } catch (e) {
-      console.error("Erro onEventUpdated:", e);
+      
     }
   }
 );
@@ -828,155 +769,7 @@ return {
 
   }
 );
-exports.onEventUpdated = onDocumentUpdated(
-  "events/{eventId}",
-  async (event) => {
-    try {
-      const eventId = event.params.eventId;
-      const before = event.data?.before?.data();
-      const data = event.data?.after?.data();
 
-      if (!data) return;
-
-      const wasActive = before?.isActive === true;
-      const isActive = data.isActive === true;
-      const status = (data.status || "").toString();
-
-      if (wasActive) return;
-      if (!isActive) return;
-      if (status !== "approved") return;
-
-      const title = (data.title || "Novo evento").toString().trim();
-      const city = (data.city || "").toString().trim();
-      const category = (data.category || "").toString().trim();
-      const countryCode = (data.countryCode || "").toString().trim().toLowerCase();
-      const creatorUid = (data.createdBy || data.ownerUid || "").toString().trim();
-
-      const eventLat = Number(data.lat);
-      const eventLng = Number(data.lng);
-
-      if (!countryCode) return;
-      if (!eventLat || !eventLng) {
-        console.log("Evento sem lat/lng:", eventId);
-        return;
-      }
-
-      const radiusKm = 50;
-
-      const usersSnap = await admin
-        .firestore()
-        .collection("users")
-        .where("homeCountryCode", "==", countryCode)
-        .get();
-
-      const tokens = [];
-
-      for (const userDoc of usersSnap.docs) {
-        if (userDoc.id === creatorUid) continue;
-
-        const userData = userDoc.data() || {};
-       const lang = (
-  userData.appLanguageCode ||
-  userData.languageCode ||
-  "pt"
-)
-  .toString()
-  .substring(0, 2)
-  .toLowerCase();
-
-
-
-        const userLat = Number(userData.lat);
-        const userLng = Number(userData.lng);
-
-        if (!userLat || !userLng) continue;
-
-        const distance = distanceKm(eventLat, eventLng, userLat, userLng);
-
-        if (distance > radiusKm) continue;
-
-        const mainToken = (userData.fcmToken || "").toString().trim();
-        if (mainToken) tokens.push(mainToken);
-
-        const tokensSnap = await userDoc.ref.collection("fcmTokens").get();
-
-        for (const tokenDoc of tokensSnap.docs) {
-          const token = (tokenDoc.data().token || "").toString().trim();
-          if (token) tokens.push(token);
-        }
-      }
-
-      const uniqueTokens = [...new Set(tokens)];
-
-      console.log("EVENT PUSH DISTANCE TOKENS:", uniqueTokens.length);
-
-      if (uniqueTokens.length === 0) return;
-
-
-
-for (const [lang, tokens] of Object.entries(tokensByLang)) {
-
-  const uniqueTokens = [...new Set(tokens)];
-
-  if (uniqueTokens.length === 0) continue;
-
-  let pushTitle = "📍 Novo evento perto de você";
-  let pushBody = `${title} • Toque para ver detalhes`;
-
-  if (lang === "en") {
-    pushTitle = "📍 New event near you";
-    pushBody = `${title} • Tap to view details`;
-  }
-
-  if (lang === "es") {
-    pushTitle = "📍 Nuevo evento cerca de ti";
-    pushBody = `${title} • Toca para ver detalles`;
-  }
-
-  if (lang === "fr") {
-    pushTitle = "📍 Nouvel événement près de vous";
-    pushBody = `${title} • Touchez pour voir les détails`;
-  }
-
-  const response = await admin.messaging().sendEachForMulticast({
-    tokens: uniqueTokens,
-    notification: {
-      title: city ? `${pushTitle} (${city})` : pushTitle,
-      body: category
-          ? `${title} • ${category}`
-          : pushBody,
-    },
-
-
-
-        data: {
-          type: "event",
-          eventId: eventId,
-        },
-        android: {
-          priority: "high",
-          notification: {
-            sound: "default",
-            channelId: "default",
-          },
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: "default",
-            },
-          },
-        },
-      });
-    }
-      console.log(
-        `Push evento por distância enviado. Success: ${response.successCount}, Fail: ${response.failureCount}`
-      );
-    } catch (e) {
-      console.error("Erro onEventUpdated:", e);
-    }
-  }
-);
 
 exports.onGroupJoinRequestCreated = onDocumentCreated(
   "groups/{groupId}/pendingRequests/{uid}",
@@ -1052,7 +845,10 @@ console.log("TOKENS LIST:", uniqueTokens);
 
 if (uniqueTokens.length === 0) return;
 
+console.log("PROJECT:", process.env.GOOGLE_CLOUD_PROJECT);
+
 const response = await admin.messaging().sendEachForMulticast({
+
 
 
         tokens: uniqueTokens,
@@ -1073,17 +869,201 @@ const response = await admin.messaging().sendEachForMulticast({
           },
         },
         apns: {
-          payload: {
-            aps: {
-              sound: "default",
-            },
-          },
-        },
+  headers: {
+    "apns-priority": "10",
+  },
+  payload: {
+    aps: {
+      alert: {
+        title: senderName,
+        body: text,
+      },
+      sound: "default",
+      badge: 1,
+    },
+  },
+},
+
       });
       console.log("FCM RESPONSE:", JSON.stringify(response));
       console.log(`Push pedido de entrada enviado: ${groupId} / ${uid}`);
     } catch (e) {
       console.error("Erro onGroupJoinRequestCreated:", e);
+    }
+  }
+);
+exports.onEventUpdated = onDocumentUpdated(
+  "events/{eventId}",
+  async (event) => {
+    try {
+      const eventId = event.params.eventId;
+      const before = event.data?.before?.data();
+      const data = event.data?.after?.data();
+
+      if (!data) return;
+
+      const wasActive = before?.isActive === true;
+      const isActive = data.isActive === true;
+      const status = (data.status || "").toString();
+
+      if (wasActive) return;
+      if (!isActive) return;
+      if (status !== "approved") return;
+
+      const title = (data.title || "Novo evento").toString().trim();
+      const city = (data.city || "").toString().trim();
+      const category = (data.category || "").toString().trim();
+      const countryCode = (data.countryCode || "").toString().trim().toLowerCase();
+      const creatorUid = (data.createdBy || data.ownerUid || "").toString().trim();
+
+      const eventLat = Number(data.lat || data.latitude);
+      const eventLng = Number(data.lng || data.longitude);
+
+      if (!countryCode) return;
+
+      if (!eventLat || !eventLng) {
+        console.log("Evento sem lat/lng:", eventId);
+        return;
+      }
+
+      const radiusKm = 50;
+
+      const tokensByLang = {
+        pt: [],
+        en: [],
+        es: [],
+        fr: [],
+      };
+
+      const usersSnap = await admin
+        .firestore()
+        .collection("users")
+        .where("homeCountryCode", "==", countryCode)
+        .get();
+console.log(
+  `Evento ${eventId} - usuários encontrados no país (${countryCode}): ${usersSnap.docs.length}`
+);
+
+      for (const userDoc of usersSnap.docs) {
+        if (userDoc.id === creatorUid) continue;
+
+        const userData = userDoc.data() || {};
+
+        const lang = (
+          userData.appLanguageCode ||
+          userData.languageCode ||
+          "pt"
+        ).toString().substring(0, 2).toLowerCase();
+
+        const finalLang = tokensByLang[lang] ? lang : "pt";
+
+        const userLat = Number(userData.lat || userData.latitude);
+        const userLng = Number(userData.lng || userData.longitude);
+
+        if (!userLat || !userLng) continue;
+
+        const distance = distanceKm(eventLat, eventLng, userLat, userLng);
+console.log(
+  `${userData.name || userDoc.id} -> ${distance.toFixed(1)} km`
+);
+
+        if (distance > radiusKm) continue;
+        console.log(
+  `✔ Dentro do raio: ${userData.name || userDoc.id}`
+);
+await userDoc.ref.set({
+  hasNewEvents: true,
+  lastNewEventId: eventId,
+  lastNewEventAt: admin.firestore.FieldValue.serverTimestamp(),
+}, { merge: true });
+
+
+        const mainToken = (userData.fcmToken || "").toString().trim();
+        if (mainToken) tokensByLang[finalLang].push(mainToken);
+
+        const tokensSnap = await userDoc.ref.collection("fcmTokens").get();
+
+        for (const tokenDoc of tokensSnap.docs) {
+          const token = (tokenDoc.data().token || "").toString().trim();
+          if (token) tokensByLang[finalLang].push(token);
+        }
+      }
+
+      let totalSuccess = 0;
+      let totalFail = 0;
+
+      for (const [lang, tokenList] of Object.entries(tokensByLang)) {
+        const uniqueTokens = [...new Set(tokenList)];
+
+        if (uniqueTokens.length === 0) continue;
+
+        let pushTitle = "📍 Novo evento perto de você";
+        let pushBody = `${title} • Toque para ver detalhes`;
+
+        if (lang === "en") {
+          pushTitle = "📍 New event near you";
+          pushBody = `${title} • Tap to view details`;
+        }
+
+        if (lang === "es") {
+          pushTitle = "📍 Nuevo evento cerca de ti";
+          pushBody = `${title} • Toca para ver detalles`;
+        }
+
+        if (lang === "fr") {
+          pushTitle = "📍 Nouvel événement près de vous";
+          pushBody = `${title} • Touchez pour voir les détails`;
+        }
+
+console.log(
+  `Idioma ${lang}: ${uniqueTokens.length} token(s) para envio`
+);
+
+        const response = await admin.messaging().sendEachForMulticast({
+          tokens: uniqueTokens,
+      notification: {
+  title: city ? `${pushTitle} (${city})` : pushTitle,
+  body: `${title}${category ? " • " + category : ""}`,
+},
+
+          data: {
+            type: "event",
+            eventId: eventId,
+          },
+          android: {
+            priority: "high",
+            notification: {
+              sound: "default",
+              channelId: "default",
+            },
+          },
+          apns: {
+  headers: {
+    "apns-priority": "10",
+  },
+  payload: {
+    aps: {
+      alert: {
+        title: senderName,
+        body: text,
+      },
+      sound: "default",
+      badge: 1,
+    },
+  },
+},
+
+        });
+
+        totalSuccess += response.successCount;
+        totalFail += response.failureCount;
+      }
+
+      console.log(
+        `Push evento enviado. Success: ${totalSuccess}, Fail: ${totalFail}`
+      );
+    } catch (e) {
+      console.error("Erro onEventUpdated:", e);
     }
   }
 );

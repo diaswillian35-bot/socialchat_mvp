@@ -623,15 +623,82 @@
 "event_detail_now": "maintenant",
 "event_detail_minutes_ago": "minutes auparavant",
 "event_detail_hours_ago": "heures auparavant",
-"event_detail_days_ago": "jours auparavant"
+"event_detail_days_ago": "jours auparavant",
 
-
-
-
-
-
-
-
+"verify_email_appbar": "Vérifier votre e-mail",
+"verify_email_title": "Confirmez votre e-mail",
+"verify_email_sent": "Nous avons envoyé un e-mail de confirmation à :",
+"verify_email_sent_no_email": "Nous vous avons envoyé un e-mail de confirmation.",
+"verify_email_instruction": "Vérifiez votre boîte de réception ainsi que votre dossier Spam ou Courrier indésirable. Ensuite, appuyez sur \"J’ai confirmé\".",
+"verify_email_confirmed": "J’ai confirmé",
+"verify_email_resend": "Renvoyer l’e-mail",
+"verify_email_back": "Retour à la connexion",
+"verify_email_not_confirmed": "Votre e-mail n’a pas encore été confirmé. Vérifiez votre boîte de réception ou le dossier Spam.",
+"verify_email_resent": "E-mail renvoyé. Vérifiez votre boîte de réception ou le dossier Spam.",
+"verify_email_sent_to": "Nous avons envoyé un e-mail de confirmation à :",
+"verify_email_back_login": "Retour à la connexion",
+"complete_profile": "Compléter le profil",
+"full_name": "Nom complet",
+"enter_full_name": "Entrez votre nom complet",
+"name_too_short": "Nom trop court",
+"age": "Âge",
+"enter_number": "Entrez un nombre",
+"minimum_age_13": "Âge minimum : 13",
+"invalid_age": "Âge invalide",
+"languages_you_speak": "Langues que vous parlez",
+"about_you": "À propos de vous",
+"about_you_hint": "Parlez un peu de vous, de ce que vous aimez faire et de quelque chose d'intéressant sur vous.",
+"country": "Pays",
+"city": "Ville",
+"city_example": "Ex : Toronto",
+"search_country": "Rechercher un pays",
+"search_city": "Rechercher une ville",
+"choose_country": "Choisissez votre pays",
+"choose_city": "Choisissez votre ville",
+"select": "Sélectionner",
+"select_country": "Sélectionnez votre pays.",
+"select_country_first": "Sélectionnez d'abord votre pays.",
+"select_city": "Sélectionnez votre ville",
+"select_city_from_list": "Sélectionnez votre ville dans la liste.",
+"no_country_found": "Aucun pays trouvé",
+"type_2_letters_city": "Tapez au moins 2 lettres de la ville",
+"country_locked": "Votre pays est verrouillé.",
+"country_set_once": "Définissez votre pays une seule fois. Ensuite, il sera verrouillé.",
+"show_people_near_me": "Afficher les personnes près de moi",
+"nearby_profile_info": "Lorsque cette option est activée, votre profil peut apparaître aux personnes de votre ville ou région.",
+"profile_saved": "Profil enregistré ✅",
+"login_required_save_profile": "Vous devez être connecté pour enregistrer votre profil.",
+"load_profile_error": "Erreur lors du chargement du profil",
+"save_error": "Erreur lors de l'enregistrement",
+"save": "Enregistrer",
+"saving": "Enregistrement...",
+"free_account": "Compte gratuit",
+"premium_account": "Compte Premium",
+"edit_event": "Modifier l'événement",
+"edit_event_info": "Modifiez votre événement. Après l'enregistrement, il sera soumis à nouveau pour approbation.",
+"event_title": "Titre de l'événement",
+"enter_event_title": "Saisissez le titre",
+"enter_city": "Saisissez la ville",
+"place": "Lieu",
+"choose_date": "Choisir une date",
+"choose_time": "Choisir une heure",
+"description": "Description",
+"highlight_event": "Mettre votre événement en avant ?",
+"sponsor_interest": "Je suis intéressé par un parrainage",
+"save_changes": "Enregistrer les modifications",
+"choose_date_time": "Choisissez une date et une heure",
+"event_sent_for_approval": "Événement renvoyé pour approbation",
+"max_5_photos": "Maximum de 5 photos",
+"photo_upload_error": "Erreur lors de l'envoi de la photo",
+"add_photo": "Ajouter une photo",
+"remove_photo": "Supprimer la photo",
+"set_cover": "Définir comme couverture",
+"category_general": "Général",
+"category_music": "Musique",
+"category_sports": "Sports",
+"category_restaurant": "Restaurant",
+"category_culture": "Culture",
+"category_languages": "Langues"
 
 
 
@@ -639,17 +706,3 @@
 
 
 }
-
-
-
-
-
- 
-
-
-
-
-
-
-
-

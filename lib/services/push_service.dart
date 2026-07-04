@@ -86,6 +86,13 @@ class PushService {
 
     try {
       final token = await FirebaseMessaging.instance.getToken();
+
+      print('==========================');
+print('FCM TOKEN: $token');
+print('==========================');
+print("APNS TOKEN: ${await FirebaseMessaging.instance.getAPNSToken()}");
+
+
       if (token != null && token.trim().isNotEmpty) {
         await _saveToken(uid, token.trim());
       }

@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Remdy</string>
+    <string name="facebook_app_id">890190810109933</string>
+    <string name="fb_login_protocol_scheme">fb890190810109933</string>
+    <string name="facebook_client_token">9dd071372d74dd9d7239bf084393bb49</string>
+</resources>
+

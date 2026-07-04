@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import 'dart:math';
 
 import 'home_page.dart';
 import 'messages_page.dart';
@@ -176,6 +176,7 @@ void initState() {
       return total;
     });
   }
+
 Stream<int> _activeEventsStream() {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value(0);
@@ -184,23 +185,12 @@ Stream<int> _activeEventsStream() {
       .collection('users')
       .doc(uid)
       .snapshots()
-      .asyncExpand((userSnap) {
-    final lastSeen = userSnap.data()?['lastEventsSeenAt'];
-
-    final lastSeenAt = lastSeen is Timestamp
-        ? lastSeen
-        : Timestamp.fromDate(DateTime(2020));
-
-    return FirebaseFirestore.instance
-        .collection('events')
-        .where('isActive', isEqualTo: true)
-        .where('createdAt', isGreaterThan: lastSeenAt)
-        .orderBy('createdAt', descending: true)
-        .limit(20)
-        .snapshots()
-        .map((snap) => snap.docs.length);
+      .map((snap) {
+    final data = snap.data() ?? {};
+    return data['hasNewEvents'] == true ? 1 : 0;
   });
 }
+
 
 
 
@@ -255,6 +245,7 @@ Stream<int> _activeEventsStream() {
           .doc(uid)
           .set({
         'lastEventsSeenAt': FieldValue.serverTimestamp(),
+        'hasNewEvents': false,
       }, SetOptions(merge: true));
     }
   }

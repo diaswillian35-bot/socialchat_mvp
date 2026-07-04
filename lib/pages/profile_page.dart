@@ -8,7 +8,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../l10n/app_texts.dart';
-
+import '../widget/city_search_dialog.dart';
 
 import 'Premium_page.dart'; // <-- se o seu for "premium_page.dart", troque aqui
 
@@ -26,6 +26,11 @@ class _ProfilePageState extends State<ProfilePage> {
   String _stateName = '';
   String _cityName = '';
   String _displayLocation = '';
+  String _placeId = '';
+double? _selectedLat;
+double? _selectedLng;
+
+static const String _googlePlacesApiKey = 'AIzaSyCCu5KXXT2tSqL4kqwjDX6ySv49lqyCLs0';
 
   bool _loading = false;
  
@@ -102,6 +107,7 @@ void didChangeDependencies() {
       _stateName = (data['stateName'] ?? '').toString().trim();
 _cityName = (data['cityName'] ?? '').toString().trim();
 _displayLocation = (data['displayLocation'] ?? '').toString().trim();
+_placeId = (data['placeId'] ?? '').toString();
 
 
 _cityC.text = _displayLocation.isNotEmpty
@@ -270,6 +276,11 @@ if (_cityName.isEmpty) {
   'cityName': _cityName.isNotEmpty ? _cityName : city,
   'stateName': _stateName,
   'displayLocation': _displayLocation.isNotEmpty ? _displayLocation : city,
+'lat': _selectedLat,
+'lng': _selectedLng,
+'placeId': _placeId,
+
+
   'country': _countryName,
   'about': about,
   'updatedAt': FieldValue.serverTimestamp(),
@@ -562,13 +573,42 @@ if (_cityName.isEmpty) {
             _lockedCountryField(),
             const SizedBox(height: 12),
 
-            TextField(
-              controller: _cityC,
-              decoration: _inputDeco(AppTexts.current.get('city'),hint:AppTexts.current.get('city_example'),
+           GestureDetector(
+  onTap: () async {
+    final city = await CitySearchDialog.open(
+      context: context,
+      countryCode: _homeCountryCode,
+      googleApiKey: _googlePlacesApiKey,
+    );
+
+    if (city == null) return;
+
+    setState(() {
+      _cityName = city.cityName;
+      _stateName = city.stateName;
+      _displayLocation = city.displayLocation;
+
+_placeId = city.placeId;
+
+
+     _selectedLat = city.lat;
+_selectedLng = city.lng;
+
+
+      _cityC.text = city.displayLocation;
+    });
+  },
+  child: AbsorbPointer(
+    child: TextField(
+      controller: _cityC,
+      decoration: _inputDeco(
+        AppTexts.current.get('city'),
+        hint: AppTexts.current.get('city_example'),
+      ),
+    ),
+  ),
 ),
 
-              textInputAction: TextInputAction.next,
-            ),
             const SizedBox(height: 8),
 
             _infoBar(AppTexts.current.get('city_required_info')),

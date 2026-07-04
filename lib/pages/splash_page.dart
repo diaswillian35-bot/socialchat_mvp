@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'email_verification_page.dart';
 
 import 'main_shell_page.dart'; // contém MainShell (mantido)
 import 'login_page.dart';
@@ -42,9 +42,22 @@ class _SplashPageState extends State<SplashPage> {
 
       // 1) Sem login => LoginPage
       if (user == null) {
+        
         _replace(const LoginPage());
         return;
       }
+await user.reload();
+final freshUser = FirebaseAuth.instance.currentUser;
+
+if (freshUser == null) {
+  _replace(const LoginPage());
+  return;
+}
+
+if (!freshUser.emailVerified) {
+  _replace(const EmailVerificationPage());
+  return;
+}
 
 
       // 2) Com login => checa perfil no Firestore

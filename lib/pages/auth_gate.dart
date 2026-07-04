@@ -280,24 +280,24 @@ print('DEBUG group: entrou no grupo com sucesso');
         }
 
 
-        final user = snap.data;
-        if (user == null) return const LoginPage();
+     final user = snap.data;
+if (user == null) return const LoginPage();
 
+final isEmailPasswordLogin = user.providerData.any(
+  (p) => p.providerId == 'password',
+);
 
-      
+if (isEmailPasswordLogin && !user.emailVerified) {
+  return const EmailVerificationPage();
+}
 
 WidgetsBinding.instance.addPostFrameCallback((_) {
   _applyPendingInviteIfAny(user);
   _applyPendingGroupIfAny(user);
 });
 
+return const MainShell();
 
-        if (!user.emailVerified) {
-          return const EmailVerificationPage();
-        }
-
-
-        return const MainShell();
       },
     );
   }

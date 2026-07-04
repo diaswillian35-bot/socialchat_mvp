@@ -5,7 +5,7 @@ import '../data/countries_data.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
-
+import '../l10n/app_texts.dart';
 
 
 import 'splash_page.dart';
@@ -19,6 +19,7 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
+  
 
 final _formKey = GlobalKey<FormState>();
 
@@ -146,6 +147,7 @@ CollectionReference<Map<String, dynamic>> get _countriesCol =>
 
       if (uid == null) {
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -203,7 +205,7 @@ if (_countryLocked) {
 
 
     } catch (e) {
-      _err = 'Erro ao carregar perfil: $e';
+      _err = '${AppTexts.current.get('load_profile_error')}: $e';
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -218,13 +220,16 @@ if (_countryLocked) {
   }
 
   String _countryNameFromCode(String code) {
+    
+
     for (final c in _countries) {
       if (c.code == code.toLowerCase()) return c.name;
     }
-    return 'Selecione';
+   return AppTexts.current.get('select');
   }
 
   Future<void> _openCountrySheet() async {
+    final t = AppTexts.current;
   if (_countryLocked) return;
 
 
@@ -297,9 +302,9 @@ final filteredCountries = _countries.where((c) {
                     child: const Icon(Icons.flag_rounded, color: Color(0xFF313A5F)),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                   Expanded(
                     child: Text(
-                      'Escolha seu país',
+                AppTexts.current.get('choose_country'),
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
@@ -319,7 +324,7 @@ final filteredCountries = _countries.where((c) {
                 controller: _countrySearchC,
                 onChanged: (_) => setModalState(() {}),
                 decoration: InputDecoration(
-                  hintText: 'Buscar país',
+                  hintText: t.get('search_country'),
                   prefixIcon: const Icon(Icons.search),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -333,9 +338,9 @@ final filteredCountries = _countries.where((c) {
               const SizedBox(height: 12),
               Expanded(
                 child: filteredCountries.isEmpty
-                    ? const Center(
+                    ?  Center(
                         child: Text(
-                          'Nenhum país encontrado',
+                      AppTexts.current.get('no_country_found'),
                           style: TextStyle(
                             color: Color(0xFF6B7280),
                             fontWeight: FontWeight.w600,
@@ -413,7 +418,7 @@ _selectedLng = null;
     try {
       final uid = _myUid;
       if (uid == null) {
-        setState(() => _err = 'Você precisa estar logado para salvar o perfil.');
+        setState(() => _err = AppTexts.current.get('login_required_save_profile.'));
         return;
       }
 
@@ -455,12 +460,20 @@ _selectedLng = null;
 
       if (!existingLocked || existingHome.isEmpty) {
         if (_homeCountryCode.isEmpty) {
-          setState(() => _err = 'Selecione seu país.');
+          setState(() => _err = AppTexts.current.get('select_country'));
           return;
         }
         finalHomeCode = _homeCountryCode;
         finalLocked = true;
       }
+      if (_cityName.trim().isEmpty ||
+    _displayLocation.trim().isEmpty ||
+    _selectedLat == null ||
+    _selectedLng == null) {
+  setState(() => _err = AppTexts.current.get('select_city_from_list'));
+  return;
+}
+
 
       final countryName = _countryNameFromCode(finalHomeCode);
 
@@ -477,6 +490,10 @@ final userPayload = <String, dynamic>{
   'stateName': _stateName,
   'cityName': _cityName,
   'displayLocation': _displayLocation,
+  
+'lat': _selectedLat,
+'lng': _selectedLng,
+
   'nearbyEnabled': _nearbyEnabled,
   'countryLocked': finalLocked,
   'profileComplete': true,
@@ -515,21 +532,6 @@ final userPayload = <String, dynamic>{
   'updatedAt': now,
 };
 
-await FirebaseFirestore.instance
-    .collection('configCountries')
-    .doc(finalHomeCode)
-    .set({
-  'code': finalHomeCode,
-  'name': countryName,
-  'flag': _flagEmoji(finalHomeCode),
-  'enabled': false,
-  'autoDetected': true,
-  'usersCount': FieldValue.increment(1),
-  'createdAt': FieldValue.serverTimestamp(),
-  'updatedAt': FieldValue.serverTimestamp(),
-}, SetOptions(merge: true));
-
-
 
       if (!hasPubCreatedAt) {
         publicPayload['createdAt'] = now;
@@ -540,7 +542,7 @@ await FirebaseFirestore.instance
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Perfil salvo ✅')),
+         SnackBar(content: Text(AppTexts.current.get('profile_saved')))
       );
 
       Navigator.pushAndRemoveUntil(
@@ -549,7 +551,7 @@ await FirebaseFirestore.instance
         (_) => false,
       );
     } catch (e) {
-      setState(() => _err = 'Erro ao salvar: $e');
+      setState(() => _err = '${AppTexts.current.get('save_error')}: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -599,6 +601,7 @@ super.dispose();
 
 
   Widget _countryField() {
+    final t = AppTexts.current;
     final countryName = _countryNameFromCode(_homeCountryCode);
    final flag = _homeCountryCode.isEmpty ? '🏳️' : _flagEmoji(_homeCountryCode);
 
@@ -607,10 +610,10 @@ super.dispose();
       borderRadius: BorderRadius.circular(6),
       child: InputDecorator(
         decoration: InputDecoration(
-          labelText: 'País',
+          labelText: t.get('country'),
           helperText: _countryLocked
-              ? 'Seu país está travado.'
-              : 'Defina seu país UMA vez. Depois ficará travado.',
+              ? AppTexts.current.get('country_locked')
+              : AppTexts.current.get('country_set_once'),
           border: const OutlineInputBorder(),
         ),
         child: Row(
@@ -653,18 +656,18 @@ Widget _nearbyField() {
               _nearbyEnabled = value;
             });
           },
-          title: const Text(
-            'Mostrar pessoas perto de mim',
+          title:  Text(
+           AppTexts.current.get('show_people_near_me'),
             style: TextStyle(
               fontWeight: FontWeight.w600,
               color: Color(0xFF111827),
             ),
           ),
         ),
-        const Padding(
+         Padding(
           padding: EdgeInsets.only(bottom: 6),
           child: Text(
-            'Quando ativado, seu perfil pode aparecer para pessoas da sua cidade ou região.',
+          AppTexts.current.get('nearby_profile_info'),
             style: TextStyle(
               fontSize: 12,
               color: Color(0xFF6B7280),
@@ -678,13 +681,18 @@ Widget _nearbyField() {
 
 
 Widget _cityField() {
+  
+final t = AppTexts.current;
+
   return TextFormField(
     controller: _citySearchC,
     readOnly: true,
-    decoration: _deco(
-  'Cidade',
-  hint: 'Ex: Toronto',
+    decoration: 
+_deco(
+  t.get('city'),
+  hint: t.get('city_example'),
 ),
+
 
   onTap: () async {
   final result = await _openCitySearch();
@@ -706,7 +714,7 @@ _selectedLng = result.lng;
 },
 
     validator: (v) {
-      if ((v ?? '').trim().isEmpty) return 'Selecione sua cidade';
+      if ((v ?? '').trim().isEmpty) return AppTexts.current.get('select_city');
       return null;
     },
   );
@@ -736,6 +744,8 @@ if (q.length < 2) {
 
 
   final res = await http.get(url);
+
+  
   if (res.statusCode != 200) return [];
 
 
@@ -750,25 +760,60 @@ if (q.length < 2) {
 
     final cityName = parts.isNotEmpty ? parts[0] : '';
     final stateName = parts.length >= 2 ? parts[1] : '';
-    final countryName = parts.length >= 3 ? parts.last : _countryNameFromCode(_homeCountryCode);
+   final placeId = (p['place_id'] ?? '').toString();
+
+return _CitySuggestion(
+  cityName: cityName,
+  stateName: stateName,
+  display: description,
+  placeId: placeId,
+);
 
 
-    return _CitySuggestion(
-      cityName: cityName,
-      stateName: stateName,
-     
-      display: description,
-    );
   }).where((e) {
     return e.cityName.isNotEmpty;
   }).toList();
 }
+Future<_CitySuggestion> _loadCityDetails(_CitySuggestion item) async {
+  if (item.placeId.isEmpty) return item;
+
+  final url = Uri.parse(
+    'https://maps.googleapis.com/maps/api/place/details/json'
+    '?place_id=${Uri.encodeComponent(item.placeId)}'
+    '&fields=geometry'
+    '&key=$_googlePlacesApiKey',
+  );
+
+  final res = await http.get(url);
+  print('DEBUG placeId: ${item.placeId}');
+print('DEBUG details status: ${res.statusCode}');
+print('DEBUG details body: ${res.body}');
+
+  if (res.statusCode != 200) return item;
+
+  final data = jsonDecode(res.body) as Map<String, dynamic>;
+  final location = data['result']?['geometry']?['location'];
+
+  final lat = (location?['lat'] as num?)?.toDouble();
+  final lng = (location?['lng'] as num?)?.toDouble();
+
+  return _CitySuggestion(
+    cityName: item.cityName,
+    stateName: item.stateName,
+    display: item.display,
+    placeId: item.placeId,
+    lat: lat,
+    lng: lng,
+  );
+}
+
 
 Future<_CitySuggestion?> _openCitySearch() async {
+  final t = AppTexts.current;
   if (_homeCountryCode.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Selecione seu país primeiro.'),
+       SnackBar(
+        content: Text(AppTexts.current.get('select_country_first'))
       ),
     );
     return null;
@@ -841,9 +886,9 @@ Future<_CitySuggestion?> _openCitySearch() async {
                   ),
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Escolha sua cidade',
+                         AppTexts.current.get('choose_city'),
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
@@ -866,7 +911,7 @@ Future<_CitySuggestion?> _openCitySearch() async {
                       await runSearch(v);
                     },
                     decoration: InputDecoration(
-                      hintText: 'Buscar cidade',
+                      hintText: t.get('search_city'),
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -878,9 +923,11 @@ Future<_CitySuggestion?> _openCitySearch() async {
                     child: loading
                         ? const Center(child: CircularProgressIndicator())
                         : results.isEmpty
-                            ? const Center(
+                            ?Center(
                                 child: Text(
-                                  'Digite pelo menos 2 letras da cidade',
+                               
+AppTexts.current.get('type_2_letters_city'),
+
                                   style: TextStyle(
                                     color: Color(0xFF6B7280),
                                     fontWeight: FontWeight.w600,
@@ -895,9 +942,20 @@ Future<_CitySuggestion?> _openCitySearch() async {
 
                                   return ListTile(
                                     title: Text(item.display),
-                                    onTap: () {
-                                      Navigator.pop(context, item);
-                                    },
+                                  onTap: () async {
+  print('DEBUG CLICOU NA CIDADE: ${item.display}');
+
+  final withDetails = await _loadCityDetails(item);
+
+  print('DEBUG VOLTOU DETAILS LAT: ${withDetails.lat}');
+  print('DEBUG VOLTOU DETAILS LNG: ${withDetails.lng}');
+
+  if (!context.mounted) return;
+  Navigator.pop(context, withDetails);
+},
+
+
+
                                   );
                                 },
                               ),
@@ -914,6 +972,7 @@ Future<_CitySuggestion?> _openCitySearch() async {
 
   @override
   Widget build(BuildContext context) {
+  final t = AppTexts.current;  
   if (_myUid == null) {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!mounted) return;
@@ -941,8 +1000,8 @@ Future<_CitySuggestion?> _openCitySearch() async {
     elevation: 0,
     scrolledUnderElevation: 0,
     surfaceTintColor: Colors.transparent,
-    title: const Text(
-      'Completar perfil',
+    title: Text(
+      t.get('complete_profile'),
       style: TextStyle(
         color: _text,
         fontWeight: FontWeight.w900,
@@ -961,8 +1020,8 @@ Future<_CitySuggestion?> _openCitySearch() async {
     elevation: 0,
     scrolledUnderElevation: 0,
     surfaceTintColor: Colors.transparent,
-    title: const Text(
-      'Completar perfil',
+    title: Text(
+      t.get('complete_profile'),
       style: TextStyle(
         color: _text,
         fontWeight: FontWeight.w900,
@@ -1010,10 +1069,10 @@ const SizedBox(height: 12),
 TextFormField(
   controller: _nameC,
 
-            decoration: _deco('Nome completo'),
+            decoration: _deco(t.get('full_name')),
             validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Digite seu nome completo';
-              if (v.trim().length < 2) return 'Nome muito curto';
+              if (v == null || v.trim().isEmpty) return t.get('enter_full_name');
+              if (v.trim().length < 2) return t.get('name_too_short');
               return null;
             },
           ),
@@ -1023,14 +1082,16 @@ TextFormField(
                 TextFormField(
                   controller: _ageC,
                   keyboardType: TextInputType.number,
-                  decoration: _deco('Idade'),
+                  decoration: _deco(t.get('age')),
                   validator: (v) {
                     final t = (v ?? '').trim();
                     if (t.isEmpty) return null;
                     final n = int.tryParse(t);
-                    if (n == null) return 'Digite um número';
-                    if (n < 13) return 'Idade mínima: 13';
-                    if (n > 99) return 'Idade inválida';
+                   if (n == null) return AppTexts.current.get('enter_number');
+if (n < 13) return AppTexts.current.get('minimum_age_13');
+if (n > 99) return AppTexts.current.get('invalid_age');
+
+
                     return null;
                   },
                 ),
@@ -1038,7 +1099,7 @@ TextFormField(
 
                 TextFormField(
                   controller: _languagesC,
-                  decoration: _deco('Línguas que você fala'),
+                  decoration: _deco(t.get('languages_you_speak')),
                 ),
                 const SizedBox(height: 12),
 
@@ -1046,9 +1107,9 @@ TextFormField(
                   controller: _aboutC,
                   maxLines: 4,
                   decoration: _deco(
-                    'Sobre você',
+                    t.get('about_you'),
                     hint:
-                        'Fale um pouco sobre você, o que gosta de fazer, para outras pessoas com perfil parecido com o seu... escreva algo legal.',
+                        t.get('about_you_hint'),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1081,7 +1142,9 @@ TextFormField(
             )
           : const Icon(Icons.save, color: Colors.white),
       label: Text(
-        _saving ? 'Salvando...' : 'Salvar',
+        _saving ? 
+t.get('saving')
+: t.get('save'),
         style: const TextStyle(
           fontWeight: FontWeight.w900,
           color: Colors.white,
@@ -1104,6 +1167,7 @@ class _CitySuggestion {
   final String cityName;
   final String stateName;
   final String display;
+  final String placeId;
   final double? lat;
   final double? lng;
 
@@ -1111,6 +1175,7 @@ class _CitySuggestion {
     required this.cityName,
     required this.stateName,
     required this.display,
+    required this.placeId,
     this.lat,
     this.lng,
   });

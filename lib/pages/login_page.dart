@@ -3,6 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+import '../services/locale_controller.dart';
+
 
 import 'forgot_password_page.dart';
 import 'splash_page.dart';
@@ -29,14 +32,12 @@ class _LoginPageState extends State<LoginPage> {
 
 
   
-  @override
+@override
 void didChangeDependencies() {
   super.didChangeDependencies();
 
-
-  final locale = Localizations.localeOf(context);
+  final locale = WidgetsBinding.instance.platformDispatcher.locale;
   final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
-
 
   if (_loadedLocaleCode == nextCode) return;
   _loadedLocaleCode = nextCode;
@@ -46,6 +47,8 @@ void didChangeDependencies() {
     if (mounted) setState(() {});
   });
 }
+
+
 
 
   bool _isLogin = true;
@@ -349,6 +352,9 @@ if (currentInviteCode.isEmpty) {
           _toast('Erro ao criar conta.');
           return;
         }
+await FirebaseAuth.instance.setLanguageCode(
+  AppTexts.current.locale.languageCode,
+);
 
 
        await user.sendEmailVerification();
@@ -501,9 +507,64 @@ return;
   }
 
 
-  void _loginFacebook() {
-    _toast("Facebook: deixei o botão. Depois configuramos com calma.");
+ Future<void> _loginFacebook() async {
+  setState(() => _loading = true);
+
+  try {
+    final result = await FacebookAuth.instance.login(
+     permissions: ['email', 'public_profile'],
+    );
+
+    if (result.status != LoginStatus.success) {
+      _toast('Login Facebook cancelado.');
+      return;
+    }
+
+    final accessToken = result.accessToken;
+
+    if (accessToken == null) {
+      _toast('Erro ao obter token do Facebook.');
+      return;
+    }
+
+    final credential = FacebookAuthProvider.credential(
+      accessToken.tokenString,
+    );
+
+
+await FirebaseAuth.instance.signInWithCredential(credential);
+
+final user = FirebaseAuth.instance.currentUser;
+
+print("UID: ${user?.uid}");
+print("EMAIL: ${user?.email}");
+print("NAME: ${user?.displayName}");
+print("PHOTO: ${user?.photoURL}");
+
+await _goToApp();
+
+
+
+return;
+
+ } on FirebaseAuthException catch (e) {
+  if (e.code == 'account-exists-with-different-credential') {
+    _toast(
+      'Esta conta já existe. Entre usando Google, Apple ou e-mail e senha.',
+    );
+    return;
   }
+
+  _toast(e.message ?? 'Erro no login Facebook.');
+} catch (e) {
+  _toast('Erro no login Facebook.');
+}
+ finally {
+    if (mounted) setState(() => _loading = false);
+  }
+}
+
+
 
 
   @override

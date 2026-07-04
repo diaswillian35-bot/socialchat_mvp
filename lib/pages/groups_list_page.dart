@@ -185,25 +185,49 @@ String _countryNameFromCode(String code) {
 
  
 
+
 Query<Map<String, dynamic>> _query() {
   final ref = FirebaseFirestore.instance.collection('groups');
 
-  final myCountry = _myCountryName.isNotEmpty
-      ? _myCountryName
-      : _countryNameFromCode(_myCountryCode);
+  final myCode = _myCountryCode.trim().toLowerCase();
+  final search = _searchC.text.trim();
+
+  if (_isPremium && search.isNotEmpty) {
+    return ref
+        .where('deleted', isEqualTo: false)
+        .orderBy('updatedAt', descending: true)
+        .limit(100);
+  }
+
+  if (myCode.isEmpty) {
+    return ref
+        .where('deleted', isEqualTo: false)
+        .orderBy('updatedAt', descending: true)
+        .limit(50);
+  }
 
   if (!_isPremium || _selectedCountry == 'all') {
     return ref
         .where('deleted', isEqualTo: false)
-        .where('country', isEqualTo: myCountry)
+        .where('countryCode', isEqualTo: myCode)
         .orderBy('updatedAt', descending: true);
   }
 
+  final selectedCode = _selectedCountry == 'brasil'
+      ? 'br'
+      : _selectedCountry == 'canada'
+          ? 'ca'
+          : _selectedCountry == 'portugal'
+              ? 'pt'
+              : myCode;
+
   return ref
       .where('deleted', isEqualTo: false)
-      .where('country', isEqualTo: _selectedCountry)
+      .where('countryCode', isEqualTo: selectedCode)
       .orderBy('updatedAt', descending: true);
 }
+
+
 
 
   Future<void> _openCreate() async {

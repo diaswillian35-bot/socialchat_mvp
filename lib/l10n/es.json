@@ -625,25 +625,82 @@
 "event_detail_now": "ahora",
 "event_detail_minutes_ago": "minutos atrás",
 "event_detail_hours_ago": "horas atrás",
-"event_detail_days_ago": "días atrás"
-
-
-
-
-
-
-
-
-
+"event_detail_days_ago": "días atrás","verify_email_appbar": "Verificar correo electrónico",
+"verify_email_title": "Confirma tu correo electrónico",
+"verify_email_sent": "Hemos enviado un correo de confirmación a:",
+"verify_email_sent_no_email": "Te hemos enviado un correo de confirmación.",
+"verify_email_instruction": "Revisa tu bandeja de entrada y también la carpeta de Spam o Correo no deseado. Después pulsa \"Ya confirmé\".",
+"verify_email_confirmed": "Ya confirmé",
+"verify_email_resend": "Reenviar correo",
+"verify_email_back": "Volver al inicio de sesión",
+"verify_email_not_confirmed": "Tu correo electrónico aún no ha sido confirmado. Revisa tu bandeja de entrada o la carpeta de Spam.",
+"verify_email_resent": "Correo reenviado. Revisa tu bandeja de entrada o la carpeta de Spam.",
+"verify_email_sent_to": "Hemos enviado un correo de confirmación a:",
+"verify_email_back_login": "Volver al inicio de sesión",
+"complete_profile": "Completar perfil",
+"full_name": "Nombre completo",
+"enter_full_name": "Ingresa tu nombre completo",
+"name_too_short": "Nombre demasiado corto",
+"age": "Edad",
+"enter_number": "Ingresa un número",
+"minimum_age_13": "Edad mínima: 13",
+"invalid_age": "Edad inválida",
+"languages_you_speak": "Idiomas que hablas",
+"about_you": "Sobre ti",
+"about_you_hint": "Cuéntale a la gente un poco sobre ti, lo que te gusta hacer y algo interesante sobre ti.",
+"country": "País",
+"city": "Ciudad",
+"city_example": "Ej: Toronto",
+"search_country": "Buscar país",
+"search_city": "Buscar ciudad",
+"choose_country": "Elige tu país",
+"choose_city": "Elige tu ciudad",
+"select": "Seleccionar",
+"select_country": "Selecciona tu país.",
+"select_country_first": "Selecciona tu país primero.",
+"select_city": "Selecciona tu ciudad",
+"select_city_from_list": "Selecciona tu ciudad de la lista.",
+"no_country_found": "No se encontró ningún país",
+"type_2_letters_city": "Escribe al menos 2 letras de la ciudad",
+"country_locked": "Tu país está bloqueado.",
+"country_set_once": "Define tu país una vez. Después quedará bloqueado.",
+"show_people_near_me": "Mostrar personas cerca de mí",
+"nearby_profile_info": "Cuando esté activado, tu perfil podrá aparecer para personas de tu ciudad o región.",
+"profile_saved": "Perfil guardado ✅",
+"login_required_save_profile": "Debes iniciar sesión para guardar tu perfil.",
+"load_profile_error": "Error al cargar el perfil",
+"save_error": "Error al guardar",
+"save": "Guardar",
+"saving": "Guardando...",
+"free_account": "Cuenta gratuita",
+"premium_account": "Cuenta Premium",
+"edit_event": "Editar evento",
+"edit_event_info": "Edita tu evento. Después de guardarlo, será enviado nuevamente para aprobación.",
+"event_title": "Título del evento",
+"enter_event_title": "Introduce el título",
+"enter_city": "Introduce la ciudad",
+"place": "Lugar",
+"choose_date": "Elegir fecha",
+"choose_time": "Elegir hora",
+"description": "Descripción",
+"highlight_event": "¿Quieres destacar tu evento?",
+"sponsor_interest": "Me interesa el patrocinio",
+"save_changes": "Guardar cambios",
+"choose_date_time": "Elige fecha y hora",
+"event_sent_for_approval": "Evento enviado nuevamente para aprobación",
+"max_5_photos": "Máximo de 5 fotos",
+"photo_upload_error": "Error al subir la foto",
+"add_photo": "Agregar foto",
+"remove_photo": "Eliminar foto",
+"set_cover": "Establecer como portada",
+"category_general": "General",
+"category_music": "Música",
+"category_sports": "Deportes",
+"category_restaurant": "Restaurante",
+"category_culture": "Cultura",
+"category_languages": "Idiomas"
 
 
 
 
 }
-
-
-
-
-
-
-
