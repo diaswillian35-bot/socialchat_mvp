@@ -185,10 +185,7 @@ debugPrint("==========================");
 final type = (data['type'] ?? '').toString().trim();
 
 
-    final type = (data['type'] ?? '').toString().trim();
-
-
-    final nav = navKey.currentState;
+       final nav = navKey.currentState;
     if (nav == null) return;
 
     // =========================

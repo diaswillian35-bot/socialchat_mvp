@@ -28,14 +28,15 @@ admin.initializeApp();
 
 
 
-exports.onGroupJoinRequestCreated = onDocumentWritten(
+
+exports.onGroupMessageCreated = onDocumentCreated(
   "groups/{groupId}/messages/{msgId}",
   async (event) => {
     try {
-      
       const msg = event.data?.data();
       const groupId = event.params.groupId;
       if (!msg) return;
+
 
 
       const senderId = (msg.senderId || msg.fromUid || "").toString().trim();
@@ -195,8 +196,10 @@ exports.onGroupJoinRequestCreated = onDocumentWritten(
   payload: {
     aps: {
       alert: {
-        title: senderName,
-        body: text,
+        
+title: groupName,
+body: `${senderName}: ${lastMessage}`,
+
       },
       sound: "default",
       badge: 1,
@@ -259,7 +262,12 @@ exports.onPrivateMessageCreated = onDocumentCreated(
   "conversations/{conversationId}/messages/{messageId}",
   async (event) => {
     try {
-      const msg = event.data?.data();
+     const msg = event.data?.after?.data(
+);
+
+      if (!event.data?.after?.exists) return;
+if (event.data?.before?.exists) return;
+
       if (!msg) return;
 
       const conversationId = event.params.conversationId;
