@@ -177,9 +177,10 @@ exports.onGroupJoinRequestCreated = onDocumentWritten(
           body: `${senderName}: ${lastMessage}`,
         },
         data: {
-          type: "group",
-          groupId: groupId,
-        },
+  type: "group",
+  groupId: groupId,
+  groupName: groupName,
+},
         android: {
           priority: "high",
           notification: {
@@ -320,11 +321,14 @@ exports.onPrivateMessageCreated = onDocumentCreated(
           title: senderName,
           body: text,
         },
-        data: {
-          type: "chat",
-          conversationId,
-          senderId,
-        },
+       data: {
+  type: "chat",
+  conversationId: conversationId,
+  senderId: senderId,
+  otherUid: senderId,
+  otherName: senderName,
+},
+
         android: {
           priority: "high",
           notification: {

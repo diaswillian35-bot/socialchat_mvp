@@ -178,6 +178,13 @@ print("APNS TOKEN: ${await FirebaseMessaging.instance.getAPNSToken()}");
   // =========================
   static Future<void> _handleOpen(RemoteMessage message) async {
     final data = message.data;
+debugPrint("========== PUSH ==========");
+debugPrint(message.data.toString());
+debugPrint("==========================");
+
+final type = (data['type'] ?? '').toString().trim();
+
+
     final type = (data['type'] ?? '').toString().trim();
 
 
