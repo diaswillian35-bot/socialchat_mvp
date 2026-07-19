@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -33,6 +35,12 @@ class _GroupsListPageState extends State<GroupsListPage> {
 String _myCountryCode = '';
 String _myCountryName = '';
 bool _isPremium = false;
+String _selectedScope = 'city'; // city | region | country
+String _myRegionKey = '';
+
+double? _myLatitude;
+double? _myLongitude;
+
 
 
   String _loadedLocaleCode = '';
@@ -59,6 +67,15 @@ Future<void> _loadMyCity() async {
         .get();
 
     final data = snap.data() ?? {};
+    final latRaw = data['lat'] ?? data['latitude'];
+final lngRaw = data['lng'] ?? data['longitude'];
+
+final myLatitude =
+    latRaw is num ? latRaw.toDouble() : double.tryParse('$latRaw');
+
+final myLongitude =
+    lngRaw is num ? lngRaw.toDouble() : double.tryParse('$lngRaw');
+
 
     final city = (data['city'] ?? data['cityName'] ?? '').toString().trim();
 
@@ -68,15 +85,43 @@ Future<void> _loadMyCity() async {
         .toLowerCase();
 
     final country = (data['country'] ?? '').toString().trim().toLowerCase();
+    
+
+final state = (data['stateName'] ?? data['state'] ?? '')
+    .toString()
+    .trim();
+
+final savedRegionKey =
+    (data['regionKey'] ?? '').toString().trim().toLowerCase();
+
+
 
     if (!mounted) return;
 
-    setState(() {
-      _myCity = city;
-      _myCountryCode = code;
-      _myCountryName = country;
-      _isPremium = data['isPremium'] == true || data['isMaster'] == true;
-    });
+setState(() {
+  _myCity = city;
+  _myCountryCode = code;
+  _myCountryName = country;
+
+_myRegionKey = savedRegionKey.isNotEmpty
+    ? savedRegionKey
+    : _regionKeyFromState(state);
+
+_myLatitude = myLatitude;
+_myLongitude = myLongitude;
+
+
+
+  _isPremium = data['isPremium'] == true || data['isMaster'] == true;
+});
+
+debugPrint(
+  'USUARIO => city=$city | state=$state | '
+  'regionKey=$_myRegionKey | countryCode=$code',
+);
+
+
+
   } catch (_) {}
 }
 
@@ -153,6 +198,68 @@ String _countryNameFromCode(String code) {
     default:
       return code.trim().toLowerCase();
   }
+}
+String _regionKeyFromState(String state) {
+  final s = state.trim().toLowerCase();
+
+  if (s.isEmpty) return 'default';
+
+  switch (s) {
+    case 'ontario':
+    case 'on':
+      return 'on';
+
+    case 'quebec':
+    case 'québec':
+    case 'qc':
+      return 'qc';
+
+    case 'british columbia':
+    case 'bc':
+      return 'bc';
+
+    case 'alberta':
+    case 'ab':
+      return 'ab';
+
+    case 'paraná':
+    case 'parana':
+    case 'pr':
+      return 'pr';
+
+    default:
+      return s
+          .replaceAll(' ', '_')
+          .replaceAll('.', '')
+          .replaceAll('-', '_');
+  }
+}
+
+double _distanceKm({
+  required double lat1,
+  required double lng1,
+  required double lat2,
+  required double lng2,
+}) {
+  const earthRadiusKm = 6371.0;
+
+  double toRadians(double degrees) {
+    return degrees * math.pi / 180.0;
+  }
+
+  final dLat = toRadians(lat2 - lat1);
+  final dLng = toRadians(lng2 - lng1);
+
+  final a =
+      math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(toRadians(lat1)) *
+          math.cos(toRadians(lat2)) *
+          math.sin(dLng / 2) *
+          math.sin(dLng / 2);
+
+  final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+
+  return earthRadiusKm * c;
 }
 
 
@@ -740,10 +847,39 @@ Query<Map<String, dynamic>> _query() {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               child: _topBanner(),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: _searchField(),
+      Padding(
+  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+  child: Column(
+    children: [
+      _searchField(),
+      const SizedBox(height: 10),
+
+      SegmentedButton<String>(
+        segments: const [
+          ButtonSegment(
+            value: 'city',
+            label: Text('Cidade'),
           ),
+          ButtonSegment(
+            value: 'region',
+            label: Text('Região'),
+          ),
+          ButtonSegment(
+            value: 'country',
+            label: Text('País'),
+          ),
+        ],
+        selected: {_selectedScope},
+        onSelectionChanged: (value) {
+          setState(() {
+            _selectedScope = value.first;
+          });
+        },
+      ),
+    ],
+  ),
+),
+
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: _query().snapshots(),
@@ -773,11 +909,79 @@ Query<Map<String, dynamic>> _query() {
                   final data = doc.data();
 
 
-                  final name = (data['name'] ?? '').toString().toLowerCase();
-                  final bio = (data['bio'] ?? '').toString().toLowerCase();
-                  final city = (data['city'] ?? '').toString().toLowerCase();
-                  final country =
-                      (data['country'] ?? '').toString().toLowerCase();
+                  
+final name = (data['name'] ?? '').toString().toLowerCase();
+final bio = (data['bio'] ?? '').toString().toLowerCase();
+final city = (data['city'] ?? data['cityName'] ?? '').toString().toLowerCase();
+final country = (data['country'] ?? '').toString().toLowerCase();
+
+final scope = (data['scope'] ?? 'city').toString().toLowerCase();
+final countryCode =
+    (data['countryCode'] ?? '').toString().trim().toLowerCase();
+
+final myCity = _myCity.trim().toLowerCase();
+final myCountry = _myCountryCode.trim().toLowerCase();
+
+final groupLatRaw = data['latitude'] ?? data['lat'];
+final groupLngRaw = data['longitude'] ?? data['lng'];
+
+final groupLatitude = groupLatRaw is num
+    ? groupLatRaw.toDouble()
+    : double.tryParse('$groupLatRaw');
+
+final groupLongitude = groupLngRaw is num
+    ? groupLngRaw.toDouble()
+    : double.tryParse('$groupLngRaw');
+
+double? distanceKm;
+
+if (_myLatitude != null &&
+    _myLongitude != null &&
+    groupLatitude != null &&
+    groupLongitude != null) {
+  distanceKm = _distanceKm(
+    lat1: _myLatitude!,
+    lng1: _myLongitude!,
+    lat2: groupLatitude,
+    lng2: groupLongitude,
+  );
+}
+
+final sameCountry = countryCode == myCountry;
+final sameCity = city.trim() == myCity;
+final withinRegion = distanceKm != null && distanceKm <= 110;
+
+bool visibleByScope = false;
+
+if (_selectedScope == 'city') {
+  // Cidade recebe:
+  // grupo local + regional até 80 km + nacional.
+  visibleByScope =
+      sameCountry &&
+      (
+        (scope == 'city' && sameCity) ||
+        (scope == 'region' && withinRegion) ||
+        scope == 'country'
+      );
+} else if (_selectedScope == 'region') {
+  // Região recebe:
+  // grupo regional até 80 km + nacional.
+  visibleByScope =
+      sameCountry &&
+      (
+        (scope == 'region' && withinRegion) ||
+        scope == 'country'
+      );
+} else if (_selectedScope == 'country') {
+  // País recebe somente grupos nacionais.
+  visibleByScope =
+      sameCountry &&
+      scope == 'country';
+}
+
+if (!visibleByScope) return false;
+
+
 
 
                   if (query.isEmpty) return true;
@@ -864,7 +1068,13 @@ Query<Map<String, dynamic>> _query() {
                           top: myGroups.isNotEmpty ? 8 : 2,
                         ),
                         child: Text(
-                          t.get('groups_in_your_city'),
+                          _selectedScope == 'city'
+    ? t.get('groups_in_your_city')
+    : _selectedScope == 'region'
+        ? t.get('groups_in_your_region')
+        : t.get('groups_in_your_country'),
+
+
                           style: const TextStyle(
                             color: _text,
                             fontWeight: FontWeight.w900,

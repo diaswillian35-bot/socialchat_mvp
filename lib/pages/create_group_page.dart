@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 
 
 import '../l10n/app_texts.dart';
+import 'group_info_page.dart';
 
 
 class CreateGroupPage extends StatefulWidget {
@@ -55,13 +56,19 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
   bool _loading = false;
 
+String _selectedCountry = 'canada';
+String _cityName = '';
+String _stateName = '';
+String _displayLocation = '';
+double? _cityLatitude;
+double? _cityLongitude;
+String _cityPlaceId = '';
 
-  String _selectedCountry = 'canada';
-  String _cityName = '';
-  String _stateName = '';
-  String _displayLocation = '';
-  String _loadedLocaleCode = '';
+String _loadedLocaleCode = '';
 
+String _groupScope = 'city'; // city | region | country
+
+String _joinPolicy = 'open'; // open | approval | inviteOnly
 
   final List<Map<String, String>> _countries = const [
     {"code": "canada", "name": "Canadá", "iso2": "CA"},
@@ -131,6 +138,16 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     if (t.isEmpty) return t;
     return t[0].toUpperCase() + t.substring(1);
   }
+String _regionKeyFromState(String state) {
+  final s = state.trim().toLowerCase();
+
+  if (s.isEmpty) return 'default';
+
+  return s
+      .replaceAll(' ', '_')
+      .replaceAll('.', '')
+      .replaceAll('-', '_');
+}
 
 
   InputDecoration _dec(String label, {String? hint, String? helper}) {
@@ -205,14 +222,58 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
       final countryName = parts.isNotEmpty ? parts.last : '';
 
 
-      return _CitySuggestion(
-        cityName: cityName,
-        stateName: stateName,
-        countryName: countryName,
-        display: description,
-      );
+  
+return _CitySuggestion(
+  cityName: cityName,
+  stateName: stateName,
+  countryName: countryName,
+  display: description,
+  placeId: (p['place_id'] ?? '').toString(),
+);
+
+
+
     }).where((e) => e.cityName.isNotEmpty).toList();
   }
+
+Future<Map<String, double>?> _getCityCoordinates(String placeId) async {
+  final id = placeId.trim();
+  if (id.isEmpty) return null;
+
+  final url = Uri.parse(
+    'https://maps.googleapis.com/maps/api/place/details/json'
+    '?place_id=${Uri.encodeComponent(id)}'
+    '&fields=geometry'
+    '&key=$_googlePlacesApiKey',
+  );
+
+  final res = await http.get(url);
+  if (res.statusCode != 200) return null;
+
+  final data = jsonDecode(res.body) as Map<String, dynamic>;
+  final result = data['result'];
+
+  if (result is! Map<String, dynamic>) return null;
+
+  final geometry = result['geometry'];
+  if (geometry is! Map<String, dynamic>) return null;
+
+  final location = geometry['location'];
+  if (location is! Map<String, dynamic>) return null;
+
+  final lat = location['lat'];
+  final lng = location['lng'];
+
+  if (lat is! num || lng is! num) return null;
+
+  return {
+    'latitude': lat.toDouble(),
+    'longitude': lng.toDouble(),
+  };
+}
+
+
+
 
 
   Future<_CitySuggestion?> _openCitySearch() async {
@@ -400,13 +461,23 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 'country': country,
 'countryCode': groupCountryCode,
 
-        'city': city,
+        'city': _cityName.isNotEmpty ? _cityName : city,
         'cityName': _cityName.isNotEmpty ? _cityName : city,
         'countryCode': groupCountryCode,
         'stateName': _stateName,
-        'displayLocation':
-            _displayLocation.isNotEmpty ? _displayLocation : city,
-        'bio': bio,
+'displayLocation':
+    _displayLocation.isNotEmpty ? _displayLocation : city,
+   
+'placeId': _cityPlaceId,
+'latitude': _cityLatitude,
+'longitude': _cityLongitude,
+
+
+ 
+'scope': _groupScope,
+'regionKey': _regionKeyFromState(_stateName),
+'bio': bio,
+
         'avatarUrl': '',
         'avatarPath': '',
         'ownerId': user.uid,
@@ -414,8 +485,10 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         'members': [user.uid],
         'membersCount': 1,
         'inviteCode': inviteCode,
-        'isPrivate': false,
-        'joinPolicy': 'open',
+       
+'isPrivate': _joinPolicy != 'open',
+'joinPolicy': _joinPolicy,
+
         'deleted': false,
         'unread': {
           user.uid: 0,
@@ -433,8 +506,15 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
       }, SetOptions(merge: true));
 
 
-      if (!mounted) return;
-      Navigator.pop(context, true);
+     if (!mounted) return;
+
+Navigator.pushReplacement(
+  context,
+  MaterialPageRoute(
+    builder: (_) => GroupInfoPage(groupId: doc.id),
+  ),
+);
+
     } catch (e) {
       _toast('${AppTexts.t('create_group_error')}: $e');
     } finally {
@@ -556,19 +636,183 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 AppTexts.t('city'),
                 hint: AppTexts.t('city_example'),
               ),
-              onTap: () async {
-                final result = await _openCitySearch();
-                if (result == null) return;
+       onTap: () async {
+  final result = await _openCitySearch();
+  if (result == null) return;
+
+  final coords = await _getCityCoordinates(result.placeId);
+
+  setState(() {
+    _cityName = result.cityName;
+    _stateName = result.stateName;
+    _displayLocation = result.display;
+    _cityPlaceId = result.placeId;
+
+    _cityLatitude = coords?['latitude'];
+    _cityLongitude = coords?['longitude'];
+
+    _cityC.text = result.display;
+  });
+},
 
 
-                setState(() {
-                  _cityName = result.cityName;
-                  _stateName = result.stateName;
-                  _displayLocation = result.display;
-                  _cityC.text = result.display;
-                });
-              },
+
             ),
+
+            
+Container(
+  padding: const EdgeInsets.all(12),
+  decoration: BoxDecoration(
+    color: const Color(0xFFF9FAFB),
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: _border),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        AppTexts.t('create_group_scope_title'),
+        style: const TextStyle(
+          color: _text,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: 8,
+        children: [
+          ChoiceChip(
+            label: Text(AppTexts.t('create_group_scope_city')),
+            selected: _groupScope == 'city',
+            selectedColor: _logoBlue,
+backgroundColor: Colors.white,
+checkmarkColor: Colors.white,
+side: const BorderSide(color: _border),
+labelStyle: TextStyle(
+  color: _groupScope == 'city'
+      ? Colors.white
+      : _remdyBlue,
+  fontWeight: FontWeight.w700,
+),
+
+            onSelected: (_) => setState(() => _groupScope = 'city'),
+          ),
+          ChoiceChip(
+  label: Text(AppTexts.t('create_group_scope_region')),
+  selected: _groupScope == 'region',
+
+  selectedColor: _logoBlue,
+  backgroundColor: Colors.white,
+  checkmarkColor: Colors.white,
+  side: const BorderSide(color: _border),
+  labelStyle: TextStyle(
+    color: _groupScope == 'region'
+        ? Colors.white
+        : _remdyBlue,
+    fontWeight: FontWeight.w700,
+  ),
+
+  onSelected: (_) => setState(() => _groupScope = 'region'),
+),
+
+        ChoiceChip(
+  label: Text(AppTexts.t('create_group_scope_country')),
+  selected: _groupScope == 'country',
+
+  selectedColor: _logoBlue,
+  backgroundColor: Colors.white,
+  checkmarkColor: Colors.white,
+  side: const BorderSide(color: _border),
+  labelStyle: TextStyle(
+    color: _groupScope == 'country'
+        ? Colors.white
+        : _remdyBlue,
+    fontWeight: FontWeight.w700,
+  ),
+
+  onSelected: (_) => setState(() => _groupScope = 'country'),
+),
+
+        ],
+      ),
+    ],
+  ),
+),
+
+
+const SizedBox(height: 12),
+const SizedBox(height: 12),
+Container(
+  padding: const EdgeInsets.all(12),
+  decoration: BoxDecoration(
+    color: const Color(0xFFF9FAFB),
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: _border),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        AppTexts.t('create_group_entry'),
+        style: const TextStyle(
+          color: _text,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: 8,
+        children: [
+          ChoiceChip(
+            label: Text(AppTexts.t('create_group_open')),
+            selected: _joinPolicy == 'open',
+            selectedColor: _logoBlue,
+            backgroundColor: Colors.white,
+            checkmarkColor: Colors.white,
+            side: const BorderSide(color: _border),
+            labelStyle: TextStyle(
+              color: _joinPolicy == 'open' ? Colors.white : _remdyBlue,
+              fontWeight: FontWeight.w700,
+            ),
+            onSelected: (_) => setState(() => _joinPolicy = 'open'),
+          ),
+          ChoiceChip(
+            label: Text(AppTexts.t('admin_approval')),
+            selected: _joinPolicy == 'approval',
+            selectedColor: _logoBlue,
+            backgroundColor: Colors.white,
+            checkmarkColor: Colors.white,
+            side: const BorderSide(color: _border),
+            labelStyle: TextStyle(
+              color: _joinPolicy == 'approval' ? Colors.white : _remdyBlue,
+              fontWeight: FontWeight.w700,
+            ),
+            onSelected: (_) => setState(() => _joinPolicy = 'approval'),
+          ),
+          ChoiceChip(
+            label: Text(AppTexts.t('invite_only')),
+            selected: _joinPolicy == 'inviteOnly',
+            selectedColor: _logoBlue,
+
+
+
+
+            
+            backgroundColor: Colors.white,
+            checkmarkColor: Colors.white,
+            side: const BorderSide(color: _border),
+            labelStyle: TextStyle(
+              color: _joinPolicy == 'inviteOnly' ? Colors.white : _remdyBlue,
+              fontWeight: FontWeight.w700,
+            ),
+            onSelected: (_) => setState(() => _joinPolicy = 'inviteOnly'),
+          ),
+        ],
+      ),
+    ],
+  ),
+),
+
             const SizedBox(height: 12),
             TextField(
               controller: _bioC,
@@ -589,7 +833,12 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
               child: Text(
                 '${AppTexts.t('country')}: ${_pretty(selectedCountryName)}\n'
                 '${AppTexts.t('city')}: ${_cityName.isEmpty ? "--" : '$_cityName${_stateName.isNotEmpty ? ', $_stateName' : ''}'}\n'
-                '${AppTexts.t('create_group_entry')}: ${AppTexts.t('create_group_open')}',
+                '${AppTexts.t('create_group_entry')}: ${_joinPolicy == 'open'
+    ? AppTexts.t('create_group_open')
+    : _joinPolicy == 'approval'
+        ? AppTexts.t('admin_approval')
+        : AppTexts.t('invite_only')}',
+
                 style: const TextStyle(
                   color: _muted,
                   fontWeight: FontWeight.w700,
@@ -651,12 +900,15 @@ class _CitySuggestion {
   final String stateName;
   final String countryName;
   final String display;
-
+  final String placeId;
 
   const _CitySuggestion({
     required this.cityName,
     required this.stateName,
     required this.countryName,
     required this.display,
+    required this.placeId,
   });
 }
+
+

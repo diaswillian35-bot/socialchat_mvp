@@ -19,6 +19,7 @@ import 'pages/join_group_page.dart';
 import 'services/locale_controller.dart';
 import 'services/push_service.dart';
 import 'pages/event_deep_link_page.dart';
+import 'pages/portal_qr_login_approve_page.dart';
 
 
 Future<void> main() async {
@@ -323,6 +324,21 @@ if (segments.length >= 2 && segments.first.toLowerCase() == 'e') {
     nav.pushReplacement(
       MaterialPageRoute(
         builder: (_) => EventDeepLinkPage(eventId: eventId),
+      ),
+    );
+  }
+
+  return;
+}
+
+if (segments.length >= 2 &&
+    segments.first.toLowerCase() == 'portal-login') {
+  final sessionId = segments[1].trim();
+
+  if (sessionId.isNotEmpty) {
+    nav.push(
+      MaterialPageRoute(
+        builder: (_) => PortalQrLoginApprovePage(sessionId: sessionId),
       ),
     );
   }

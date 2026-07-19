@@ -27,7 +27,7 @@
   "language_updated": "Idioma atualizado ✅",
   "language_update_error": "Erro ao atualizar o idioma",
   "create_group_title": "Criar grupo",
-  "create_group_banner": "Crie um grupo para conversar,\nfazer amigos e combinar encontros.",
+ "create_group_banner": "Crie um grupo para conversar,\nconhecer pessoas e organizar encontros.",
   "create_group_name": "Nome do grupo",
   "create_group_name_hint": "Ex: Brasileiros em Toronto",
   "create_group_country_helper": "Selecione o país do grupo",
@@ -52,7 +52,9 @@
   "country_portugal": "Portugal",
   "filter_by_country": "Filtrar por país",
   "search_groups_city_country": "Pesquisar grupos, cidade ou país",
-  "groups_banner_text": "Descubra grupos para conversar, fazer amigos e combinar encontros.",
+
+"groups_banner_text": "Descubra grupos para conversar, conhecer pessoas e organizar encontros.",
+
   "group": "Grupo",
   "open": "Abrir",
   "preview": "Pré-visualizar",
@@ -122,7 +124,7 @@
   "support_contact_open_email_error": "Erro ao abrir o e-mail.",
   "chat_sending_audio": "A enviar áudio...",
   "group_back": "Voltar",
-"group_join": "Entrar no grupo",
+"join_group": "Aderir ao grupo",
 "remdy_notices": "Avisos Remdy",
 "no_notices_yet": "Nenhum aviso ainda",
 "notice": "Aviso",
@@ -230,7 +232,7 @@
 "events_languages": "Idiomas",
 "events_general": "Geral",
 "create_event_title": "Crear evento",
-"create_event_intro": "Crea un evento para tu comunidad. Será enviado para aprobación antes de aparecer en la aplicación.",
+"create_event_intro":"Crie um evento para a sua comunidade. Será enviado para aprovação antes de aparecer na aplicação.",
 "create_event_name": "Título del evento",
 "create_event_name_hint": "Ej: Fiesta brasileña en Toronto",
 "create_event_category": "Categoría",
@@ -353,7 +355,7 @@
 "chat_search_empty": "Escreva algo para procurar",
 "chat_search_no_results": "Nenhuma mensagem encontrada",
 
-"chat_you_label": "Você",
+"chat_you_label": "Tu",
 
 "chat_premium_user": "Utilizador Premium",
 
@@ -437,7 +439,15 @@
 "category_sports": "Desporto",
 "category_restaurant": "Restaurante",
 "category_culture": "Cultura",
-"category_languages": "Idiomas"
+"category_languages": "Idiomas",
+"create_group_scope_title": "Âmbito do grupo",
+"create_group_scope_city": "Local",
+"create_group_scope_region": "Regional",
+"create_group_scope_country": "Nacional",
+"premium_active": "Premium ativo"
+
+
+
 
 
 

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'public_profile_page.dart';
 import '../l10n/app_texts.dart';
+import '../services/event_view_service.dart';
 
 class EventDetailPage extends StatefulWidget {
   final String eventId;
@@ -14,6 +15,7 @@ class EventDetailPage extends StatefulWidget {
 }
 class _EventDetailPageState extends State<EventDetailPage> {
   final _commentC = TextEditingController();
+  final _viewRegistration = EventViewRegistrationGuard();
 String? _replyToCommentId;
 String? _replyToName;
 String? _replyToText;
@@ -58,51 +60,57 @@ String? _replyToText;
     final attendeeRef = eventRef.collection('attendees').doc(uid);
 
     try {
-      final snap = await attendeeRef.get();
-      if (snap.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppTexts.t('event_detail_already_joined'))),
+      final userSnap = await db.collection('publicUsers').doc(uid).get();
+      final userData = userSnap.data() ?? {};
 
+      final name = (userData['name'] ?? AppTexts.t('event_detail_user')).toString();
+      final photoUrl = (userData['photoUrl'] ??
+              userData['profilePhotoUrl'] ??
+              '')
+          .toString();
+
+      await db.runTransaction((transaction) async {
+        final attendeeSnap = await transaction.get(attendeeRef);
+        if (attendeeSnap.exists) {
+          throw StateError('already_joined');
+        }
+
+        final eventSnap = await transaction.get(eventRef);
+        final eventData = eventSnap.data() ?? {};
+        final current = eventData['attendeesCount'] is int
+            ? eventData['attendeesCount'] as int
+            : 0;
+        final next = current + 1;
+
+        transaction.set(attendeeRef, {
+          'uid': uid,
+          'name': name,
+          'photoUrl': photoUrl,
+          'joinedAt': FieldValue.serverTimestamp(),
+        });
+
+        transaction.set(
+          eventRef,
+          {
+            'attendeesCount': next,
+            'participantsCount': next,
+            'attendeesUids': FieldValue.arrayUnion([uid]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
         );
-        return;
-      }
-
-     final userSnap = await db.collection('publicUsers').doc(uid).get();
-final userData = userSnap.data() ?? {};
-
-
-
-
-final name = (userData['name'] ?? AppTexts.t('event_detail_user')).toString();
-
-final photoUrl = (userData['photoUrl'] ??
-        userData['profilePhotoUrl'] ??
-        '')
-    .toString();
-
-
-
-await attendeeRef.set({
-  'uid': uid,
-  'name': name,
-  'photoUrl': photoUrl,
-  'joinedAt': FieldValue.serverTimestamp(),
-});
-
-
-
-
-    await eventRef.set({
-  'attendeesCount': FieldValue.increment(1),
-  'attendeesUids': FieldValue.arrayUnion([uid]),
-  'updatedAt': FieldValue.serverTimestamp(),
-}, SetOptions(merge: true));
-
+      });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
      SnackBar(content: Text(AppTexts.t('event_detail_join_success'))),
       );
+    } on StateError catch (e) {
+      if (e.message == 'already_joined' && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppTexts.t('event_detail_already_joined'))),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -134,16 +142,31 @@ Future<void> _leaveEvent() async {
   final attendeeRef = eventRef.collection('attendees').doc(uid);
 
   try {
-    final snap = await attendeeRef.get();
-    if (!snap.exists) return;
+    await db.runTransaction((transaction) async {
+      final attendeeSnap = await transaction.get(attendeeRef);
+      if (!attendeeSnap.exists) {
+        return;
+      }
 
-    await attendeeRef.delete();
+      final eventSnap = await transaction.get(eventRef);
+      final eventData = eventSnap.data() ?? {};
+      final current = eventData['attendeesCount'] is int
+          ? eventData['attendeesCount'] as int
+          : 0;
+      final next = current > 0 ? current - 1 : 0;
 
-    await eventRef.set({
-      'attendeesCount': FieldValue.increment(-1),
-      'attendeesUids': FieldValue.arrayRemove([uid]),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      transaction.delete(attendeeRef);
+      transaction.set(
+        eventRef,
+        {
+          'attendeesCount': next,
+          'participantsCount': next,
+          'attendeesUids': FieldValue.arrayRemove([uid]),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    });
 
     if (!mounted) return;
 
@@ -201,7 +224,10 @@ Future<void> _deleteComment(String commentId) async {
       .doc(widget.eventId)
       .collection('comments')
       .doc(commentId)
-      .delete();
+      .update({
+    'isDeleted': true,
+    'deletedAt': FieldValue.serverTimestamp(),
+  });
 }
 
 Future<void> _toggleCommentLike(String commentId, List likedBy) async {
@@ -278,6 +304,13 @@ void dispose() {
                AppTexts.t('event_detail_not_found'),
                 style: TextStyle(color: _muted, fontWeight: FontWeight.w700),
               ),
+            );
+          }
+
+          if (_uid != null) {
+            _viewRegistration.registerOnce(
+              eventId: widget.eventId,
+              source: 'mobile_app',
             );
           }
 
@@ -739,6 +772,16 @@ Row(
         final me = await db.collection('publicUsers').doc(uid).get();
         final userData = me.data() ?? {};
 
+        final eventSnap = await eventRef.get();
+        final eventData = eventSnap.data() ?? {};
+        final organizerId = (
+          eventData['organizerId'] ??
+          eventData['createdBy'] ??
+          eventData['ownerId'] ??
+          eventData['userId']
+        )?.toString();
+        final isOrganizer = organizerId == uid;
+
         await eventRef.collection('comments').add({
           'uid': uid,
           'name': userData['name'] ?? 'Usuário',
@@ -750,6 +793,7 @@ Row(
           'replyToCommentId': _replyToCommentId,
 'replyToName': _replyToName,
 'replyToText': _replyToText,
+          'readByOrganizer': isOrganizer,
 
         });
 
@@ -779,7 +823,9 @@ Row(
             return const SizedBox.shrink();
           }
 
-          final docs = snap.data!.docs;
+          final docs = snap.data!.docs
+              .where((doc) => doc.data()['isDeleted'] != true)
+              .toList();
 
          if (docs.isEmpty) {
   return  Padding(

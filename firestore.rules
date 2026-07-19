@@ -2,8 +2,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() { return request.auth != null; }
-    function uid() { return request.auth.uid; }
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function ownerIdFromMap(data) {
+      return data.organizerId != null ? data.organizerId
+           : data.createdBy != null ? data.createdBy
+           : data.ownerId != null ? data.ownerId
+           : data.userId;
+    }
+
+    function eventDoc(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId));
+    }
+
+    function isEventOrganizer(eventId) {
+      return signedIn()
+        && eventDoc(eventId).exists
+        && ownerIdFromMap(eventDoc(eventId).data) == uid();
+    }
 
     // aceita participants OU members (compatibilidade com docs antigos)
     function partsFrom(data) {
@@ -34,6 +56,66 @@ service cloud.firestore {
       allow create: if signedIn() && uid() == userId;
       allow update: if signedIn() && uid() == userId;
       allow delete: if false;
+
+      match /fcmTokens/{tokenId} {
+        allow read, write: if signedIn() && uid() == userId;
+      }
+
+      match /systemInbox/{docId} {
+        allow read, write: if signedIn() && uid() == userId;
+      }
+    }
+
+    // =========================
+    // PUBLIC PROFILES (app Remdy)
+    // =========================
+    match /publicUsers/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && uid() == userId;
+      allow delete: if false;
+    }
+
+    // =========================
+    // ORGANIZER PORTAL PROFILE
+    // =========================
+    match /organizers/{organizerId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && uid() == organizerId;
+      allow delete: if false;
+    }
+
+    // =========================
+    // EVENTS (app + portal)
+    // =========================
+    match /events/{eventId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && ownerIdFromMap(request.resource.data) == uid();
+      allow update: if signedIn() && isEventOrganizer(eventId);
+      allow delete: if false;
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update: if signedIn() && (
+          isEventOrganizer(eventId)
+          || resource.data.uid == uid()
+          || resource.data.authorId == uid()
+        );
+        allow delete: if false;
+      }
+
+      match /attendees/{attendeeId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn() && uid() == attendeeId;
+        allow delete: if signedIn() && uid() == attendeeId;
+      }
+
+      match /views/{viewId} {
+        allow read: if signedIn() && isEventOrganizer(eventId);
+        allow create, update: if signedIn() && uid() == viewId;
+        allow delete: if false;
+      }
     }
 
     // =========================
@@ -42,7 +124,6 @@ service cloud.firestore {
     match /conversations/{cid} {
       allow read: if isParticipantData(resource.data);
 
-      // cria: precisa ter 2 pessoas e incluir quem cria
       allow create: if signedIn()
         && uid() in partsFrom(request.resource.data)
         && partsFrom(request.resource.data).size() == 2;
@@ -50,9 +131,6 @@ service cloud.firestore {
       allow update: if isParticipantData(resource.data);
       allow delete: if false;
 
-      // =========================
-      // MESSAGES (subcoleção)
-      // =========================
       match /messages/{mid} {
         allow read: if isParticipantById(cid);
 
@@ -67,6 +145,75 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if false;
       }
+
+      match /presence/{presenceId} {
+        allow read, write: if isParticipantById(cid);
+      }
+    }
+
+    // =========================
+    // GROUPS
+    // =========================
+    match /groups/{groupId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update: if signedIn();
+      allow delete: if false;
+
+      match /messages/{mid} {
+        allow read, create: if signedIn();
+        allow update, delete: if false;
+      }
+
+      match /reads/{readerId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn() && uid() == readerId;
+        allow delete: if false;
+      }
+
+      match /pendingRequests/{requestUid} {
+        allow read: if signedIn();
+        allow create, update: if signedIn() && uid() == requestUid;
+        allow delete: if signedIn();
+      }
+
+      match /presence/{presenceId} {
+        allow read, write: if signedIn();
+      }
+    }
+
+    // =========================
+    // POSTS / REPORTS / CONFIG
+    // =========================
+    match /posts/{postId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if signedIn()
+        && resource.data.uid == uid();
+    }
+
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
+
+    match /configCountries/{countryCode} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Escritas somente via Cloud Functions (Admin SDK).
+    match /boost_checkouts/{docId} {
+      allow read, write: if false;
+    }
+
+    match /boost_payments/{docId} {
+      allow read, write: if false;
+    }
+
+    match /portal_qr_login_sessions/{sessionId} {
+      allow read, write: if false;
     }
   }
 }

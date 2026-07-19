@@ -609,7 +609,7 @@ void _startUsageTimerWorld() {
           'lastSeenAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
-        debugPrint('Erro ao salvar dailySecondsUsedWorld: $e');
+        debugPrint('Failed to save dailySecondsUsedWorld: $e');
       }
     }
   });
@@ -624,7 +624,7 @@ void _startUsageTimerWorld() {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('Erro ao marcar como lido: $e');
+      debugPrint('Failed to mark conversation as read: $e');
     }
   }
 

@@ -691,7 +691,14 @@
 "category_sports": "Sports",
 "category_restaurant": "Restaurant",
 "category_culture": "Culture",
-"category_languages": "Languages"
+"category_languages": "Languages",
+
+"create_group_scope_title": "Group visibility",
+"create_group_scope_city": "City",
+"create_group_scope_region": "Region",
+"create_group_scope_country": "Country",
+"premium_active": "Premium active"
+
 
 
 

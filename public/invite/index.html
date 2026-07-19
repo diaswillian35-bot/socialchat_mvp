@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Remdy</title>
+
+
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(180deg, #313A5F, #264E9A);
+      color: #111827;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #ffffff;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      text-align: center;
+      animation: fadeIn 0.5s ease;
+    }
+
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+
+    h1 {
+      margin: 0;
+      color: #313A5F;
+    }
+
+
+    .subtitle {
+      color: #6B7280;
+      margin: 10px 0 20px;
+    }
+
+
+    .invite-box {
+      background: #F6F7FB;
+      border: 1px solid #E5E7EB;
+      padding: 14px;
+      border-radius: 12px;
+      font-weight: bold;
+      color: #264E9A;
+      margin-bottom: 10px;
+    }
+
+
+    .copy-btn {
+      background: none;
+      border: none;
+      color: #313A5F;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      font-weight: bold;
+      text-decoration: none;
+      margin-top: 10px;
+    }
+
+
+    .primary {
+      background: #313A5F;
+      color: white;
+    }
+
+
+    .secondary {
+      background: #F6F7FB;
+      color: #111827;
+      border: 1px solid #E5E7EB;
+    }
+
+
+    .small {
+      margin-top: 16px;
+      font-size: 13px;
+      color: #6B7280;
+    }
+
+
+    .success {
+      color: green;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+
+
+<body>
+  <div class="card">
+
+
+    <h1>Remdy</h1>
+    <div class="subtitle">
+      Você foi convidado para entrar no Remdy 🌍
+    </div>
+
+
+    <div class="invite-box" id="inviteCode">
+      Carregando...
+    </div>
+
+
+    <button class="copy-btn" onclick="copyCode()">
+      Copiar código
+    </button>
+
+
+    <div class="success" id="copied">
+      Copiado ✔
+    </div>
+
+
+   
+
+    <a class="btn secondary" id="android">
+      Baixar no Android
+    </a>
+
+
+    <a class="btn secondary" id="ios">
+      Baixar no iPhone
+    </a>
+
+
+    <div class="small">
+      Instale o app e volte para este convite para ganhar recompensas 🎁
+    </div>
+
+
+  </div>
+
+
+  <script>
+  const params = new URLSearchParams(window.location.search);
+  const ref = (params.get("ref") || "").trim();
+
+
+  const inviteCode = document.getElementById("inviteCode");
+  inviteCode.textContent = ref ? ref : "Código não encontrado";
+
+
+  document.getElementById("android").href =
+    "https://play.google.com/store/apps/details?id=com.remdy.app";
+
+
+  document.getElementById("ios").href =
+    "https://apps.apple.com/";
+
+
+  function copyCode() {
+    if (!ref) return;
+    navigator.clipboard.writeText(ref);
+    document.getElementById("copied").style.display = "block";
+  }
+</script>
+</body>
+</html>
