@@ -267,7 +267,8 @@ void dispose() {
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: _bg,
-        surfaceTintColor: _bg,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
        title: Text(
@@ -396,22 +397,30 @@ final attendees = data['attendeesCount'] is int
                       itemCount: shownImages.length,
                       itemBuilder: (context, i) {
                         final url = shownImages[i];
-                        return Image.network(
-                          url,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: const Color(0xFFF1F5F9),
-                            child: const Center(
-                              child: Icon(Icons.broken_image_rounded, size: 34),
-                            ),
-                          ),
-                          loadingBuilder: (context, child, progress) {
-                            if (progress == null) return child;
-                            return Container(
+                        return Container(
+                          color: const Color(0xFFF1F5F9),
+                          width: double.infinity,
+                          alignment: Alignment.center,
+                          child: Image.network(
+                            url,
+                            fit: BoxFit.contain,
+                            width: double.infinity,
+                            errorBuilder: (_, __, ___) => Container(
                               color: const Color(0xFFF1F5F9),
-                              child: const Center(child: CircularProgressIndicator()),
-                            );
-                          },
+                              child: const Center(
+                                child: Icon(Icons.broken_image_rounded, size: 34),
+                              ),
+                            ),
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return Container(
+                                color: const Color(0xFFF1F5F9),
+                                child: const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            },
+                          ),
                         );
                       },
                     ),

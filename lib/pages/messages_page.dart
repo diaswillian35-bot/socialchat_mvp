@@ -17,7 +17,7 @@ class MessagesPage extends StatefulWidget {
 
 
 class _MessagesPageState extends State<MessagesPage> {
-  String get _myUid => FirebaseAuth.instance.currentUser!.uid;
+  String? get _myUid => FirebaseAuth.instance.currentUser?.uid;
 
 
   static const Color _bg = Colors.white;
@@ -50,12 +50,15 @@ class _MessagesPageState extends State<MessagesPage> {
 
 
   Future<void> _hideConversationForMe(String conversationId) async {
+    final myUid = _myUid;
+    if (myUid == null) return;
+
     try {
       await FirebaseFirestore.instance
           .collection('conversations')
           .doc(conversationId)
           .set({
-        'hiddenFor': FieldValue.arrayUnion([_myUid]),
+        'hiddenFor': FieldValue.arrayUnion([myUid]),
       }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('Erro ao esconder conversa: $e');
@@ -125,13 +128,34 @@ class _MessagesPageState extends State<MessagesPage> {
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
+    final myUid = _myUid;
+
+    if (myUid == null) {
+      return Scaffold(
+        backgroundColor: _bg,
+        appBar: AppBar(
+          backgroundColor: _bg,
+          elevation: 0,
+          title: Text(
+            t.get('messages'),
+            style: const TextStyle(
+              color: _text,
+              fontWeight: FontWeight.w900,
+              fontSize: 20,
+            ),
+          ),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final db = FirebaseFirestore.instance;
 
-
+    // Sem orderBy no Firestore — ordena no cliente (evita rejeição de query nas rules).
     final convQuery = db
         .collection('conversations')
-        .where('participants', arrayContains: _myUid)
-        .orderBy('lastMessageAt', descending: true);
+        .where('participants', arrayContains: myUid)
+        .limit(100);
 
 
     return Scaffold(
@@ -161,7 +185,18 @@ class _MessagesPageState extends State<MessagesPage> {
           }
 
 
-          final docs = snap.data?.docs ?? [];
+          final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+            snap.data?.docs ?? [],
+          );
+          docs.sort((a, b) {
+            final aRaw = a.data()['lastMessageAt'] ?? a.data()['updatedAt'];
+            final bRaw = b.data()['lastMessageAt'] ?? b.data()['updatedAt'];
+            if (aRaw is Timestamp && bRaw is Timestamp) {
+              return bRaw.compareTo(aRaw);
+            }
+            return 0;
+          });
+
           if (docs.isEmpty) {
             return Center(
               child: Text(
@@ -190,7 +225,7 @@ class _MessagesPageState extends State<MessagesPage> {
                   : <String>[];
 
 
-              if (hiddenFor.contains(_myUid)) {
+              if (hiddenFor.contains(myUid)) {
                 return const SizedBox.shrink();
               }
 
@@ -200,7 +235,7 @@ class _MessagesPageState extends State<MessagesPage> {
 
 
               final otherUid = participants.firstWhere(
-                (u) => u != _myUid,
+                (u) => u != myUid,
                 orElse: () => '',
               );
 
@@ -214,12 +249,12 @@ class _MessagesPageState extends State<MessagesPage> {
 
 
               final myUnread =
-                  (unreadMap[_myUid] is int) ? unreadMap[_myUid] as int : 0;
+                  (unreadMap[myUid] is int) ? unreadMap[myUid] as int : 0;
 
 
               final myUnread2 = (myUnread == 0 && data['unreadCount'] is Map)
-                  ? ((data['unreadCount'][_myUid] is int)
-                      ? data['unreadCount'][_myUid] as int
+                  ? ((data['unreadCount'][myUid] is int)
+                      ? data['unreadCount'][myUid] as int
                       : 0)
                   : 0;
 

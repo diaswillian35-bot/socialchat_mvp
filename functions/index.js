@@ -26,7 +26,167 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
 admin.initializeApp();
 
+const ANDROID_CHANNEL_ID = "high_importance_channel";
 
+function pushAllowed(userData, kind) {
+  if (!userData || userData.notifEnabled === false) return false;
+  if (kind === "chat" && userData.notifChat === false) return false;
+  if (kind === "group" && userData.notifGroups === false) return false;
+  if (kind === "event" && userData.notifEvents === false) return false;
+  if (kind === "group_join_request" && userData.notifGroups === false) return false;
+  return true;
+}
+
+async function collectTokensForUid(uid, kind) {
+  if (!uid) return [];
+
+  const userSnap = await admin.firestore().collection("users").doc(uid).get();
+  if (!userSnap.exists) return [];
+
+  const userData = userSnap.data() || {};
+  if (!pushAllowed(userData, kind)) return [];
+
+  const tokens = [];
+  const mainToken = (userData.fcmToken || "").toString().trim();
+  if (mainToken) tokens.push(mainToken);
+
+  const tokensSnap = await admin
+    .firestore()
+    .collection("users")
+    .doc(uid)
+    .collection("fcmTokens")
+    .get();
+
+  for (const tokenDoc of tokensSnap.docs) {
+    const token = (tokenDoc.data().token || tokenDoc.id || "").toString().trim();
+    if (token) tokens.push(token);
+  }
+
+  return [...new Set(tokens)];
+}
+
+async function collectTokensForUids(uids, kind) {
+  const all = [];
+  for (const uid of uids) {
+    all.push(...(await collectTokensForUid(uid, kind)));
+  }
+  return [...new Set(all)];
+}
+
+function profileImageUrl(data) {
+  if (!data) return "";
+  const photo = (data.photoUrl || "").toString().trim();
+  if (photo.startsWith("http")) return photo;
+  const avatar = (data.avatarUrl || "").toString().trim();
+  if (avatar.startsWith("http")) return avatar;
+  return "";
+}
+
+function groupImageUrl(group) {
+  if (!group) return "";
+  const avatar = (group.avatarUrl || group.photoUrl || group.imageUrl || "")
+    .toString()
+    .trim();
+  if (avatar.startsWith("http")) return avatar;
+  return "";
+}
+
+function androidPushConfig(imageUrl) {
+  const image = (imageUrl || "").toString().trim();
+  const notification = {
+    sound: "default",
+    channelId: ANDROID_CHANNEL_ID,
+  };
+  if (image.startsWith("http")) {
+    notification.imageUrl = image;
+  }
+  return {
+    priority: "high",
+    notification,
+  };
+}
+
+function apnsPushConfig(title, body, imageUrl) {
+  const image = (imageUrl || "").toString().trim();
+  const hasImage = image.startsWith("http");
+  const config = {
+    headers: { "apns-priority": "10" },
+    payload: {
+      aps: {
+        alert: { title, body },
+        sound: "default",
+        badge: 1,
+      },
+    },
+  };
+  if (hasImage) {
+    config.payload.aps["mutable-content"] = 1;
+    config.fcmOptions = { imageUrl: image };
+  }
+  return config;
+}
+
+function toStringData(data) {
+  const out = {};
+  for (const [key, value] of Object.entries(data || {})) {
+    out[key] = value == null ? "" : String(value);
+  }
+  return out;
+}
+
+async function sendPush({ tokens, title, body, data, imageUrl }) {
+  const uniqueTokens = [...new Set((tokens || []).filter(Boolean))];
+  if (uniqueTokens.length === 0) return null;
+
+  const image = (imageUrl || "").toString().trim();
+  const hasImage = image.startsWith("http");
+  const payloadData = toStringData({
+    ...(data || {}),
+    ...(hasImage ? { imageUrl: image } : {}),
+  });
+
+  const notification = { title, body };
+  if (hasImage) notification.imageUrl = image;
+
+  const response = await admin.messaging().sendEachForMulticast({
+    tokens: uniqueTokens,
+    notification,
+    data: payloadData,
+    android: androidPushConfig(image),
+    apns: apnsPushConfig(title, body, image),
+  });
+
+  await deleteInvalidTokens(response, uniqueTokens);
+  return response;
+}
+
+async function deleteInvalidTokens(response, tokens) {
+  const invalidTokens = [];
+  response.responses.forEach((r, index) => {
+    if (r.success) return;
+    const code = r.error?.code || "";
+    if (
+      code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token"
+    ) {
+      invalidTokens.push(tokens[index]);
+    }
+  });
+
+  if (invalidTokens.length === 0) return;
+
+  try {
+    const snap = await admin.firestore().collectionGroup("fcmTokens").get();
+    for (const doc of snap.docs) {
+      const token = (doc.data().token || doc.id || "").toString().trim();
+      if (invalidTokens.includes(token)) {
+        await doc.ref.delete();
+      }
+    }
+  } catch (e) {
+    console.error("Erro limpando tokens inválidos:", e);
+  }
+}
 
 
 exports.onGroupMessageCreated = onDocumentCreated(
@@ -59,6 +219,7 @@ exports.onGroupMessageCreated = onDocumentCreated(
 
       const group = groupSnap.data() || {};
       const groupName = (group.name || "Grupo").toString().trim();
+      const groupImage = groupImageUrl(group);
 
 
       const members = Array.isArray(group.members)
@@ -133,126 +294,28 @@ exports.onGroupMessageCreated = onDocumentCreated(
       const targetUids = members.filter((uid) => uid && uid !== senderId);
       if (targetUids.length === 0) return;
 
-
-      const tokens = [];
-
-
-      for (const uid of targetUids) {
-        try {
-          const tokensSnap = await admin
-            .firestore()
-            .collection("users")
-            .doc(uid)
-            .collection("fcmTokens")
-            .get();
-
-
-          for (const doc of tokensSnap.docs) {
-            const data = doc.data() || {};
-            const token = (data.token || "").toString().trim();
-            if (token) tokens.push(token);
-          }
-        } catch (e) {
-          console.error(`Erro buscando tokens de ${uid}:`, e);
-        }
-      }
-
-
-      if (tokens.length === 0) {
+      const uniqueTokens = await collectTokensForUids(targetUids, "group");
+      if (uniqueTokens.length === 0) {
         console.log("Nenhum token encontrado para membros do grupo.");
         return;
       }
 
-
-      // remove duplicados
-      const uniqueTokens = [...new Set(tokens)];
-
-
-      // =========================
-      // Envia push
-      // =========================
-      const message = {
+      const response = await sendPush({
         tokens: uniqueTokens,
-        notification: {
-          title: groupName,
-          body: `${senderName}: ${lastMessage}`,
-        },
+        title: groupName,
+        body: `${senderName}: ${lastMessage}`,
+        imageUrl: groupImage,
         data: {
-  type: "group",
-  groupId: groupId,
-  groupName: groupName,
-},
-        android: {
-          priority: "high",
-          notification: {
-            sound: "default",
-            channelId: "default",
-          },
+          type: "group",
+          groupId: groupId,
+          groupName: groupName,
+          imageUrl: groupImage,
         },
-       apns: {
-  headers: {
-    "apns-priority": "10",
-  },
-  payload: {
-    aps: {
-      alert: {
-        
-title: groupName,
-body: `${senderName}: ${lastMessage}`,
-
-      },
-      sound: "default",
-      badge: 1,
-    },
-  },
-},
-
-
-
-      };
-
-
-      const response = await admin.messaging().sendEachForMulticast(message);
-
-
-      console.log(
-        `Push grupo enviado. Success: ${response.successCount}, Fail: ${response.failureCount}`
-      );
-
-
-      // limpa tokens inválidos
-      const invalidTokens = [];
-      response.responses.forEach((r, index) => {
-        if (!r.success) {
-          const code = r.error?.code || "";
-          if (
-            code === "messaging/registration-token-not-registered" ||
-            code === "messaging/invalid-registration-token"
-          ) {
-            invalidTokens.push(uniqueTokens[index]);
-          }
-        }
       });
 
-
-      if (invalidTokens.length > 0) {
-        const usersSnap = await admin.firestore().collection("users").get();
-
-
-        for (const userDoc of usersSnap.docs) {
-          for (const badToken of invalidTokens) {
-            try {
-              await admin
-                .firestore()
-                .collection("users")
-                .doc(userDoc.id)
-                .collection("fcmTokens")
-                .doc(badToken)
-                .delete();
-            } catch (_) {}
-          }
-        }
-      }
+      console.log(
+        `Push grupo enviado. Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`
+      );
     } catch (e) {
       console.error("Erro onGroupMessageCreated:", e);
     }
@@ -262,20 +325,15 @@ exports.onPrivateMessageCreated = onDocumentCreated(
   "conversations/{conversationId}/messages/{messageId}",
   async (event) => {
     try {
-     const msg = event.data?.after?.data(
-);
-
-      if (!event.data?.after?.exists) return;
-if (event.data?.before?.exists) return;
-
+      const msg = event.data?.data();
       if (!msg) return;
 
       const conversationId = event.params.conversationId;
+      const msgType = (msg.type || "text").toString().trim();
 
       const senderId = (msg.senderId || msg.fromUid || msg.uid || "")
         .toString()
         .trim();
-
       if (!senderId) return;
 
       const convRef = admin.firestore().collection("conversations").doc(conversationId);
@@ -285,90 +343,49 @@ if (event.data?.before?.exists) return;
       const conv = convSnap.data() || {};
       const participants = Array.isArray(conv.participants)
         ? conv.participants
+        : Array.isArray(conv.members)
+        ? conv.members
         : [];
 
       const targetUids = participants.filter((uid) => uid && uid !== senderId);
       if (targetUids.length === 0) return;
 
-      const text = (msg.text || "Nova mensagem").toString();
+      let body = "Nova mensagem";
+      if (msgType === "audio") body = "🎤 Áudio";
+      else if (msgType === "image") body = "📷 Foto";
+      else body = (msg.text || "Nova mensagem").toString();
 
       let senderName = "Alguém";
+      let senderImage = "";
       const senderSnap = await admin.firestore().collection("users").doc(senderId).get();
       const senderData = senderSnap.data() || {};
-      if ((senderData.name || "").toString().trim()) {
-        senderName = senderData.name.toString().trim();
-      }
+      const senderLabel = (senderData.name || "").toString().trim();
+      if (senderLabel) senderName = senderLabel;
+      senderImage = profileImageUrl(senderData);
 
-      const tokens = [];
-
-      for (const uid of targetUids) {
-        const userSnap = await admin.firestore().collection("users").doc(uid).get();
-        const userData = userSnap.data() || {};
-
-        const mainToken = (userData.fcmToken || "").toString().trim();
-        if (mainToken) tokens.push(mainToken);
-
-        const tokensSnap = await admin.firestore()
-          .collection("users")
-          .doc(uid)
-          .collection("fcmTokens")
-          .get();
-
-        for (const tokenDoc of tokensSnap.docs) {
-          const token = (tokenDoc.data().token || "").toString().trim();
-          if (token) tokens.push(token);
-        }
-      }
-
-      const uniqueTokens = [...new Set(tokens)];
+      const uniqueTokens = await collectTokensForUids(targetUids, "chat");
       if (uniqueTokens.length === 0) return;
 
-      const response = await admin.messaging().sendEachForMulticast({
+      const response = await sendPush({
         tokens: uniqueTokens,
-        notification: {
-          title: senderName,
-          body: text,
-        },
-       data: {
-  type: "chat",
-  conversationId: conversationId,
-  senderId: senderId,
-  otherUid: senderId,
-  otherName: senderName,
-},
-
-        android: {
-          priority: "high",
-          notification: {
-            sound: "default",
-            channelId: "default",
-          },
-        },
-       apns: {
-  headers: {
-    "apns-priority": "10",
-  },
-  payload: {
-    aps: {
-      alert: {
         title: senderName,
-        body: text,
-      },
-      sound: "default",
-      badge: 1,
-    },
-  },
-},
-
-
+        body,
+        imageUrl: senderImage,
+        data: {
+          type: "chat",
+          conversationId,
+          senderId,
+          otherUid: senderId,
+          otherName: senderName,
+          imageUrl: senderImage,
+        },
       });
-console.log("TOKENS COUNT:", uniqueTokens.length);
-console.log("FCM RESPONSE:", JSON.stringify(response));
 
-      console.log("Push privado enviado:", conversationId);
+      console.log(
+        `Push privado enviado (${conversationId}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`
+      );
     } catch (e) {
       console.error("Erro onPrivateMessageCreated:", e);
-      
     }
   }
 );
@@ -787,19 +804,14 @@ exports.onGroupJoinRequestCreated = onDocumentCreated(
   "groups/{groupId}/pendingRequests/{uid}",
   async (event) => {
     try {
-      const before = event.data.before.data();
-const after = event.data.after.data();
+      const req = event.data?.data();
+      if (!req) return;
 
-if (!after) return;
-if (after.status !== "pending") return;
-if (before && before.status === "pending") return;
-
-const req = after;
+      const status = (req.status || "pending").toString().trim();
+      if (status !== "pending") return;
 
       const groupId = event.params.groupId;
-      const uid = event.params.uid;
-     
-      if (!req) return;
+      const requestUid = event.params.uid;
 
       const groupSnap = await admin.firestore().collection("groups").doc(groupId).get();
       if (!groupSnap.exists) return;
@@ -807,98 +819,32 @@ const req = after;
       const group = groupSnap.data() || {};
       const groupName = (group.name || "Grupo").toString();
       const admins = Array.isArray(group.admins) ? group.admins : [];
-
       if (admins.length === 0) return;
 
       const userName = (req.name || "Alguém").toString();
+      const targetAdmins = admins.filter((adminUid) => adminUid && adminUid !== requestUid);
+      if (targetAdmins.length === 0) return;
 
-     const tokensByLang = {
-  pt: [],
-  en: [],
-  es: [],
-  fr: [],
-};
+      const uniqueTokens = await collectTokensForUids(targetAdmins, "group_join_request");
+      if (uniqueTokens.length === 0) return;
 
+      const title = "Novo pedido de entrada";
+      const body = `${userName} quer entrar no grupo ${groupName}`;
 
-      for (const adminUid of admins) {
-        if (!adminUid || adminUid === uid) continue;
-
-        const adminUserSnap = await admin
-  .firestore()
-  .collection("users")
-  .doc(adminUid)
-  .get();
-
-const adminUser = adminUserSnap.data() || {};
-const mainToken = (adminUser.fcmToken || "").toString().trim();
-
-if (mainToken) tokensByLang[lang]?.push(mainToken);
-
-const tokensSnap = await admin
-  .firestore()
-  .collection("users")
-  .doc(adminUid)
-  .collection("fcmTokens")
-  .get();
-
-for (const doc of tokensSnap.docs) {
-  const token = (doc.data().token || "").toString().trim();
- if (token) tokensByLang[lang]?.push(token);
-}
-
-
-      }
-
-    
-
-console.log("ADMINS:", admins);
-console.log("TOKENS:", uniqueTokens.length);
-console.log("TOKENS LIST:", uniqueTokens);
-
-if (uniqueTokens.length === 0) return;
-
-console.log("PROJECT:", process.env.GOOGLE_CLOUD_PROJECT);
-
-const response = await admin.messaging().sendEachForMulticast({
-
-
-
+      const response = await sendPush({
         tokens: uniqueTokens,
-        notification: {
-          title: "Novo pedido de entrada",
-          body: `${userName} quer entrar no grupo ${groupName}`,
-        },
+        title,
+        body,
         data: {
           type: "group_join_request",
           groupId,
-          requestUid: uid,
+          requestUid,
         },
-        android: {
-          priority: "high",
-          notification: {
-            sound: "default",
-            channelId: "default",
-          },
-        },
-        apns: {
-  headers: {
-    "apns-priority": "10",
-  },
-  payload: {
-    aps: {
-      alert: {
-        title: senderName,
-        body: text,
-      },
-      sound: "default",
-      badge: 1,
-    },
-  },
-},
-
       });
-      console.log("FCM RESPONSE:", JSON.stringify(response));
-      console.log(`Push pedido de entrada enviado: ${groupId} / ${uid}`);
+
+      console.log(
+        `Push pedido de entrada enviado (${groupId}/${requestUid}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`
+      );
     } catch (e) {
       console.error("Erro onGroupJoinRequestCreated:", e);
     }
@@ -960,6 +906,7 @@ console.log(
         if (userDoc.id === creatorUid) continue;
 
         const userData = userDoc.data() || {};
+        if (!pushAllowed(userData, "event")) continue;
 
         const lang = (
           userData.appLanguageCode ||
@@ -975,29 +922,20 @@ console.log(
         if (!userLat || !userLng) continue;
 
         const distance = distanceKm(eventLat, eventLng, userLat, userLng);
-console.log(
-  `${userData.name || userDoc.id} -> ${distance.toFixed(1)} km`
-);
+        console.log(`${userData.name || userDoc.id} -> ${distance.toFixed(1)} km`);
 
         if (distance > radiusKm) continue;
-        console.log(
-  `✔ Dentro do raio: ${userData.name || userDoc.id}`
-);
-await userDoc.ref.set({
-  hasNewEvents: true,
-  lastNewEventId: eventId,
-  lastNewEventAt: admin.firestore.FieldValue.serverTimestamp(),
-}, { merge: true });
+        console.log(`✔ Dentro do raio: ${userData.name || userDoc.id}`);
 
+        await userDoc.ref.set({
+          hasNewEvents: true,
+          lastNewEventId: eventId,
+          lastNewEventAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
 
-        const mainToken = (userData.fcmToken || "").toString().trim();
-        if (mainToken) tokensByLang[finalLang].push(mainToken);
-
-        const tokensSnap = await userDoc.ref.collection("fcmTokens").get();
-
-        for (const tokenDoc of tokensSnap.docs) {
-          const token = (tokenDoc.data().token || "").toString().trim();
-          if (token) tokensByLang[finalLang].push(token);
+        const userTokens = await collectTokensForUid(userDoc.id, "event");
+        if (userTokens.length > 0) {
+          tokensByLang[finalLang].push(...userTokens);
         }
       }
 
@@ -1006,7 +944,6 @@ await userDoc.ref.set({
 
       for (const [lang, tokenList] of Object.entries(tokensByLang)) {
         const uniqueTokens = [...new Set(tokenList)];
-
         if (uniqueTokens.length === 0) continue;
 
         let pushTitle = "📍 Novo evento perto de você";
@@ -1027,48 +964,23 @@ await userDoc.ref.set({
           pushBody = `${title} • Touchez pour voir les détails`;
         }
 
-console.log(
-  `Idioma ${lang}: ${uniqueTokens.length} token(s) para envio`
-);
+        const notifTitle = city ? `${pushTitle} (${city})` : pushTitle;
+        const notifBody = `${title}${category ? " • " + category : ""}`;
 
-        const response = await admin.messaging().sendEachForMulticast({
+        console.log(`Idioma ${lang}: ${uniqueTokens.length} token(s) para envio`);
+
+        const response = await sendPush({
           tokens: uniqueTokens,
-      notification: {
-  title: city ? `${pushTitle} (${city})` : pushTitle,
-  body: `${title}${category ? " • " + category : ""}`,
-},
-
+          title: notifTitle,
+          body: notifBody,
           data: {
             type: "event",
-            eventId: eventId,
+            eventId,
           },
-          android: {
-            priority: "high",
-            notification: {
-              sound: "default",
-              channelId: "default",
-            },
-          },
-          apns: {
-  headers: {
-    "apns-priority": "10",
-  },
-  payload: {
-    aps: {
-      alert: {
-        title: senderName,
-        body: text,
-      },
-      sound: "default",
-      badge: 1,
-    },
-  },
-},
-
         });
 
-        totalSuccess += response.successCount;
-        totalFail += response.failureCount;
+        totalSuccess += response?.successCount ?? 0;
+        totalFail += response?.failureCount ?? 0;
       }
 
       console.log(

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import '../pages/system_inbox_page.dart';
 import 'remi_chat_page.dart';
@@ -24,6 +23,8 @@ import 'package:socialchat_mvp/pages/contact_page.dart';
 import 'package:socialchat_mvp/pages/terms_page.dart';
 import 'package:socialchat_mvp/pages/privacy_page.dart';
 import 'package:socialchat_mvp/pages/about_page.dart';
+import 'package:socialchat_mvp/widgets/home_discover_section.dart';
+import 'package:socialchat_mvp/widgets/home_nearby_users_section.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -36,7 +37,6 @@ class _HomePageState extends State<HomePage> {
   final db = FirebaseFirestore.instance;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  StreamSubscription<String>? _tokenSub;
 
   bool _syncedPublicOnce = false;
   Timer? _presenceTimer;
@@ -50,30 +50,15 @@ class _HomePageState extends State<HomePage> {
 
   DocumentReference<Map<String, dynamic>> _publicDoc(String uid) =>
       db.collection('publicUsers').doc(uid);
-      
 
-
-      Stream<int> _systemInboxUnreadCount(String uid) {
-  return db
-      .collection('users')
-      .doc(uid)
-      .collection('systemInbox')
-      .where('isRead', isEqualTo: false)
-      .snapshots()
-      .map((snap) => snap.docs.length);
-}
-
-
-  @override
-  void initState() {
-    super.initState();
-    _initFcmTokenFlow();
-  }
-
-  @override
-  void dispose() {
-    _tokenSub?.cancel();
-    super.dispose();
+  Stream<int> _systemInboxUnreadCount(String uid) {
+    return db
+        .collection('users')
+        .doc(uid)
+        .collection('systemInbox')
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .map((snap) => snap.docs.length);
   }
 
   @override
@@ -89,39 +74,6 @@ class _HomePageState extends State<HomePage> {
     AppTexts.load(locale).then((_) {
       if (mounted) setState(() {});
     });
-  }
-
-  Future<void> _initFcmTokenFlow() async {
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final uid = uidOrNull;
-      if (uid == null) return;
-
-      try {
-        await FirebaseMessaging.instance.requestPermission();
-      } catch (_) {}
-
-      await _saveFcmToken(uid);
-
-      _tokenSub?.cancel();
-      _tokenSub =
-          FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-        final uid2 = uidOrNull;
-        if (uid2 == null) return;
-        await _saveFcmToken(uid2, tokenOverride: newToken);
-      });
-    });
-  }
-
-  Future<void> _saveFcmToken(String uid, {String? tokenOverride}) async {
-    try {
-      final token = tokenOverride ?? await FirebaseMessaging.instance.getToken();
-      if (token == null || token.trim().isEmpty) return;
-
-      await _userDoc(uid).set({
-        'fcmToken': token.trim(),
-        'fcmUpdatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } catch (_) {}
   }
 
   static const _bg = Colors.white;
@@ -231,7 +183,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
                   '${AppTexts.current.get('premium_country_message_prefix')} $countryName, ${AppTexts.current.get('premium_country_message_suffix')}',
                   style: const TextStyle(
@@ -506,6 +458,8 @@ final isPremiumActive =
         });
 
         final userCountryName = _countryName(homeCode);
+        final userCity =
+            (data['cityName'] ?? data['city'] ?? '').toString().trim();
 
   final countriesStream = db
     .collection('configCountries')
@@ -532,7 +486,10 @@ final isPremiumActive =
           backgroundColor: _bg,
           appBar: AppBar(
             backgroundColor: _bg,
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.transparent,
             elevation: 0,
+            scrolledUnderElevation: 0,
             centerTitle: true,
             toolbarHeight: 88,
       leading: IconButton(
@@ -673,7 +630,7 @@ final isPremiumActive =
             ],
           ),
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
             children: [
               Text(
                 '${t.get('hello')}, $name',
@@ -683,7 +640,7 @@ final isPremiumActive =
                   color: _text,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -703,7 +660,7 @@ final isPremiumActive =
                         color: _text,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
 
                     Row(
                       children: [
@@ -762,7 +719,7 @@ final isPremiumActive =
                       ],
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
 
                     Row(
                       children: [
@@ -824,16 +781,16 @@ final isPremiumActive =
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Text(
-                t.get('choose_country'),
+                t.get('home_meet_people'),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: _text,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
   stream: countriesStream,
   builder: (context, countrySnap) {
@@ -897,9 +854,9 @@ sortedCountries.sort((a, b) {
       itemCount: sortedCountries.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.88,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 1.0,
       ),
       itemBuilder: (context, i) {
         final item = sortedCountries[i];
@@ -911,7 +868,7 @@ final canOpen = isPremiumActive ||
           onTap: () => _openCountry(item: item, canOpen: canOpen),
           borderRadius: BorderRadius.circular(18),
           child: Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
@@ -924,9 +881,9 @@ final canOpen = isPremiumActive ||
                 children: [
                   Text(
                     item.flag.isNotEmpty ? item.flag : _flagEmoji(item.code),
-                    style: const TextStyle(fontSize: 30),
+                    style: const TextStyle(fontSize: 28, height: 1),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     item.name,
                     style: const TextStyle(
@@ -939,7 +896,7 @@ final canOpen = isPremiumActive ||
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (!canOpen) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -969,6 +926,15 @@ final canOpen = isPremiumActive ||
     );
   },
 ),
+
+              const SizedBox(height: 16),
+              HomeDiscoverSection(countryCode: homeCode),
+              const SizedBox(height: 16),
+              HomeNearbyUsersSection(
+                countryCode: homeCode,
+                countryName: userCountryName,
+                city: userCity.isEmpty ? null : userCity,
+              ),
 
             ],
           ),

@@ -122,13 +122,18 @@ service cloud.firestore {
     // CONVERSATIONS
     // =========================
     match /conversations/{cid} {
-      allow read: if isParticipantData(resource.data);
+      // Usar request.auth.uid direto (funções customizadas quebram validação de query).
+      allow read: if request.auth != null
+        && request.auth.uid in resource.data.participants;
 
-      allow create: if signedIn()
-        && uid() in partsFrom(request.resource.data)
-        && partsFrom(request.resource.data).size() == 2;
+      allow create: if request.auth != null
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2;
 
-      allow update: if isParticipantData(resource.data);
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.participants;
+
       allow delete: if false;
 
       match /messages/{mid} {
