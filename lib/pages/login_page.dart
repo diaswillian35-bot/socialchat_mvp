@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import '../services/locale_controller.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 
 import 'forgot_password_page.dart';
@@ -502,9 +503,51 @@ return;
   }
 
 
-  void _loginApple() {
-    _toast("Apple: deixei o botão. Depois configuramos com calma.");
+  Future<void> _loginApple() async {
+  if (_loading) return;
+
+  setState(() => _loading = true);
+
+  try {
+    final appleCredential = await SignInWithApple.getAppleIDCredential(
+      scopes: [
+        AppleIDAuthorizationScopes.email,
+        AppleIDAuthorizationScopes.fullName,
+      ],
+    );
+
+    final oauthCredential = OAuthProvider("apple.com").credential(
+      idToken: appleCredential.identityToken,
+      accessToken: appleCredential.authorizationCode,
+    );
+
+    final cred = await FirebaseAuth.instance.signInWithCredential(
+      oauthCredential,
+    );
+
+    final user = cred.user;
+    if (user != null) {
+      await _ensureUserDoc(user, isNewUser: cred.additionalUserInfo?.isNewUser ?? false);
+    }
+
+    await _goToApp();
+  } on FirebaseAuthException catch (e) {
+  print('APPLE FIREBASE ERROR: ${e.code}');
+  print('APPLE FIREBASE MESSAGE: ${e.message}');
+  _toast(e.message ?? 'Erro no login Apple.');
+
+
+
+
+} catch (e) {
+  print('APPLE LOGIN ERROR: $e');
+  _toast('Erro no login Apple: $e');
+}
+ finally {
+    if (mounted) setState(() => _loading = false);
   }
+}
+
 
 
  Future<void> _loginFacebook() async {
