@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /e/
+Allow: /eventos
+Allow: /eventos/
+Allow: /sitemap-events.xml
+
+Sitemap: https://remdy.app/sitemap-events.xml

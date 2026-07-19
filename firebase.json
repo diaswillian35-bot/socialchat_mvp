@@ -77,6 +77,26 @@
   ],
  "rewrites": [
   {
+    "source": "/e/**",
+    "function": "renderPublicEventPage"
+  },
+  {
+    "source": "/eventos/**",
+    "function": "renderPublicEventsSearch"
+  },
+  {
+    "source": "/eventos",
+    "function": "renderPublicEventsSearch"
+  },
+  {
+    "source": "/sitemap-events.xml",
+    "function": "publicEventsSitemap"
+  },
+  {
+    "source": "/api/public/events",
+    "function": "publicEventsApi"
+  },
+  {
     "source": "/g/**",
     "destination": "/index.html"
   },
