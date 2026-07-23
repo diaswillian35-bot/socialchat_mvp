@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:math';
 
 import 'home_page.dart';
 import 'messages_page.dart';
@@ -13,6 +12,8 @@ import 'create_group_page.dart';
 import '../services/presence_service.dart';
 import '../services/push_service.dart';
 import '../l10n/app_texts.dart';
+import '../widgets/keyboard_dismiss.dart';
+import '../services/app_badge_service.dart';
 
 
 class MainShell extends StatefulWidget {
@@ -44,6 +45,7 @@ Future<void> _checkBannedUser() async {
       .get();
 
   if (snap.data()?['isBanned'] == true) {
+    await AppBadgeService.setBadge(0);
     await FirebaseAuth.instance.signOut();
   }
 }
@@ -61,7 +63,8 @@ void initState() {
   _checkBannedUser();
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
-
+      // Garante app sem teclado ao entrar na Home / shell.
+      dismissAppKeyboard();
 
       await PresenceService.instance.start();
 
@@ -152,7 +155,11 @@ void initState() {
   }
 
 
-  Stream<int> _unreadGroupsStream() {
+  void _syncAppBadge(int messages, int groups) {
+    AppBadgeService.setBadge(messages + groups);
+  }
+
+    Stream<int> _unreadGroupsStream() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return Stream.value(0);
 
@@ -208,10 +215,22 @@ Stream<int> _activeEventsStream() {
     ];
 
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: pages,
+    return StreamBuilder<int>(
+      stream: _unreadMessagesStream(),
+      builder: (context, msgSnap) {
+        return StreamBuilder<int>(
+          stream: _unreadGroupsStream(),
+          builder: (context, groupSnap) {
+            final messages = msgSnap.data ?? 0;
+            final groups = groupSnap.data ?? 0;
+            _syncAppBadge(messages, groups);
+            return Scaffold(
+      resizeToAvoidBottomInset: true,
+      body: KeyboardDismissOnTap(
+        child: IndexedStack(
+          index: _index,
+          children: pages,
+        ),
       ),
       floatingActionButton: _index == 2
          ? FloatingActionButton(
@@ -220,6 +239,7 @@ Stream<int> _activeEventsStream() {
               backgroundColor: _remdyBlue,
               foregroundColor: Colors.white,
               onPressed: () {
+                dismissAppKeyboard();
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -234,6 +254,7 @@ Stream<int> _activeEventsStream() {
         backgroundColor: const Color(0xFFF1F5F9),
         currentIndex: _index,
         onTap: (i) async {
+  dismissAppKeyboard();
   setState(() => _index = i);
 
   if (i == 3) {
@@ -344,6 +365,10 @@ BottomNavigationBarItem(
 
         ],
       ),
+    );
+          },
+        );
+      },
     );
   }
 }

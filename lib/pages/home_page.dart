@@ -25,6 +25,10 @@ import 'package:socialchat_mvp/pages/privacy_page.dart';
 import 'package:socialchat_mvp/pages/about_page.dart';
 import 'package:socialchat_mvp/widgets/home_discover_section.dart';
 import 'package:socialchat_mvp/widgets/home_nearby_users_section.dart';
+import '../services/presence_service.dart';
+import '../services/premium_access_service.dart';
+import '../services/purchase_service.dart';
+import '../services/app_badge_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -33,7 +37,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final db = FirebaseFirestore.instance;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -41,9 +45,24 @@ class _HomePageState extends State<HomePage> {
   bool _syncedPublicOnce = false;
   Timer? _presenceTimer;
   bool _presenceStarted = false;
+  Timer? _liveCountTick;
   String _localeLoaded = '';
 
-  String? get uidOrNull => FirebaseAuth.instance.currentUser?.uid;
+  /// Janela e tolerância definidas em [PresenceService] (fonte única).
+  Stream<QuerySnapshot<Map<String, dynamic>>> _onlineUsersStream() {
+    final since = PresenceService.onlineQuerySince(DateTime.now());
+    return db
+        .collection('publicUsers')
+        .where('lastSeenAt', isGreaterThan: since)
+        .snapshots(includeMetadataChanges: true);
+  }
+
+  bool _isCountedOnline(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    DateTime now,
+  ) {
+    return PresenceService.isPublicUserOnline(doc.data(), now);
+  }
 
   DocumentReference<Map<String, dynamic>> _userDoc(String uid) =>
       db.collection('users').doc(uid);
@@ -59,6 +78,48 @@ class _HomePageState extends State<HomePage> {
         .where('isRead', isEqualTo: false)
         .snapshots()
         .map((snap) => snap.docs.length);
+  }
+
+  String? get uidOrNull => FirebaseAuth.instance.currentUser?.uid;
+
+  int _countOnlineByCountry({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    required String homeCode,
+    required DateTime now,
+    required bool sameCountry,
+  }) {
+    return docs.where((doc) {
+      if (!_isCountedOnline(doc, now)) return false;
+      final code = (doc.data()['countryCode'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (code.isEmpty) return false;
+      return sameCountry ? code == homeCode : code != homeCode;
+    }).length;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _liveCountTick = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _liveCountTick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -311,6 +372,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _logout() async {
+    try {
+      await PurchaseService.instance.logOut();
+    } catch (_) {}
+    await AppBadgeService.setBadge(0);
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
 
@@ -328,12 +393,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _openCountry({required _Country item, required bool canOpen}) {
-    if (!canOpen) {
-      showPremiumDialog(item.name);
-      return;
-    }
-
+  void _openCountry({required _Country item}) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -426,14 +486,8 @@ if (!snap.hasData) {
         final nameRaw = (data['name'] ?? '').toString().trim();
         final name = nameRaw.isEmpty ? t.get('user') : nameRaw;
 
-        final now = DateTime.now();
-        final premiumUntil = (data['premiumUntil'] as Timestamp?)?.toDate();
-      final isMaster = data['isMaster'] == true;
-
-final isPremiumActive =
-    isMaster ||
-    (data['isPremium'] == true) ||
-    (premiumUntil != null && premiumUntil.isAfter(now));
+        final isPremiumActive =
+            PremiumAccessService.isPremiumActiveFromData(data);
 
 
         final int invites = (data['invitesCount'] is int)
@@ -468,13 +522,7 @@ final isPremiumActive =
 
 
 
-        final since =
-            Timestamp.fromDate(now.subtract(const Duration(seconds: 30)));
-
-        final onlineStream = db
-            .collection('publicUsers')
-            .where('lastSeenAt', isGreaterThan: since)
-            .snapshots();
+        final onlineStream = _onlineUsersStream();
 
         bool canOpenCountry(_Country item) {
           if (isPremiumActive) return true;
@@ -682,22 +730,13 @@ final isPremiumActive =
                           stream: onlineStream,
                           builder: (context, s) {
                             final docs = s.data?.docs ?? [];
-
-                            final n = docs.where((doc) {
-                              final d = doc.data();
-                              final code = (d['countryCode'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .toLowerCase();
-                              final isOnline = d['isOnline'] == true;
-                              final hasUid =
-                                  (d['uid'] ?? '').toString().trim().isNotEmpty;
-
-                              return hasUid &&
-                                  isOnline &&
-                                  code.isNotEmpty &&
-                                  code == homeCode;
-                            }).length;
+                            final countNow = DateTime.now();
+                            final n = _countOnlineByCountry(
+                              docs: docs,
+                              homeCode: homeCode,
+                              now: countNow,
+                              sameCountry: true,
+                            );
 
                             return Row(
                               children: [
@@ -742,22 +781,13 @@ final isPremiumActive =
                           stream: onlineStream,
                           builder: (context, s) {
                             final docs = s.data?.docs ?? [];
-
-                            final world = docs.where((doc) {
-                              final d = doc.data();
-                              final code = (d['countryCode'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .toLowerCase();
-                              final isOnline = d['isOnline'] == true;
-                              final hasUid =
-                                  (d['uid'] ?? '').toString().trim().isNotEmpty;
-
-                              return hasUid &&
-                                  isOnline &&
-                                  code.isNotEmpty &&
-                                  code != homeCode;
-                            }).length;
+                            final countNow = DateTime.now();
+                            final world = _countOnlineByCountry(
+                              docs: docs,
+                              homeCode: homeCode,
+                              now: countNow,
+                              sameCountry: false,
+                            );
 
                             return Row(
                               children: [
@@ -860,12 +890,13 @@ sortedCountries.sort((a, b) {
       ),
       itemBuilder: (context, i) {
         final item = sortedCountries[i];
-final canOpen = isPremiumActive ||
-    item.code.trim().toLowerCase() == homeCode;
-
+        final isMyCountry =
+            item.code.trim().toLowerCase() == homeCode;
+        // Free: selo informativo em países internacionais (sem bloquear/abrir cinza).
+        final showPremiumBadge = !isPremiumActive && !isMyCountry;
 
         return InkWell(
-          onTap: () => _openCountry(item: item, canOpen: canOpen),
+          onTap: () => _openCountry(item: item),
           borderRadius: BorderRadius.circular(18),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
@@ -874,51 +905,48 @@ final canOpen = isPremiumActive ||
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: const Color(0xFFE5E7EB)),
             ),
-            child: Opacity(
-              opacity: canOpen ? 1.0 : 0.45,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    item.flag.isNotEmpty ? item.flag : _flagEmoji(item.code),
-                    style: const TextStyle(fontSize: 28, height: 1),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  item.flag.isNotEmpty ? item.flag : _flagEmoji(item.code),
+                  style: const TextStyle(fontSize: 28, height: 1),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item.name,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111827),
                   ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (showPremiumBadge) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    item.name,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF111827),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
                     ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Text(
+                      t.get('premium'),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
                   ),
-                  if (!canOpen) ...[
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Text(
-                        t.get('premium'),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
           ),
         );
@@ -928,7 +956,10 @@ final canOpen = isPremiumActive ||
 ),
 
               const SizedBox(height: 16),
-              HomeDiscoverSection(countryCode: homeCode),
+              HomeDiscoverSection(
+                countryCode: homeCode,
+                city: userCity.isEmpty ? null : userCity,
+              ),
               const SizedBox(height: 16),
               HomeNearbyUsersSection(
                 countryCode: homeCode,

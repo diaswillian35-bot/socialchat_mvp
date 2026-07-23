@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../pages/edit_event_page.dart';
+import '../services/event_management_service.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class MyEventsPage extends StatelessWidget {
   const MyEventsPage({super.key});
@@ -35,7 +37,10 @@ Color _cardColor(String status) {
   return Colors.white;
 }
 
-String _statusText(String status) {
+String _statusText(String status, {bool hasPendingChanges = false}) {
+  if (hasPendingChanges && status == 'approved') {
+    return AppTexts.t('event_changes_pending');
+  }
   if (status == 'approved') return AppTexts.current.get('my_events_approved');
   if (status == 'rejected') return AppTexts.current.get('my_events_rejected');
   if (status == 'cancelled') return AppTexts.current.get('my_events_cancelled');
@@ -77,12 +82,27 @@ child: Text(
 
     if (ok != true) return;
 
-    await FirebaseFirestore.instance.collection('events').doc(eventId).set({
-      'status': 'cancelled',
-      'isActive': false,
-      'cancelledAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await EventManagementService.cancelEvent(eventId: eventId);
+    } on FirebaseFunctionsException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppTexts.current.get(EventManagementService.cancelErrorKey(e)),
+          ),
+        ),
+      );
+      return;
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppTexts.current.get('event_management_update_error')),
+        ),
+      );
+      return;
+    }
 
     if (!context.mounted) return;
 
@@ -168,6 +188,8 @@ t('my_events_title')
                     final place = (data['placeName'] ?? '').toString();
                     final category = (data['category'] ?? '').toString();
                     final status = (data['status'] ?? 'pending').toString();
+                    final hasPendingChanges =
+                        data['hasPendingChanges'] == true;
                     final attendees = data['attendeesCount'] is int
                         ? data['attendeesCount'] as int
                         : 0;
@@ -207,13 +229,23 @@ t('my_events_title')
                                     vertical: 5,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: _statusColor(status).withOpacity(0.12),
+                                    color: (hasPendingChanges &&
+                                                status == 'approved'
+                                            ? Colors.orange
+                                            : _statusColor(status))
+                                        .withOpacity(0.12),
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: Text(
-                                    _statusText(status),
+                                    _statusText(
+                                      status,
+                                      hasPendingChanges: hasPendingChanges,
+                                    ),
                                     style: TextStyle(
-                                      color: _statusColor(status),
+                                      color: hasPendingChanges &&
+                                              status == 'approved'
+                                          ? Colors.orange
+                                          : _statusColor(status),
                                       fontWeight: FontWeight.w900,
                                       fontSize: 12,
                                     ),

@@ -10,7 +10,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/group_ban_service.dart';
+import '../services/group_lifecycle_service.dart';
+import '../services/group_roles_service.dart';
+import '../services/group_settings_service.dart';
+import '../services/group_join_request_service.dart';
+import '../services/international_chat_service.dart';
+import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 
 class GroupInfoPage extends StatefulWidget {
@@ -49,6 +57,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
 
   bool _loading = true;
   bool _saving = false;
+  String? _busyJoinRequestUid;
 
 
   Map<String, dynamic>? _groupData;
@@ -175,7 +184,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     final myUid = _uid;
     if (myUid == null) return false;
 
-
     final adminsRaw = _groupData?['admins'];
     final admins = (adminsRaw is List)
         ? adminsRaw
@@ -184,8 +192,278 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
             .toList()
         : <String>[];
 
-
     return admins.contains(myUid);
+  }
+
+  bool get _isOwner {
+    final myUid = _uid;
+    if (myUid == null) return false;
+    final ownerId = (_groupData?['ownerId'] ?? '').toString().trim();
+    return ownerId.isNotEmpty && ownerId == myUid;
+  }
+
+  bool get _canModerate => _isOwner || _isAdmin;
+
+  String get _ownerId =>
+      (_groupData?['ownerId'] ?? '').toString().trim();
+
+  Future<void> _confirmBanUser(Map<String, dynamic> m) async {
+    final t = AppTexts.current;
+    final targetUid = (m['uid'] ?? '').toString().trim();
+    final name = (m['name'] ?? t.get('user')).toString();
+    if (targetUid.isEmpty || targetUid == _uid || targetUid == _ownerId) {
+      return;
+    }
+    if (!_canModerate) return;
+
+    final reasonC = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(t.get('group_ban_user')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(t.get('group_ban_confirm_message')),
+              const SizedBox(height: 12),
+              Text(
+                name,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonC,
+                maxLength: 300,
+                decoration: InputDecoration(
+                  labelText: t.get('group_ban_reason'),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(t.get('cancel')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(t.get('group_ban_user')),
+            ),
+          ],
+        );
+      },
+    );
+
+    final reason = reasonC.text.trim();
+    reasonC.dispose();
+
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      await GroupBanService.banMember(
+        groupId: widget.groupId,
+        targetUid: targetUid,
+        reason: reason,
+      );
+      _toast(t.get('group_ban_success'));
+      await _loadAll();
+    } on FirebaseFunctionsException catch (e) {
+      _toast('${t.get(GroupBanService.messageForFunctionsError(e))}: ${e.message ?? e.code}');
+    } catch (e) {
+      _toast('${t.get('group_ban_error')}: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _confirmUnbanUser({
+    required String targetUid,
+    required String name,
+  }) async {
+    final t = AppTexts.current;
+    if (!_canModerate || targetUid.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t.get('group_unban_user')),
+        content: Text(name),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(t.get('group_unban_user')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      await GroupBanService.unbanMember(
+        groupId: widget.groupId,
+        targetUid: targetUid,
+      );
+      _toast(t.get('group_unban_success'));
+    } on FirebaseFunctionsException catch (e) {
+      _toast(
+        '${t.get('group_unban_error')}: ${e.message ?? e.code}',
+      );
+    } catch (e) {
+      _toast('${t.get('group_unban_error')}: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _bannedUsersCard() {
+    final t = AppTexts.current;
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.get('group_banned_users'),
+            style: const TextStyle(
+              color: _text,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 12),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _groupRef
+                .collection('bannedUsers')
+                .where('isActive', isEqualTo: true)
+                .snapshots(),
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final docs = snap.data?.docs ?? [];
+              if (docs.isEmpty) {
+                return Text(
+                  t.get('group_no_banned_users'),
+                  style: const TextStyle(
+                    color: _muted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                );
+              }
+
+              return Column(
+                children: docs.map((doc) {
+                  final d = doc.data();
+                  final banUid = (d['uid'] ?? doc.id).toString();
+                  final name = (d['name'] ?? t.get('user')).toString();
+                  final photo = (d['photoUrl'] ?? '').toString().trim();
+                  final reason = (d['reason'] ?? '').toString().trim();
+                  final byName = (d['bannedByName'] ?? '').toString().trim();
+                  final bannedAt = d['bannedAt'];
+                  String when = '';
+                  if (bannedAt is Timestamp) {
+                    final dt = bannedAt.toDate();
+                    when =
+                        '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+                  }
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _border),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            width: 42,
+                            height: 42,
+                            color: const Color(0xFFF1F5F9),
+                            child: photo.isNotEmpty
+                                ? Image.network(
+                                    photo,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        const Icon(Icons.person),
+                                  )
+                                : const Icon(Icons.person, color: _muted),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: const TextStyle(
+                                  color: _text,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              if (when.isNotEmpty)
+                                Text(
+                                  when,
+                                  style: const TextStyle(
+                                    color: _muted,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              if (reason.isNotEmpty)
+                                Text(
+                                  reason,
+                                  style: const TextStyle(
+                                    color: _muted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              if (byName.isNotEmpty)
+                                Text(
+                                  byName,
+                                  style: const TextStyle(
+                                    color: _muted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _saving
+                              ? null
+                              : () => _confirmUnbanUser(
+                                    targetUid: banUid,
+                                    name: name,
+                                  ),
+                          child: Text(t.get('group_unban_user')),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
 
@@ -239,16 +517,27 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   }
 
 
-  Future<void> _savePatch(Map<String, dynamic> patch) async {
+  Future<void> _saveSettings(Map<String, dynamic> changes) async {
     final t = AppTexts.current;
+    if (!_isAdmin || _saving) return;
 
+    if ((_groupData?['deleted'] as bool?) == true) {
+      _toast(t.get('group_no_longer_available'));
+      return;
+    }
 
     try {
       setState(() => _saving = true);
-      await _groupRef.set(patch, SetOptions(merge: true));
+      await GroupSettingsService.updateSettings(
+        groupId: widget.groupId,
+        changes: changes,
+      );
       await _loadAll();
-    } catch (e) {
-      _toast('${t.get('errorSaving')}: $e');
+      if (mounted) _toast(t.get('group_edit_success'));
+    } on FirebaseFunctionsException catch (e) {
+      _toast(t.get(GroupSettingsService.errorKey(e)));
+    } catch (_) {
+      _toast(t.get('group_edit_error'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -257,8 +546,12 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
 
   Future<void> _editBio() async {
     final t = AppTexts.current;
-    if (!_isAdmin) return;
+    if (!_isAdmin || _saving) return;
 
+    if ((_groupData?['deleted'] as bool?) == true) {
+      _toast(t.get('group_no_longer_available'));
+      return;
+    }
 
     final controller = TextEditingController(
       text: (_groupData?['bio'] ?? '').toString(),
@@ -272,6 +565,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
         content: TextField(
           controller: controller,
           maxLines: 4,
+          maxLength: 1000,
           decoration: InputDecoration(
             hintText: t.get('typeGroupBio'),
             border: const OutlineInputBorder(),
@@ -294,31 +588,28 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     if (ok != true) return;
 
 
-    await _savePatch({
+    await _saveSettings({
       'bio': controller.text.trim(),
-      'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
 
   Future<void> _togglePrivate(bool value) async {
-    if (!_isAdmin) return;
+    if (!_isAdmin || _saving) return;
 
 
-    await _savePatch({
+    await _saveSettings({
       'isPrivate': value,
-      'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
 
   Future<void> _changeJoinPolicy(String? label) async {
-    if (!_isAdmin || label == null) return;
+    if (!_isAdmin || _saving || label == null) return;
 
 
-    await _savePatch({
+    await _saveSettings({
       'joinPolicy': _joinPolicyValueFromLabel(label),
-      'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
@@ -344,8 +635,12 @@ Future<void> _copyInviteCode() async {
 
   Future<void> _pickGroupPhoto() async {
     final t = AppTexts.current;
-    if (!_isAdmin) return;
+    if (!_isAdmin || _saving) return;
 
+    if ((_groupData?['deleted'] as bool?) == true) {
+      _toast(t.get('group_no_longer_available'));
+      return;
+    }
 
     try {
       final file = await _picker.pickImage(
@@ -381,17 +676,24 @@ Future<void> _copyInviteCode() async {
 
 
       final url = await ref.getDownloadURL();
+      final path = ref.fullPath;
 
-
-      await _groupRef.set({
-        'avatarUrl': url,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await GroupSettingsService.updateSettings(
+        groupId: widget.groupId,
+        changes: {
+          'avatarUrl': url,
+          'avatarPath': path,
+        },
+      );
 
 
       await _loadAll();
-    } catch (e) {
-      _toast('${t.get('errorUploadingGroupPhoto')}: $e');
+      if (mounted) _toast(t.get('group_edit_success'));
+    } on FirebaseFunctionsException catch (e) {
+      // Upload pode ter ficado órfão no Storage; limpeza automática não nesta tarefa.
+      _toast(t.get(GroupSettingsService.errorKey(e)));
+    } catch (_) {
+      _toast(t.get('errorUploadingGroupPhoto'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -399,113 +701,125 @@ Future<void> _copyInviteCode() async {
 
 
   Future<void> _approveJoinRequest(String requestUid) async {
+    final t = AppTexts.current;
+    if (_busyJoinRequestUid != null) return;
+    if (requestUid.isEmpty || requestUid == _uid) return;
+
     try {
-      setState(() => _saving = true);
-
-
-      final snap = await _groupRef.get();
-      final data = snap.data() ?? {};
-
-
-      final members = (data['members'] is List)
-          ? List<String>.from(
-              (data['members'] as List).map((e) => e.toString()),
-            )
-          : <String>[];
-
-
-      final alreadyMember = members.contains(requestUid);
-
-
-      await _groupRef.set({
-        'members': FieldValue.arrayUnion([requestUid]),
-        'membersCount': alreadyMember ? members.length : members.length + 1,
-        'updatedAt': FieldValue.serverTimestamp(),
-        'unread.$requestUid': 0,
-      }, SetOptions(merge: true));
-
-
-      await _groupRef.collection('pendingRequests').doc(requestUid).set({
-        'status': 'approved',
-        'approvedAt': FieldValue.serverTimestamp(),
-        'approvedBy': _uid,
-      }, SetOptions(merge: true));
-
-
+      setState(() => _busyJoinRequestUid = requestUid);
+      await GroupJoinRequestService.approveRequest(
+        groupId: widget.groupId,
+        requestUid: requestUid,
+      );
       await _loadAll();
-
-
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pedido aprovado ✅')),
-      );
-    } catch (e) {
+      _toast(t.get('group_join_approve_success'));
+    } on FirebaseFunctionsException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao aprovar: $e')),
-      );
+      _toast(t.get(GroupJoinRequestService.approveErrorKey(e)));
+    } catch (_) {
+      if (!mounted) return;
+      _toast(t.get('group_join_approve_error'));
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) setState(() => _busyJoinRequestUid = null);
     }
   }
-
 
   Future<void> _rejectJoinRequest(String requestUid) async {
+    final t = AppTexts.current;
+    if (_busyJoinRequestUid != null) return;
+    if (requestUid.isEmpty || requestUid == _uid) return;
+
     try {
-      setState(() => _saving = true);
-
-
-     await _groupRef.collection('pendingRequests').doc(requestUid).set({
-        'status': 'rejected',
-        'rejectedAt': FieldValue.serverTimestamp(),
-        'rejectedBy': _uid,
-      }, SetOptions(merge: true));
-
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pedido recusado')),
+      setState(() => _busyJoinRequestUid = requestUid);
+      await GroupJoinRequestService.rejectRequest(
+        groupId: widget.groupId,
+        requestUid: requestUid,
       );
-    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao recusar: $e')),
-      );
+      _toast(t.get('group_join_reject_success'));
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      _toast(t.get(GroupJoinRequestService.rejectErrorKey(e)));
+    } catch (_) {
+      if (!mounted) return;
+      _toast(t.get('group_join_reject_error'));
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) setState(() => _busyJoinRequestUid = null);
     }
   }
 
+
+  Future<String?> _pickNewOwnerUid() async {
+    final t = AppTexts.current;
+    final myUid = _uid;
+    final candidates = _membersData.where((m) {
+      final id = (m['uid'] ?? '').toString();
+      return id.isNotEmpty && id != myUid;
+    }).toList();
+    if (candidates.isEmpty) {
+      _toast(t.get('group_transfer_need_member'));
+      return null;
+    }
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return SimpleDialog(
+          title: Text(t.get('group_transfer_title')),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: Text(t.get('group_transfer_before_leave')),
+            ),
+            ...candidates.map((m) {
+              final id = (m['uid'] ?? '').toString();
+              final name = (m['name'] ?? id).toString();
+              return SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, id),
+                child: Text(name),
+              );
+            }),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(t.get('cancel')),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   Future<void> _leaveGroup() async {
     final t = AppTexts.current;
     final myUid = _uid;
     if (myUid == null) return;
 
-
     final membersRaw = _groupData?['members'];
     final members = (membersRaw is List)
         ? membersRaw.map((e) => e.toString()).toList()
         : <String>[];
 
-
-    if (!members.contains(myUid)) {
+    if (!members.contains(myUid) && !_isOwner) {
       _toast(t.get('youAreNoLongerInGroup'));
       return;
     }
 
-
-    if (_isAdmin && members.length <= 1) {
-      _toast(t.get('ownerCannotLeaveOnlyMember'));
-      return;
+    String? newOwnerUid;
+    if (_isOwner) {
+      newOwnerUid = await _pickNewOwnerUid();
+      if (newOwnerUid == null || newOwnerUid.isEmpty) return;
     }
-
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(t.get('leaveGroup')),
-        content: Text(t.get('confirmLeaveGroup')),
+        content: Text(
+          _isOwner
+              ? t.get('group_transfer_leave_confirm')
+              : t.get('group_leave_confirm'),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -519,72 +833,47 @@ Future<void> _copyInviteCode() async {
       ),
     );
 
-
     if (confirm != true) return;
-
 
     try {
       setState(() => _saving = true);
-
-
-      final snap = await _groupRef.get();
-      final data = snap.data() ?? {};
-      final unreadMap = Map<String, dynamic>.from(data['unread'] ?? {});
-      unreadMap.remove(myUid);
-
-
-      final currentMembers = (data['members'] is List)
-          ? List<String>.from(
-              (data['members'] as List).map((e) => e.toString()),
-            )
-          : <String>[];
-
-
-      final currentAdmins = (data['admins'] is List)
-          ? List<String>.from(
-              (data['admins'] as List).map((e) => e.toString()),
-            )
-          : <String>[];
-
-
-      currentMembers.remove(myUid);
-      currentAdmins.remove(myUid);
-
-
-      if (currentAdmins.isEmpty && currentMembers.isNotEmpty) {
-        currentAdmins.add(currentMembers.first);
+      if (_isOwner && newOwnerUid != null) {
+        await GroupLifecycleService.transferOwnership(
+          groupId: widget.groupId,
+          newOwnerUid: newOwnerUid,
+        );
       }
-
-
-      await _groupRef.set({
-        'members': currentMembers,
-        'admins': currentAdmins,
-        'membersCount': currentMembers.length,
-        'updatedAt': FieldValue.serverTimestamp(),
-        'unread': unreadMap,
-      }, SetOptions(merge: true));
-
-
+      await GroupLifecycleService.leaveGroup(groupId: widget.groupId);
       if (!mounted) return;
+      _toast(t.get('group_left_success'));
       Navigator.pop(context, true);
+    } on FirebaseFunctionsException catch (e) {
+      final key = _isOwner && e.message?.toLowerCase().contains('owner') != true
+          ? GroupLifecycleService.transferErrorKey(e)
+          : GroupLifecycleService.leaveErrorKey(e);
+      // Prefer transfer key when transfer likely failed.
+      final transferFailed = e.message?.toLowerCase().contains('transfer') == true
+          || e.message?.toLowerCase().contains('new owner') == true
+          || e.code == 'failed-precondition' && _isOwner && newOwnerUid != null;
+      _toast(
+        '${t.get(transferFailed ? GroupLifecycleService.transferErrorKey(e) : key)}: ${e.message ?? e.code}',
+      );
     } catch (e) {
-      _toast('${t.get('errorLeavingGroup')}: $e');
+      _toast('${t.get('group_leave_error')}: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-
   Future<void> _deleteGroup() async {
     final t = AppTexts.current;
-    if (!_isAdmin) return;
+    if (!_isOwner) return;
 
-
-    final confirm = await showDialog<bool>(
+    final confirm1 = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(t.get('deleteGroup')),
-        content: Text(t.get('confirmDeleteGroup')),
+        content: Text(t.get('group_delete_confirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -597,25 +886,39 @@ Future<void> _copyInviteCode() async {
         ],
       ),
     );
+    if (confirm1 != true) return;
 
-
-    if (confirm != true) return;
-
+    final confirm2 = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(t.get('deleteGroup')),
+        content: Text(t.get('group_delete_confirm_final')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t.get('delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirm2 != true) return;
 
     try {
       setState(() => _saving = true);
-
-
-      await _groupRef.set({
-        'deleted': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-
+      await GroupLifecycleService.deleteGroup(groupId: widget.groupId);
       if (!mounted) return;
-      Navigator.pop(context);
+      _toast(t.get('group_deleted_success'));
+      Navigator.pop(context, true);
+    } on FirebaseFunctionsException catch (e) {
+      _toast(
+        '${t.get(GroupLifecycleService.deleteErrorKey(e))}: ${e.message ?? e.code}',
+      );
     } catch (e) {
-      _toast('${t.get('errorDeletingGroup')}: $e');
+      _toast('${t.get('group_delete_error')}: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -655,8 +958,20 @@ Future<void> _copyInviteCode() async {
 
       final snap = await convRef.get();
 
-
       if (!snap.exists) {
+        final myData = await InternationalChatService.fetchUserData(myUid);
+        final otherData = await InternationalChatService.fetchUserData(otherUid);
+        final canSend = InternationalChatService.canSendMessage(
+          senderData: myData ?? {},
+          recipientData: otherData ?? {},
+        );
+        if (!canSend) {
+          if (mounted) {
+            await InternationalPremiumDialog.showStart(context);
+          }
+          return;
+        }
+
         await convRef.set({
           'participants': [myUid, otherUid],
           'pairKey': conversationId,
@@ -719,8 +1034,8 @@ Future<void> _copyInviteCode() async {
           Stack(
             children: [
               Container(
-                width: 70,
-                height: 70,
+                width: 100,
+                height: 100,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.18),
                   borderRadius: BorderRadius.circular(16),
@@ -731,6 +1046,8 @@ Future<void> _copyInviteCode() async {
                   child: avatarUrl.isNotEmpty
                       ? Image.network(
                           avatarUrl,
+                          width: 91,
+                          height: 91,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(
                             Icons.groups_rounded,
@@ -877,9 +1194,161 @@ Future<void> _copyInviteCode() async {
   }
 
 
+  Future<void> _confirmPromote(Map<String, dynamic> m) async {
+    final t = AppTexts.current;
+    final targetUid = (m['uid'] ?? '').toString().trim();
+    if (!_isOwner || targetUid.isEmpty || targetUid == _ownerId) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t.get('group_promote_admin')),
+        content: Text(t.get('group_promote_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(t.get('group_promote_admin')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _saving = true);
+    try {
+      await GroupRolesService.promoteAdmin(
+        groupId: widget.groupId,
+        targetUid: targetUid,
+      );
+      _toast(t.get('group_promote_success'));
+      await _loadAll();
+    } on FirebaseFunctionsException catch (e) {
+      _toast('${t.get('group_promote_error')}: ${e.message ?? e.code}');
+    } catch (e) {
+      _toast('${t.get('group_promote_error')}: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _confirmDemote(Map<String, dynamic> m) async {
+    final t = AppTexts.current;
+    final targetUid = (m['uid'] ?? '').toString().trim();
+    if (!_isOwner || targetUid.isEmpty || targetUid == _ownerId) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t.get('group_demote_admin')),
+        content: Text(t.get('group_demote_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(t.get('group_demote_admin')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _saving = true);
+    try {
+      await GroupRolesService.demoteAdmin(
+        groupId: widget.groupId,
+        targetUid: targetUid,
+      );
+      _toast(t.get('group_demote_success'));
+      await _loadAll();
+    } on FirebaseFunctionsException catch (e) {
+      _toast('${t.get('group_demote_error')}: ${e.message ?? e.code}');
+    } catch (e) {
+      _toast('${t.get('group_demote_error')}: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _confirmRemoveMember(Map<String, dynamic> m) async {
+    final t = AppTexts.current;
+    final targetUid = (m['uid'] ?? '').toString().trim();
+    if (targetUid.isEmpty || targetUid == _uid || targetUid == _ownerId) {
+      return;
+    }
+
+    final adminsRaw = _groupData?['admins'];
+    final admins = (adminsRaw is List)
+        ? adminsRaw.map((e) => e.toString()).toList()
+        : <String>[];
+    final targetIsAdmin = admins.contains(targetUid);
+
+    if (!_isOwner && (!_isAdmin || targetIsAdmin)) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t.get('group_remove_member')),
+        content: Text(t.get('group_remove_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(t.get('group_remove_member')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _saving = true);
+    try {
+      await GroupRolesService.removeMember(
+        groupId: widget.groupId,
+        targetUid: targetUid,
+      );
+      _toast(t.get('group_remove_success'));
+      await _loadAll();
+    } on FirebaseFunctionsException catch (e) {
+      _toast('${t.get('group_remove_error')}: ${e.message ?? e.code}');
+    } catch (e) {
+      _toast('${t.get('group_remove_error')}: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _roleBadge({required String label, required bool filled}) {
+    return Container(
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: filled ? const Color(0xFFEEF2FF) : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _border),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: filled ? _remdyBlue : _muted,
+          fontWeight: FontWeight.w800,
+          fontSize: 11.5,
+        ),
+      ),
+    );
+  }
+
   Widget _memberTile(Map<String, dynamic> m) {
     final t = AppTexts.current;
-
 
     final uid = (m['uid'] ?? '').toString();
     final name = (m['name'] ?? t.get('user')).toString();
@@ -887,16 +1356,33 @@ Future<void> _copyInviteCode() async {
     final avatarUrl = (m['avatarUrl'] ?? '').toString().trim();
     final pic = photoUrl.isNotEmpty ? photoUrl : avatarUrl;
 
-
     final adminsRaw = _groupData?['admins'];
     final admins = (adminsRaw is List)
         ? adminsRaw.map((e) => e.toString()).toList()
         : <String>[];
 
-
-    final isAdmin = admins.contains(uid);
+    final isOwnerUser = uid == _ownerId;
+    final isAdminUser = admins.contains(uid);
     final isMe = uid == _uid;
 
+    final canPromote =
+        _isOwner && !isMe && !isOwnerUser && !isAdminUser;
+    final canDemote =
+        _isOwner && !isMe && !isOwnerUser && isAdminUser;
+    final canRemove = !isMe &&
+        !isOwnerUser &&
+        (_isOwner || (_isAdmin && !isAdminUser));
+    final canBan = _canModerate && !isMe && !isOwnerUser;
+    final showMenu = canPromote || canDemote || canRemove || canBan;
+
+    String roleLabel;
+    if (isOwnerUser) {
+      roleLabel = t.get('group_role_owner');
+    } else if (isAdminUser) {
+      roleLabel = t.get('group_role_admin');
+    } else {
+      roleLabel = t.get('group_role_member');
+    }
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -927,60 +1413,83 @@ Future<void> _copyInviteCode() async {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                name,
-                style: const TextStyle(
-                  color: _text,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: _text,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    children: [
+                      _roleBadge(
+                        label: roleLabel,
+                        filled: isOwnerUser || isAdminUser,
+                      ),
+                      if (isMe)
+                        _roleBadge(label: t.get('you'), filled: false),
+                    ],
+                  ),
+                ],
               ),
             ),
-            if (isAdmin)
-              Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: _border),
-                ),
-                child: Text(
-                  t.get('admin'),
-                  style: const TextStyle(
-                    color: _remdyBlue,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11.5,
-                  ),
-                ),
+            if (showMenu)
+              PopupMenuButton<String>(
+                enabled: !_saving,
+                onSelected: (value) {
+                  switch (value) {
+                    case 'promote':
+                      _confirmPromote(m);
+                      break;
+                    case 'demote':
+                      _confirmDemote(m);
+                      break;
+                    case 'remove':
+                      _confirmRemoveMember(m);
+                      break;
+                    case 'ban':
+                      _confirmBanUser(m);
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (canPromote)
+                    PopupMenuItem(
+                      value: 'promote',
+                      child: Text(t.get('group_promote_admin')),
+                    ),
+                  if (canDemote)
+                    PopupMenuItem(
+                      value: 'demote',
+                      child: Text(t.get('group_demote_admin')),
+                    ),
+                  if (canRemove)
+                    PopupMenuItem(
+                      value: 'remove',
+                      child: Text(t.get('group_remove_member')),
+                    ),
+                  if (canBan)
+                    PopupMenuItem(
+                      value: 'ban',
+                      child: Text(t.get('group_ban_user')),
+                    ),
+                ],
+              )
+            else
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF9CA3AF),
               ),
-            if (isMe)
-              Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: _border),
-                ),
-                child: Text(
-                  t.get('you'),
-                  style: const TextStyle(
-                    color: _muted,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11.5,
-                  ),
-                ),
-              ),
-            const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
           ],
         ),
       ),
     );
   }
-
 
   Widget _pendingRequestsCard() {
     return _card(
@@ -1028,7 +1537,11 @@ stream: _groupRef
               return Column(
                 children: docs.map((reqDoc) {
                   final req = reqDoc.data();
-                  final requestUid = (req['uid'] ?? '').toString().trim();
+                  final requestUid = reqDoc.id.trim().isNotEmpty
+                      ? reqDoc.id.trim()
+                      : (req['uid'] ?? '').toString().trim();
+                  final busyThis = _busyJoinRequestUid == requestUid;
+                  final busyAny = _busyJoinRequestUid != null;
 
 
                   return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -1083,27 +1596,42 @@ stream: _groupRef
                                 ),
                               ),
                             ),
-                            TextButton(
-                              onPressed: _saving
-                                  ? null
-                                  : () => _rejectJoinRequest(requestUid),
-                              child: const Text('Recusar'),
-                            ),
-                            const SizedBox(width: 6),
-                            ElevatedButton(
-                              onPressed: _saving
-                                  ? null
-                                  : () => _approveJoinRequest(requestUid),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _remdyBlue,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(999),
+                            if (busyThis)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 12),
+                                child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            else ...[
+                              TextButton(
+                                onPressed: busyAny
+                                    ? null
+                                    : () => _rejectJoinRequest(requestUid),
+                                child: Text(
+                                  AppTexts.current.get('group_join_reject'),
                                 ),
                               ),
-                              child: const Text('Aprovar'),
-                            ),
+                              const SizedBox(width: 6),
+                              ElevatedButton(
+                                onPressed: busyAny
+                                    ? null
+                                    : () => _approveJoinRequest(requestUid),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _remdyBlue,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                                child: Text(
+                                  AppTexts.current.get('group_join_approve'),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       );
@@ -1338,6 +1866,11 @@ Widget build(BuildContext context) {
   const SizedBox(height: 14),
 ],
 
+                  if (_canModerate) ...[
+                    _bannedUsersCard(),
+                    const SizedBox(height: 14),
+                  ],
+
 
 
                     _card(
@@ -1414,52 +1947,51 @@ const SizedBox(height: 14),
                       child: Column(
                         children: [
                           SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: _saving ? null : _leaveGroup,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: _remdyBlue,
-                                side: const BorderSide(color: _border),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(999),
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _saving ? null : _leaveGroup,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _remdyBlue,
+                                  side: const BorderSide(color: _border),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
                                 ),
-                              ),
-                              icon: const Icon(Icons.logout_rounded),
-                              label: Text(
-                                t.get('leave_group'),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
+                                icon: const Icon(Icons.logout_rounded),
+                                label: Text(
+                                  t.get('leaveGroup'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          if (_isAdmin) ...[
-                            const SizedBox(height: 12),
-                            InkWell(
-                              onTap: _saving ? null : _deleteGroup,
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 6),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(
-                                      Icons.delete_outline_rounded,
-                                      color: _muted,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      t.get('delete_group'),
-                                      style: const TextStyle(
-                                        color: _muted,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
+                          if (_isOwner) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _saving ? null : _deleteGroup,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFFB91C1C),
+                                  side: const BorderSide(
+                                    color: Color(0xFFFECACA),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.delete_outline_rounded),
+                                label: Text(
+                                  t.get('deleteGroup'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ),

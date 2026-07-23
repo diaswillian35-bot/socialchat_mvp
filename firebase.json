@@ -23,18 +23,6 @@
         "*.local"
       ],
       "source": "chat"
-    },
-    {
-      "source": "groups",
-      "codebase": "groups",
-      "disallowLegacyRuntimeConfig": true,
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ]
     }
   ],
   "firestore": {
@@ -69,43 +57,41 @@
     }
   },
   "hosting": {
-  "public": "public",
-  "ignore": [
-    "firebase.json",
-    "**/.*",
-    "**/node_modules/**"
-  ],
- "rewrites": [
-  {
-    "source": "/e/**",
-    "function": "renderPublicEventPage"
-  },
-  {
-    "source": "/eventos/**",
-    "function": "renderPublicEventsSearch"
-  },
-  {
-    "source": "/eventos",
-    "function": "renderPublicEventsSearch"
-  },
-  {
-    "source": "/sitemap-events.xml",
-    "function": "publicEventsSitemap"
-  },
-  {
-    "source": "/api/public/events",
-    "function": "publicEventsApi"
-  },
-  {
-    "source": "/g/**",
-    "destination": "/index.html"
-  },
-  {
-    "source": "/invite",
-    "destination": "/index.html"
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/e/**",
+        "function": "renderPublicEventPage"
+      },
+      {
+        "source": "/eventos/**",
+        "function": "renderPublicEventsSearch"
+      },
+      {
+        "source": "/eventos",
+        "function": "renderPublicEventsSearch"
+      },
+      {
+        "source": "/sitemap-events.xml",
+        "function": "publicEventsSitemap"
+      },
+      {
+        "source": "/api/public/events",
+        "function": "publicEventsApi"
+      },
+      {
+        "source": "/g/**",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/invite",
+        "destination": "/index.html"
+      }
+    ]
   }
-]
-
-}
-
 }

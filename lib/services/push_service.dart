@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../pages/main_shell_page.dart';
 import '../pages/group_chat_page.dart';
+import '../pages/group_info_page.dart';
 import '../pages/chat_page.dart';
 import '../pages/event_detail_page.dart';
 
@@ -304,7 +305,13 @@ class PushService {
     final nav = navKey.currentState;
     if (nav == null) return;
 
-    if (type == 'event') {
+    if (type == 'event' ||
+        type == 'event_approved' ||
+        type == 'event_rejected' ||
+        type == 'event_needs_changes' ||
+        type == 'event_changes_approved' ||
+        type == 'event_changes_submitted' ||
+        type == 'event_moderation') {
       final eventId = (data['eventId'] ?? '').toString().trim();
       if (eventId.isEmpty) return;
 
@@ -319,7 +326,10 @@ class PushService {
       return;
     }
 
-    if (type == 'group' || type == 'group_join_request') {
+    if (type == 'group' ||
+        type == 'group_join_request' ||
+        type == 'group_join_approved' ||
+        type == 'group_join_rejected') {
       final groupId = (data['groupId'] ?? '').toString().trim();
       if (groupId.isEmpty) {
         nav.pushAndRemoveUntil(
@@ -349,7 +359,7 @@ class PushService {
       );
       await Future.delayed(const Duration(milliseconds: 200));
 
-      if (type == 'group') {
+      if (type == 'group' || type == 'group_join_approved') {
         nav.push(
           MaterialPageRoute(
             builder: (_) => GroupChatPage(
@@ -358,7 +368,14 @@ class PushService {
             ),
           ),
         );
+      } else if (type == 'group_join_request') {
+        nav.push(
+          MaterialPageRoute(
+            builder: (_) => GroupInfoPage(groupId: groupId),
+          ),
+        );
       }
+      // group_join_rejected: fica na aba Grupos
       return;
     }
 

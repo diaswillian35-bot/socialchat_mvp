@@ -26,6 +26,36 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
 admin.initializeApp();
 
+const { deleteMyAccount } = require("./delete_my_account");
+exports.deleteMyAccount = deleteMyAccount;
+
+const {
+  claimInvitePremiumReward,
+  applyInviteCode,
+} = require("./invite_premium");
+exports.claimInvitePremiumReward = claimInvitePremiumReward;
+exports.applyInviteCode = applyInviteCode;
+
+const {
+  revenueCatWebhook,
+  syncRevenueCatEntitlement,
+} = require("./revenuecat_webhook");
+exports.revenueCatWebhook = revenueCatWebhook;
+exports.syncRevenueCatEntitlement = syncRevenueCatEntitlement;
+
+const {
+  maskUid: remiMaskUid,
+  assertUserCanUseRemi,
+  validateMessageText: remiValidateMessageText,
+  sanitizeHistory: remiSanitizeHistory,
+  formatHistoryForPrompt: remiFormatHistoryForPrompt,
+  resolveRemiPlan,
+  acquireRemiLock,
+  consumeRemiQuota,
+  releaseRemiLock,
+  assertAppCheckIfEnforced,
+} = require("./remi_usage");
+
 const ANDROID_CHANNEL_ID = "high_importance_channel";
 
 function pushAllowed(userData, kind) {
@@ -106,16 +136,20 @@ function androidPushConfig(imageUrl) {
   };
 }
 
-function apnsPushConfig(title, body, imageUrl) {
+function apnsPushConfig(title, body, imageUrl, badge) {
   const image = (imageUrl || "").toString().trim();
   const hasImage = image.startsWith("http");
+  const badgeCount =
+    typeof badge === "number" && Number.isFinite(badge) && badge >= 0
+      ? Math.floor(badge)
+      : 1;
   const config = {
     headers: { "apns-priority": "10" },
     payload: {
       aps: {
         alert: { title, body },
         sound: "default",
-        badge: 1,
+        badge: badgeCount,
       },
     },
   };
@@ -134,7 +168,92 @@ function toStringData(data) {
   return out;
 }
 
-async function sendPush({ tokens, title, body, data, imageUrl }) {
+function unreadFromMap(unreadMap, uid) {
+  if (!unreadMap || typeof unreadMap !== "object") return 0;
+  const value = unreadMap[uid];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 0 ? value : 0;
+  }
+  if (typeof value === "string") {
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  return 0;
+}
+
+function userCountryFromData(userData) {
+  const home = (userData?.homeCountryCode || "").toString().trim().toLowerCase();
+  if (home) return home;
+  return (userData?.countryCode || "").toString().trim().toLowerCase();
+}
+
+function isPremiumUserData(userData) {
+  if (!userData) return false;
+  if (userData.isMaster === true) return true;
+  if (userData.isPremium === true) return true;
+  const until = userData.premiumUntil;
+  if (until && typeof until.toDate === "function") {
+    return until.toDate().getTime() > Date.now();
+  }
+  if (typeof until === "string" || typeof until === "number") {
+    const ms = new Date(until).getTime();
+    return Number.isFinite(ms) && ms > Date.now();
+  }
+  return false;
+}
+
+function groupCountryFromData(groupData) {
+  return (groupData?.countryCode || "").toString().trim().toLowerCase();
+}
+
+function isInternationalGroupAccess(groupData, userData) {
+  if (!groupData) return false;
+  if (groupData.isPremiumGroup === true) return true;
+  const gc = groupCountryFromData(groupData);
+  const uc = userCountryFromData(userData);
+  return Boolean(gc && uc && gc !== uc);
+}
+
+function assertCanAccessInternationalGroup(groupData, userData) {
+  if (!isInternationalGroupAccess(groupData, userData)) return;
+  if (isPremiumUserData(userData)) return;
+  throw new HttpsError(
+    "permission-denied",
+    "Premium required for international groups."
+  );
+}
+
+/** Conta threads com unread > 0 (DM + grupos), alinhado ao badge do app. */
+async function computeAppBadge(uid) {
+  const db = admin.firestore();
+  let total = 0;
+  try {
+    const convSnap = await db
+      .collection("conversations")
+      .where("participants", "array-contains", uid)
+      .get();
+    for (const doc of convSnap.docs) {
+      if (unreadFromMap(doc.data()?.unread, uid) > 0) total += 1;
+    }
+  } catch (e) {
+    console.error("computeAppBadge conversations:", e);
+  }
+  try {
+    const groupSnap = await db
+      .collection("groups")
+      .where("members", "array-contains", uid)
+      .where("deleted", "==", false)
+      .get();
+    for (const doc of groupSnap.docs) {
+      if (unreadFromMap(doc.data()?.unread, uid) > 0) total += 1;
+    }
+  } catch (e) {
+    console.error("computeAppBadge groups:", e);
+  }
+  return total;
+}
+
+async function sendPush({ tokens, title, body, data, imageUrl, badge }) {
   const uniqueTokens = [...new Set((tokens || []).filter(Boolean))];
   if (uniqueTokens.length === 0) return null;
 
@@ -153,11 +272,34 @@ async function sendPush({ tokens, title, body, data, imageUrl }) {
     notification,
     data: payloadData,
     android: androidPushConfig(image),
-    apns: apnsPushConfig(title, body, image),
+    apns: apnsPushConfig(title, body, image, badge),
   });
 
   await deleteInvalidTokens(response, uniqueTokens);
   return response;
+}
+
+async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
+  const uniqueUids = [...new Set((uids || []).filter(Boolean))];
+  if (uniqueUids.length === 0) return null;
+  let success = 0;
+  let failure = 0;
+  for (const uid of uniqueUids) {
+    const tokens = await collectTokensForUid(uid, prefKey);
+    if (!tokens.length) continue;
+    const badge = await computeAppBadge(uid);
+    const response = await sendPush({
+      tokens,
+      title,
+      body,
+      data,
+      imageUrl,
+      badge,
+    });
+    success += response?.successCount ?? 0;
+    failure += response?.failureCount ?? 0;
+  }
+  return { successCount: success, failureCount: failure };
 }
 
 async function deleteInvalidTokens(response, tokens) {
@@ -195,116 +337,131 @@ exports.onGroupMessageCreated = onDocumentCreated(
     try {
       const msg = event.data?.data();
       const groupId = event.params.groupId;
+      const msgId = event.params.msgId;
       if (!msg) return;
 
-
+      // Soft-delete na criação: ignorar.
+      if (msg.deleted === true) return;
 
       const senderId = (msg.senderId || msg.fromUid || "").toString().trim();
       if (!senderId) return;
 
-
-      const type = (msg.type || "text").toString().trim();
-
+      const rawType = (msg.type || "text").toString().trim().toLowerCase();
+      const type =
+        rawType === "audio" || rawType === "image" || rawType === "text"
+          ? rawType
+          : null;
+      if (!type) return;
 
       let lastMessage = "Nova mensagem";
-      if (type === "audio") lastMessage = "🎤 Áudio";
-      else if (type === "image") lastMessage = "📷 Foto";
-      else lastMessage = (msg.text || "Nova mensagem").toString();
-
-
-      const groupRef = admin.firestore().collection("groups").doc(groupId);
-      const groupSnap = await groupRef.get();
-      if (!groupSnap.exists) return;
-
-
-      const group = groupSnap.data() || {};
-      const groupName = (group.name || "Grupo").toString().trim();
-      const groupImage = groupImageUrl(group);
-
-
-      const members = Array.isArray(group.members)
-        ? group.members
-        : Array.isArray(group.participants)
-        ? group.participants
-        : [];
-
-
-      if (members.length === 0) return;
-
-
-      // =========================
-      // Atualiza unread
-      // =========================
-      const unreadRaw = group.unread;
-      const unreadMap =
-        unreadRaw && typeof unreadRaw === "object" && !Array.isArray(unreadRaw)
-          ? { ...unreadRaw }
-          : {};
-
-
-      for (const uid of members) {
-        if (!uid) continue;
-
-
-        if (uid === senderId) {
-          unreadMap[uid] = 0;
-          continue;
-        }
-
-
-        const current =
-          typeof unreadMap[uid] === "number" ? unreadMap[uid] : 0;
-        unreadMap[uid] = current + 1;
+      if (type === "audio") {
+        lastMessage = "🎤 Áudio";
+      } else if (type === "image") {
+        lastMessage = "📷 Foto";
+      } else {
+        const text = (msg.text || "").toString().trim();
+        lastMessage = (text || "Nova mensagem").slice(0, 200);
       }
 
+      const db = admin.firestore();
+      const groupRef = db.collection("groups").doc(groupId);
+      const processedRef = db
+        .collection("processedGroupMessages")
+        .doc(`${groupId}_${msgId}`);
 
-      const updates = {
-        lastMessage: lastMessage,
-        lastSenderId: senderId,
-        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        unread: unreadMap,
-      };
+      // Bans ativos (fora da tx — evita query na transaction).
+      const bannedSnap = await groupRef
+        .collection("bannedUsers")
+        .where("isActive", "==", true)
+        .get();
+      const bannedSet = new Set(
+        bannedSnap.docs.map((d) => d.id).filter(Boolean)
+      );
 
+      let groupName = "Grupo";
+      let groupImage = "";
+      let targetUids = [];
 
-      await groupRef.set(updates, { merge: true });
+      const shouldNotify = await db.runTransaction(async (tx) => {
+        const processedSnap = await tx.get(processedRef);
+        if (processedSnap.exists) {
+          return false;
+        }
 
+        const groupSnap = await tx.get(groupRef);
+        if (!groupSnap.exists) {
+          return false;
+        }
 
-      // =========================
-      // Busca nome do sender
-      // =========================
+        const group = groupSnap.data() || {};
+        if (group.deleted === true) {
+          return false;
+        }
+
+        const members = asUidList(group.members);
+        if (!members.includes(senderId)) {
+          return false;
+        }
+
+        const banSnap = await tx.get(
+          groupRef.collection("bannedUsers").doc(senderId)
+        );
+        if (banSnap.exists && banSnap.data()?.isActive === true) {
+          return false;
+        }
+
+        groupName = (group.name || "Grupo").toString().trim() || "Grupo";
+        groupImage = groupImageUrl(group);
+
+        const patch = {
+          lastMessage,
+          lastSenderId: senderId,
+          lastMessageBy: senderId,
+          lastMessageType: type,
+          lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          [`unread.${senderId}`]: 0,
+        };
+
+        targetUids = [];
+        for (const uid of members) {
+          if (!uid || uid === senderId) continue;
+          if (bannedSet.has(uid)) continue;
+          patch[`unread.${uid}`] = admin.firestore.FieldValue.increment(1);
+          targetUids.push(uid);
+        }
+
+        tx.set(groupRef, patch, { merge: true });
+        tx.set(processedRef, {
+          groupId,
+          messageId: msgId,
+          senderId,
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return true;
+      });
+
+      if (!shouldNotify) {
+        return;
+      }
+
       let senderName = "Alguém";
       try {
-        const senderSnap = await admin
-          .firestore()
-          .collection("users")
-          .doc(senderId)
-          .get();
-
-
+        const senderSnap = await db.collection("users").doc(senderId).get();
         const senderData = senderSnap.data() || {};
         const n = (senderData.name || "").toString().trim();
         if (n) senderName = n;
       } catch (_) {}
 
-
-      // =========================
-      // Busca tokens dos outros membros
-      // =========================
-      const targetUids = members.filter((uid) => uid && uid !== senderId);
       if (targetUids.length === 0) return;
 
-      const uniqueTokens = await collectTokensForUids(targetUids, "group");
-      if (uniqueTokens.length === 0) {
-        console.log("Nenhum token encontrado para membros do grupo.");
-        return;
-      }
-
-      const response = await sendPush({
-        tokens: uniqueTokens,
+      const response = await sendPushToUids({
+        uids: targetUids,
         title: groupName,
         body: `${senderName}: ${lastMessage}`,
         imageUrl: groupImage,
+        prefKey: "group",
         data: {
           type: "group",
           groupId: groupId,
@@ -350,11 +507,32 @@ exports.onPrivateMessageCreated = onDocumentCreated(
       const targetUids = participants.filter((uid) => uid && uid !== senderId);
       if (targetUids.length === 0) return;
 
-      let body = "Nova mensagem";
-      if (msgType === "audio") body = "🎤 Áudio";
-      else if (msgType === "image") body = "📷 Foto";
-      else body = (msg.text || "Nova mensagem").toString();
+      // Atualiza resumo no servidor e reabre conversa oculta para destinatários.
+      const preview =
+        msgType === "audio"
+          ? "🎤 Áudio"
+          : msgType === "image"
+          ? "📷 Foto"
+          : (msg.text || "Nova mensagem").toString();
 
+      const unreadPatch = {};
+      for (const uid of targetUids) {
+        unreadPatch[`unread.${uid}`] = admin.firestore.FieldValue.increment(1);
+      }
+
+      await convRef.set(
+        {
+          lastMessage: preview.slice(0, 200),
+          lastMessageType: msgType || "text",
+          lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          ...unreadPatch,
+          hiddenFor: admin.firestore.FieldValue.arrayRemove(...targetUids),
+        },
+        { merge: true }
+      );
+
+      let body = preview;
       let senderName = "Alguém";
       let senderImage = "";
       const senderSnap = await admin.firestore().collection("users").doc(senderId).get();
@@ -398,55 +576,58 @@ exports.askRemi = onCall(
   {
     secrets: [GEMINI_API_KEY],
     region: "us-central1",
+    // App Check: set enforceAppCheck: true after configuring App Check in
+    // Firebase Console and in the Flutter app. Optional env REMI_ENFORCE_APP_CHECK=true
+    // enables a soft check without breaking dev builds.
   },
   async (request) => {
-    if (!request.auth) {
-      throw new HttpsError(
-        "unauthenticated",
-        "Faça login para usar a Remi."
-      );
-    }
+    const startedAt = Date.now();
+    let uid = null;
+    let lockHeld = false;
+    const db = admin.firestore();
 
-   const uid = request.auth?.uid;
-   const text = (request.data?.text || "")
-  .toString()
-  .trim();
+    try {
+      if (!request.auth || !request.auth.uid) {
+        throw new HttpsError("unauthenticated", "REMI_UNAUTHENTICATED");
+      }
 
-  const language = (request.data?.language || "English")
-  .toString()
-  .trim();
+      uid = request.auth.uid;
+      assertAppCheckIfEnforced(request);
 
-const goal = (request.data?.goal || "")
-  .toString()
-  .trim();
+      const text = remiValidateMessageText(request.data?.text);
+      const historyItems = remiSanitizeHistory(request.data?.history);
+      const history = remiFormatHistoryForPrompt(historyItems);
 
-const lesson = (request.data?.lesson || "")
-  .toString()
-  .trim();
+      const language = (request.data?.language || "English")
+        .toString()
+        .trim();
 
-  
-const showPronunciation =
-  request.data?.showPronunciation === true;
+      const goal = (request.data?.goal || "").toString().trim();
 
+      const lesson = (request.data?.lesson || "").toString().trim();
 
-console.log('LANGUAGE:', language);
-console.log('GOAL:', goal);
-console.log('LESSON:', lesson);
+      const showPronunciation = request.data?.showPronunciation === true;
 
+      const userSnap = await db.collection("users").doc(uid).get();
+      if (!userSnap.exists) {
+        throw new HttpsError("failed-precondition", "REMI_USER_NOT_FOUND");
+      }
+      const userData = userSnap.data() || {};
+      assertUserCanUseRemi(userData);
+      const plan = resolveRemiPlan(userData);
 
-let memoryText = '';
+      await acquireRemiLock(db, uid, plan);
+      lockHeld = true;
 
-if (uid) {
-  try {
-    const memoryDoc = await admin
-      .firestore()
-      .doc(`users/${uid}/remi/memory`)
-      .get();
+      let memoryText = "";
 
-    if (memoryDoc.exists) {
-      const memory = memoryDoc.data();
+      try {
+        const memoryDoc = await db.doc(`users/${uid}/remi/memory`).get();
 
-memoryText = `
+        if (memoryDoc.exists) {
+          const memory = memoryDoc.data();
+
+          memoryText = `
 User memory:
 - Learning language: ${memory.learningLanguage || ""}
 - Level: ${memory.level || ""}
@@ -456,32 +637,14 @@ User memory:
 - Last user message: ${memory.lastUserMessage || ""}
 - Last Remi reply: ${memory.lastRemiReply || ""}
 `;
+        }
+      } catch (e) {
+        console.error("remi_memory_read_failed", remiMaskUid(uid), e.message || e);
+      }
 
+      await consumeRemiQuota(db, uid, plan);
 
-    }
-  } catch (e) {
-    console.error('Memory error:', e);
-  }
-}
-
-
-
-
-
-
-      const history = (request.data?.history || "")
-  .toString()
-  .trim();
-
-
-    if (!text) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Mensagem vazia."
-      );
-    }
-
-    const apiKey = GEMINI_API_KEY.value();
+      const apiKey = GEMINI_API_KEY.value();
 
  const prompt = `
 ${memoryText}
@@ -611,7 +774,6 @@ ${text}
 
 
 
-    try {
       const response = await fetch(
        `
 https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}
@@ -633,25 +795,38 @@ https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generat
               maxOutputTokens: 1000,
             },
           }),
+          signal: AbortSignal.timeout(55000),
         }
       );
 
-      const json = await response.json();
+      let json;
+      try {
+        json = await response.json();
+      } catch (parseErr) {
+        console.error(
+          "remi_gemini_parse_error",
+          remiMaskUid(uid),
+          parseErr.message || parseErr
+        );
+        throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+      }
 
-if (!response.ok) {
-  console.error("Gemini API error:", JSON.stringify(json));
+      if (!response.ok) {
+        console.error(
+          "remi_gemini_error",
+          remiMaskUid(uid),
+          response.status,
+          json?.error?.code || "unknown"
+        );
+        throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+      }
 
-  return {
-    reply: `Gemini error ${response.status}: ${json?.error?.message || "Unknown error"}`,
-  };
-}
+      const reply =
+        json?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "";
 
-const reply =
-  json?.candidates?.[0]?.content?.parts?.[0]?.text ||
-  "";
-
-if (uid) {
-  try {
+      if (uid) {
+        try {
 
 let importantFacts = [];
 
@@ -778,24 +953,36 @@ addFactIfMatch({
   { merge: true }
 );
 
-  } catch (e) {
-    console.error("Memory update error:", e);
-  }
-}
+        } catch (e) {
+          console.error("remi_memory_write_failed", remiMaskUid(uid), e.message || e);
+        }
+      }
 
-return {
-  reply: reply || "Remi did not return text.",
-};
+      console.log("remi_success", {
+        uid: remiMaskUid(uid),
+        plan,
+        latencyMs: Date.now() - startedAt,
+      });
 
-    } 
-   catch (e) {
-  console.error("askRemi error:", e);
-
-  return {
-    reply: e.toString(),
-  };
-}
-
+      return {
+        reply: reply || "Remi did not return text.",
+      };
+    } catch (e) {
+      if (e instanceof HttpsError) {
+        console.log("remi_rejected", {
+          uid: remiMaskUid(uid),
+          code: e.code,
+          reason: e.message,
+        });
+        throw e;
+      }
+      console.error("remi_internal_error", remiMaskUid(uid), e.message || e);
+      throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+    } finally {
+      if (lockHeld && uid) {
+        await releaseRemiLock(db, uid);
+      }
+    }
   }
 );
 
@@ -850,6 +1037,30 @@ exports.onGroupJoinRequestCreated = onDocumentCreated(
     }
   }
 );
+
+async function notifyEventCreator({
+  creatorUid,
+  title,
+  body,
+  eventId,
+  type,
+}) {
+  if (!creatorUid) return;
+  const tokens = await collectTokensForUid(creatorUid, "event");
+  if (!tokens.length) return;
+  const badge = await computeAppBadge(creatorUid);
+  await sendPush({
+    tokens,
+    title,
+    body,
+    badge,
+    data: {
+      type: type || "event_moderation",
+      eventId: eventId || "",
+    },
+  });
+}
+
 exports.onEventUpdated = onDocumentUpdated(
   "events/{eventId}",
   async (event) => {
@@ -859,6 +1070,75 @@ exports.onEventUpdated = onDocumentUpdated(
       const data = event.data?.after?.data();
 
       if (!data) return;
+
+      const creatorUid = (
+        data.createdBy ||
+        data.ownerUid ||
+        data.organizerId ||
+        ""
+      )
+        .toString()
+        .trim();
+      const eventTitle = (data.title || "Seu evento").toString().trim();
+      const statusBefore = (before?.status || "").toString().trim().toLowerCase();
+      const statusAfter = (data.status || "").toString().trim().toLowerCase();
+
+      // Push ao organizador: aprovado / rejeitado / precisa de alterações.
+      if (creatorUid && statusBefore !== statusAfter) {
+        if (statusAfter === "approved") {
+          await notifyEventCreator({
+            creatorUid,
+            eventId,
+            type: "event_approved",
+            title: "Evento aprovado",
+            body: `"${eventTitle}" foi aprovado e já pode aparecer no app.`,
+          });
+        } else if (statusAfter === "rejected") {
+          await notifyEventCreator({
+            creatorUid,
+            eventId,
+            type: "event_rejected",
+            title: "Evento rejeitado",
+            body: `"${eventTitle}" foi rejeitado. Revise e envie novamente.`,
+          });
+        }
+      }
+
+      const pendingBefore = before?.hasPendingChanges === true;
+      const pendingAfter = data.hasPendingChanges === true;
+      if (creatorUid && pendingBefore && !pendingAfter) {
+        const rejectedAtBefore = before?.pendingChangesRejectedAt || null;
+        const rejectedAtAfter = data.pendingChangesRejectedAt || null;
+        const approvedAtBefore = before?.pendingChangesApprovedAt || null;
+        const approvedAtAfter = data.pendingChangesApprovedAt || null;
+        if (!rejectedAtBefore && rejectedAtAfter) {
+          await notifyEventCreator({
+            creatorUid,
+            eventId,
+            type: "event_needs_changes",
+            title: "Alterações solicitadas",
+            body: `"${eventTitle}" precisa de ajustes antes de republicar as mudanças.`,
+          });
+        } else if (!approvedAtBefore && approvedAtAfter) {
+          await notifyEventCreator({
+            creatorUid,
+            eventId,
+            type: "event_changes_approved",
+            title: "Alterações aprovadas",
+            body: `As alterações de "${eventTitle}" foram aprovadas.`,
+          });
+        }
+      } else if (creatorUid && !pendingBefore && pendingAfter) {
+        // Organizador enviou alterações — admin é notificado em outro fluxo;
+        // aqui confirmamos ao criador que o pedido foi registrado.
+        await notifyEventCreator({
+          creatorUid,
+          eventId,
+          type: "event_changes_submitted",
+          title: "Alterações enviadas",
+          body: `As alterações de "${eventTitle}" foram enviadas para análise.`,
+        });
+      }
 
       const wasActive = before?.isActive === true;
       const isActive = data.isActive === true;
@@ -872,7 +1152,7 @@ exports.onEventUpdated = onDocumentUpdated(
       const city = (data.city || "").toString().trim();
       const category = (data.category || "").toString().trim();
       const countryCode = (data.countryCode || "").toString().trim().toLowerCase();
-      const creatorUid = (data.createdBy || data.ownerUid || "").toString().trim();
+      // creatorUid já resolvido acima para push ao organizador.
 
       const eventLat = Number(data.lat || data.latitude);
       const eventLng = Number(data.lng || data.longitude);
@@ -991,3 +1271,4114 @@ console.log(
     }
   }
 );
+
+function normalizeGroupInviteCode(raw) {
+  return (raw || "").toString().trim().toUpperCase();
+}
+
+function normalizeGroupJoinPolicy(raw) {
+  const p = (raw || "open").toString().trim().toLowerCase();
+  if (p === "approval" || p === "adminapproval") return "approval";
+  if (p === "inviteonly" || p === "invite_only" || p === "invite-only") {
+    return "inviteOnly";
+  }
+  return "open";
+}
+
+/**
+ * Entrada segura em grupo inviteOnly via código.
+ * Cliente NÃO pode self-join inviteOnly nas Rules — só esta Function (Admin SDK).
+ */
+exports.joinGroupByInviteCode = onCall(
+  {
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const uid = request.auth.uid;
+    const code = normalizeGroupInviteCode(request.data?.inviteCode);
+
+    if (!code || code.length < 4 || code.length > 16) {
+      throw new HttpsError("invalid-argument", "Invalid invite code.");
+    }
+
+    const db = admin.firestore();
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    if (!userSnap.exists) {
+      throw new HttpsError("failed-precondition", "User profile not found.");
+    }
+
+    const userData = userSnap.data() || {};
+    if (userData.isBanned === true) {
+      throw new HttpsError("permission-denied", "Account is banned.");
+    }
+
+    const querySnap = await db
+      .collection("groups")
+      .where("inviteCode", "==", code)
+      .limit(2)
+      .get();
+
+    if (querySnap.empty) {
+      throw new HttpsError("not-found", "Invite not found.");
+    }
+
+    if (querySnap.size > 1) {
+      console.error("inviteCode conflict: multiple groups share same code");
+      throw new HttpsError(
+        "failed-precondition",
+        "Invite code conflict."
+      );
+    }
+
+    const groupRef = querySnap.docs[0].ref;
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        const groupId = groupSnap.id;
+        const groupName = (data.name || data.title || "Grupo").toString();
+
+        if (data.deleted === true) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Group unavailable."
+          );
+        }
+
+        const docCode = normalizeGroupInviteCode(data.inviteCode);
+        if (!docCode || docCode !== code) {
+          throw new HttpsError("not-found", "Invite not found.");
+        }
+
+        const policy = normalizeGroupJoinPolicy(data.joinPolicy);
+        if (policy !== "inviteOnly") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Group does not accept invite-only join."
+          );
+        }
+
+        assertCanAccessInternationalGroup(data, userData);
+
+        const banSnap = await tx.get(
+          groupRef.collection("bannedUsers").doc(uid)
+        );
+        if (banSnap.exists && banSnap.data()?.isActive === true) {
+          throw new HttpsError(
+            "permission-denied",
+            "Cannot join this group."
+          );
+        }
+
+        const membersRaw = Array.isArray(data.members) ? data.members : [];
+        const members = membersRaw
+          .map((m) => (m || "").toString().trim())
+          .filter((m) => m.length > 0);
+
+        if (members.includes(uid)) {
+          return {
+            groupId,
+            groupName,
+            alreadyMember: true,
+            joined: false,
+          };
+        }
+
+        members.push(uid);
+
+        tx.set(
+          groupRef,
+          {
+            members,
+            membersCount: members.length,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            [`unread.${uid}`]: 0,
+          },
+          { merge: true }
+        );
+
+        return {
+          groupId,
+          groupName,
+          alreadyMember: false,
+          joined: true,
+        };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_joined_by_invite",
+          groupId: result.groupId,
+          userId: uid,
+          alreadyMember: result.alreadyMember,
+          joined: result.joined,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return result;
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro joinGroupByInviteCode:", e);
+      throw new HttpsError("internal", "Could not join group.");
+    }
+  }
+);
+
+function asUidList(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((m) => (m || "").toString().trim())
+    .filter((m) => m.length > 0);
+}
+
+function isGroupOwnerOrAdminData(data, uid) {
+  if (!data || !uid) return false;
+  if ((data.ownerId || "").toString() === uid) return true;
+  const admins = asUidList(data.admins);
+  return admins.includes(uid);
+}
+
+/**
+ * Banir membro do grupo (owner/admin). Admin SDK — cliente não escreve bannedUsers.
+ */
+exports.banGroupMember = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const targetUid = (request.data?.targetUid || "").toString().trim();
+    const reason = (request.data?.reason || "").toString().trim().slice(0, 300);
+
+    if (!groupId || !targetUid) {
+      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+    }
+    if (actorUid === targetUid) {
+      throw new HttpsError("failed-precondition", "Cannot ban yourself.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const banRef = groupRef.collection("bannedUsers").doc(targetUid);
+    const pendingRef = groupRef.collection("pendingRequests").doc(targetUid);
+    const actorRef = db.collection("users").doc(actorUid);
+    const targetRef = db.collection("users").doc(targetUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+        const targetSnap = await tx.get(targetRef);
+        const banSnap = await tx.get(banRef);
+        const pendingSnap = await tx.get(pendingRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        if (!isGroupOwnerOrAdminData(data, actorUid)) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (targetUid === ownerId) {
+          throw new HttpsError("failed-precondition", "Cannot ban the owner.");
+        }
+
+        if (!actorSnap.exists) {
+          throw new HttpsError("failed-precondition", "Actor profile missing.");
+        }
+        const actorData = actorSnap.data() || {};
+        if (actorData.isBanned === true) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
+        const actorName = (actorData.name || "").toString().trim() || "Admin";
+
+        const targetData = targetSnap.exists ? targetSnap.data() || {} : {};
+        const targetName =
+          (targetData.name || "").toString().trim() || "User";
+        const targetPhoto = (
+          targetData.photoUrl ||
+          targetData.avatarUrl ||
+          ""
+        ).toString();
+
+        let members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+        const wasMember = members.includes(targetUid);
+
+        members = members.filter((m) => m !== targetUid);
+        admins = admins.filter((a) => a !== targetUid);
+
+        const patch = {
+          members,
+          admins,
+          membersCount: members.length,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          [`unread.${targetUid}`]: admin.firestore.FieldValue.delete(),
+        };
+
+        tx.set(groupRef, patch, { merge: true });
+
+        tx.set(
+          banRef,
+          {
+            uid: targetUid,
+            name: targetName,
+            photoUrl: targetPhoto,
+            reason,
+            bannedAt: admin.firestore.FieldValue.serverTimestamp(),
+            bannedBy: actorUid,
+            bannedByName: actorName,
+            isActive: true,
+            unbannedAt: null,
+            unbannedBy: "",
+            unbannedByName: "",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (pendingSnap.exists) {
+          const p = pendingSnap.data() || {};
+          if ((p.status || "").toString().trim() === "pending") {
+            tx.set(
+              pendingRef,
+              {
+                status: "rejected",
+                rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+                rejectedBy: actorUid,
+                rejectionReason: "banned",
+              },
+              { merge: true }
+            );
+          }
+        }
+
+        return {
+          groupId,
+          targetUid,
+          wasMember,
+          alreadyBanned: banSnap.exists && banSnap.data()?.isActive === true,
+        };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_member_banned",
+          groupId,
+          targetUid,
+          performedBy: actorUid,
+          reason: reason ? "[set]" : "",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro banGroupMember:", e);
+      throw new HttpsError("internal", "Could not ban member.");
+    }
+  }
+);
+
+/**
+ * Desbanir membro — não readiciona em members.
+ */
+exports.unbanGroupMember = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const targetUid = (request.data?.targetUid || "").toString().trim();
+
+    if (!groupId || !targetUid) {
+      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const banRef = groupRef.collection("bannedUsers").doc(targetUid);
+    const actorRef = db.collection("users").doc(actorUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+        const banSnap = await tx.get(banRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        if (!isGroupOwnerOrAdminData(data, actorUid)) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        if (!actorSnap.exists) {
+          throw new HttpsError("failed-precondition", "Actor profile missing.");
+        }
+        const actorData = actorSnap.data() || {};
+        if (actorData.isBanned === true) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
+        const actorName = (actorData.name || "").toString().trim() || "Admin";
+
+        if (!banSnap.exists) {
+          throw new HttpsError("not-found", "Ban record not found.");
+        }
+
+        const banData = banSnap.data() || {};
+        if (banData.isActive !== true) {
+          return {
+            groupId,
+            targetUid,
+            alreadyUnbanned: true,
+          };
+        }
+
+        tx.set(
+          banRef,
+          {
+            isActive: false,
+            unbannedAt: admin.firestore.FieldValue.serverTimestamp(),
+            unbannedBy: actorUid,
+            unbannedByName: actorName,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        return {
+          groupId,
+          targetUid,
+          alreadyUnbanned: false,
+        };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_member_unbanned",
+          groupId,
+          targetUid,
+          performedBy: actorUid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro unbanGroupMember:", e);
+      throw new HttpsError("internal", "Could not unban member.");
+    }
+  }
+);
+
+/**
+ * Promover membro a admin — somente owner.
+ */
+exports.promoteGroupAdmin = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const targetUid = (request.data?.targetUid || "").toString().trim();
+
+    if (!groupId || !targetUid) {
+      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const banRef = groupRef.collection("bannedUsers").doc(targetUid);
+    const actorRef = db.collection("users").doc(actorUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+        const banSnap = await tx.get(banRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (actorUid !== ownerId) {
+          throw new HttpsError("permission-denied", "Only owner can promote.");
+        }
+
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        if (targetUid === ownerId) {
+          throw new HttpsError("failed-precondition", "Owner is already admin.");
+        }
+
+        if (banSnap.exists && banSnap.data()?.isActive === true) {
+          throw new HttpsError("failed-precondition", "Target is banned.");
+        }
+
+        const members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+
+        if (!members.includes(targetUid)) {
+          throw new HttpsError("failed-precondition", "Target is not a member.");
+        }
+
+        if (admins.includes(targetUid)) {
+          return { groupId, targetUid, alreadyAdmin: true };
+        }
+
+        admins.push(targetUid);
+
+        tx.set(
+          groupRef,
+          {
+            admins,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        return { groupId, targetUid, alreadyAdmin: false };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_admin_promoted",
+          groupId,
+          targetUid,
+          performedBy: actorUid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro promoteGroupAdmin:", e);
+      throw new HttpsError("internal", "Could not promote admin.");
+    }
+  }
+);
+
+/**
+ * Rebaixar admin para membro — somente owner.
+ */
+exports.demoteGroupAdmin = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const targetUid = (request.data?.targetUid || "").toString().trim();
+
+    if (!groupId || !targetUid) {
+      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const actorRef = db.collection("users").doc(actorUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (actorUid !== ownerId) {
+          throw new HttpsError("permission-denied", "Only owner can demote.");
+        }
+
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        if (targetUid === ownerId) {
+          throw new HttpsError("failed-precondition", "Cannot demote the owner.");
+        }
+
+        const members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+
+        if (!admins.includes(targetUid)) {
+          return { groupId, targetUid, alreadyMemberOnly: true };
+        }
+
+        if (!members.includes(targetUid)) {
+          throw new HttpsError("failed-precondition", "Target is not a member.");
+        }
+
+        admins = admins.filter((a) => a !== targetUid);
+
+        tx.set(
+          groupRef,
+          {
+            admins,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        return { groupId, targetUid, alreadyMemberOnly: false };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_admin_demoted",
+          groupId,
+          targetUid,
+          performedBy: actorUid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro demoteGroupAdmin:", e);
+      throw new HttpsError("internal", "Could not demote admin.");
+    }
+  }
+);
+
+/**
+ * Remover membro do grupo (sem banir).
+ * Owner: pode remover membro ou admin.
+ * Admin: só membro comum.
+ */
+exports.removeGroupMember = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const targetUid = (request.data?.targetUid || "").toString().trim();
+
+    if (!groupId || !targetUid) {
+      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+    }
+    if (actorUid === targetUid) {
+      throw new HttpsError("failed-precondition", "Use leave group instead.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const actorRef = db.collection("users").doc(actorUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        if (!isGroupOwnerOrAdminData(data, actorUid)) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (targetUid === ownerId) {
+          throw new HttpsError("failed-precondition", "Cannot remove the owner.");
+        }
+
+        let members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+        const targetIsAdmin = admins.includes(targetUid);
+        const actorIsOwner = actorUid === ownerId;
+
+        if (!members.includes(targetUid) && !targetIsAdmin) {
+          return { groupId, targetUid, alreadyRemoved: true };
+        }
+
+        if (!actorIsOwner && targetIsAdmin) {
+          throw new HttpsError(
+            "permission-denied",
+            "Admin cannot remove another admin."
+          );
+        }
+
+        members = members.filter((m) => m !== targetUid);
+        admins = admins.filter((a) => a !== targetUid);
+
+        tx.set(
+          groupRef,
+          {
+            members,
+            admins,
+            membersCount: members.length,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            [`unread.${targetUid}`]: admin.firestore.FieldValue.delete(),
+          },
+          { merge: true }
+        );
+
+        return {
+          groupId,
+          targetUid,
+          alreadyRemoved: false,
+          wasAdmin: targetIsAdmin,
+        };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_member_removed",
+          groupId,
+          targetUid,
+          performedBy: actorUid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro removeGroupMember:", e);
+      throw new HttpsError("internal", "Could not remove member.");
+    }
+  }
+);
+
+
+/**
+ * Transferir ownership do grupo — somente owner atual.
+ * newOwnerUid deve ser membro (e preferencialmente admin).
+ */
+exports.transferGroupOwnership = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const uid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const newOwnerUid = (request.data?.newOwnerUid || "").toString().trim();
+    if (!groupId || !newOwnerUid) {
+      throw new HttpsError(
+        "invalid-argument",
+        "groupId and newOwnerUid required."
+      );
+    }
+    if (uid === newOwnerUid) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Already the owner."
+      );
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const actorRef = db.collection("users").doc(uid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (uid !== ownerId) {
+          throw new HttpsError(
+            "permission-denied",
+            "Only owner can transfer ownership."
+          );
+        }
+
+        let members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+        if (!members.includes(newOwnerUid)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "New owner must be a member."
+          );
+        }
+
+        if (!admins.includes(newOwnerUid)) {
+          admins.push(newOwnerUid);
+        }
+        // Mantém o antigo owner como admin.
+        if (!admins.includes(uid)) {
+          admins.push(uid);
+        }
+
+        tx.set(
+          groupRef,
+          {
+            ownerId: newOwnerUid,
+            admins,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy: uid,
+          },
+          { merge: true }
+        );
+
+        return { groupId, previousOwnerId: uid, newOwnerUid };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_ownership_transferred",
+          ...result,
+          createdAt: new Date().toISOString(),
+        })
+      );
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro transferGroupOwnership:", e);
+      throw new HttpsError("internal", "Could not transfer ownership.");
+    }
+  }
+);
+
+/**
+ * Saída voluntária — membro/admin (não owner).
+ */
+exports.leaveGroup = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const uid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    if (!groupId) {
+      throw new HttpsError("invalid-argument", "groupId required.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const userRef = db.collection("users").doc(uid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const userSnap = await tx.get(userRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          return { groupId, alreadyLeft: true, deleted: true };
+        }
+
+        if (userSnap.exists && userSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
+
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (uid === ownerId) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Owner cannot leave the group."
+          );
+        }
+
+        let members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+        const wasMember = members.includes(uid);
+        const wasAdmin = admins.includes(uid);
+
+        if (!wasMember && !wasAdmin) {
+          return { groupId, alreadyLeft: true, deleted: false };
+        }
+
+        members = members.filter((m) => m !== uid);
+        admins = admins.filter((a) => a !== uid);
+
+        tx.set(
+          groupRef,
+          {
+            members,
+            admins,
+            membersCount: members.length,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            [`unread.${uid}`]: admin.firestore.FieldValue.delete(),
+          },
+          { merge: true }
+        );
+
+        return {
+          groupId,
+          alreadyLeft: false,
+          deleted: false,
+          wasMember,
+          wasAdmin,
+        };
+      });
+
+      // Limpeza idempotente de subcoleções (fora da transação).
+      try {
+        await groupRef.collection("presence").doc(uid).delete();
+      } catch (_) {}
+      try {
+        await groupRef.collection("reads").doc(uid).delete();
+      } catch (_) {}
+
+      console.log(
+        JSON.stringify({
+          action: "group_member_left",
+          groupId,
+          performedBy: uid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro leaveGroup:", e);
+      throw new HttpsError("internal", "Could not leave group.");
+    }
+  }
+);
+
+/**
+ * Exclusão lógica do grupo — somente owner.
+ */
+exports.deleteGroup = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const uid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    if (!groupId) {
+      throw new HttpsError("invalid-argument", "groupId required.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const userRef = db.collection("users").doc(uid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const userSnap = await tx.get(userRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        const ownerId = (data.ownerId || "").toString().trim();
+
+        if (uid !== ownerId) {
+          throw new HttpsError("permission-denied", "Only owner can delete.");
+        }
+
+        if (userSnap.exists && userSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
+
+        if (data.deleted === true) {
+          return { groupId, alreadyDeleted: true };
+        }
+
+        tx.set(
+          groupRef,
+          {
+            deleted: true,
+            isActive: false,
+            deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+            deletedBy: uid,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        return { groupId, alreadyDeleted: false };
+      });
+
+      // Limpa presence do owner (best-effort).
+      try {
+        await groupRef.collection("presence").doc(uid).delete();
+      } catch (_) {}
+
+      console.log(
+        JSON.stringify({
+          action: "group_deleted",
+          groupId,
+          performedBy: uid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro deleteGroup:", e);
+      throw new HttpsError("internal", "Could not delete group.");
+    }
+  }
+);
+
+function normalizeJoinPolicyStrict(raw) {
+  const p = (raw || "").toString().trim();
+  if (p === "open" || p === "approval" || p === "inviteOnly") return p;
+  return null;
+}
+
+const GROUP_SETTINGS_SHARED = new Set([
+  "bio",
+  "isPrivate",
+  "joinPolicy",
+  "avatarUrl",
+  "avatarPath",
+]);
+
+const GROUP_SETTINGS_OWNER_ONLY = new Set([
+  "name",
+  "scope",
+  "city",
+  "cityName",
+  "country",
+  "countryCode",
+  "stateName",
+  "displayLocation",
+  "placeId",
+  "latitude",
+  "longitude",
+  "regionKey",
+]);
+
+const GROUP_SETTINGS_FORBIDDEN = new Set([
+  "ownerId",
+  "admins",
+  "members",
+  "membersCount",
+  "unread",
+  "createdAt",
+  "deleted",
+  "deletedAt",
+  "deletedBy",
+  "isActive",
+  "inviteCode",
+  "lastMessage",
+  "lastSenderId",
+  "lastMessageAt",
+]);
+
+/**
+ * Edição segura de configurações do grupo (allowlist).
+ */
+exports.updateGroupSettings = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const changesIn = request.data?.changes;
+
+    if (!groupId) {
+      throw new HttpsError("invalid-argument", "groupId required.");
+    }
+    if (!changesIn || typeof changesIn !== "object" || Array.isArray(changesIn)) {
+      throw new HttpsError("invalid-argument", "changes object required.");
+    }
+
+    const keys = Object.keys(changesIn);
+    if (keys.length === 0) {
+      throw new HttpsError("invalid-argument", "No changes provided.");
+    }
+
+    for (const key of keys) {
+      if (GROUP_SETTINGS_FORBIDDEN.has(key)) {
+        throw new HttpsError(
+          "invalid-argument",
+          `Field not allowed: ${key}`
+        );
+      }
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const actorRef = db.collection("users").doc(actorUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        const ownerId = (data.ownerId || "").toString().trim();
+        const isOwner = actorUid === ownerId;
+        const isAdmin = isGroupOwnerOrAdminData(data, actorUid);
+
+        if (!isAdmin) {
+          throw new HttpsError("permission-denied", "Not allowed to edit.");
+        }
+
+        const actorName =
+          (actorSnap.data()?.name || "").toString().trim() || "Admin";
+        const patch = {};
+        const changedFields = [];
+
+        for (const key of keys) {
+          const shared = GROUP_SETTINGS_SHARED.has(key);
+          const ownerOnly = GROUP_SETTINGS_OWNER_ONLY.has(key);
+
+          if (!shared && !ownerOnly) {
+            throw new HttpsError(
+              "invalid-argument",
+              `Unknown field: ${key}`
+            );
+          }
+          if (ownerOnly && !isOwner) {
+            throw new HttpsError(
+              "permission-denied",
+              `Only owner can edit: ${key}`
+            );
+          }
+
+          let value = changesIn[key];
+
+          if (key === "name") {
+            const name = (value || "").toString().trim();
+            if (!name) {
+              throw new HttpsError("invalid-argument", "Name is required.");
+            }
+            if (name.length > 80) {
+              throw new HttpsError("invalid-argument", "Name too long.");
+            }
+            value = name;
+          } else if (key === "bio") {
+            const bio = (value || "").toString().trim();
+            if (bio.length > 1000) {
+              throw new HttpsError("invalid-argument", "Bio too long.");
+            }
+            value = bio;
+          } else if (key === "joinPolicy") {
+            const policy = normalizeJoinPolicyStrict(value);
+            if (!policy) {
+              throw new HttpsError("invalid-argument", "Invalid joinPolicy.");
+            }
+            value = policy;
+            patch.isPrivate = policy !== "open";
+          } else if (key === "isPrivate") {
+            value = value === true;
+          } else if (key === "avatarUrl" || key === "avatarPath") {
+            const s = (value || "").toString().trim();
+            if (s) {
+              const encoded = encodeURIComponent(`groups/${groupId}/`);
+              const plain = `groups/${groupId}/`;
+              const ok =
+                s.startsWith(plain) ||
+                s.includes(encoded) ||
+                s.includes(`/groups/${groupId}/`) ||
+                s.includes(`groups%2F${groupId}%2F`);
+              if (!ok) {
+                throw new HttpsError(
+                  "invalid-argument",
+                  key === "avatarPath"
+                    ? "Invalid avatar path."
+                    : "Invalid avatar URL."
+                );
+              }
+            }
+            value = s;
+          } else if (key === "scope") {
+            value = (value || "").toString().trim();
+            if (!["city", "region", "country"].includes(value)) {
+              throw new HttpsError("invalid-argument", "Invalid scope.");
+            }
+          } else if (
+            key === "city" ||
+            key === "cityName" ||
+            key === "country" ||
+            key === "countryCode" ||
+            key === "stateName" ||
+            key === "displayLocation" ||
+            key === "placeId" ||
+            key === "regionKey"
+          ) {
+            value = (value || "").toString().trim();
+            if (value.length > 120) {
+              throw new HttpsError("invalid-argument", `${key} too long.`);
+            }
+          } else if (key === "latitude" || key === "longitude") {
+            if (value === null || value === "") {
+              value = null;
+            } else if (typeof value !== "number" || Number.isNaN(value)) {
+              throw new HttpsError("invalid-argument", `Invalid ${key}.`);
+            }
+          }
+
+          patch[key] = value;
+          changedFields.push(key);
+        }
+
+        const geoKeys = new Set([
+          "scope",
+          "city",
+          "cityName",
+          "country",
+          "countryCode",
+          "stateName",
+          "displayLocation",
+          "placeId",
+          "regionKey",
+          "latitude",
+          "longitude",
+        ]);
+        const geoTouched = changedFields.some((k) => geoKeys.has(k));
+        if (geoTouched) {
+          const next = { ...data, ...patch };
+          const scope = (next.scope || "city").toString().trim();
+          if (!["city", "region", "country"].includes(scope)) {
+            throw new HttpsError("invalid-argument", "Invalid location.");
+          }
+          if (scope === "city") {
+            const city = (next.cityName || next.city || "").toString().trim();
+            if (!city) {
+              throw new HttpsError("invalid-argument", "Invalid location.");
+            }
+          } else if (scope === "region") {
+            const region = (next.regionKey || "").toString().trim();
+            if (!region) {
+              throw new HttpsError("invalid-argument", "Invalid location.");
+            }
+          } else if (scope === "country") {
+            const cc = (next.countryCode || "").toString().trim();
+            if (!cc || cc.length > 3) {
+              throw new HttpsError("invalid-argument", "Invalid location.");
+            }
+          }
+        }
+
+        patch.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        patch.updatedBy = actorUid;
+
+        tx.set(groupRef, patch, { merge: true });
+
+        return {
+          groupId,
+          changedFields,
+          performedBy: actorUid,
+          performedByName: actorName,
+        };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_settings_updated",
+          groupId,
+          performedBy: result.performedBy,
+          changedFields: result.changedFields,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro updateGroupSettings:", e);
+      throw new HttpsError("internal", "Could not update group.");
+    }
+  }
+);
+
+const GROUP_CREATE_ALLOWED = new Set([
+  "name",
+  "bio",
+  "joinPolicy",
+  "isPrivate",
+  "scope",
+  "city",
+  "cityName",
+  "country",
+  "countryCode",
+  "stateName",
+  "displayLocation",
+  "placeId",
+  "latitude",
+  "longitude",
+  "regionKey",
+  "requestId",
+]);
+
+const GROUP_CREATE_FORBIDDEN = new Set([
+  "groupId",
+  "ownerId",
+  "admins",
+  "members",
+  "membersCount",
+  "unread",
+  "inviteCode",
+  "createdAt",
+  "updatedAt",
+  "updatedBy",
+  "deleted",
+  "deletedAt",
+  "deletedBy",
+  "isActive",
+  "lastMessage",
+  "lastMessageAt",
+  "lastSenderId",
+  "lastMessageBy",
+  "avatarUrl",
+  "avatarPath",
+]);
+
+function generateGroupInviteCode() {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+function validateCreateGeo(payload) {
+  const scope = (payload.scope || "city").toString().trim();
+  if (!["city", "region", "country"].includes(scope)) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+
+  const city = (payload.cityName || payload.city || "").toString().trim();
+  const country = (payload.country || "").toString().trim();
+  const countryCode = (payload.countryCode || "").toString().trim();
+  const regionKey = (payload.regionKey || "").toString().trim();
+
+  if (!country) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+  if (!city) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+  if (countryCode && countryCode.length > 3) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+
+  if (scope === "region" && !regionKey) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+  if (scope === "country" && !countryCode && !country) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+
+  for (const key of ["latitude", "longitude"]) {
+    const value = payload[key];
+    if (value === null || value === undefined || value === "") continue;
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      throw new HttpsError("invalid-argument", `Invalid ${key}.`);
+    }
+  }
+  if (typeof payload.latitude === "number") {
+    if (payload.latitude < -90 || payload.latitude > 90) {
+      throw new HttpsError("invalid-argument", "Invalid latitude.");
+    }
+  }
+  if (typeof payload.longitude === "number") {
+    if (payload.longitude < -180 || payload.longitude > 180) {
+      throw new HttpsError("invalid-argument", "Invalid longitude.");
+    }
+  }
+
+  return scope;
+}
+
+/**
+ * Criação segura de grupo — campos internos só no backend.
+ * Convenção: owner também fica em admins (compatível com create_group_page).
+ */
+exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const dataIn = request.data || {};
+
+  if (!dataIn || typeof dataIn !== "object" || Array.isArray(dataIn)) {
+    throw new HttpsError("invalid-argument", "Invalid payload.");
+  }
+
+  const keys = Object.keys(dataIn);
+  for (const key of keys) {
+    if (GROUP_CREATE_FORBIDDEN.has(key)) {
+      throw new HttpsError("invalid-argument", `Field not allowed: ${key}`);
+    }
+    if (!GROUP_CREATE_ALLOWED.has(key)) {
+      throw new HttpsError("invalid-argument", `Unknown field: ${key}`);
+    }
+  }
+
+  const requestId = (dataIn.requestId || "").toString().trim();
+  if (!requestId || requestId.length < 8 || requestId.length > 128) {
+    throw new HttpsError("invalid-argument", "requestId required.");
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(requestId)) {
+    throw new HttpsError("invalid-argument", "Invalid requestId.");
+  }
+
+  const name = (dataIn.name || "").toString().trim();
+  if (!name) {
+    throw new HttpsError("invalid-argument", "Name is required.");
+  }
+  if (name.length < 3) {
+    throw new HttpsError("invalid-argument", "Name too short.");
+  }
+  if (name.length > 80) {
+    throw new HttpsError("invalid-argument", "Name too long.");
+  }
+
+  const bio = (dataIn.bio || "").toString().trim();
+  if (bio.length > 1000) {
+    throw new HttpsError("invalid-argument", "Bio too long.");
+  }
+
+  const joinPolicy = normalizeJoinPolicyStrict(dataIn.joinPolicy ?? "open");
+  if (!joinPolicy) {
+    throw new HttpsError("invalid-argument", "Invalid joinPolicy.");
+  }
+  const isPrivate = joinPolicy !== "open";
+
+  const strField = (key, max) => {
+    if (dataIn[key] === undefined || dataIn[key] === null) return "";
+    if (typeof dataIn[key] === "number" || typeof dataIn[key] === "boolean") {
+      throw new HttpsError("invalid-argument", `Invalid ${key}.`);
+    }
+    if (typeof dataIn[key] === "object") {
+      throw new HttpsError("invalid-argument", `Invalid ${key}.`);
+    }
+    const s = dataIn[key].toString().trim();
+    if (s.length > max) {
+      throw new HttpsError("invalid-argument", `${key} too long.`);
+    }
+    return s;
+  };
+
+  const payload = {
+    name,
+    bio,
+    joinPolicy,
+    isPrivate,
+    scope: strField("scope", 40) || "city",
+    city: strField("city", 120),
+    cityName: strField("cityName", 120),
+    country: strField("country", 80),
+    countryCode: strField("countryCode", 3).toLowerCase(),
+    stateName: strField("stateName", 120),
+    displayLocation: strField("displayLocation", 160),
+    placeId: strField("placeId", 200),
+    regionKey: strField("regionKey", 120),
+    latitude:
+      dataIn.latitude === null || dataIn.latitude === undefined || dataIn.latitude === ""
+        ? null
+        : dataIn.latitude,
+    longitude:
+      dataIn.longitude === null ||
+      dataIn.longitude === undefined ||
+      dataIn.longitude === ""
+        ? null
+        : dataIn.longitude,
+  };
+
+  if (!payload.cityName && payload.city) payload.cityName = payload.city;
+  if (!payload.city && payload.cityName) payload.city = payload.cityName;
+  if (!payload.displayLocation) {
+    payload.displayLocation = payload.cityName || payload.city;
+  }
+  if (!payload.regionKey) {
+    const s = payload.stateName.trim().toLowerCase();
+    payload.regionKey = s
+      ? s.replace(/ /g, "_").replace(/\./g, "").replace(/-/g, "_")
+      : "default";
+  }
+
+  validateCreateGeo(payload);
+
+  const db = admin.firestore();
+  const userRef = db.collection("users").doc(uid);
+  const requestRef = db
+    .collection("groupCreationRequests")
+    .doc(`${uid}_${requestId}`);
+
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) {
+    throw new HttpsError("failed-precondition", "User profile not found.");
+  }
+  const userData = userSnap.data() || {};
+  if (userData.isBanned === true) {
+    throw new HttpsError("permission-denied", "Account is banned.");
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(userData, "isActive") &&
+    userData.isActive === false
+  ) {
+    throw new HttpsError("permission-denied", "Account is disabled.");
+  }
+  if (
+    userData.isDisabled === true ||
+    userData.disabled === true ||
+    userData.deactivated === true
+  ) {
+    throw new HttpsError("permission-denied", "Account is disabled.");
+  }
+
+  const performedByName =
+    (userData.name || "").toString().trim() || "User";
+
+  const existingReq = await requestRef.get();
+  if (existingReq.exists) {
+    const prev = existingReq.data() || {};
+    return {
+      success: true,
+      groupId: prev.groupId,
+      inviteCode: prev.inviteCode,
+      created: false,
+    };
+  }
+
+  const maxAttempts = 8;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const inviteCode = generateGroupInviteCode();
+    const groupRef = db.collection("groups").doc();
+    const groupId = groupRef.id;
+    const codeRef = db.collection("groupInviteCodes").doc(inviteCode);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const reqSnap = await tx.get(requestRef);
+        if (reqSnap.exists) {
+          const prev = reqSnap.data() || {};
+          return {
+            groupId: prev.groupId,
+            inviteCode: prev.inviteCode,
+            created: false,
+          };
+        }
+
+        const codeSnap = await tx.get(codeRef);
+        if (codeSnap.exists) {
+          throw new HttpsError("aborted", "Invite code collision.");
+        }
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        tx.set(groupRef, {
+          name: payload.name,
+          bio: payload.bio,
+          country: payload.country,
+          countryCode: payload.countryCode,
+          city: payload.city,
+          cityName: payload.cityName,
+          stateName: payload.stateName,
+          displayLocation: payload.displayLocation,
+          placeId: payload.placeId,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          scope: payload.scope,
+          regionKey: payload.regionKey,
+          avatarUrl: "",
+          avatarPath: "",
+          ownerId: uid,
+          admins: [uid],
+          members: [uid],
+          membersCount: 1,
+          inviteCode,
+          isPrivate: payload.isPrivate,
+          joinPolicy: payload.joinPolicy,
+          // Flag explícita (join/chat internacional também checa país do usuário).
+          isPremiumGroup: false,
+          deleted: false,
+          isActive: true,
+          unread: { [uid]: 0 },
+          lastMessage: "",
+          lastSenderId: "",
+          lastMessageAt: null,
+          createdAt: now,
+          updatedAt: now,
+          updatedBy: uid,
+        });
+
+        tx.set(groupRef.collection("reads").doc(uid), {
+          lastReadAt: now,
+        });
+
+        tx.set(requestRef, {
+          groupId,
+          inviteCode,
+          createdBy: uid,
+          createdAt: now,
+        });
+
+        tx.set(codeRef, {
+          groupId,
+          createdBy: uid,
+          createdAt: now,
+        });
+
+        return { groupId, inviteCode, created: true };
+      });
+
+      if (result.created) {
+        console.log(
+          JSON.stringify({
+            action: "group_created",
+            groupId: result.groupId,
+            performedBy: uid,
+            performedByName,
+            createdAt: new Date().toISOString(),
+          })
+        );
+      }
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError && e.code === "aborted") {
+        continue;
+      }
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro createGroup:", e);
+      throw new HttpsError("internal", "Could not create group.");
+    }
+  }
+
+  throw new HttpsError("internal", "Could not allocate invite code.");
+});
+
+
+function isAccountDisabledData(userData) {
+  if (!userData) return false;
+  if (
+    Object.prototype.hasOwnProperty.call(userData, "isActive") &&
+    userData.isActive === false
+  ) {
+    return true;
+  }
+  return (
+    userData.isDisabled === true ||
+    userData.disabled === true ||
+    userData.deactivated === true
+  );
+}
+
+async function notifyJoinRequestDecision({
+  requestUid,
+  groupId,
+  groupName,
+  approved,
+}) {
+  try {
+    const tokens = await collectTokensForUid(requestUid, "group");
+    if (!tokens.length) return;
+
+    const name = (groupName || "group").toString().trim() || "group";
+    const title = approved
+      ? "Sua solicitação foi aprovada."
+      : "Solicitação não aprovada";
+    const body = approved
+      ? `Agora você pode participar de ${name}.`
+      : "Sua solicitação para entrar no grupo não foi aprovada.";
+
+    await sendPush({
+      tokens,
+      title,
+      body,
+      data: {
+        type: approved ? "group_join_approved" : "group_join_rejected",
+        groupId: String(groupId || ""),
+        requestUid: String(requestUid || ""),
+      },
+    });
+  } catch (e) {
+    console.error("Erro push join decision:", e);
+  }
+}
+
+/**
+ * Aprovar pedido de entrada (approval) — Admin SDK.
+ */
+exports.approveGroupJoinRequest = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const requestUid = (request.data?.requestUid || "").toString().trim();
+
+    if (!groupId || !requestUid) {
+      throw new HttpsError(
+        "invalid-argument",
+        "groupId and requestUid required."
+      );
+    }
+    if (actorUid === requestUid) {
+      throw new HttpsError(
+        "permission-denied",
+        "Cannot approve your own request."
+      );
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const pendingRef = groupRef.collection("pendingRequests").doc(requestUid);
+    const banRef = groupRef.collection("bannedUsers").doc(requestUid);
+    const actorRef = db.collection("users").doc(actorUid);
+    const targetRef = db.collection("users").doc(requestUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const pendingSnap = await tx.get(pendingRef);
+        const banSnap = await tx.get(banRef);
+        const actorSnap = await tx.get(actorRef);
+        const targetSnap = await tx.get(targetRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        if (!isGroupOwnerOrAdminData(data, actorUid)) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+        if (isAccountDisabledData(actorSnap.data() || {})) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        const policy = normalizeJoinPolicyStrict(data.joinPolicy);
+        if (policy !== "approval") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Group does not accept join requests."
+          );
+        }
+
+        if (!pendingSnap.exists) {
+          throw new HttpsError("not-found", "Join request not found.");
+        }
+
+        const pending = pendingSnap.data() || {};
+        const pendingUid = (pending.uid || requestUid).toString().trim();
+        if (pendingUid && pendingUid !== requestUid) {
+          throw new HttpsError("failed-precondition", "Request mismatch.");
+        }
+
+        const status = (pending.status || "").toString().trim();
+        const members = asUidList(data.members);
+        const alreadyMember = members.includes(requestUid);
+        const actorName =
+          (actorSnap.data()?.name || "").toString().trim() || "Admin";
+        const groupName = (data.name || "").toString().trim() || "Grupo";
+
+        if (status === "approved") {
+          return {
+            groupId,
+            requestUid,
+            approved: true,
+            alreadyMember,
+            newlyApproved: false,
+            groupName,
+          };
+        }
+
+        if (status !== "pending") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Request is not pending."
+          );
+        }
+
+        if (!targetSnap.exists) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Requester profile missing."
+          );
+        }
+        const targetData = targetSnap.data() || {};
+        if (targetData.isBanned === true || isAccountDisabledData(targetData)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Requester cannot join."
+          );
+        }
+
+        if (banSnap.exists && banSnap.data()?.isActive === true) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Requester is banned from this group."
+          );
+        }
+
+        assertCanAccessInternationalGroup(data, targetSnap.data() || {});
+
+
+        let newlyAdded = false;
+        if (!alreadyMember) {
+          members.push(requestUid);
+          newlyAdded = true;
+        }
+
+        const patch = {
+          members,
+          membersCount: members.length,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        if (newlyAdded || !alreadyMember) {
+          patch[`unread.${requestUid}`] = 0;
+        } else if (alreadyMember) {
+          // Garante unread inicial se ausente sem alterar outros.
+          const unread = data.unread || {};
+          if (unread[requestUid] === undefined) {
+            patch[`unread.${requestUid}`] = 0;
+          }
+        }
+
+        tx.set(groupRef, patch, { merge: true });
+
+        tx.set(
+          pendingRef,
+          {
+            status: "approved",
+            approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+            approvedBy: actorUid,
+            approvedByName: actorName,
+          },
+          { merge: true }
+        );
+
+        return {
+          groupId,
+          requestUid,
+          approved: true,
+          alreadyMember: alreadyMember && !newlyAdded,
+          newlyApproved: true,
+          groupName,
+        };
+      });
+
+      if (result.newlyApproved) {
+        console.log(
+          JSON.stringify({
+            action: "group_join_request_approved",
+            groupId,
+            targetUid: requestUid,
+            performedBy: actorUid,
+            createdAt: new Date().toISOString(),
+          })
+        );
+        await notifyJoinRequestDecision({
+          requestUid,
+          groupId,
+          groupName: result.groupName,
+          approved: true,
+        });
+      }
+
+      return {
+        success: true,
+        groupId: result.groupId,
+        requestUid: result.requestUid,
+        approved: result.approved,
+        alreadyMember: result.alreadyMember,
+      };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro approveGroupJoinRequest:", e);
+      throw new HttpsError("internal", "Could not approve request.");
+    }
+  }
+);
+
+/**
+ * Rejeitar pedido de entrada — Admin SDK. Não altera members.
+ */
+exports.rejectGroupJoinRequest = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const requestUid = (request.data?.requestUid || "").toString().trim();
+    let reason = (request.data?.reason || "").toString().trim();
+    if (reason.length > 300) {
+      throw new HttpsError("invalid-argument", "Reason too long.");
+    }
+
+    if (!groupId || !requestUid) {
+      throw new HttpsError(
+        "invalid-argument",
+        "groupId and requestUid required."
+      );
+    }
+    if (actorUid === requestUid) {
+      throw new HttpsError(
+        "permission-denied",
+        "Cannot reject your own request."
+      );
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const pendingRef = groupRef.collection("pendingRequests").doc(requestUid);
+    const actorRef = db.collection("users").doc(actorUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const pendingSnap = await tx.get(pendingRef);
+        const actorSnap = await tx.get(actorRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        if (!isGroupOwnerOrAdminData(data, actorUid)) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+        if (isAccountDisabledData(actorSnap.data() || {})) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        if (!pendingSnap.exists) {
+          throw new HttpsError("not-found", "Join request not found.");
+        }
+
+        const pending = pendingSnap.data() || {};
+        const pendingUid = (pending.uid || requestUid).toString().trim();
+        if (pendingUid && pendingUid !== requestUid) {
+          throw new HttpsError("failed-precondition", "Request mismatch.");
+        }
+
+        const status = (pending.status || "").toString().trim();
+        const actorName =
+          (actorSnap.data()?.name || "").toString().trim() || "Admin";
+        const groupName = (data.name || "").toString().trim() || "Grupo";
+
+        if (status === "rejected") {
+          return {
+            groupId,
+            requestUid,
+            rejected: true,
+            alreadyRejected: true,
+            newlyRejected: false,
+            groupName,
+          };
+        }
+
+        if (status === "approved") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Request is not pending."
+          );
+        }
+
+        if (status !== "pending") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Request is not pending."
+          );
+        }
+
+        const patch = {
+          status: "rejected",
+          rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+          rejectedBy: actorUid,
+          rejectedByName: actorName,
+        };
+        if (reason) {
+          patch.rejectionReason = reason;
+        }
+
+        tx.set(pendingRef, patch, { merge: true });
+
+        return {
+          groupId,
+          requestUid,
+          rejected: true,
+          alreadyRejected: false,
+          newlyRejected: true,
+          groupName,
+          reason,
+        };
+      });
+
+      if (result.newlyRejected) {
+        console.log(
+          JSON.stringify({
+            action: "group_join_request_rejected",
+            groupId,
+            targetUid: requestUid,
+            performedBy: actorUid,
+            reason: result.reason || "",
+            createdAt: new Date().toISOString(),
+          })
+        );
+        await notifyJoinRequestDecision({
+          requestUid,
+          groupId,
+          groupName: result.groupName,
+          approved: false,
+        });
+      }
+
+      return {
+        success: true,
+        groupId: result.groupId,
+        requestUid: result.requestUid,
+        rejected: result.rejected,
+        alreadyRejected: result.alreadyRejected,
+      };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro rejectGroupJoinRequest:", e);
+      throw new HttpsError("internal", "Could not reject request.");
+    }
+  }
+);
+
+
+/**
+ * Zera unread do próprio usuário e atualiza reads/{uid}.
+ */
+exports.markGroupAsRead = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const groupId = (request.data?.groupId || "").toString().trim();
+  if (!groupId) {
+    throw new HttpsError("invalid-argument", "groupId required.");
+  }
+
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const readRef = groupRef.collection("reads").doc(uid);
+  const banRef = groupRef.collection("bannedUsers").doc(uid);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const groupSnap = await tx.get(groupRef);
+      const banSnap = await tx.get(banRef);
+
+      if (!groupSnap.exists) {
+        throw new HttpsError("not-found", "Group not found.");
+      }
+
+      const data = groupSnap.data() || {};
+      if (data.deleted === true) {
+        throw new HttpsError("failed-precondition", "Group unavailable.");
+      }
+
+      if (banSnap.exists && banSnap.data()?.isActive === true) {
+        throw new HttpsError("permission-denied", "Banned from group.");
+      }
+
+      const members = asUidList(data.members);
+      const isOwner = (data.ownerId || "").toString().trim() === uid;
+      const isAdmin = isGroupOwnerOrAdminData(data, uid);
+      if (!members.includes(uid) && !isOwner && !isAdmin) {
+        throw new HttpsError("permission-denied", "Not a group member.");
+      }
+
+      tx.set(
+        groupRef,
+        {
+          [`unread.${uid}`]: 0,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      tx.set(
+        readRef,
+        {
+          uid,
+          lastReadAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+
+    return { success: true, groupId };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro markGroupAsRead:", e);
+    throw new HttpsError("internal", "Could not mark group as read.");
+  }
+});
+
+
+function asAttendeeUidList(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of raw) {
+    const uid = (item || "").toString().trim();
+    if (!uid || seen.has(uid)) continue;
+    seen.add(uid);
+    out.push(uid);
+  }
+  return out;
+}
+
+function eventAcceptsJoin(data) {
+  if (!data) return false;
+  if (data.deleted === true) return false;
+  if (data.isActive !== true) return false;
+  const status = (data.status || "").toString().trim().toLowerCase();
+  if (status !== "approved") return false;
+  if (status === "cancelled" || status === "pending" || status === "rejected") {
+    return false;
+  }
+  return true;
+}
+
+function eventStartAtHasPassed(data) {
+  const startAt = data?.startAt;
+  if (!startAt) return false;
+  let ms = null;
+  if (typeof startAt.toMillis === "function") {
+    ms = startAt.toMillis();
+  } else if (typeof startAt._seconds === "number") {
+    ms = startAt._seconds * 1000;
+  } else if (typeof startAt.seconds === "number") {
+    ms = startAt.seconds * 1000;
+  }
+  if (ms == null || Number.isNaN(ms)) return false;
+  return ms < Date.now();
+}
+
+/**
+ * Participar de evento — Admin SDK (contadores consistentes).
+ */
+exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const eventId = (request.data?.eventId || "").toString().trim();
+  if (!eventId) {
+    throw new HttpsError("invalid-argument", "eventId required.");
+  }
+
+  const db = admin.firestore();
+  const eventRef = db.collection("events").doc(eventId);
+  const attendeeRef = eventRef.collection("attendees").doc(uid);
+  const userRef = db.collection("users").doc(uid);
+  const publicRef = db.collection("publicUsers").doc(uid);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const eventSnap = await tx.get(eventRef);
+      const attendeeSnap = await tx.get(attendeeRef);
+      const userSnap = await tx.get(userRef);
+      const publicSnap = await tx.get(publicRef);
+
+      if (!eventSnap.exists) {
+        throw new HttpsError("not-found", "Event not found.");
+      }
+
+      const data = eventSnap.data() || {};
+      if (!eventAcceptsJoin(data)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Event is not available for joining."
+        );
+      }
+
+      if (eventStartAtHasPassed(data)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Event no longer accepts attendees."
+        );
+      }
+
+      if (!userSnap.exists && !publicSnap.exists) {
+        throw new HttpsError("failed-precondition", "User profile not found.");
+      }
+
+      const userData = userSnap.exists
+        ? userSnap.data() || {}
+        : publicSnap.data() || {};
+      if (userData.isBanned === true || isAccountDisabledData(userData)) {
+        throw new HttpsError("permission-denied", "Account is banned.");
+      }
+
+      let uids = asAttendeeUidList(data.attendeesUids);
+      const alreadyJoined =
+        attendeeSnap.exists || uids.includes(uid);
+
+      if (alreadyJoined) {
+        if (!uids.includes(uid)) {
+          uids.push(uid);
+        }
+        const count = Math.max(uids.length, 0);
+        // Garante documento do attendee se só existir no array.
+        if (!attendeeSnap.exists) {
+          const name =
+            (userData.name || "").toString().trim() || "User";
+          const photoUrl = (
+            userData.photoUrl ||
+            userData.profilePhotoUrl ||
+            userData.avatarUrl ||
+            ""
+          ).toString();
+          tx.set(attendeeRef, {
+            uid,
+            name,
+            photoUrl,
+            joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+        if ((data.attendeesCount || 0) !== count || !uids.includes(uid)) {
+          tx.set(
+            eventRef,
+            {
+              attendeesUids: uids,
+              attendeesCount: count,
+              participantsCount: count,
+            },
+            { merge: true }
+          );
+        }
+        return {
+          eventId,
+          joined: true,
+          alreadyJoined: true,
+          attendeesCount: count,
+        };
+      }
+
+      const name = (userData.name || "").toString().trim() || "User";
+      const photoUrl = (
+        userData.photoUrl ||
+        userData.profilePhotoUrl ||
+        userData.avatarUrl ||
+        ""
+      ).toString();
+
+      uids.push(uid);
+      const count = uids.length;
+
+      tx.set(attendeeRef, {
+        uid,
+        name,
+        photoUrl,
+        joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      tx.set(
+        eventRef,
+        {
+          attendeesUids: uids,
+          attendeesCount: count,
+          participantsCount: count,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return {
+        eventId,
+        joined: true,
+        alreadyJoined: false,
+        attendeesCount: count,
+        performedByName: name,
+      };
+    });
+
+    if (!result.alreadyJoined) {
+      console.log(
+        JSON.stringify({
+          action: "event_joined",
+          eventId,
+          performedBy: uid,
+          performedByName: result.performedByName || "",
+          createdAt: new Date().toISOString(),
+        })
+      );
+    }
+
+    return {
+      success: true,
+      eventId: result.eventId,
+      joined: result.joined,
+      alreadyJoined: result.alreadyJoined,
+      attendeesCount: result.attendeesCount,
+    };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro joinEvent:", e);
+    throw new HttpsError("internal", "Could not join event.");
+  }
+});
+
+/**
+ * Sair de evento — Admin SDK.
+ */
+exports.leaveEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const eventId = (request.data?.eventId || "").toString().trim();
+  if (!eventId) {
+    throw new HttpsError("invalid-argument", "eventId required.");
+  }
+
+  const db = admin.firestore();
+  const eventRef = db.collection("events").doc(eventId);
+  const attendeeRef = eventRef.collection("attendees").doc(uid);
+  const userRef = db.collection("users").doc(uid);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const eventSnap = await tx.get(eventRef);
+      const attendeeSnap = await tx.get(attendeeRef);
+      const userSnap = await tx.get(userRef);
+
+      if (!eventSnap.exists) {
+        throw new HttpsError("not-found", "Event not found.");
+      }
+
+      const data = eventSnap.data() || {};
+      let uids = asAttendeeUidList(data.attendeesUids);
+      const wasJoined = attendeeSnap.exists || uids.includes(uid);
+
+      if (!wasJoined) {
+        const count = Math.max(
+          typeof data.attendeesCount === "number" ? data.attendeesCount : uids.length,
+          0
+        );
+        return {
+          eventId,
+          left: true,
+          wasNotJoined: true,
+          attendeesCount: count,
+        };
+      }
+
+      uids = uids.filter((id) => id !== uid);
+      const count = Math.max(uids.length, 0);
+
+      if (attendeeSnap.exists) {
+        tx.delete(attendeeRef);
+      }
+
+      tx.set(
+        eventRef,
+        {
+          attendeesUids: uids,
+          attendeesCount: count,
+          participantsCount: count,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      const actorName =
+        (userSnap.exists && (userSnap.data()?.name || "").toString().trim()) ||
+        "User";
+
+      return {
+        eventId,
+        left: true,
+        wasNotJoined: false,
+        attendeesCount: count,
+        performedByName: actorName,
+      };
+    });
+
+    if (!result.wasNotJoined) {
+      console.log(
+        JSON.stringify({
+          action: "event_left",
+          eventId,
+          performedBy: uid,
+          performedByName: result.performedByName || "",
+          createdAt: new Date().toISOString(),
+        })
+      );
+    }
+
+    return {
+      success: true,
+      eventId: result.eventId,
+      left: result.left,
+      wasNotJoined: result.wasNotJoined,
+      attendeesCount: result.attendeesCount,
+    };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro leaveEvent:", e);
+    throw new HttpsError("internal", "Could not leave event.");
+  }
+});
+
+
+const EVENT_COMMENT_MAX_LEN = 1000;
+const EVENT_COMMENT_REPLY_PREVIEW_LEN = 280;
+
+function eventOrganizerUid(data) {
+  if (!data) return "";
+  return (
+    data.organizerId ||
+    data.createdBy ||
+    data.ownerId ||
+    data.userId ||
+    ""
+  )
+    .toString()
+    .trim();
+}
+
+function eventAllowsComments(data) {
+  if (!data) return false;
+  if (data.deleted === true) return false;
+  if (data.isActive !== true) return false;
+  const status = (data.status || "").toString().trim().toLowerCase();
+  if (status === "cancelled") return false;
+  if (status !== "approved") return false;
+  return true;
+}
+
+function resolveUserProfileNamePhoto(userData) {
+  const name = (userData?.name || "").toString().trim() || "User";
+  const photoUrl = (
+    userData?.photoUrl ||
+    userData?.profilePhotoUrl ||
+    userData?.avatarUrl ||
+    ""
+  ).toString();
+  return { name, photoUrl };
+}
+
+/**
+ * Criar comentário/resposta em evento.
+ */
+exports.createEventComment = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const dataIn = request.data || {};
+  const eventId = (dataIn.eventId || "").toString().trim();
+  if (!eventId) {
+    throw new HttpsError("invalid-argument", "eventId required.");
+  }
+
+  if (dataIn.text !== undefined && typeof dataIn.text !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid text.");
+  }
+  const text = (dataIn.text || "").toString().trim();
+  if (!text) {
+    throw new HttpsError("invalid-argument", "Comment is empty.");
+  }
+  if (text.length > EVENT_COMMENT_MAX_LEN) {
+    throw new HttpsError("invalid-argument", "Comment is too long.");
+  }
+
+  let replyToCommentId = "";
+  if (
+    dataIn.replyToCommentId !== undefined &&
+    dataIn.replyToCommentId !== null &&
+    dataIn.replyToCommentId !== ""
+  ) {
+    if (typeof dataIn.replyToCommentId !== "string") {
+      throw new HttpsError("invalid-argument", "Invalid replyToCommentId.");
+    }
+    replyToCommentId = dataIn.replyToCommentId.trim();
+  }
+
+  const requestId = (dataIn.requestId || "").toString().trim();
+  if (!requestId || requestId.length < 8 || requestId.length > 128) {
+    throw new HttpsError("invalid-argument", "requestId required.");
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(requestId)) {
+    throw new HttpsError("invalid-argument", "Invalid requestId.");
+  }
+
+  const db = admin.firestore();
+  const eventRef = db.collection("events").doc(eventId);
+  const commentsRef = eventRef.collection("comments");
+  const requestRef = db
+    .collection("eventCommentRequests")
+    .doc(`${uid}_${requestId}`);
+  const userRef = db.collection("users").doc(uid);
+  const publicRef = db.collection("publicUsers").doc(uid);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const requestSnap = await tx.get(requestRef);
+      if (requestSnap.exists) {
+        const prev = requestSnap.data() || {};
+        return {
+          eventId,
+          commentId: (prev.commentId || "").toString(),
+          created: false,
+          alreadyCreated: true,
+          isReply: !!prev.isReply,
+        };
+      }
+
+      const eventSnap = await tx.get(eventRef);
+      const userSnap = await tx.get(userRef);
+      const publicSnap = await tx.get(publicRef);
+
+      let parentSnap = null;
+      if (replyToCommentId) {
+        parentSnap = await tx.get(commentsRef.doc(replyToCommentId));
+      }
+
+      if (!eventSnap.exists) {
+        throw new HttpsError("not-found", "Event not found.");
+      }
+      const eventData = eventSnap.data() || {};
+      if (!eventAllowsComments(eventData)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Event is not available for comments."
+        );
+      }
+
+      if (!userSnap.exists && !publicSnap.exists) {
+        throw new HttpsError("failed-precondition", "User profile not found.");
+      }
+      const userData = userSnap.exists
+        ? userSnap.data() || {}
+        : publicSnap.data() || {};
+      if (userData.isBanned === true || isAccountDisabledData(userData)) {
+        throw new HttpsError("permission-denied", "Account is banned.");
+      }
+
+      let replyToName = null;
+      let replyToText = null;
+      if (replyToCommentId) {
+        if (!parentSnap || !parentSnap.exists) {
+          throw new HttpsError("not-found", "Parent comment not found.");
+        }
+        const parent = parentSnap.data() || {};
+        if (parent.isDeleted === true) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Parent comment is deleted."
+          );
+        }
+        replyToName =
+          (parent.name || parent.userName || "").toString().trim() || "User";
+        const parentText = (parent.text || "").toString();
+        replyToText =
+          parentText.length > EVENT_COMMENT_REPLY_PREVIEW_LEN
+            ? parentText.slice(0, EVENT_COMMENT_REPLY_PREVIEW_LEN)
+            : parentText;
+      }
+
+      const { name, photoUrl } = resolveUserProfileNamePhoto(userData);
+      const organizerUid = eventOrganizerUid(eventData);
+      const isOrganizer = organizerUid === uid;
+
+      const commentRef = commentsRef.doc();
+      const payload = {
+        uid,
+        name,
+        photoUrl,
+        text,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        likesCount: 0,
+        likedBy: [],
+        isDeleted: false,
+        readByOrganizer: isOrganizer,
+        replyToCommentId: replyToCommentId || null,
+        replyToName: replyToName,
+        replyToText: replyToText,
+      };
+
+      tx.set(commentRef, payload);
+      tx.set(requestRef, {
+        uid,
+        eventId,
+        commentId: commentRef.id,
+        requestId,
+        isReply: !!replyToCommentId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        eventId,
+        commentId: commentRef.id,
+        created: true,
+        alreadyCreated: false,
+        isReply: !!replyToCommentId,
+        performedByName: name,
+      };
+    });
+
+    if (result.created) {
+      console.log(
+        JSON.stringify({
+          action: result.isReply
+            ? "event_comment_replied"
+            : "event_comment_created",
+          eventId,
+          commentId: result.commentId,
+          performedBy: uid,
+          performedByName: result.performedByName || "",
+          createdAt: new Date().toISOString(),
+        })
+      );
+    }
+
+    return {
+      success: true,
+      eventId: result.eventId,
+      commentId: result.commentId,
+      created: result.created,
+      alreadyCreated: result.alreadyCreated,
+    };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro createEventComment:", e);
+    throw new HttpsError("internal", "Could not create comment.");
+  }
+});
+
+/**
+ * Curtir/descurtir comentário de evento.
+ */
+exports.toggleEventCommentLike = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const uid = request.auth.uid;
+    const eventId = (request.data?.eventId || "").toString().trim();
+    const commentId = (request.data?.commentId || "").toString().trim();
+    if (!eventId || !commentId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "eventId and commentId required."
+      );
+    }
+
+    const db = admin.firestore();
+    const eventRef = db.collection("events").doc(eventId);
+    const commentRef = eventRef.collection("comments").doc(commentId);
+    const userRef = db.collection("users").doc(uid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const eventSnap = await tx.get(eventRef);
+        const commentSnap = await tx.get(commentRef);
+        const userSnap = await tx.get(userRef);
+
+        if (!eventSnap.exists) {
+          throw new HttpsError("not-found", "Event not found.");
+        }
+        if (!commentSnap.exists) {
+          throw new HttpsError("not-found", "Comment not found.");
+        }
+
+        if (userSnap.exists) {
+          const userData = userSnap.data() || {};
+          if (userData.isBanned === true || isAccountDisabledData(userData)) {
+            throw new HttpsError("permission-denied", "Account is banned.");
+          }
+        }
+
+        const comment = commentSnap.data() || {};
+        if (comment.isDeleted === true) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Comment is no longer available."
+          );
+        }
+
+        let likedBy = asAttendeeUidList(comment.likedBy);
+        const alreadyLiked = likedBy.includes(uid);
+        if (alreadyLiked) {
+          likedBy = likedBy.filter((id) => id !== uid);
+        } else {
+          likedBy.push(uid);
+        }
+        const likesCount = likedBy.length;
+
+        tx.set(
+          commentRef,
+          {
+            likedBy,
+            likesCount,
+          },
+          { merge: true }
+        );
+
+        return {
+          eventId,
+          commentId,
+          liked: !alreadyLiked,
+          likesCount,
+        };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: result.liked
+            ? "event_comment_liked"
+            : "event_comment_unliked",
+          eventId,
+          commentId,
+          performedBy: uid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return {
+        success: true,
+        ...result,
+      };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro toggleEventCommentLike:", e);
+      throw new HttpsError("internal", "Could not toggle like.");
+    }
+  }
+);
+
+/**
+ * Exclusão lógica de comentário de evento.
+ */
+exports.deleteEventComment = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const eventId = (request.data?.eventId || "").toString().trim();
+  const commentId = (request.data?.commentId || "").toString().trim();
+  if (!eventId || !commentId) {
+    throw new HttpsError(
+      "invalid-argument",
+      "eventId and commentId required."
+    );
+  }
+
+  const db = admin.firestore();
+  const eventRef = db.collection("events").doc(eventId);
+  const commentRef = eventRef.collection("comments").doc(commentId);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const eventSnap = await tx.get(eventRef);
+      const commentSnap = await tx.get(commentRef);
+
+      if (!eventSnap.exists) {
+        throw new HttpsError("not-found", "Event not found.");
+      }
+      if (!commentSnap.exists) {
+        throw new HttpsError("not-found", "Comment not found.");
+      }
+
+      const eventData = eventSnap.data() || {};
+      const comment = commentSnap.data() || {};
+      const authorUid = (comment.uid || comment.userId || comment.authorId || "")
+        .toString()
+        .trim();
+      const organizerUid = eventOrganizerUid(eventData);
+      const canDelete = authorUid === uid || organizerUid === uid;
+
+      if (!canDelete) {
+        throw new HttpsError(
+          "permission-denied",
+          "Not allowed to delete this comment."
+        );
+      }
+
+      if (comment.isDeleted === true) {
+        return {
+          eventId,
+          commentId,
+          deleted: true,
+          alreadyDeleted: true,
+        };
+      }
+
+      tx.set(
+        commentRef,
+        {
+          isDeleted: true,
+          deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+          deletedBy: uid,
+        },
+        { merge: true }
+      );
+
+      return {
+        eventId,
+        commentId,
+        deleted: true,
+        alreadyDeleted: false,
+      };
+    });
+
+    if (!result.alreadyDeleted) {
+      console.log(
+        JSON.stringify({
+          action: "event_comment_deleted",
+          eventId,
+          commentId,
+          performedBy: uid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+    }
+
+    return {
+      success: true,
+      ...result,
+    };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro deleteEventComment:", e);
+    throw new HttpsError("internal", "Could not delete comment.");
+  }
+});
+
+
+const EVENT_ALLOWED_CATEGORIES = new Set([
+  "Restaurante",
+  "café",
+  "Esportes",
+  "Show",
+  "Geral",
+  "Música",
+  "Cultura",
+  "Idiomas",
+]);
+
+const EVENT_CREATE_ALLOWED = new Set([
+  "requestId",
+  "title",
+  "description",
+  "category",
+  "startAtMs",
+  "city",
+  "cityKey",
+  "stateName",
+  "placeName",
+  "address",
+  "placeDisplay",
+  "lat",
+  "lng",
+  "countryCode",
+  "regionKey",
+  "scope",
+  "sponsorInterested",
+  "coverUrl",
+  "photoUrls",
+]);
+
+const EVENT_UPDATE_ALLOWED = new Set([
+  "title",
+  "description",
+  "category",
+  "startAtMs",
+  "city",
+  "cityKey",
+  "stateName",
+  "placeName",
+  "address",
+  "placeDisplay",
+  "lat",
+  "lng",
+  "countryCode",
+  "regionKey",
+  "scope",
+  "sponsorInterested",
+  "coverUrl",
+  "photoUrls",
+]);
+
+function resolveEventOwnerUid(data) {
+  const keys = ["createdBy", "organizerId", "ownerId", "userId"];
+  const found = [];
+  for (const key of keys) {
+    const v = (data?.[key] || "").toString().trim();
+    if (v) found.push(v);
+  }
+  const unique = [...new Set(found)];
+  if (unique.length === 0) {
+    return { ok: false, reason: "missing" };
+  }
+  if (unique.length > 1) {
+    return { ok: false, reason: "inconsistent", uids: unique };
+  }
+  return { ok: true, uid: unique[0] };
+}
+
+function asTrimmedString(value, field, { required = false, max = 500 } = {}) {
+  if (value === undefined || value === null) {
+    if (required) {
+      throw new HttpsError("invalid-argument", `${field} required.`);
+    }
+    return "";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+  }
+  if (typeof value === "object") {
+    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+  }
+  const out = value.toString().trim();
+  if (required && !out) {
+    throw new HttpsError("invalid-argument", `${field} required.`);
+  }
+  if (out.length > max) {
+    throw new HttpsError("invalid-argument", `${field} too long.`);
+  }
+  return out;
+}
+
+function asOptionalNumber(value, field) {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+  }
+  return n;
+}
+
+function asPhotoUrls(value) {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) {
+    throw new HttpsError("invalid-argument", "Invalid photoUrls.");
+  }
+  if (value.length > 5) {
+    throw new HttpsError("invalid-argument", "Too many photos.");
+  }
+  const out = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new HttpsError("invalid-argument", "Invalid photoUrls.");
+    }
+    const url = item.trim();
+    if (!url) continue;
+    if (url.length > 2048) {
+      throw new HttpsError("invalid-argument", "Invalid photoUrls.");
+    }
+    if (!/^https:\/\//i.test(url)) {
+      throw new HttpsError("invalid-argument", "Invalid photoUrls.");
+    }
+    out.push(url);
+  }
+  return out;
+}
+
+function asCoverUrl(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid coverUrl.");
+  }
+  const url = value.trim();
+  if (!url) return "";
+  if (url.length > 2048 || !/^https:\/\//i.test(url)) {
+    throw new HttpsError("invalid-argument", "Invalid coverUrl.");
+  }
+  return url;
+}
+
+function parseStartAtMs(value) {
+  if (value === undefined || value === null) {
+    throw new HttpsError("invalid-argument", "startAtMs required.");
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new HttpsError("invalid-argument", "Invalid startAtMs.");
+  }
+  // sanity: year 2000..2100
+  if (n < 946684800000 || n > 4102444800000) {
+    throw new HttpsError("invalid-argument", "Invalid startAtMs.");
+  }
+  return n;
+}
+
+function validateEventEditorial(dataIn, { forUpdate = false } = {}) {
+  const allowed = forUpdate ? EVENT_UPDATE_ALLOWED : EVENT_CREATE_ALLOWED;
+  for (const key of Object.keys(dataIn || {})) {
+    if (key === "eventId" && forUpdate) continue;
+    if (!allowed.has(key)) {
+      throw new HttpsError("invalid-argument", `Field not allowed: ${key}`);
+    }
+  }
+
+  const title = asTrimmedString(dataIn.title, "title", {
+    required: !forUpdate,
+    max: 120,
+  });
+  const description = asTrimmedString(dataIn.description, "description", {
+    required: !forUpdate,
+    max: 5000,
+  });
+  const category = asTrimmedString(dataIn.category, "category", {
+    required: !forUpdate,
+    max: 40,
+  });
+  if (category && !EVENT_ALLOWED_CATEGORIES.has(category)) {
+    throw new HttpsError("invalid-argument", "Invalid category.");
+  }
+
+  let startAtMs = null;
+  if (dataIn.startAtMs !== undefined && dataIn.startAtMs !== null) {
+    startAtMs = parseStartAtMs(dataIn.startAtMs);
+  } else if (!forUpdate) {
+    throw new HttpsError("invalid-argument", "startAtMs required.");
+  }
+
+  const city = asTrimmedString(dataIn.city, "city", {
+    required: !forUpdate,
+    max: 120,
+  });
+  const cityKey = asTrimmedString(dataIn.cityKey, "cityKey", {
+    required: false,
+    max: 120,
+  });
+  const stateName = asTrimmedString(dataIn.stateName, "stateName", {
+    required: false,
+    max: 120,
+  });
+  const placeName = asTrimmedString(dataIn.placeName, "placeName", {
+    required: !forUpdate,
+    max: 200,
+  });
+  const address = asTrimmedString(dataIn.address, "address", {
+    required: false,
+    max: 400,
+  });
+  const placeDisplay = asTrimmedString(dataIn.placeDisplay, "placeDisplay", {
+    required: false,
+    max: 400,
+  });
+  const countryCode = asTrimmedString(dataIn.countryCode, "countryCode", {
+    required: !forUpdate,
+    max: 8,
+  }).toLowerCase();
+  const regionKey = asTrimmedString(dataIn.regionKey, "regionKey", {
+    required: false,
+    max: 80,
+  });
+  const scope = asTrimmedString(dataIn.scope, "scope", {
+    required: false,
+    max: 40,
+  });
+
+  const lat =
+    dataIn.lat !== undefined ? asOptionalNumber(dataIn.lat, "lat") : undefined;
+  const lng =
+    dataIn.lng !== undefined ? asOptionalNumber(dataIn.lng, "lng") : undefined;
+
+  let sponsorInterested;
+  if (dataIn.sponsorInterested !== undefined) {
+    if (typeof dataIn.sponsorInterested !== "boolean") {
+      throw new HttpsError("invalid-argument", "Invalid sponsorInterested.");
+    }
+    sponsorInterested = dataIn.sponsorInterested;
+  }
+
+  const photoUrls = asPhotoUrls(dataIn.photoUrls);
+  const coverUrl = asCoverUrl(dataIn.coverUrl);
+
+  return {
+    title,
+    description,
+    category,
+    startAtMs,
+    city,
+    cityKey: cityKey || city.toLowerCase(),
+    stateName,
+    placeName,
+    address,
+    placeDisplay,
+    countryCode,
+    regionKey,
+    scope: scope || "city",
+    lat,
+    lng,
+    sponsorInterested,
+    photoUrls,
+    coverUrl,
+  };
+}
+
+/**
+ * Criar evento — ownership e aprovação só no backend.
+ */
+exports.createEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const dataIn = request.data || {};
+  const requestId = asTrimmedString(dataIn.requestId, "requestId", {
+    required: true,
+    max: 128,
+  });
+  if (requestId.length < 8 || !/^[A-Za-z0-9_-]+$/.test(requestId)) {
+    throw new HttpsError("invalid-argument", "Invalid requestId.");
+  }
+
+  const editorial = validateEventEditorial(dataIn, { forUpdate: false });
+  const db = admin.firestore();
+  const requestRef = db.collection("eventCreateRequests").doc(`${uid}_${requestId}`);
+  const userRef = db.collection("users").doc(uid);
+  const publicRef = db.collection("publicUsers").doc(uid);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const requestSnap = await tx.get(requestRef);
+      if (requestSnap.exists) {
+        const prev = requestSnap.data() || {};
+        return {
+          eventId: (prev.eventId || "").toString(),
+          status: (prev.status || "pending").toString(),
+          created: false,
+          alreadyCreated: true,
+        };
+      }
+
+      const userSnap = await tx.get(userRef);
+      const publicSnap = await tx.get(publicRef);
+      if (!userSnap.exists && !publicSnap.exists) {
+        throw new HttpsError("failed-precondition", "User profile not found.");
+      }
+      const userData = userSnap.exists
+        ? userSnap.data() || {}
+        : publicSnap.data() || {};
+      if (userData.isBanned === true || isAccountDisabledData(userData)) {
+        throw new HttpsError("permission-denied", "Account is banned.");
+      }
+
+      const eventRef = db.collection("events").doc();
+      const sponsorInterested = editorial.sponsorInterested === true;
+      const payload = {
+        title: editorial.title,
+        description: editorial.description,
+        category: editorial.category,
+        startAt: admin.firestore.Timestamp.fromMillis(editorial.startAtMs),
+        city: editorial.city,
+        cityKey: editorial.cityKey,
+        stateName: editorial.stateName,
+        placeName: editorial.placeName,
+        address: editorial.address,
+        placeDisplay: editorial.placeDisplay,
+        lat: editorial.lat === undefined ? null : editorial.lat,
+        lng: editorial.lng === undefined ? null : editorial.lng,
+        countryCode: editorial.countryCode,
+        regionKey: editorial.regionKey,
+        scope: editorial.scope,
+        coverUrl:
+          typeof editorial.coverUrl === "string" && editorial.coverUrl
+            ? editorial.coverUrl
+            : "",
+        photoUrls: Array.isArray(editorial.photoUrls)
+          ? editorial.photoUrls
+          : [],
+        createdBy: uid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        status: "pending",
+        isActive: false,
+        attendeesCount: 0,
+        attendeesUids: [],
+        sponsorInterested,
+        sponsorStatus: sponsorInterested ? "interested" : "none",
+        sponsored: false,
+        featured: false,
+        featuredUntil: null,
+      };
+
+      tx.set(eventRef, payload);
+      tx.set(requestRef, {
+        uid,
+        eventId: eventRef.id,
+        requestId,
+        status: "pending",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        eventId: eventRef.id,
+        status: "pending",
+        created: true,
+        alreadyCreated: false,
+      };
+    });
+
+    if (result.created) {
+      console.log(
+        JSON.stringify({
+          action: "event_created",
+          eventId: result.eventId,
+          performedBy: uid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+    }
+
+    return {
+      success: true,
+      eventId: result.eventId,
+      status: result.status,
+      alreadyCreated: result.alreadyCreated,
+    };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro createEvent:", e);
+    throw new HttpsError("internal", "Could not create event.");
+  }
+});
+
+/**
+ * Abortar evento pending incompleto (falha de upload/finalize no app).
+ * Soft-delete para o Admin não listar documento parcial.
+ */
+exports.abortIncompleteEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const dataIn = request.data || {};
+  const eventId = asTrimmedString(dataIn.eventId, "eventId", {
+    required: true,
+    max: 128,
+  });
+  const reason = asTrimmedString(dataIn.reason, "reason", {
+    required: false,
+    max: 200,
+  });
+
+  const db = admin.firestore();
+  const eventRef = db.collection("events").doc(eventId);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(eventRef);
+      if (!snap.exists) {
+        return { aborted: false, reason: "not_found" };
+      }
+
+      const data = snap.data() || {};
+      if (data.deleted === true) {
+        return { aborted: true, reason: "already_deleted" };
+      }
+
+      const owner = resolveEventOwnerUid(data);
+      if (!owner.ok || owner.uid !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "Not allowed to abort this event."
+        );
+      }
+
+      const statusNow = (data.status || "").toString().trim().toLowerCase();
+      if (statusNow !== "pending" && statusNow !== "rejected") {
+        throw new HttpsError(
+          "failed-precondition",
+          "Only pending/rejected events can be aborted."
+        );
+      }
+
+      tx.set(
+        eventRef,
+        {
+          deleted: true,
+          isActive: false,
+          status: "cancelled",
+          abortedAt: admin.firestore.FieldValue.serverTimestamp(),
+          abortedBy: uid,
+          abortReason: reason || "incomplete_create",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return { aborted: true, reason: "ok" };
+    });
+
+    console.log(
+      JSON.stringify({
+        action: "event_abort_incomplete",
+        eventId,
+        performedBy: uid,
+        result,
+        createdAt: new Date().toISOString(),
+      })
+    );
+
+    return { success: true, eventId, ...result };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro abortIncompleteEvent:", e);
+    throw new HttpsError("internal", "Could not abort incomplete event.");
+  }
+});
+
+/**
+ * Atualizar campos editoriais do evento — aprovação/ownership só no backend.
+ */
+
+exports.updateEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const dataIn = request.data || {};
+  const eventId = asTrimmedString(dataIn.eventId, "eventId", {
+    required: true,
+    max: 128,
+  });
+
+  const keys = Object.keys(dataIn).filter((k) => k !== "eventId");
+  if (keys.length === 0) {
+    throw new HttpsError("invalid-argument", "Empty update.");
+  }
+
+  const editorial = validateEventEditorial(dataIn, { forUpdate: true });
+  const hasEditorialChange = keys.some((k) => EVENT_UPDATE_ALLOWED.has(k));
+  if (!hasEditorialChange) {
+    throw new HttpsError("invalid-argument", "Empty update.");
+  }
+
+  const db = admin.firestore();
+  const eventRef = db.collection("events").doc(eventId);
+  const userRef = db.collection("users").doc(uid);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const eventSnap = await tx.get(eventRef);
+      const userSnap = await tx.get(userRef);
+
+      if (!eventSnap.exists) {
+        throw new HttpsError("not-found", "Event not found.");
+      }
+
+      const data = eventSnap.data() || {};
+      if (data.deleted === true) {
+        throw new HttpsError("failed-precondition", "Event unavailable.");
+      }
+
+      const owner = resolveEventOwnerUid(data);
+      if (!owner.ok) {
+        console.error(
+          JSON.stringify({
+            action: "event_owner_inconsistent",
+            eventId,
+            reason: owner.reason,
+            uids: owner.uids || [],
+            performedBy: uid,
+          })
+        );
+        throw new HttpsError(
+          "failed-precondition",
+          "Event ownership is inconsistent."
+        );
+      }
+      if (owner.uid !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "Not allowed to edit this event."
+        );
+      }
+
+      if (userSnap.exists) {
+        const userData = userSnap.data() || {};
+        if (userData.isBanned === true || isAccountDisabledData(userData)) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
+      }
+
+      const statusNow = (data.status || "").toString().trim().toLowerCase();
+      if (statusNow === "cancelled") {
+        throw new HttpsError(
+          "failed-precondition",
+          "Cancelled event cannot be edited."
+        );
+      }
+
+      const published =
+        statusNow === "approved" && data.isActive === true;
+
+      const editorialPatch = buildEventEditorialPatch(dataIn, editorial);
+      if (Object.keys(editorialPatch).length === 0) {
+        throw new HttpsError("invalid-argument", "Empty update.");
+      }
+
+      if (published) {
+        const pendingChanges = buildPendingChangesMap(
+          data,
+          editorialPatch,
+          uid
+        );
+        const patch = {
+          pendingChanges,
+          hasPendingChanges: true,
+          pendingChangesSubmittedAt:
+            admin.firestore.FieldValue.serverTimestamp(),
+          pendingChangesSubmittedBy: uid,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        // Clear previous rejection-of-changes markers if any.
+        patch.pendingChangesRejectedAt =
+          admin.firestore.FieldValue.delete();
+        patch.pendingChangesRejectedBy =
+          admin.firestore.FieldValue.delete();
+        patch.pendingChangesRejectionReason =
+          admin.firestore.FieldValue.delete();
+
+        tx.set(eventRef, patch, { merge: true });
+        return {
+          eventId,
+          status: "approved",
+          hasPendingChanges: true,
+          updateMode: "pending_changes",
+          changedFields: Object.keys(editorialPatch),
+        };
+      }
+
+      // pending / rejected (and approved-but-inactive): direct editorial update
+      const patch = {
+        ...editorialPatch,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        status: "pending",
+        isActive: false,
+        hasPendingChanges: false,
+        pendingChanges: admin.firestore.FieldValue.delete(),
+        pendingChangesSubmittedAt: admin.firestore.FieldValue.delete(),
+        pendingChangesSubmittedBy: admin.firestore.FieldValue.delete(),
+      };
+
+      if (statusNow === "rejected") {
+        patch.rejectedAt = admin.firestore.FieldValue.delete();
+        patch.rejectedBy = admin.firestore.FieldValue.delete();
+        patch.rejectionReason = admin.firestore.FieldValue.delete();
+      }
+
+      tx.set(eventRef, patch, { merge: true });
+      return {
+        eventId,
+        status: "pending",
+        hasPendingChanges: false,
+        updateMode: "direct_pending",
+        changedFields: Object.keys(editorialPatch),
+      };
+    });
+
+    console.log(
+      JSON.stringify({
+        action: "event_updated",
+        eventId,
+        performedBy: uid,
+        createdAt: new Date().toISOString(),
+        updateMode: result.updateMode,
+        changedFields: result.changedFields,
+      })
+    );
+
+    return {
+      success: true,
+      eventId: result.eventId,
+      status: result.status,
+      hasPendingChanges: result.hasPendingChanges,
+      updateMode: result.updateMode,
+      changedFields: result.changedFields,
+    };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro updateEvent:", e);
+    throw new HttpsError("internal", "Could not update event.");
+  }
+});
+
+const EVENT_PENDING_EDITORIAL_KEYS = [
+  "title",
+  "description",
+  "category",
+  "startAt",
+  "city",
+  "cityKey",
+  "stateName",
+  "placeName",
+  "address",
+  "placeDisplay",
+  "lat",
+  "lng",
+  "countryCode",
+  "regionKey",
+  "scope",
+  "coverUrl",
+  "photoUrls",
+  "sponsorInterested",
+  "sponsorStatus",
+];
+
+function buildEventEditorialPatch(dataIn, editorial) {
+  const patch = {};
+  if (dataIn.title !== undefined) patch.title = editorial.title;
+  if (dataIn.description !== undefined) {
+    patch.description = editorial.description;
+  }
+  if (dataIn.category !== undefined) patch.category = editorial.category;
+  if (dataIn.startAtMs !== undefined) {
+    patch.startAt = admin.firestore.Timestamp.fromMillis(editorial.startAtMs);
+  }
+  if (dataIn.city !== undefined) patch.city = editorial.city;
+  if (dataIn.cityKey !== undefined || dataIn.city !== undefined) {
+    patch.cityKey = editorial.cityKey;
+  }
+  if (dataIn.stateName !== undefined) patch.stateName = editorial.stateName;
+  if (dataIn.placeName !== undefined) patch.placeName = editorial.placeName;
+  if (dataIn.address !== undefined) patch.address = editorial.address;
+  if (dataIn.placeDisplay !== undefined) {
+    patch.placeDisplay = editorial.placeDisplay;
+  }
+  if (dataIn.countryCode !== undefined) {
+    patch.countryCode = editorial.countryCode;
+  }
+  if (dataIn.regionKey !== undefined) patch.regionKey = editorial.regionKey;
+  if (dataIn.scope !== undefined) patch.scope = editorial.scope;
+  if (dataIn.lat !== undefined) {
+    patch.lat = editorial.lat === undefined ? null : editorial.lat;
+  }
+  if (dataIn.lng !== undefined) {
+    patch.lng = editorial.lng === undefined ? null : editorial.lng;
+  }
+  if (dataIn.sponsorInterested !== undefined) {
+    const interested = editorial.sponsorInterested === true;
+    patch.sponsorInterested = interested;
+    patch.sponsorStatus = interested ? "interested" : "none";
+  }
+  if (dataIn.photoUrls !== undefined) {
+    patch.photoUrls = editorial.photoUrls || [];
+  }
+  if (dataIn.coverUrl !== undefined) {
+    patch.coverUrl = editorial.coverUrl === null ? "" : editorial.coverUrl;
+  }
+  return patch;
+}
+
+function cloneEditorialBaseFromEvent(data) {
+  const base = {};
+  for (const key of EVENT_PENDING_EDITORIAL_KEYS) {
+    if (data[key] !== undefined) {
+      base[key] = data[key];
+    }
+  }
+  if (!Array.isArray(base.photoUrls)) {
+    base.photoUrls = [];
+  }
+  if (typeof base.coverUrl !== "string") {
+    base.coverUrl = (base.coverUrl || "").toString();
+  }
+  return base;
+}
+
+function buildPendingChangesMap(data, editorialPatch, uid) {
+  const existing =
+    data.hasPendingChanges === true &&
+    data.pendingChanges &&
+    typeof data.pendingChanges === "object" &&
+    !Array.isArray(data.pendingChanges)
+      ? data.pendingChanges
+      : null;
+
+  const base = existing
+    ? { ...existing }
+    : cloneEditorialBaseFromEvent(data);
+
+  // Remove previous meta before rebuild.
+  delete base.submittedAt;
+  delete base.submittedBy;
+
+  for (const [key, value] of Object.entries(editorialPatch)) {
+    base[key] = value;
+  }
+
+  // Ensure only editorial keys remain (+ meta).
+  const cleaned = {};
+  for (const key of EVENT_PENDING_EDITORIAL_KEYS) {
+    if (base[key] !== undefined) {
+      cleaned[key] = base[key];
+    }
+  }
+  cleaned.submittedBy = uid;
+  cleaned.submittedAt = admin.firestore.FieldValue.serverTimestamp();
+  return cleaned;
+}
+
+function pickEditorialFromPendingChanges(pending) {
+  const out = {};
+  for (const key of EVENT_PENDING_EDITORIAL_KEYS) {
+    if (pending[key] !== undefined) {
+      out[key] = pending[key];
+    }
+  }
+  return out;
+}
+
+async function assertPortalEventAdmin(request) {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+  const uid = request.auth.uid;
+  if (request.auth.token?.admin === true) {
+    return uid;
+  }
+  const db = admin.firestore();
+  const userSnap = await db.collection("users").doc(uid).get();
+  const userData = userSnap.exists ? userSnap.data() || {} : {};
+  if (
+    userData.isPlatformAdmin === true ||
+    userData.isAdmin === true ||
+    (userData.role || "").toString().trim().toLowerCase() === "admin"
+  ) {
+    return uid;
+  }
+  const adminSnap = await db.collection("admins").doc(uid).get();
+  if (adminSnap.exists) {
+    return uid;
+  }
+  throw new HttpsError("permission-denied", "Admin only.");
+}
+
+/**
+ * Admin: aprovar pendingChanges de evento publicado.
+ * Portal com Admin SDK também pode aplicar o mesmo merge diretamente.
+ */
+exports.approveEventPendingChanges = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const adminUid = await assertPortalEventAdmin(request);
+    const eventId = asTrimmedString(request.data?.eventId, "eventId", {
+      required: true,
+      max: 128,
+    });
+    const db = admin.firestore();
+    const eventRef = db.collection("events").doc(eventId);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(eventRef);
+        if (!snap.exists) {
+          throw new HttpsError("not-found", "Event not found.");
+        }
+        const data = snap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Event unavailable.");
+        }
+        const statusNow = (data.status || "").toString().trim().toLowerCase();
+        if (statusNow === "cancelled") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Cancelled event cannot be updated."
+          );
+        }
+        if (data.hasPendingChanges !== true) {
+          throw new HttpsError(
+            "failed-precondition",
+            "No pending changes."
+          );
+        }
+        const pending = data.pendingChanges;
+        if (!pending || typeof pending !== "object" || Array.isArray(pending)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Invalid pendingChanges."
+          );
+        }
+
+        const editorial = pickEditorialFromPendingChanges(pending);
+        const patch = {
+          ...editorial,
+          hasPendingChanges: false,
+          pendingChanges: admin.firestore.FieldValue.delete(),
+          pendingChangesSubmittedAt: admin.firestore.FieldValue.delete(),
+          pendingChangesSubmittedBy: admin.firestore.FieldValue.delete(),
+          pendingChangesRejectedAt: admin.firestore.FieldValue.delete(),
+          pendingChangesRejectedBy: admin.firestore.FieldValue.delete(),
+          pendingChangesRejectionReason: admin.firestore.FieldValue.delete(),
+          pendingChangesApprovedAt:
+            admin.firestore.FieldValue.serverTimestamp(),
+          pendingChangesApprovedBy: adminUid,
+          status: "approved",
+          isActive: true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        tx.set(eventRef, patch, { merge: true });
+        return { eventId, approved: true };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "event_pending_changes_approved",
+          eventId,
+          performedBy: adminUid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro approveEventPendingChanges:", e);
+      throw new HttpsError("internal", "Could not approve pending changes.");
+    }
+  }
+);
+
+/**
+ * Admin: rejeitar pendingChanges — evento publicado permanece no ar.
+ */
+exports.rejectEventPendingChanges = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const adminUid = await assertPortalEventAdmin(request);
+    const eventId = asTrimmedString(request.data?.eventId, "eventId", {
+      required: true,
+      max: 128,
+    });
+    const reason = asTrimmedString(
+      request.data?.reason ?? request.data?.rejectionReason,
+      "reason",
+      { required: false, max: 500 }
+    );
+    const db = admin.firestore();
+    const eventRef = db.collection("events").doc(eventId);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(eventRef);
+        if (!snap.exists) {
+          throw new HttpsError("not-found", "Event not found.");
+        }
+        const data = snap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Event unavailable.");
+        }
+        const statusNow = (data.status || "").toString().trim().toLowerCase();
+        if (statusNow === "cancelled") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Cancelled event cannot be updated."
+          );
+        }
+        if (data.hasPendingChanges !== true) {
+          return { eventId, rejected: true, alreadyCleared: true };
+        }
+
+        const patch = {
+          hasPendingChanges: false,
+          pendingChanges: admin.firestore.FieldValue.delete(),
+          pendingChangesSubmittedAt: admin.firestore.FieldValue.delete(),
+          pendingChangesSubmittedBy: admin.firestore.FieldValue.delete(),
+          pendingChangesRejectedAt:
+            admin.firestore.FieldValue.serverTimestamp(),
+          pendingChangesRejectedBy: adminUid,
+          pendingChangesRejectionReason: reason || null,
+          // Keep published.
+          status: "approved",
+          isActive: true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        tx.set(eventRef, patch, { merge: true });
+        return { eventId, rejected: true, alreadyCleared: false };
+      });
+
+      if (!result.alreadyCleared) {
+        console.log(
+          JSON.stringify({
+            action: "event_pending_changes_rejected",
+            eventId,
+            performedBy: adminUid,
+            createdAt: new Date().toISOString(),
+          })
+        );
+      }
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro rejectEventPendingChanges:", e);
+      throw new HttpsError("internal", "Could not reject pending changes.");
+    }
+  }
+);
+
+
+/**
+ * Registrar visualização única de evento (viewsCount).
+ */
+exports.registerEventView = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const eventId = (request.data?.eventId || "").toString().trim();
+  if (!eventId || eventId.length > 128) {
+    throw new HttpsError("invalid-argument", "eventId required.");
+  }
+
+  // viewerSessionId aceito mas não é fonte de verdade quando há auth.
+  const sessionRaw = request.data?.viewerSessionId;
+  if (
+    sessionRaw !== undefined &&
+    sessionRaw !== null &&
+    typeof sessionRaw !== "string"
+  ) {
+    throw new HttpsError("invalid-argument", "Invalid viewerSessionId.");
+  }
+
+  const db = admin.firestore();
+  const eventRef = db.collection("events").doc(eventId);
+  const viewRef = eventRef.collection("views").doc(uid);
+  const userRef = db.collection("users").doc(uid);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const eventSnap = await tx.get(eventRef);
+      const viewSnap = await tx.get(viewRef);
+      const userSnap = await tx.get(userRef);
+
+      if (!eventSnap.exists) {
+        throw new HttpsError("not-found", "Event not found.");
+      }
+
+      const data = eventSnap.data() || {};
+      if (data.deleted === true) {
+        throw new HttpsError("failed-precondition", "Event unavailable.");
+      }
+
+      const status = (data.status || "").toString().trim().toLowerCase();
+      if (status === "cancelled") {
+        throw new HttpsError("failed-precondition", "Event unavailable.");
+      }
+      if (status !== "approved" || data.isActive !== true) {
+        throw new HttpsError("failed-precondition", "Event unavailable.");
+      }
+
+      if (userSnap.exists) {
+        const userData = userSnap.data() || {};
+        if (userData.isBanned === true || isAccountDisabledData(userData)) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
+      }
+
+      const owner = resolveEventOwnerUid(data);
+      const isOrganizer = owner.ok && owner.uid === uid;
+
+      let viewsCount =
+        typeof data.viewsCount === "number" && Number.isFinite(data.viewsCount)
+          ? Math.max(0, Math.floor(data.viewsCount))
+          : 0;
+
+      // Organizador não infla o contador público.
+      if (isOrganizer) {
+        if (viewSnap.exists) {
+          tx.set(
+            viewRef,
+            {
+              lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } else {
+          tx.set(viewRef, {
+            uid,
+            firstViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+            viewCount: 0,
+            isOrganizer: true,
+          });
+        }
+        return {
+          eventId,
+          counted: false,
+          countedUnique: false,
+          viewsCount,
+          totalOpensCount: viewsCount,
+        };
+      }
+
+      if (viewSnap.exists) {
+        const prev = viewSnap.data() || {};
+        const prevOpens =
+          typeof prev.viewCount === "number" ? prev.viewCount : 1;
+        tx.set(
+          viewRef,
+          {
+            lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+            viewCount: prevOpens + 1,
+          },
+          { merge: true }
+        );
+        return {
+          eventId,
+          counted: false,
+          countedUnique: false,
+          viewsCount,
+          totalOpensCount: viewsCount,
+        };
+      }
+
+      viewsCount += 1;
+      tx.set(viewRef, {
+        uid,
+        firstViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        viewCount: 1,
+        isOrganizer: false,
+      });
+      tx.set(
+        eventRef,
+        {
+          viewsCount,
+        },
+        { merge: true }
+      );
+
+      return {
+        eventId,
+        counted: true,
+        countedUnique: true,
+        viewsCount,
+        totalOpensCount: viewsCount,
+      };
+    });
+
+    if (result.counted) {
+      console.log(
+        JSON.stringify({
+          action: "event_view_registered",
+          eventId,
+          performedBy: uid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+    }
+
+    return {
+      success: true,
+      eventId: result.eventId,
+      counted: result.counted,
+      countedUnique: result.countedUnique,
+      viewsCount: result.viewsCount,
+      totalOpensCount: result.totalOpensCount,
+    };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro registerEventView:", e);
+    throw new HttpsError("internal", "Could not register view.");
+  }
+});
+
+/**
+ * Cancelar evento — somente organizador (createdBy/ownerUid/organizerId).
+ */
+exports.cancelEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+  const uid = request.auth.uid;
+  const eventId = (request.data?.eventId || "").toString().trim();
+  if (!eventId) {
+    throw new HttpsError("invalid-argument", "eventId required.");
+  }
+
+  const db = admin.firestore();
+  const eventRef = db.collection("events").doc(eventId);
+  const userRef = db.collection("users").doc(uid);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(eventRef);
+      const userSnap = await tx.get(userRef);
+      if (!snap.exists) {
+        throw new HttpsError("not-found", "Event not found.");
+      }
+      const data = snap.data() || {};
+      if (data.deleted === true) {
+        throw new HttpsError("failed-precondition", "Event unavailable.");
+      }
+      if (!userSnap.exists || userSnap.data()?.isBanned === true) {
+        throw new HttpsError("permission-denied", "Not allowed.");
+      }
+
+      const owner =
+        (data.organizerId || data.createdBy || data.ownerUid || data.userId || "")
+          .toString()
+          .trim();
+      if (owner !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "Only organizer can cancel."
+        );
+      }
+
+      const statusNow = (data.status || "").toString().trim().toLowerCase();
+      if (statusNow === "cancelled") {
+        return { eventId, alreadyCancelled: true };
+      }
+
+      tx.set(
+        eventRef,
+        {
+          status: "cancelled",
+          isActive: false,
+          cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+          cancelledBy: uid,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return { eventId, alreadyCancelled: false };
+    });
+
+    console.log(
+      JSON.stringify({
+        action: "event_cancelled",
+        eventId,
+        performedBy: uid,
+        createdAt: new Date().toISOString(),
+      })
+    );
+    return { success: true, ...result };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro cancelEvent:", e);
+    throw new HttpsError("internal", "Could not cancel event.");
+  }
+});
+

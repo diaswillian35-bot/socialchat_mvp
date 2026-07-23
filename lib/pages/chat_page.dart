@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -19,7 +20,10 @@ import 'package:socialchat_mvp/widget/audio_bubble.dart';
 
 
 import '../l10n/app_texts.dart';
+import '../services/international_chat_service.dart';
+import '../services/premium_access_service.dart';
 import '../services/voice_service.dart';
+import '../widgets/international_premium_dialog.dart';
 import '../widget/online_dot.dart';
 import '../widget/recording_button.dart';
 
@@ -414,32 +418,22 @@ bool _isSameDay(DateTime a, DateTime b) {
   _premiumSub = myUserDoc.snapshots().listen((snap) {
     final data = snap.data() ?? {};
 
-    final paid = (data['isPremium'] ?? false) == true;
+    final paid = data['isPremium'] == true;
     final master = data['isMaster'] == true;
-
-
-    final untilRaw = data['premiumUntil'];
-    DateTime? until;
-    if (untilRaw is Timestamp) until = untilRaw.toDate();
-
+    final until = PremiumAccessService.parsePremiumUntil(data['premiumUntil']);
     final timePremiumActive =
-        (until != null) && until.isAfter(DateTime.now());
+        PremiumAccessService.hasActiveTimePremium(data);
 
     _isPremiumPaid = paid;
     _hasActiveTimePremium = timePremiumActive;
     _premiumUntil = until;
 
-   
-final active = _isPremiumPaid || master;
-
-
+    final active = PremiumAccessService.isPremiumActiveFromData(data);
 
     if (!mounted) return;
     setState(() {
-    
-_isPremium = active;
-_isMaster = master;
-
+      _isPremium = active;
+      _isMaster = master;
     });
 
     _applyTimerRules();
@@ -459,11 +453,8 @@ _isMaster = master;
         .get();
 
     final myData = mySnap.data() ?? {};
-    final isMaster = myData['isMaster'] == true;
-
-if (isMaster) {
-  _isPremium = true;
-}
+    _isPremium = PremiumAccessService.isPremiumActiveFromData(myData);
+    _isMaster = myData['isMaster'] == true;
 
 
     final otherData = {
@@ -724,6 +715,64 @@ void _startUsageTimerWorld() {
   }
 
 
+  Future<bool> _ensureCanSendMessage({required bool showReplyModal}) async {
+    final mySnap = await myUserDoc.get();
+    final otherSnap = await otherUserDoc.get();
+    final canSend = InternationalChatService.canSendMessage(
+      senderData: mySnap.data() ?? {},
+      recipientData: otherSnap.data() ?? {},
+    );
+    if (canSend) return true;
+    if (showReplyModal && mounted) {
+      await InternationalPremiumDialog.showReply(context);
+    }
+    return false;
+  }
+
+
+  /// Atualiza resumo/unread sem reescrever `participants`/`pairKey`
+  /// (a rule exige participants imutável — ordem diferente = permission-denied).
+  Future<void> _updateConversationSummary({
+    required String lastMessage,
+    required String logPrefix,
+  }) async {
+    if (kDebugMode) {
+      debugPrint('$logPrefix: atualizando resumo da conversa path=conversations/${widget.conversationId}');
+      debugPrint('$logPrefix: campos={lastMessage,lastMessageAt,updatedAt,unread}');
+    }
+
+    await db.runTransaction((tx) async {
+      final snap = await tx.get(convDoc);
+      final data = snap.data() ?? {};
+
+      final unread = Map<String, dynamic>.from(
+        (data['unread'] is Map) ? data['unread'] : {},
+      );
+
+      final otherCount =
+          (unread[widget.otherUid] is int) ? unread[widget.otherUid] as int : 0;
+
+      unread[widget.otherUid] = otherCount + 1;
+      unread[myUid] = 0;
+
+      tx.set(
+        convDoc,
+        {
+          'lastMessage': lastMessage,
+          'lastMessageAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'unread': unread,
+        },
+        SetOptions(merge: true),
+      );
+    });
+
+    if (kDebugMode) {
+      debugPrint('$logPrefix: resumo atualizado');
+      debugPrint('$logPrefix: unread atualizado');
+    }
+  }
+
   Future<void> _send() async {
     final t = AppTexts.current;
     final myUid = FirebaseAuth.instance.currentUser?.uid;
@@ -742,13 +791,9 @@ _warn(t.get('user_temporarily_silenced'));
 }
 
 
-    
- if (_isWorldChat && !_isPremium) {
-    
-_warn(t.get('chat_user_is_premium'));
-
-    return;
-  }
+    if (!await _ensureCanSendMessage(showReplyModal: true)) {
+      return;
+    }
 
 
  if (_isWorldChat && _limitReached && !_isPremium) {
@@ -822,33 +867,16 @@ _warn(t.get('chat_user_is_premium'));
       _cancelReply();
 
 
-      await db.runTransaction((tx) async {
-        final snap = await tx.get(convDoc);
-        final data = snap.data() ?? {};
-
-
-        final unread = Map<String, dynamic>.from(
-          (data['unread'] is Map) ? data['unread'] : {},
+      try {
+        await _updateConversationSummary(
+          lastMessage: text,
+          logPrefix: 'ChatText',
         );
-
-
-        final otherCount =
-            (unread[widget.otherUid] is int) ? unread[widget.otherUid] as int : 0;
-
-
-        unread[widget.otherUid] = otherCount + 1;
-        unread[myUid] = 0;
-
-
-        tx.set(convDoc, {
-          'participants': [myUid, widget.otherUid],
-          'pairKey': '${myUid}_${widget.otherUid}',
-          'lastMessage': text,
-          'lastMessageAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'unread': unread,
-        }, SetOptions(merge: true));
-      });
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('ChatText: falha parcial no resumo da conversa: $e\n$st');
+        }
+      }
 
 
       Future.delayed(const Duration(milliseconds: 100), () {
@@ -939,58 +967,87 @@ _warn(t.get('chat_user_is_premium'));
   // =======================
   Future<void> _sendAudio(String localPath) async {
     final t = AppTexts.current;
-final mySnap = await myUserDoc.get();
+    final sw = Stopwatch()..start();
+    if (kDebugMode) {
+      debugPrint('ChatAudio: Mensagem/áudio send iniciado path=$localPath');
+    }
 
-if (mySnap.data()?['shadowBan'] == true) {
-  await _setRecording(false);
-  _warn(t.get('user_temporarily_silenced'));
-  return;
-}
+    final mySnap = await myUserDoc.get();
 
+    if (mySnap.data()?['shadowBan'] == true) {
+      await _setRecording(false);
+      _warn(t.get('user_temporarily_silenced'));
+      return;
+    }
 
-if (_isWorldChat && _limitReached && !_isPremium) {
-  if (!mounted) return;
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const PremiumPage()),
-  );
-  return;
-}
+    if (!await _ensureCanSendMessage(showReplyModal: true)) {
+      await _setRecording(false);
+      return;
+    }
 
-
+    if (_isWorldChat && _limitReached && !_isPremium) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const PremiumPage()),
+      );
+      return;
+    }
 
     final blockedNow = await BlockService.isEitherBlocked(widget.otherUid);
     if (blockedNow) return;
 
-
     final pendingId = _makePendingId();
     _addPendingAudio(pendingId: pendingId, localPath: localPath);
-
 
     try {
       final file = File(localPath);
       if (!await file.exists()) {
-        debugPrint('Arquivo não existe: $localPath');
-        return;
+        throw Exception('Arquivo de áudio não existe: $localPath');
       }
 
+      var size = await file.length();
+      if (size <= 0) {
+        for (var i = 0; i < 15; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+          size = await file.length();
+          if (size > 0) break;
+        }
+      }
+      if (size <= 0) {
+        throw Exception('Arquivo de áudio vazio: $localPath');
+      }
+      if (kDebugMode) {
+        debugPrint('ChatAudio: Arquivo pronto bytes=$size');
+      }
 
       int durationMs = 0;
       final probe = AudioPlayer();
       try {
-        await probe.setFilePath(localPath);
-        final d = probe.duration;
+        final d = await probe.setFilePath(localPath);
         durationMs = d?.inMilliseconds ?? 0;
-      } catch (e) {
-        debugPrint('Não consegui ler duração: $e');
+        if (kDebugMode) {
+          debugPrint('ChatAudio: Duração lida durationMs=$durationMs');
+        }
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('ChatAudio: Erro ao ler duração: $e\n$st');
+        }
       } finally {
         await probe.dispose();
       }
 
-
+      if (kDebugMode) debugPrint('ChatAudio: Upload iniciado');
+      final uploadSw = Stopwatch()..start();
       final audioUrl = await _uploadAudioToStorage(localPath);
+      uploadSw.stop();
+      if (kDebugMode) {
+        debugPrint(
+          'ChatAudio: Upload concluído em ${uploadSw.elapsedMilliseconds}ms url=$audioUrl',
+        );
+      }
 
-
+      if (kDebugMode) debugPrint('ChatAudio: salvando mensagem');
       await msgsCol.add({
         'type': 'audio',
         'audioUrl': audioUrl,
@@ -1010,47 +1067,41 @@ if (_isWorldChat && _limitReached && !_isPremium) {
         'replyToImageUrl': _replyToImageUrl,
       });
       _cancelReply();
+      if (kDebugMode) debugPrint('ChatAudio: mensagem salva');
 
-
-      await db.runTransaction((tx) async {
-        final snap = await tx.get(convDoc);
-        final data = snap.data() ?? {};
-
-
-        final unread = Map<String, dynamic>.from(
-          (data['unread'] is Map) ? data['unread'] : {},
+      try {
+        await _updateConversationSummary(
+          lastMessage: t.get('chat_audio_label'),
+          logPrefix: 'ChatAudio',
         );
-
-
-        final otherCount =
-            (unread[widget.otherUid] is int) ? unread[widget.otherUid] as int : 0;
-
-
-        unread[widget.otherUid] = otherCount + 1;
-        unread[myUid] = 0;
-
-
-        tx.set(
-          convDoc,
-          {
-            'participants': [myUid, widget.otherUid],
-            'pairKey': '${myUid}_${widget.otherUid}',
-            'lastMessage': t.get('chat_audio_label'),
-            'lastMessageAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-            'unread': unread,
-          },
-          SetOptions(merge: true),
-        );
-      });
-
+      } catch (e, st) {
+        // Mensagem já persistida — não tratar como falha total do envio.
+        if (kDebugMode) {
+          debugPrint(
+            'ChatAudio: falha parcial no resumo da conversa '
+            'path=conversations/${widget.conversationId}: $e\n$st',
+          );
+        }
+      }
 
       Future.delayed(const Duration(milliseconds: 100), () {
         if (!_scrollC.hasClients) return;
         _scrollC.jumpTo(0);
       });
-    } catch (e) {
-      debugPrint('Erro ao enviar áudio: $e');
+
+      sw.stop();
+      if (kDebugMode) {
+        debugPrint(
+          'ChatAudio: Envio completo em ${sw.elapsedMilliseconds}ms',
+        );
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('ChatAudio: Erro completo ao enviar áudio: $e\n$st');
+      }
+      if (mounted) {
+        _warn('${t.get('error')}: $e');
+      }
     } finally {
       _removePendingAudio(pendingId);
     }
@@ -1059,12 +1110,23 @@ if (_isWorldChat && _limitReached && !_isPremium) {
 
   Future<String> _uploadAudioToStorage(String localPath) async {
     final fileName = 'remdy_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final storagePath = 'chat_audio/${widget.conversationId}/$fileName';
 
+    // A regra do Storage exige conversations/{id} com participants.
+    final convSnap = await convDoc.get();
+    if (!convSnap.exists) {
+      throw Exception(
+        'Conversa inexistente antes do upload de áudio: ${widget.conversationId}',
+      );
+    }
 
-    final ref = FirebaseStorage.instance
-        .ref()
-        .child('chat_audio/${widget.conversationId}/$fileName');
+    if (kDebugMode) {
+      debugPrint('ChatAudio: storagePath=$storagePath');
+      debugPrint('ChatAudio: currentUid=$myUid');
+      debugPrint('ChatAudio: conversationId=${widget.conversationId}');
+    }
 
+    final ref = FirebaseStorage.instance.ref().child(storagePath);
 
     final metadata = SettableMetadata(
       contentType: 'audio/mp4',
@@ -1074,7 +1136,6 @@ if (_isWorldChat && _limitReached && !_isPremium) {
         'conversationId': widget.conversationId,
       },
     );
-
 
     await ref.putFile(File(localPath), metadata);
     return await ref.getDownloadURL();
@@ -1121,6 +1182,11 @@ final mySnap = await myUserDoc.get();
 
 if (mySnap.data()?['shadowBan'] == true) {
   _warn(t.get('user_temporarily_silenced'));
+  return;
+}
+
+
+ if (!await _ensureCanSendMessage(showReplyModal: true)) {
   return;
 }
 
@@ -1185,37 +1251,16 @@ if (mySnap.data()?['shadowBan'] == true) {
       _cancelReply();
 
 
-      await db.runTransaction((tx) async {
-        final snap = await tx.get(convDoc);
-        final data = snap.data() ?? {};
-
-
-        final unread = Map<String, dynamic>.from(
-          (data['unread'] is Map) ? data['unread'] : {},
+      try {
+        await _updateConversationSummary(
+          lastMessage: t.get('chat_photo_label'),
+          logPrefix: 'ChatImage',
         );
-
-
-        final otherCount =
-            (unread[widget.otherUid] is int) ? unread[widget.otherUid] as int : 0;
-
-
-        unread[widget.otherUid] = otherCount + 1;
-        unread[myUid] = 0;
-
-
-        tx.set(
-          convDoc,
-          {
-            'participants': [myUid, widget.otherUid],
-            'pairKey': '${myUid}_${widget.otherUid}',
-            'lastMessage': t.get('chat_photo_label'),
-            'lastMessageAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-            'unread': unread,
-          },
-          SetOptions(merge: true),
-        );
-      });
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('ChatImage: falha parcial no resumo da conversa: $e\n$st');
+        }
+      }
 
 
       Future.delayed(const Duration(milliseconds: 100), () {
@@ -1340,6 +1385,7 @@ if (mySnap.data()?['shadowBan'] == true) {
     _remainingVN.dispose();
     _textC.dispose();
     _scrollC.dispose();
+    FocusManager.instance.primaryFocus?.unfocus();
     super.dispose();
   }
 
@@ -1482,7 +1528,7 @@ void _openChatReportSheet() {
             title: Text(t.get('report_reason_inappropriate')),
             onTap: () {
               Navigator.pop(context);
-              _sendChatReport(context, 'Conteúdo impróprio');
+              _sendChatReport(context, t.get('report_reason_inappropriate'));
             },
           ),
           ListTile(
@@ -1533,6 +1579,7 @@ void _openChatReportSheet() {
 
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: _bg,
@@ -1550,7 +1597,7 @@ void _openChatReportSheet() {
         controller: _searchController,
         autofocus: true,
         decoration:  InputDecoration(
-          hintText: t.get('chat_search_message_hint'),
+          hintText: t.get('chat_search_message_hit'),
           border: InputBorder.none,
         ),
         onChanged: (value) {
@@ -1721,8 +1768,7 @@ actions: [
               builder: (context, blockSnap) {
                final isBlocked = blockSnap.data ?? false;
 
-final lockByCountry = _isWorldChat && !_isPremium;
-final locked = isBlocked || (_isWorldChat && !_isPremium);
+final locked = isBlocked;
 
 
 
@@ -1909,6 +1955,7 @@ if (_searchMode && _searchText.isNotEmpty) {
                                               messageId: docs[docIndex].id);
                                         },
                                         child: AudioBubble(
+                                          key: ValueKey(docs[docIndex].id),
                                           messageId: docs[docIndex].id,
                                           audioUrl: url,
                                           isMe: isMe,
@@ -2052,29 +2099,22 @@ return Column(
 
 
                    
-if (_isWorldChat && !_isPremium && _limitReached)
-
+if (_isWorldChat && !_isPremium)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: _remainingVN,
-                          builder: (_, remaining, __) {
-                            return Text(
-                              _limitReached
-                                  ? t.get('chat_world_time_ended_today')
-                                  : '${t.get('chat_world_time_today')} ${_formatSeconds(remaining)}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: _muted,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              textAlign: TextAlign.center,
-                            );
-                          },
+                        child: Text(
+                          t.get('chat_world_is_premium'),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: _muted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                     SafeArea(
                       top: false,
+                      minimum: EdgeInsets.zero,
                       child: Container(
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                         decoration: BoxDecoration(
@@ -2187,17 +2227,15 @@ else
   padding: const EdgeInsets.symmetric(horizontal: 14),
   child: TextField(
     controller: _textC,
-   enabled: !(_isWorldChat && !_isPremium),
+   enabled: !isBlocked,
     textInputAction: TextInputAction.send,
     onSubmitted: (_) async {
-      if (locked) return;
+      if (isBlocked) return;
       await _setTyping(false);
       await _send();
     },
     decoration: InputDecoration(
-hintText: (_isWorldChat && !_isPremium)
-    ? t.get('chat_user_is_premium')
-    : isBlocked
+hintText: isBlocked
         ? t.get('chat_cannot_send_blocked')
         : t.get('chat_type_message'),
 
@@ -2215,7 +2253,7 @@ hintText: (_isWorldChat && !_isPremium)
                                 Opacity(
                                   opacity: locked ? 0.45 : 1.0,
                                   child: InkWell(
-                                    onTap: (_isWorldChat && !_isPremium) ? null : _openPlusMenu,
+                                    onTap: isBlocked ? null : _openPlusMenu,
                                     borderRadius: BorderRadius.circular(999),
                                     child: Container(
                                       width: 40,
@@ -2246,7 +2284,7 @@ hintText: (_isWorldChat && !_isPremium)
                                     ? Opacity(
                                         opacity: locked ? 0.45 : 1.0,
                                         child: IgnorePointer(
-                                        ignoring: (_isWorldChat && !_isPremium),
+                                        ignoring: isBlocked,
                                           child: RecordingButton(
                                             onRecordStart: () async {
                                               await _setRecording(true);
@@ -2268,9 +2306,9 @@ onRecorded: (path) async {
                                         ),
                                       )
                                     : Opacity(
-                                        opacity: (_isWorldChat && !_isPremium) ? 0.45 : 1.0,
+                                        opacity: isBlocked ? 0.45 : 1.0,
                                         child: InkWell(
-                                          onTap: (_isWorldChat && !_isPremium) ? null : _send,
+                                          onTap: isBlocked ? null : _send,
                                           borderRadius:
                                               BorderRadius.circular(999),
                                           child: Container(
