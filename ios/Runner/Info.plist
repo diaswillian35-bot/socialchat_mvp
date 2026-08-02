@@ -32,6 +32,16 @@
 				<string>com.googleusercontent.apps.384686982032-t0gf100tqvf27uircjudfbe6faavak02</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.remdy.app.share</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>remdy</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
@@ -60,10 +70,12 @@
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
 	<key>UISupportedInterfaceOrientations</key>
+	<!-- iPhone: somente portrait (alinhado a AppOrientation.lockToPortraitUp). -->
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
+	<!-- iPad: mantido multi-orientação nesta versão; não alterar sem análise de layout. -->
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>

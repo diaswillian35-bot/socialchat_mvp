@@ -1,0 +1,14 @@
+"share_title" = "Partilhar no Remdy";
+"share_tab_chats" = "Conversas";
+"share_tab_groups" = "Os meus grupos";
+"share_search" = "Pesquisar pelo nome";
+"share_send" = "Enviar";
+"share_cancel" = "Cancelar";
+"share_loading" = "A carregar…";
+"share_sending" = "A enviar…";
+"share_sent" = "Enviado";
+"share_failed" = "Não foi possível enviar. Tente novamente.";
+"share_empty" = "Nenhum destino encontrado.";
+"share_no_permission" = "Indisponível";
+"share_need_login" = "Abra o Remdy e inicie sessão para ativar a partilha.";
+"share_retry" = "Algo correu mal. Tente novamente.";
