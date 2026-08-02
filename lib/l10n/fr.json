@@ -1395,5 +1395,15 @@
   "event_wizard_schedule_too_many": "Trop de créneaux.",
   "event_wizard_attractions_too_many": "Trop d'attractions.",
   "event_wizard_contact_consent_required": "Le consentement est requis pour afficher le contact public.",
-  "event_wizard_invalid_url": "L'URL doit commencer par https://"
+  "event_wizard_invalid_url": "L'URL doit commencer par https://",
+  "events_subdivisions_back_states": "États",
+  "events_subdivisions_back_provinces": "Provinces",
+  "events_subdivisions_back_regions": "Régions",
+  "events_empty_subdivisions_states": "Aucun état avec des événements pour le moment.",
+  "events_empty_subdivisions_provinces": "Aucune province avec des événements pour le moment.",
+  "events_empty_subdivisions_regions": "Aucune région avec des événements pour le moment.",
+  "events_empty_subdivision_state": "Aucun événement dans cet état.",
+  "events_empty_subdivision_province": "Aucun événement dans cette province.",
+  "events_empty_subdivision_region": "Aucun événement dans cette région.",
+  "events_need_country": "Indiquez votre pays dans le profil pour explorer les événements nationaux."
 }

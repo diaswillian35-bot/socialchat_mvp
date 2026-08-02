@@ -11,6 +11,7 @@ import '../services/event_attendance_service.dart';
 import '../services/event_deep_link_service.dart';
 import '../services/event_list_queries.dart';
 import '../services/events_brasil_explore_logic.dart';
+import '../services/events_country_scope.dart';
 import '../services/events_geo_constants.dart';
 import '../utils/event_lifecycle.dart';
 import '../widgets/remdy_logo.dart';
@@ -487,7 +488,7 @@ _categoryChip(8, AppTexts.t('events_languages')),
     );
   }
 
-  Widget _scopeFilters(String city, {required bool isBrazil}) {
+  Widget _scopeFilters(String city, {required String countryLabel}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       child: Container(
@@ -498,19 +499,18 @@ _categoryChip(8, AppTexts.t('events_languages')),
         ),
         child: Row(
           children: [
-         _scopeChip(
-  0,
-  city.isNotEmpty ? city : AppTexts.t('events_city'),
-),
-_scopeChip(
-  1,
-  AppTexts.t('events_nearby'),
-),
-_scopeChip(
-  2,
-  isBrazil ? AppTexts.t('events_brasil_title') : AppTexts.t('events_country'),
-),
-
+            _scopeChip(
+              0,
+              city.isNotEmpty ? city : AppTexts.t('events_city'),
+            ),
+            _scopeChip(
+              1,
+              AppTexts.t('events_nearby'),
+            ),
+            _scopeChip(
+              2,
+              countryLabel,
+            ),
           ],
         ),
       ),
@@ -1138,6 +1138,12 @@ if (_selectedEventScope == 2) {
     docs: deduped,
     userStateName: userStateName,
     isBrazil: isBrazil,
+    countryCode: country,
+    countryLabel: EventsCountryScope.scopeLabel(
+      countryCode: country,
+      languageCode: AppTexts.current.locale.languageCode,
+      t: AppTexts.t,
+    ),
   );
 }
 
@@ -1260,6 +1266,8 @@ Widget _buildBrasilExplore({
   required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   required String userStateName,
   required bool isBrazil,
+  required String countryCode,
+  required String countryLabel,
 }) {
   final refs = docs.map((doc) {
     final data = doc.data();
@@ -1336,6 +1344,7 @@ Widget _buildBrasilExplore({
           _brasilStateHeader(
             title: headerTitle,
             uf: uf,
+            countryCode: countryCode,
             onBack: () {
               setState(() {
                 _brasilStateKey = null;
@@ -1351,7 +1360,10 @@ Widget _buildBrasilExplore({
             child: Text(
               search.isNotEmpty
                   ? AppTexts.t('events_empty_brasil_search')
-                  : AppTexts.t('events_empty_brasil_state'),
+                  : EventsCountryScope.emptySubdivisionLabel(
+                      countryCode: countryCode,
+                      t: AppTexts.t,
+                    ),
               style: const TextStyle(
                 color: _muted,
                 fontWeight: FontWeight.w800,
@@ -1370,6 +1382,7 @@ Widget _buildBrasilExplore({
           return _brasilStateHeader(
             title: headerTitle,
             uf: uf,
+            countryCode: countryCode,
             onBack: () {
               setState(() {
                 _brasilStateKey = null;
@@ -1434,7 +1447,7 @@ Widget _buildBrasilExplore({
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: Text(
-              AppTexts.t('events_brasil_title'),
+              countryLabel,
               style: const TextStyle(
                 color: _text,
                 fontWeight: FontWeight.w900,
@@ -1457,7 +1470,10 @@ Widget _buildBrasilExplore({
   if (summaries.isEmpty) {
     return Center(
       child: Text(
-        AppTexts.t('events_empty_brasil_states'),
+        EventsCountryScope.emptySubdivisionsLabel(
+          countryCode: countryCode,
+          t: AppTexts.t,
+        ),
         style: const TextStyle(
           color: _muted,
           fontWeight: FontWeight.w800,
@@ -1474,7 +1490,7 @@ Widget _buildBrasilExplore({
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
-            AppTexts.t('events_brasil_title'),
+            countryLabel,
             style: const TextStyle(
               color: _text,
               fontWeight: FontWeight.w900,
@@ -1550,6 +1566,7 @@ Widget _buildBrasilExplore({
 Widget _brasilStateHeader({
   required String title,
   required String uf,
+  required String countryCode,
   required VoidCallback onBack,
 }) {
   final label = uf.isNotEmpty ? '$title — $uf' : title;
@@ -1561,7 +1578,10 @@ Widget _brasilStateHeader({
           onPressed: onBack,
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
           color: _remdyBlue,
-          tooltip: AppTexts.t('events_brasil_back'),
+          tooltip: EventsCountryScope.subdivisionsBackLabel(
+            countryCode: countryCode,
+            t: AppTexts.t,
+          ),
         ),
         Expanded(
           child: Text(
@@ -1656,13 +1676,9 @@ Widget build(BuildContext context) {
 
                 final userData = userSnap.data?.data() ?? {};
 
-                final myCountry = (userData['homeCountryCode'] ??
-                        userData['countryCode'] ??
-                        userData['country'] ??
-                        'ca')
-                    .toString()
-                    .trim()
-                    .toLowerCase();
+                final myCountry = EventsCountryScope.normalizeCountryCode(
+                  userData['homeCountryCode'] ?? userData['countryCode'],
+                );
 
                 final myCity = (userData['cityName'] ??
                         userData['city'] ??
@@ -1683,7 +1699,13 @@ Widget build(BuildContext context) {
                 final myLng =
                     lngRaw is num ? lngRaw.toDouble() : null;
 
-                final isBrazil = myCountry == 'br';
+                final isBrazil = EventsCountryScope.isBrazil(myCountry);
+                final lang = AppTexts.current.locale.languageCode;
+                final countryLabel = EventsCountryScope.scopeLabel(
+                  countryCode: myCountry,
+                  languageCode: lang,
+                  t: AppTexts.t,
+                );
 
                 return Column(
                   children: [
@@ -1692,16 +1714,30 @@ Widget build(BuildContext context) {
                       hint: _searchHintForScope(isBrazil: isBrazil),
                     ),
                     _categoryFilters(),
-                    _scopeFilters(myCity, isBrazil: isBrazil),
+                    _scopeFilters(myCity, countryLabel: countryLabel),
                     Expanded(
-                      child: _eventsList(
-                        country: myCountry,
-                        city: myCity,
-                        myLat: myLat,
-                        myLng: myLng,
-                        userStateName: myStateName,
-                        isBrazil: isBrazil,
-                      ),
+                      child: myCountry.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Text(
+                                  AppTexts.t('events_need_country'),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: _muted,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : _eventsList(
+                              country: myCountry,
+                              city: myCity,
+                              myLat: myLat,
+                              myLng: myLng,
+                              userStateName: myStateName,
+                              isBrazil: isBrazil,
+                            ),
                     ),
                   ],
                 );

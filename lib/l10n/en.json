@@ -1393,5 +1393,15 @@
   "event_wizard_schedule_too_many": "Too many schedule items.",
   "event_wizard_attractions_too_many": "Too many attractions.",
   "event_wizard_contact_consent_required": "Consent is required to show public contact.",
-  "event_wizard_invalid_url": "URL must start with https://"
+  "event_wizard_invalid_url": "URL must start with https://",
+  "events_subdivisions_back_states": "States",
+  "events_subdivisions_back_provinces": "Provinces",
+  "events_subdivisions_back_regions": "Regions",
+  "events_empty_subdivisions_states": "No states with events right now.",
+  "events_empty_subdivisions_provinces": "No provinces with events right now.",
+  "events_empty_subdivisions_regions": "No regions with events right now.",
+  "events_empty_subdivision_state": "No events in this state.",
+  "events_empty_subdivision_province": "No events in this province.",
+  "events_empty_subdivision_region": "No events in this region.",
+  "events_need_country": "Add your country in your profile to explore national events."
 }

@@ -191,8 +191,10 @@ void main() {
       expect(src.contains('events_load_error'), isTrue);
       expect(src.contains('events_empty_city'), isTrue);
       expect(src.contains('events_empty_nearby'), isTrue);
-      expect(src.contains('events_empty_brasil_states'), isTrue);
-      expect(src.contains('events_empty_brasil_state'), isTrue);
+      expect(src.contains('EventsCountryScope'), isTrue);
+      expect(src.contains('emptySubdivisionsLabel'), isTrue);
+      expect(src.contains('emptySubdivisionLabel'), isTrue);
+      expect(src.contains('events_need_country'), isTrue);
     });
 
     test('SafeArea + RemdyLogo', () {

@@ -522,7 +522,7 @@
   "events_restaurant": "Restaurante",
   "events_city": "Cidade",
   "events_nearby": "Arredores",
-  "events_country": "Brasil",
+  "events_country": "País",
   "events_brasil_title": "Brasil",
   "events_brasil_search_hint": "Buscar por cidade ou evento",
   "events_brasil_state_search_hint": "Buscar cidade ou evento em {state}",
@@ -1394,5 +1394,15 @@
   "event_wizard_schedule_too_many": "Programação com itens demais.",
   "event_wizard_attractions_too_many": "Atrações demais.",
   "event_wizard_contact_consent_required": "Consentimento é obrigatório para contato público.",
-  "event_wizard_invalid_url": "URL deve começar com https://"
+  "event_wizard_invalid_url": "URL deve começar com https://",
+  "events_subdivisions_back_states": "Estados",
+  "events_subdivisions_back_provinces": "Províncias",
+  "events_subdivisions_back_regions": "Regiões",
+  "events_empty_subdivisions_states": "Nenhum estado com eventos no momento.",
+  "events_empty_subdivisions_provinces": "Nenhuma província com eventos no momento.",
+  "events_empty_subdivisions_regions": "Nenhuma região com eventos no momento.",
+  "events_empty_subdivision_state": "Nenhum evento neste estado.",
+  "events_empty_subdivision_province": "Nenhum evento nesta província.",
+  "events_empty_subdivision_region": "Nenhum evento nesta região.",
+  "events_need_country": "Defina seu país no perfil para explorar eventos nacionais."
 }
