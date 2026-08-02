@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'brazil_states.dart';
 import 'events_geo_constants.dart';
-import 'group_geo.dart';
+import 'events_scope_classifier.dart';
 
 /// Lógica pura (testável) da exploração nacional e Arredores.
 class EventsBrasilExploreLogic {
@@ -27,7 +27,10 @@ class EventsBrasilExploreLogic {
     return earthRadius * c;
   }
 
-  /// Arredores: outra cidade e distância <= [EVENTS_SURROUNDINGS_RADIUS_KM].
+  /// Arredores: delega ao classificador exclusivo (0 < d ≤ raio).
+  ///
+  /// [userCountryCode]/[eventCountryCode] default `xx` só para testes
+  /// legados que não passam país (ambos iguais → não é outOfCountry).
   static bool passesSurroundings({
     required String userCity,
     required String eventCity,
@@ -36,22 +39,27 @@ class EventsBrasilExploreLogic {
     required double? eventLat,
     required double? eventLng,
     double radiusKm = EventsGeoConstants.EVENTS_SURROUNDINGS_RADIUS_KM,
+    String userCountryCode = 'xx',
+    String eventCountryCode = 'xx',
+    String userCityKey = '',
+    String eventCityKey = '',
+    String eventScope = '',
   }) {
-    if (userLat == null || userLng == null) return false;
-    if (eventLat == null || eventLng == null) return false;
-    if (!GroupGeo.validCoordinates(userLat, userLng) ||
-        !GroupGeo.validCoordinates(eventLat, eventLng)) {
-      return false;
-    }
-
-    final uCity = userCity.toLowerCase().trim();
-    final eCity = eventCity.toLowerCase().trim();
-    if (uCity.isNotEmpty && eCity.isNotEmpty && uCity == eCity) {
-      return false;
-    }
-
-    final d = distanceKm(userLat, userLng, eventLat, eventLng);
-    return d <= radiusKm;
+    final bucket = EventsScopeClassifier.classify(
+      userCountryCode: userCountryCode,
+      eventCountryCode: eventCountryCode,
+      userCityKey: userCityKey.isNotEmpty ? userCityKey : userCity,
+      eventCityKey: eventCityKey.isNotEmpty ? eventCityKey : eventCity,
+      userCityName: userCity,
+      eventCityName: eventCity,
+      userLat: userLat,
+      userLng: userLng,
+      eventLat: eventLat,
+      eventLng: eventLng,
+      eventScope: eventScope,
+      radiusKm: radiusKm,
+    );
+    return bucket == EventsClassicScopeBucket.surroundings;
   }
 
   /// Deduplica por ID preservando a primeira ocorrência.

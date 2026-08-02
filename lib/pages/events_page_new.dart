@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'create_event_page.dart';
+import 'edit_profile_page.dart';
 import 'my_events_page.dart';
 import 'package:share_plus/share_plus.dart';
 import 'event_detail_page.dart';
@@ -13,6 +14,7 @@ import '../services/event_list_queries.dart';
 import '../services/events_brasil_explore_logic.dart';
 import '../services/events_country_scope.dart';
 import '../services/events_geo_constants.dart';
+import '../services/events_scope_classifier.dart';
 import '../utils/event_lifecycle.dart';
 import '../widgets/remdy_logo.dart';
 
@@ -1041,16 +1043,59 @@ bool _passesCategoryFilter(Map<String, dynamic> data) {
 }
 
 
+Widget _needLocationCta() {
+  return Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            AppTexts.t('events_need_location'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _muted,
+              fontWeight: FontWeight.w800,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const EditProfilePage(),
+                ),
+              );
+            },
+            child: Text(AppTexts.t('events_update_location')),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 Widget _eventsList({
   required String country,
   required String city,
+  required String cityKey,
   required double? myLat,
   required double? myLng,
   required String userStateName,
   required bool isBrazil,
 }) {
+  // Arredores / País exigem coords do perfil; sem inventar localização.
+  if (_selectedEventScope != 0 &&
+      EventsScopeClassifier.userNeedsLocationForGeoScopes(
+        userLat: myLat,
+        userLng: myLng,
+      )) {
+    return _needLocationCta();
+  }
 
-    return StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+  return StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
   key: ValueKey('events_feed_$_feedEpoch'),
   stream: _loadEvents(country: country, city: city),
   builder: (context, snap) {
@@ -1098,29 +1143,39 @@ if (!EventLifecycle.passesPublicVisibility(data)) return false;
 
  if (!_passesCategoryFilter(data)) return false;
 
- // Arredores: outra cidade + distância <= 110 km (Haversine).
- if (_selectedEventScope == 1) {
-  final eventCityName = (data['city'] ?? '').toString();
+ // Escopos 1 e 2: classificação exclusiva (110 km). Cidade (0) vem da query.
+ if (_selectedEventScope == 1 || _selectedEventScope == 2) {
+  final eventCityName = (data['city'] ?? data['cityName'] ?? '').toString();
+  final eventCityKey = (data['cityKey'] ?? eventCityName).toString();
   final eventLatRaw = data['lat'] ?? data['cityLat'];
   final eventLngRaw = data['lng'] ?? data['cityLng'];
   final eventLat =
       eventLatRaw is num ? eventLatRaw.toDouble() : null;
   final eventLng =
       eventLngRaw is num ? eventLngRaw.toDouble() : null;
+  final eventCountry = (data['countryCode'] ?? country).toString();
+  final eventScope = (data['scope'] ?? '').toString();
 
-  return EventsBrasilExploreLogic.passesSurroundings(
-    userCity: city,
-    eventCity: eventCityName,
+  final bucket = EventsScopeClassifier.classify(
+    userCountryCode: country,
+    eventCountryCode: eventCountry,
+    userCityKey: cityKey,
+    eventCityKey: eventCityKey,
+    userCityName: city,
+    eventCityName: eventCityName,
     userLat: myLat,
     userLng: myLng,
     eventLat: eventLat,
     eventLng: eventLng,
+    eventScope: eventScope,
     radiusKm: EventsGeoConstants.EVENTS_SURROUNDINGS_RADIUS_KM,
   );
- }
 
- // Brasil/país: sem exclusão de cidade e sem filtro de distância.
- // Busca e filtro por estado são aplicados depois.
+  return EventsScopeClassifier.matchesSelectedScope(
+    bucket: bucket,
+    selectedScopeIndex: _selectedEventScope,
+  );
+ }
 
   return true;
 }).toList();
@@ -1686,6 +1741,10 @@ Widget build(BuildContext context) {
                     .toString()
                     .trim();
 
+                final myCityKey = EventsScopeClassifier.normalizeCityKey(
+                  userData['cityKey'] ?? myCity,
+                );
+
                 final myStateName = (userData['stateName'] ??
                         userData['state'] ??
                         '')
@@ -1733,6 +1792,7 @@ Widget build(BuildContext context) {
                           : _eventsList(
                               country: myCountry,
                               city: myCity,
+                              cityKey: myCityKey,
                               myLat: myLat,
                               myLng: myLng,
                               userStateName: myStateName,

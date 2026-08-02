@@ -1203,5 +1203,7 @@
   "events_empty_subdivision_state": "Nenhum evento neste estado.",
   "events_empty_subdivision_province": "Nenhum evento nesta província.",
   "events_empty_subdivision_region": "Nenhum evento nesta região.",
-  "events_need_country": "Defina o seu país no perfil para explorar eventos nacionais."
+  "events_need_country": "Defina o seu país no perfil para explorar eventos nacionais.",
+  "events_need_location": "Complete a sua localização para organizar eventos da sua cidade, arredores e país.",
+  "events_update_location": "Atualizar localização"
 }
