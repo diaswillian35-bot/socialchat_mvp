@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
+
+import '../l10n/app_texts.dart';
+import '../services/remi_intro_service.dart';
 import 'remi_languages_page.dart';
 
-
 class RemiIntroPage extends StatefulWidget {
-  const RemiIntroPage({super.key});
+  /// Se true, só reexibe a apresentação (não grava flag / não sincroniza).
+  final bool reviewMode;
+
+  const RemiIntroPage({
+    super.key,
+    this.reviewMode = false,
+  });
 
   @override
   State<RemiIntroPage> createState() => _RemiIntroPageState();
@@ -13,6 +21,7 @@ class _RemiIntroPageState extends State<RemiIntroPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _pulse;
+  bool _completing = false;
 
   static const Color _bg = Color(0xFFF8FAFC);
   static const Color _text = Color(0xFF111827);
@@ -43,8 +52,39 @@ class _RemiIntroPageState extends State<RemiIntroPage>
     super.dispose();
   }
 
+  Future<void> _finish() async {
+    if (_completing) return;
+    setState(() => _completing = true);
+
+    if (!widget.reviewMode) {
+      // Local primeiro; falha remota não prende o usuário.
+      await RemiIntroService.instance.markIntroCompleted();
+    }
+
+    if (!mounted) return;
+
+    if (widget.reviewMode) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const RemiLanguagesPage(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final chips = [
+      AppTexts.t('remi_chip_travel'),
+      AppTexts.t('remi_chip_daily_life'),
+      AppTexts.t('remi_chip_work'),
+      AppTexts.t('remi_chip_conversations'),
+    ];
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -67,7 +107,6 @@ class _RemiIntroPageState extends State<RemiIntroPage>
           child: Column(
             children: [
               const Spacer(),
-
               ScaleTransition(
                 scale: _pulse,
                 child: Container(
@@ -85,49 +124,38 @@ class _RemiIntroPageState extends State<RemiIntroPage>
                   ),
                 ),
               ),
-
               const SizedBox(height: 5),
-
-              const Text(
-                'Remi Language Support',
+              Text(
+                AppTexts.t('remi_presentation_title'),
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   color: _text,
                   fontSize: 30,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.6,
                 ),
               ),
-
               const SizedBox(height: 10),
-
-              const Text(
-                'Learn real phrases for travel, work, daily life and conversations.',
+              Text(
+                AppTexts.t('remi_presentation_subtitle'),
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   color: _muted,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   height: 1.35,
                 ),
               ),
-
               const SizedBox(height: 22),
-
               Wrap(
                 alignment: WrapAlignment.center,
                 spacing: 8,
                 runSpacing: 8,
-                children: const [
-                  _LangChip(text: 'Travel'),
-                  _LangChip(text: 'Daily Life'),
-                  _LangChip(text: 'Work'),
-                  _LangChip(text: 'Conversations'),
-                ],
+                children: chips
+                    .map((text) => _LangChip(text: text))
+                    .toList(),
               ),
-
               const Spacer(),
-
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -137,25 +165,19 @@ class _RemiIntroPageState extends State<RemiIntroPage>
                   ),
                 ),
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const RemiLanguagesPage(),
-                      ),
-                    );
-                  },
+                  onPressed: _completing ? null : _finish,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
+                    disabledBackgroundColor: Colors.transparent,
                     padding: const EdgeInsets.symmetric(vertical: 15),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Text(
-                    'Start learning',
-                    style: TextStyle(
+                  child: Text(
+                    AppTexts.t('remi_presentation_start'),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
                       fontSize: 15,
@@ -163,13 +185,23 @@ class _RemiIntroPageState extends State<RemiIntroPage>
                   ),
                 ),
               ),
-
-              const SizedBox(height: 12),
-
-              const Text(
-                'Learn useful phrases to use inside Remdy.',
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _completing ? null : _finish,
+                child: Text(
+                  AppTexts.t('remi_presentation_skip'),
+                  style: const TextStyle(
+                    color: _muted,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                AppTexts.t('remi_presentation_footer'),
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   color: _muted,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,

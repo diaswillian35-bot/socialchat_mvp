@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:uuid/uuid.dart';
 import '../l10n/app_texts.dart';
+import 'remi_intro_page.dart';
+
 class RemiChatPage extends StatefulWidget {
   final String language;
   final String goal;
@@ -22,17 +24,13 @@ class RemiChatPage extends StatefulWidget {
 }
 
 class _RemiChatPageState extends State<RemiChatPage> {
-  bool _showedIntro = false;
   final TextEditingController _messageC = TextEditingController();
   final ScrollController _scrollC = ScrollController();
   final FlutterTts _tts = FlutterTts();
   
-final FirebaseFirestore _db = FirebaseFirestore.instance;
-final FirebaseAuth _auth = FirebaseAuth.instance;
-final FirebaseFunctions _functions =
+final FirebaseAuth _auth = FirebaseAuth.instance;final FirebaseFunctions _functions =
     FirebaseFunctions.instanceFor(region: 'us-central1');
-
-
+  static const _uuid = Uuid();
 
   static const Color _bg = Color(0xFFF8FAFC);
   static const Color _remdyBlue = Color(0xFF313A5F);
@@ -44,12 +42,94 @@ late final List<_RemiMessage> _messages;
 int? _speakingIndex;
 
 bool _showPronunciation = false;
+bool _sending = false;
+
+/// Reutilizado no retry da mesma mensagem (idempotência server-side).
+String? _pendingRequestId;
+String? _pendingText;
+
+String _remiErrorMessage(Object e) {
+  if (e is FirebaseFunctionsException) {
+    final msg = (e.message ?? '').trim();
+    switch (msg) {
+      case 'REMI_DAILY_LIMIT_FREE':
+        return AppTexts.t('remi_error_daily_limit_free');
+      case 'REMI_DAILY_LIMIT_PREMIUM':
+        return AppTexts.t('remi_error_daily_limit_premium');
+      case 'REMI_MINUTE_LIMIT':
+        return AppTexts.t('remi_error_minute_limit');
+      case 'REMI_REQUEST_IN_PROGRESS':
+        return AppTexts.t('remi_error_request_in_progress');
+      case 'REMI_MESSAGE_TOO_LONG':
+      case 'REMI_INVALID_MESSAGE':
+      case 'REMI_INVALID_REQUEST_ID':
+        return AppTexts.t('remi_error_message_too_long');
+      case 'REMI_PERMISSION_DENIED':
+      case 'REMI_USER_NOT_FOUND':
+      case 'REMI_UNAUTHENTICATED':
+        return AppTexts.t('remi_error_permission_denied');
+      default:
+        break;
+    }
+    switch (e.code) {
+      case 'unauthenticated':
+      case 'permission-denied':
+        return AppTexts.t('remi_error_permission_denied');
+      case 'resource-exhausted':
+        if (msg == 'REMI_DAILY_LIMIT_FREE') {
+          return AppTexts.t('remi_error_daily_limit_free');
+        }
+        if (msg == 'REMI_DAILY_LIMIT_PREMIUM') {
+          return AppTexts.t('remi_error_daily_limit_premium');
+        }
+        return AppTexts.t('remi_error_minute_limit');
+      case 'failed-precondition':
+        if (msg == 'REMI_REQUEST_IN_PROGRESS') {
+          return AppTexts.t('remi_error_request_in_progress');
+        }
+        return AppTexts.t('remi_error_temporary');
+      case 'invalid-argument':
+        return AppTexts.t('remi_error_message_too_long');
+      case 'internal':
+        return AppTexts.t('remi_error_temporary');
+    }
+  }
+  return AppTexts.t('remi_error_temporary');
+}
+
+String _clipMeta(String value, int max) {
+  final t = value.trim();
+  if (t.length <= max) return t;
+  return t.substring(0, max);
+}
+
+List<Map<String, String>> _buildHistoryPayload() {
+  final thinking = AppTexts.t('remi_thinking');
+  return _messages
+      .where((m) => m.text != thinking && m.text.trim().isNotEmpty)
+      .toList()
+      .reversed
+      .take(8)
+      .toList()
+      .reversed
+      .map((m) {
+        final cleaned = m.text.replaceAll('\n', ' ').trim();
+        return {
+          'role': m.isUser ? 'user' : 'assistant',
+          'text': cleaned.length > 1500
+              ? cleaned.substring(0, 1500)
+              : cleaned,
+        };
+      })
+      .toList();
+}
 
   @override
 void dispose() {
   _tts.stop();
   _messageC.dispose();
   _scrollC.dispose();
+  FocusManager.instance.primaryFocus?.unfocus();
   super.dispose();
 }
 void _scrollToBottom() {
@@ -121,35 +201,36 @@ void initState() {
       isUser: false,
     ),
   ];
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-  if (!_showedIntro && mounted) {
-    _showedIntro = true;
-    _showRemiIntro();
-  }
-});
-
 }
 
-void _showRemiIntro() {
-  showDialog(
+void _openRemiSettings() {
+  showModalBottomSheet<void>(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: Text(AppTexts.t('remi_intro_title')),
-        content: Text(
-          AppTexts.t('remi_intro_body')),
-    
-        actions: [
-TextButton(
-  onPressed: () => Navigator.pop(context),
-  child: Text(
-    AppTexts.t('remi_intro_button'),
-  ),
-),
-
-
-          
-        ],
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+    ),
+    builder: (ctx) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.slideshow_rounded, color: _remdyBlue),
+              title: Text(AppTexts.t('remi_settings_replay_intro')),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RemiIntroPage(reviewMode: true),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       );
     },
   );
@@ -193,121 +274,110 @@ String _appLanguageName() {
 }
 
 Future<void> _sendMessage() async {
+  if (_sending) return;
+
   final text = _messageC.text.trim();
   if (text.isEmpty) return;
+  if (text.length > 1500) {
+    setState(() {
+      _messages.add(
+        _RemiMessage(
+          text: AppTexts.t('remi_error_message_too_long'),
+          isUser: false,
+        ),
+      );
+    });
+    _scrollToBottom();
+    return;
+  }
 
   final user = _auth.currentUser;
   if (user == null) return;
 
   _messageC.clear();
+  _sending = true;
 
   setState(() {
     _messages.add(_RemiMessage(text: text, isUser: true));
     _messages.add(
-       _RemiMessage(
+      _RemiMessage(
         text: AppTexts.t('remi_thinking'),
         isUser: false,
       ),
     );
   });
-_scrollToBottom();
+  _scrollToBottom();
+
+  // Idempotência: reusa requestId no retry da mesma mensagem.
+  final requestId = (_pendingText == text && _pendingRequestId != null)
+      ? _pendingRequestId!
+      : _uuid.v4();
+  _pendingRequestId = requestId;
+  _pendingText = text;
 
   try {
-final history = _messages
-    .where((m) =>
-       m.text != AppTexts.t('remi_thinking') &&
-        m.text.trim().isNotEmpty)
-    .toList()
-    .reversed
-    .take(8)
-    .toList()
-    .reversed
-    .map((m) {
-      final role = m.isUser ? 'User' : 'Remi';
-
-      final cleaned = m.text
-          .replaceAll('\n', ' ')
-          .trim();
-
-      return '$role: $cleaned';
-    })
-    .join('\n');
-
+    final history = _buildHistoryPayload();
 
     final callable = _functions.httpsCallable('askRemi');
 
-final result = await callable.call({
-  'text': text,
-  'language': widget.language,
-  'goal': widget.goal,
-  'lesson': widget.lesson,
-  'history': history,
-  'showPronunciation': _showPronunciation,
-});
-
-
+    final result = await callable.call({
+      'requestId': requestId,
+      'text': text,
+      'language': _clipMeta(widget.language, 80),
+      'goal': _clipMeta(widget.goal, 120),
+      'lesson': _clipMeta(widget.lesson, 120),
+      'history': history,
+      'showPronunciation': _showPronunciation,
+    });
 
     final reply = (result.data['reply'] ?? '').toString().trim();
+
+    if (!mounted) return;
+
+    _pendingRequestId = null;
+    _pendingText = null;
 
     setState(() {
       _messages.removeLast();
       _messages.add(
         _RemiMessage(
-          text: reply.isEmpty ? 'Sorry, I could not answer right now.' : reply,
+          text: reply.isEmpty
+              ? AppTexts.t('remi_error_temporary')
+              : reply,
           isUser: false,
         ),
       );
     });
 
     _scrollToBottom();
+  } catch (e, stack) {
+    debugPrint('REMI ERROR: $e');
+    debugPrint(stack.toString());
 
-} catch (e, stack) {
-  debugPrint('REMII ERROR: $e');
-  debugPrint(stack.toString());
+    if (!mounted) return;
 
-  setState(() {
-    _messages.removeLast();
-    _messages.add(
-      _RemiMessage(
-        
-text: 'Error: $e',
-
-        isUser: false,
-      ),
-    );
-  });
-}
-
-_scrollToBottom();
-}
-
-
-
-  String _mockReply(String text) {
-    final lower = text.toLowerCase();
-
-    if (lower.contains('hello') || lower.contains('hi')) {
-      return 'Hello! 😊 What language do you want to practice today?';
+    setState(() {
+      if (_messages.isNotEmpty &&
+          _messages.last.text == AppTexts.t('remi_thinking')) {
+        _messages.removeLast();
+      }
+      _messages.add(
+        _RemiMessage(
+          text: _remiErrorMessage(e),
+          isUser: false,
+        ),
+      );
+    });
+  } finally {
+    if (mounted) {
+      setState(() => _sending = false);
+    } else {
+      _sending = false;
     }
-
-    if (lower.contains('inglês') || lower.contains('english')) {
-      return 'Great! Send me a sentence in English and I’ll help you improve it.';
-    }
-
-    if (lower.contains('francês') || lower.contains('french')) {
-      return 'Très bien! 🇫🇷 Send me a sentence in French.';
-    }
-
-    if (lower.contains('espanhol') || lower.contains('spanish')) {
-      return '¡Perfecto! 🇪🇸 Envíame una frase en español.';
-    }
-
-    if (lower.contains('português') || lower.contains('portuguese')) {
-      return 'Perfeito! 🇧🇷 Posso te ajudar com português também.';
-    }
-
-    return 'Nice! In the next version, I’ll correct your sentence and explain it. For now, this is Remi test mode 🤖';
   }
+
+  _scrollToBottom();
+}
 
 String _translatedLesson(String lesson) {
   switch (lesson.toLowerCase()) {
@@ -338,6 +408,7 @@ String _translatedLesson(String lesson) {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -381,6 +452,11 @@ Image.asset(
           : Icons.record_voice_over_outlined,
       color: _showPronunciation ? _remdyBlue : _muted,
     ),
+  ),
+  IconButton(
+    tooltip: AppTexts.t('remi_settings_title'),
+    onPressed: _openRemiSettings,
+    icon: const Icon(Icons.more_vert_rounded, color: _muted),
   ),
 ],
 
@@ -508,8 +584,10 @@ _speakingIndex == index
                   Expanded(
                     child: TextField(
                       controller: _messageC,
+                      enabled: !_sending,
                       minLines: 1,
                       maxLines: 4,
+                      maxLength: 1500,
                       decoration: InputDecoration(
                         hintText: AppTexts.t('remi_message_hint'),
                         filled: true,
@@ -518,15 +596,17 @@ _speakingIndex == index
                           borderRadius: BorderRadius.circular(18),
                           borderSide: BorderSide.none,
                         ),
+                        counterText: '',
                       ),
-                      onSubmitted: (_) => _sendMessage(),
+                      onSubmitted: _sending ? null : (_) => _sendMessage(),
                     ),
                   ),
                   const SizedBox(width: 8),
                   CircleAvatar(
-                    backgroundColor: _remdyBlue,
+                    backgroundColor:
+                        _sending ? _muted : _remdyBlue,
                     child: IconButton(
-                      onPressed: _sendMessage,
+                      onPressed: _sending ? null : _sendMessage,
                       icon: const Icon(
                         Icons.send_rounded,
                         color: Colors.white,
