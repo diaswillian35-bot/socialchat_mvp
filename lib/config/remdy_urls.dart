@@ -1,5 +1,5 @@
 /// URLs canônicas Remdy (app + portais web).
-abstract final class RemdyUrls {
+abstract class RemdyUrls {
   static const String appOrigin = 'https://remdy.app';
 
   /// Portal de organização de eventos (novos acessos).

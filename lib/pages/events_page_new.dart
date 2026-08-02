@@ -4,7 +4,6 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'create_event_page.dart';
 import 'my_events_page.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'event_detail_page.dart';
 import '../l10n/app_texts.dart';
@@ -110,29 +109,6 @@ void dispose() {
 
     return '${two(d.day)}/${two(d.month)}/${d.year} • ${two(d.hour)}:${two(d.minute)}';
   }
-
-Future<void> _openMap({
-  required String place,
-  required String city,
-}) async {
-  final query = '$place $city'.trim();
-
-  if (query.isEmpty) return;
-
-  final uri = Uri.parse(
-    'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
-  );
-
-  if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppTexts.t('events_map_error'))),
-
-    );
-  }
-}
-
-
 
 String _getEventBadge(Timestamp? ts) {
   if (ts == null) return '';
@@ -324,214 +300,6 @@ if (diff == 1) return AppTexts.t('events_tomorrow_badge');
         setState(() => _busyAttendanceIds.remove(eventId));
       }
     }
-  }
-
-  void _openEventGallery(List<String> images, int initialIndex) {
-    if (images.isEmpty) return;
-
-    showDialog(
-      context: context,
-      builder: (_) {
-        return Dialog(
-          backgroundColor: Colors.black,
-          insetPadding: EdgeInsets.zero,
-          child: Stack(
-            children: [
-              PageView.builder(
-                controller: PageController(initialPage: initialIndex),
-                itemCount: images.length,
-                itemBuilder: (context, index) {
-                  return InteractiveViewer(
-                    child: Center(
-                      child: Image.network(
-                        images[index],
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              Positioned(
-                top: 40,
-                right: 20,
-                child: IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(
-                    Icons.close,
-                    color: Colors.white,
-                    size: 30,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _openDetails({
-    required String eventId,
-    required String title,
-    required String city,
-    required String place,
-    required Timestamp? startAt,
-    required String desc,
-    required int attendees,
-    required List<String> attendeesUids,
-    required List<String> photoUrls,
-    required bool sponsored,
-  }) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) {
-        return SafeArea(
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            decoration: BoxDecoration(
-             color: sponsored ? const Color(0xFFFFFBEB) : Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: _border),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 44,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE5E7EB),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                if (photoUrls.isNotEmpty) ...[
-                  SizedBox(
-                    height: 210,
-                    child: PageView.builder(
-                      itemCount: photoUrls.length,
-                      itemBuilder: (_, i) {
-                        return GestureDetector(
-                          onTap: () => _openEventGallery(photoUrls, i),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: Image.network(
-                              photoUrls[i],
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: _text,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _InfoRow(icon: Icons.schedule_rounded, text: _fmtDate(startAt)),
-                if (city.isNotEmpty)
-                  _InfoRow(icon: Icons.location_city_rounded, text: city),
-               if (place.isNotEmpty)
-  InkWell(
-    onTap: () => _openMap(place: place, city: city),
-    child: _InfoRow(icon: Icons.place_rounded, text: place),
-  ),
-
-                _InfoRow(
-                  icon: Icons.people_alt_rounded,
-                 
-text: '$attendees ${AppTexts.t('events_attending')}',
-
-                ),
-                if (desc.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      desc,
-                      style: const TextStyle(
-                        color: Color(0xFF374151),
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Builder(
-                  builder: (context) {
-                    _syncJoinCaches(eventId, attendeesUids);
-                    final joined = _isJoinedLocally(eventId, attendeesUids);
-                    final busy = _busyAttendanceIds.contains(eventId);
-
-                    return SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: (_uid == null || busy)
-                            ? null
-                            : () async {
-                                if (joined) {
-                                  await _leaveEvent(eventId);
-                                } else {
-                                  await _joinEvent(eventId);
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              joined ? const Color(0xFFEFF6FF) : _remdyBlue,
-                          foregroundColor: joined ? _remdyBlue : Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: busy
-                            ? SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                  color: joined ? _remdyBlue : Colors.white,
-                                ),
-                              )
-                            : Text(
-                                joined
-                                    ? AppTexts.t('events_cancel_attendance')
-                                    : AppTexts.t('events_join'),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Widget _topHeader() {
@@ -1358,9 +1126,11 @@ if (!EventLifecycle.passesPublicVisibility(data)) return false;
 }).toList();
 
 // Deduplicação por ID (live+upcoming já dedupam; reforço aqui).
-final deduped = EventsBrasilExploreLogic.dedupeById(
+final deduped =
+    EventsBrasilExploreLogic.dedupeById<
+        QueryDocumentSnapshot<Map<String, dynamic>>>(
   docs,
-  (d) => d.id,
+  (QueryDocumentSnapshot<Map<String, dynamic>> d) => d.id,
 );
 
 if (_selectedEventScope == 2) {
@@ -1941,38 +1711,3 @@ Widget build(BuildContext context) {
   );
 }
 }
-
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _InfoRow({
-    required this.icon,
-    required this.text,
-  });
-
-  static const Color _remdyBlue = Color(0xFF313A5F);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: _remdyBlue),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF374151),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
