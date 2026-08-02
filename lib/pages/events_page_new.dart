@@ -1,6 +1,6 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'create_event_page.dart';
 import 'my_events_page.dart';
@@ -8,6 +8,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'event_detail_page.dart';
 import '../l10n/app_texts.dart';
+import '../services/event_attendance_service.dart';
+import '../services/event_deep_link_service.dart';
+import '../services/event_list_queries.dart';
+import '../services/events_brasil_explore_logic.dart';
+import '../services/events_geo_constants.dart';
+import '../utils/event_lifecycle.dart';
+import '../widgets/remdy_logo.dart';
 
 class EventsPage extends StatefulWidget {
   final String? openEventId;
@@ -29,10 +36,18 @@ class _EventsPageState extends State<EventsPage> {
   String _searchText = '';
   int _selectedCategory = 0;
   int _selectedEventScope = 0;
+  final Set<String> _busyAttendanceIds = <String>{};
+  final Set<String> _localJoinedIds = <String>{};
+  final Set<String> _localLeftIds = <String>{};
+  int _feedEpoch = 0;
 
-  
-bool _openedDeepEvent = false;
- // 0 cidade, 1 região, 2 país
+  /// Aba Brasil: null = lista de estados; senão chave UF/nome selecionada.
+  String? _brasilStateKey;
+  String? _brasilStateName;
+  String? _brasilStateUf;
+
+  bool _openedDeepEvent = false;
+  // 0 cidade, 1 arredores, 2 brasil/país
 
   static const Color _bg = Color(0xFFF6F7FB);
   static const Color _text = Color(0xFF111827);
@@ -42,9 +57,20 @@ bool _openedDeepEvent = false;
   static const Color _logoBlue = Color(0xFF264E9A);
 
   final db = FirebaseFirestore.instance;
-  final _commentC = TextEditingController();
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final id = (widget.openEventId ?? '').trim();
+      if (id.isEmpty || _openedDeepEvent || !mounted) return;
+      _openedDeepEvent = true;
+      EventDeepLinkService.openEventById(context, eventId: id);
+    });
+  }
+
 @override
 void dispose() {
   _searchC.dispose();
@@ -53,6 +79,9 @@ void dispose() {
 }
 
 
+  // Mantido para compatibilidade com testes de wiring / região GTA legada.
+  // Arredores BR usa Haversine país-inteiro, não regionKey.
+  // ignore: unused_element
   String _getRegionFromCity(String city) {
     final c = city.toLowerCase();
 
@@ -123,101 +152,178 @@ if (diff == 1) return AppTexts.t('events_tomorrow_badge');
   return '';
 }
 
- Stream<QuerySnapshot<Map<String, dynamic>>> _loadEvents({
+
+  bool _isJoinedLocally(String eventId, List<String> attendeesUids) {
+    final uid = _uid;
+    if (uid == null) return false;
+    if (_localLeftIds.contains(eventId)) return false;
+    if (_localJoinedIds.contains(eventId)) return true;
+    return attendeesUids.contains(uid);
+  }
+
+  void _syncJoinCaches(String eventId, List<String> attendeesUids) {
+    final uid = _uid;
+    if (uid == null) return;
+    final onServer = attendeesUids.contains(uid);
+    if (onServer) {
+      _localJoinedIds.remove(eventId);
+      _localLeftIds.remove(eventId);
+    }
+  }
+
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _loadEvents({
     required String country,
     required String city,
   }) {
-    final regionKey = _getRegionFromCity(city);
+    final cityKey = city.trim().toLowerCase();
 
-   if (_selectedEventScope == 0) {
-  return db
-      .collection('events')
-      .where('isActive', isEqualTo: true)
-      .where('countryCode', isEqualTo: country)
-      .where('scope', isEqualTo: 'city')
-      .where(
-        'cityKey',
-        isEqualTo: city.trim().toLowerCase(),
-      )
-      .where(
-        'startAt',
-        isGreaterThan: Timestamp.now(),
-      )
-      .orderBy('startAt')
-.limit(50)
-.snapshots();
+    late final Query<Map<String, dynamic>> upcomingQ;
+    late final Query<Map<String, dynamic>> liveQ;
 
-}
+    if (_selectedEventScope == 0) {
+      upcomingQ = EventListQueries.publicUpcoming(
+        countryCode: country,
+        scope: 'city',
+        cityKey: cityKey,
+      );
+      liveQ = EventListQueries.publicLive(
+        countryCode: country,
+        scope: 'city',
+        cityKey: cityKey,
+      );
+    } else {
+      // Arredores e Brasil: país inteiro (sem regionKey / sem raio na query).
+      // Filtro de 110 km só no client em Arredores.
+      upcomingQ = EventListQueries.publicUpcomingExplore(countryCode: country);
+      liveQ = EventListQueries.publicLiveExplore(countryCode: country);
+    }
 
-if (_selectedEventScope == 1) {
-  return db
-    .collection('events')
-    .where('isActive', isEqualTo: true)
-    .where('countryCode', isEqualTo: country)
-    .where('regionKey', isEqualTo: regionKey)
-    .where('startAt', isGreaterThan: Timestamp.now())
-    .orderBy('startAt')
-    .limit(50)
-    .snapshots();
+    // Epoch força novo subscribe no "Tentar novamente".
+    final epoch = _feedEpoch;
 
-}
+    return Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>.multi(
+      (listener) {
+        QuerySnapshot<Map<String, dynamic>>? upSnap;
+        QuerySnapshot<Map<String, dynamic>>? liveSnap;
+        var upReady = false;
+        var liveReady = false;
 
+        void emit() {
+          if (!upReady || !liveReady) return;
+          final byId = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+          final liveDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+          for (final d in liveSnap?.docs ?? const []) {
+            final data = d.data();
+            if (!EventLifecycle.passesPublicVisibility(data)) continue;
+            if (EventLifecycle.classifyFromData(data) !=
+                EventLifecycleBucket.live) {
+              continue;
+            }
+            byId[d.id] = d;
+            liveDocs.add(d);
+          }
+          final upDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+          for (final d in upSnap?.docs ?? const []) {
+            if (byId.containsKey(d.id)) continue;
+            final data = d.data();
+            if (!EventLifecycle.passesPublicVisibility(data)) continue;
+            if (EventLifecycle.classifyFromData(data) !=
+                EventLifecycleBucket.upcoming) {
+              continue;
+            }
+            upDocs.add(d);
+          }
+          // live first (término mais próximo já vem da query), depois futuros
+          listener.add([...liveDocs, ...upDocs]);
+        }
 
+        final subUp = upcomingQ.snapshots().listen(
+          (s) {
+            upSnap = s;
+            upReady = true;
+            emit();
+          },
+          onError: listener.addError,
+        );
+        final subLive = liveQ.snapshots().listen(
+          (s) {
+            liveSnap = s;
+            liveReady = true;
+            emit();
+          },
+          onError: listener.addError,
+        );
 
-
-
-    return db
-        .collection('events')
-      .where('isActive', isEqualTo: true)
-.where('countryCode', isEqualTo: country)
-
-.where('startAt', isGreaterThan: Timestamp.now()) // 🔥 AQUI
-.orderBy('startAt')
-.limit(50)
-.snapshots();
-
+        listener.onCancel = () async {
+          await subUp.cancel();
+          await subLive.cancel();
+        };
+        // silence unused epoch in closure identity
+        assert(epoch >= 0);
+      },
+    );
   }
 
   Future<void> _joinEvent(String eventId) async {
     final uid = _uid;
     if (uid == null) return;
+    if (_busyAttendanceIds.contains(eventId)) return;
 
-    final eventRef = db.collection('events').doc(eventId);
-    final attendeeRef = eventRef.collection('attendees').doc(uid);
-
-    final doc = await attendeeRef.get();
-    if (doc.exists) return;
-
-    await attendeeRef.set({
-      'uid': uid,
-      'joinedAt': FieldValue.serverTimestamp(),
-    });
-
-    await eventRef.update({
-      'attendeesCount': FieldValue.increment(1),
-      'attendeesUids': FieldValue.arrayUnion([uid]),
-    });
+    setState(() => _busyAttendanceIds.add(eventId));
+    try {
+      await EventAttendanceService.joinEvent(eventId: eventId);
+      if (mounted) {
+        setState(() {
+          _localJoinedIds.add(eventId);
+          _localLeftIds.remove(eventId);
+        });
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppTexts.t(EventAttendanceService.joinErrorKey(e)))),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppTexts.t('event_detail_join_error'))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _busyAttendanceIds.remove(eventId));
+      }
+    }
   }
 
   Future<void> _leaveEvent(String eventId) async {
     final uid = _uid;
     if (uid == null) return;
+    if (_busyAttendanceIds.contains(eventId)) return;
 
-    final eventRef = db.collection('events').doc(eventId);
-    final attendeeRef = eventRef.collection('attendees').doc(uid);
-
-    final doc = await attendeeRef.get();
-    if (!doc.exists) return;
-
-    await attendeeRef.delete();
-
-    final eventSnap = await eventRef.get();
-    final current = (eventSnap.data()?['attendeesCount'] ?? 0) as int;
-
-    await eventRef.update({
-      'attendeesCount': current > 0 ? current - 1 : 0,
-      'attendeesUids': FieldValue.arrayRemove([uid]),
-    });
+    setState(() => _busyAttendanceIds.add(eventId));
+    try {
+      await EventAttendanceService.leaveEvent(eventId: eventId);
+      if (mounted) {
+        setState(() {
+          _localLeftIds.add(eventId);
+          _localJoinedIds.remove(eventId);
+        });
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppTexts.t(EventAttendanceService.leaveErrorKey(e)))),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppTexts.t('event_detail_leave_error'))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _busyAttendanceIds.remove(eventId));
+      }
+    }
   }
 
   void _openEventGallery(List<String> images, int initialIndex) {
@@ -272,10 +378,9 @@ if (_selectedEventScope == 1) {
     required Timestamp? startAt,
     required String desc,
     required int attendees,
+    required List<String> attendeesUids,
     required List<String> photoUrls,
     required bool sponsored,
-    
-
   }) {
     showModalBottomSheet(
       context: context,
@@ -373,22 +478,16 @@ text: '$attendees ${AppTexts.t('events_attending')}',
                   ),
                 ],
                 const SizedBox(height: 16),
-                StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  stream: (_uid == null)
-                      ? const Stream.empty()
-                      : db
-                          .collection('events')
-                          .doc(eventId)
-                          .collection('attendees')
-                          .doc(_uid)
-                          .snapshots(),
-                  builder: (context, snap) {
-                    final joined = snap.data?.exists == true;
+                Builder(
+                  builder: (context) {
+                    _syncJoinCaches(eventId, attendeesUids);
+                    final joined = _isJoinedLocally(eventId, attendeesUids);
+                    final busy = _busyAttendanceIds.contains(eventId);
 
                     return SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _uid == null
+                        onPressed: (_uid == null || busy)
                             ? null
                             : () async {
                                 if (joined) {
@@ -406,13 +505,23 @@ text: '$attendees ${AppTexts.t('events_attending')}',
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: Text(
-                          joined
-    ? AppTexts.t('events_cancel_attendance')
-    : AppTexts.t('events_join'),
-
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
+                        child: busy
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  color: joined ? _remdyBlue : Colors.white,
+                                ),
+                              )
+                            : Text(
+                                joined
+                                    ? AppTexts.t('events_cancel_attendance')
+                                    : AppTexts.t('events_join'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
                       ),
                     );
                   },
@@ -431,11 +540,8 @@ text: '$attendees ${AppTexts.t('events_attending')}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Image.asset(
-              'assets/remdy_logo.png',
-              height: 60,
-            ),
+          const Center(
+            child: RemdyLogo(),
           ),
           const SizedBox(height: 12),
          Text(
@@ -483,7 +589,7 @@ label: Text(AppTexts.t('events_my_events')),
     );
   }
 
-  Widget _searchBox() {
+  Widget _searchBox({required String hint}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 5,10, 6),
       child: TextField(
@@ -498,10 +604,16 @@ onSubmitted: (v) {
   setState(() {
     _searchText = v.toLowerCase().trim();
   });
+  _searchFocus.unfocus();
+},
+onChanged: (v) {
+  setState(() {
+    _searchText = v.toLowerCase().trim();
+  });
 },
 
         decoration: InputDecoration(
-         hintText: AppTexts.t('events_search_hint'),
+         hintText: hint,
           prefixIcon: const Icon(Icons.search),
           filled: true,
           fillColor: Colors.white,
@@ -577,6 +689,12 @@ _categoryChip(8, AppTexts.t('events_languages')),
         onTap: () {
           setState(() {
             _selectedEventScope = index;
+            _brasilStateKey = null;
+            _brasilStateName = null;
+            _brasilStateUf = null;
+            _searchText = '';
+            _searchC.clear();
+            _feedEpoch++;
           });
         },
         borderRadius: BorderRadius.circular(999),
@@ -601,7 +719,7 @@ _categoryChip(8, AppTexts.t('events_languages')),
     );
   }
 
-  Widget _scopeFilters(String city) {
+  Widget _scopeFilters(String city, {required bool isBrazil}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       child: Container(
@@ -622,13 +740,32 @@ _scopeChip(
 ),
 _scopeChip(
   2,
-  AppTexts.t('events_country'),
+  isBrazil ? AppTexts.t('events_brasil_title') : AppTexts.t('events_country'),
 ),
 
           ],
         ),
       ),
     );
+  }
+
+  String _searchHintForScope({required bool isBrazil}) {
+    if (_selectedEventScope == 2) {
+      final stateName = (_brasilStateName ?? '').trim();
+      if (stateName.isNotEmpty) {
+        return AppTexts.t('events_brasil_state_search_hint')
+            .replaceAll('{state}', stateName);
+      }
+      return AppTexts.t('events_brasil_search_hint');
+    }
+    return AppTexts.t('events_search_hint');
+  }
+
+  String _formatBrasilEventCount(int count) {
+    final key = count == 1
+        ? 'events_brasil_events_count_one'
+        : 'events_brasil_events_count';
+    return AppTexts.t(key).replaceAll('{count}', '$count');
   }
 
 Widget _attendeeAvatars(List<String> uids, int attendees) {
@@ -759,7 +896,7 @@ $link
       color: Colors.white,
       borderRadius: BorderRadius.circular(22),
       elevation: 2,
-      shadowColor: Colors.black.withOpacity(0.08),
+      shadowColor: Colors.black.withValues(alpha: 0.08),
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
         onTap: () {
@@ -988,26 +1125,22 @@ SizedBox(
 const SizedBox(width: 6),
 
 
-              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: (_uid == null)
-                    ? const Stream.empty()
-                    : db
-                        .collection('events')
-                        .doc(eventId)
-                        .collection('attendees')
-                        .doc(_uid)
-                        .snapshots(),
-                builder: (context, snap) {
-                  final joined = snap.data?.exists == true;
+              Builder(
+                builder: (context) {
+                  _syncJoinCaches(eventId, attendeesUids);
+                  final joined = _isJoinedLocally(eventId, attendeesUids);
+                  final busy = _busyAttendanceIds.contains(eventId);
 
                   return InkWell(
-                    onTap: () async {
-                      if (joined) {
-                        await _leaveEvent(eventId);
-                      } else {
-                        await _joinEvent(eventId);
-                      }
-                    },
+                    onTap: (_uid == null || busy)
+                        ? null
+                        : () async {
+                            if (joined) {
+                              await _leaveEvent(eventId);
+                            } else {
+                              await _joinEvent(eventId);
+                            }
+                          },
                     borderRadius: BorderRadius.circular(999),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -1018,16 +1151,25 @@ const SizedBox(width: 6),
                         color: joined ? const Color(0xFFEFF6FF) : _remdyBlue,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: Text(
-                       joined
-    ? AppTexts.t('events_confirmed')
-    : AppTexts.t('events_join'),
-                        style: TextStyle(
-                          color: joined ? _remdyBlue : Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 10,
-                        ),
-                      ),
+                      child: busy
+                          ? SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: joined ? _remdyBlue : Colors.white,
+                              ),
+                            )
+                          : Text(
+                              joined
+                                  ? AppTexts.t('events_confirmed')
+                                  : AppTexts.t('events_join'),
+                              style: TextStyle(
+                                color: joined ? _remdyBlue : Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 10,
+                              ),
+                            ),
                     ),
                   );
                 },
@@ -1136,9 +1278,12 @@ Widget _eventsList({
   required String city,
   required double? myLat,
   required double? myLng,
+  required String userStateName,
+  required bool isBrazil,
 }) {
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+  key: ValueKey('events_feed_$_feedEpoch'),
   stream: _loadEvents(country: country, city: city),
   builder: (context, snap) {
 
@@ -1147,164 +1292,126 @@ Widget _eventsList({
         }
 
         if (snap.hasError) {
-          return Center(child: Text('Erro: ${snap.error}'));
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    AppTexts.t('events_load_error'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: _muted,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => setState(() => _feedEpoch++),
+                    child: Text(AppTexts.t('events_retry')),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
-        final allDocs = snap.data?.docs ?? [];
+        final allDocs = snap.data ?? [];
 
         
 final docs = allDocs.where((doc) {
 
   final data = doc.data();
 
-final search = _searchText.trim();
-
-if (search.isNotEmpty) {
-  final title =
-      (data['title'] ?? '').toString().toLowerCase();
-
-  final city =
-      (data['city'] ?? '').toString().toLowerCase();
-
-
-
-
-  final state =
-      (data['stateName'] ?? '').toString().toLowerCase();
-
-  final country =
-      (data['countryName'] ?? '').toString().toLowerCase();
-
-  final place =
-      (data['placeName'] ?? '').toString().toLowerCase();
-
-
-  final match =
-      title.contains(search) ||
-      city.contains(search) ||
-      state.contains(search) ||
-      country.contains(search) ||
-      place.contains(search);
-
-  if (!match) return false;
-}
-
-
-
-final startAt =
-    data['startAt'] is Timestamp
-        ? data['startAt'] as Timestamp
-        : null;
-
-if (startAt != null) {
-  final expireAt =
-      startAt.toDate().add(const Duration(days: 1));
-
-  if (expireAt.isBefore(DateTime.now())) {
-    return false;
-  }
-}
-
- 
+if (!EventLifecycle.passesPublicVisibility(data)) return false;
+ if (data['archived'] == true) return false;
+ if (data['deleted'] == true) return false;
 
  if (!_passesCategoryFilter(data)) return false;
 
- if (_selectedEventScope == 2) {
-  final userLat = myLat;
-  final userLng = myLng;
+ // Arredores: outra cidade + distância <= 110 km (Haversine).
+ if (_selectedEventScope == 1) {
+  final eventCityName = (data['city'] ?? '').toString();
+  final eventLatRaw = data['lat'] ?? data['cityLat'];
+  final eventLngRaw = data['lng'] ?? data['cityLng'];
+  final eventLat =
+      eventLatRaw is num ? eventLatRaw.toDouble() : null;
+  final eventLng =
+      eventLngRaw is num ? eventLngRaw.toDouble() : null;
 
-  final eventCityName =
-      (data['city'] ?? '').toString().toLowerCase().trim();
-  final currentCityName = city.toLowerCase().trim();
+  return EventsBrasilExploreLogic.passesSurroundings(
+    userCity: city,
+    eventCity: eventCityName,
+    userLat: myLat,
+    userLng: myLng,
+    eventLat: eventLat,
+    eventLng: eventLng,
+    radiusKm: EventsGeoConstants.EVENTS_SURROUNDINGS_RADIUS_KM,
+  );
+ }
 
-  if (eventCityName == currentCityName) return false;
+ // Brasil/país: sem exclusão de cidade e sem filtro de distância.
+ // Busca e filtro por estado são aplicados depois.
 
-  if (userLat != null && userLng != null) {
-    final eventLatRaw = data['lat'];
-    final eventLngRaw = data['lng'];
+  return true;
+}).toList();
 
-    if (eventLatRaw is num && eventLngRaw is num) {
-      final distance = _distanceKm(
-        userLat,
-        userLng,
-        eventLatRaw.toDouble(),
-        eventLngRaw.toDouble(),
-      );
-
-      if (distance <= 100) return false;
-    }
-  }
-}
-
-
-
-// 🔥 evitar mostrar a mesma cidade no "Ao redor"
-if (_selectedEventScope == 1) {
-
-final userLat = myLat;
-final userLng = myLng;
-
-if (userLat == null || userLng == null) return false;
-
-
-  final eventLatRaw = data['lat'];
-  final eventLngRaw = data['lng'];
-
-  if (eventLatRaw is! num || eventLngRaw is! num) return false;
-
- final distance = _distanceKm(
-  userLat,
-  userLng,
-  eventLatRaw.toDouble(),
-  eventLngRaw.toDouble(),
+// Deduplicação por ID (live+upcoming já dedupam; reforço aqui).
+final deduped = EventsBrasilExploreLogic.dedupeById(
+  docs,
+  (d) => d.id,
 );
 
-
-  final eventCityName = (data['city'] ?? '').toString().toLowerCase().trim();
-  final currentCityName = city.toLowerCase().trim();
-
-  if (eventCityName == currentCityName) return false;
-
-  if (distance > 100) return false;
+if (_selectedEventScope == 2) {
+  return _buildBrasilExplore(
+    docs: deduped,
+    userStateName: userStateName,
+    isBrazil: isBrazil,
+  );
 }
 
-
-
-
-
-  if (_searchText.isEmpty) return true;
+final filtered = deduped.where((doc) {
+  final data = doc.data();
+  final search = _searchText.trim();
+  if (search.isEmpty) return true;
 
   final title = (data['title'] ?? '').toString().toLowerCase();
   final eventCitySearch = (data['city'] ?? '').toString().toLowerCase();
-  
-final eventState = (data['stateName'] ?? '').toString();
-
+  final eventState = (data['stateName'] ?? '').toString().toLowerCase();
   final place = (data['placeName'] ?? '').toString().toLowerCase();
   final category = (data['category'] ?? '').toString().toLowerCase();
 
-  return title.contains(_searchText) ||
-      eventCitySearch.contains(_searchText) ||
-      place.contains(_searchText) ||
-      category.contains(_searchText);
+  return title.contains(search) ||
+      eventCitySearch.contains(search) ||
+      eventState.contains(search) ||
+      place.contains(search) ||
+      category.contains(search);
 }).toList();
-docs.sort((a, b) {
-  final aSponsored = a.data()['sponsored'] == true ? 1 : 0;
-  final bSponsored = b.data()['sponsored'] == true ? 1 : 0;
 
-  return bSponsored.compareTo(aSponsored);
+filtered.sort((a, b) {
+  final aData = a.data();
+  final bData = b.data();
+  final aStart = aData['startAt'] is Timestamp
+      ? (aData['startAt'] as Timestamp).toDate()
+      : null;
+  final bStart = bData['startAt'] is Timestamp
+      ? (bData['startAt'] as Timestamp).toDate()
+      : null;
+  return EventsBrasilExploreLogic.compareSponsoredThenStart(
+    aSponsored: aData['sponsored'] == true,
+    bSponsored: bData['sponsored'] == true,
+    aStart: aStart,
+    bStart: bStart,
+  );
 });
 
-
-
-        if (docs.isEmpty) {
+        if (filtered.isEmpty) {
           return Center(
             child: Text(
              _selectedEventScope == 0
     ? AppTexts.t('events_empty_city')
-    : _selectedEventScope == 1
-        ? AppTexts.t('events_empty_nearby')
-        : AppTexts.t('events_empty_country'),
-
+    : AppTexts.t('events_empty_nearby'),
 
               style: TextStyle(
                 color: _muted,
@@ -1314,103 +1421,11 @@ docs.sort((a, b) {
           );
         }
 
-        if (_selectedEventScope == 2) {
-  final grouped = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
-
-  for (final doc in docs) {
-    final data = doc.data();
-    final state = (data['stateName'] ?? '').toString().trim();
-    final key = state.isEmpty ? AppTexts.t('events_country') : state;
-
-    grouped.putIfAbsent(key, () => []);
-    grouped[key]!.add(doc);
-  }
-
-  final items = <Widget>[];
-
-  grouped.forEach((state, stateDocs) {
-    items.add(
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-        child: Text(
-          state,
-          style: const TextStyle(
-            color: _text,
-            fontWeight: FontWeight.w900,
-            fontSize: 16,
-          ),
-        ),
-      ),
-    );
-
-    for (final doc in stateDocs) {
-      final data = doc.data();
-
-      final title = (data['title'] ?? 'Evento').toString();
-      final eventCity = (data['city'] ?? '').toString();
-      final eventState = (data['stateName'] ?? '').toString();
-      final place = (data['placeName'] ?? '').toString();
-      final category = (data['category'] ?? 'Evento').toString();
-      final desc = (data['description'] ?? '').toString();
-
-      final startAt =
-          data['startAt'] is Timestamp ? data['startAt'] as Timestamp : null;
-
-      final attendees =
-          data['attendeesCount'] is int ? data['attendeesCount'] as int : 0;
-
-      final rawPhotos = data['photoUrls'];
-
-      final photoUrls = rawPhotos is List
-          ? rawPhotos
-              .map((e) => e.toString())
-              .where((e) => e.trim().isNotEmpty)
-              .toList()
-          : <String>[];
-
-      final coverUrl = (data['coverUrl'] ?? '').toString().trim();
-
-      final imageUrl = coverUrl.isNotEmpty
-          ? coverUrl
-          : (photoUrls.isNotEmpty ? photoUrls.first : '');
-
-      final rawAttendeesUids = data['attendeesUids'];
-
-      final attendeesUids = rawAttendeesUids is List
-          ? rawAttendeesUids.map((e) => e.toString()).toList()
-          : <String>[];
-
-      items.add(
-        _eventCard(
-          eventId: doc.id,
-          title: title,
-          city: eventCity,
-          state: eventState,
-          place: place,
-          startAt: startAt,
-          desc: desc,
-          imageUrl: imageUrl,
-          category: category,
-          attendees: attendees,
-          attendeesUids: attendeesUids,
-          photoUrls: photoUrls,
-          sponsored: data['sponsored'] == true,
-        ),
-      );
-    }
-  });
-
-  return ListView(
-    padding: const EdgeInsets.only(top: 10, bottom: 90),
-    children: items,
-  );
-}
-
 return ListView.builder(
   padding: const EdgeInsets.only(top: 10, bottom: 90),
-  itemCount: docs.length,
+  itemCount: filtered.length,
   itemBuilder: (context, index) {
-    final doc = docs[index];
+    final doc = filtered[index];
     final data = doc.data();
 
     final title = (data['title'] ?? 'Evento').toString();
@@ -1471,21 +1486,370 @@ return ListView.builder(
   }
 
   
-double _distanceKm(double lat1, double lng1, double lat2, double lng2) {
-  const earthRadius = 6371.0;
+Widget _buildBrasilExplore({
+  required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  required String userStateName,
+  required bool isBrazil,
+}) {
+  final refs = docs.map((doc) {
+    final data = doc.data();
+    final startAt = data['startAt'] is Timestamp
+        ? (data['startAt'] as Timestamp).toDate()
+        : null;
+    return BrasilEventRef(
+      id: doc.id,
+      title: (data['title'] ?? '').toString(),
+      city: (data['city'] ?? '').toString(),
+      stateName: (data['stateName'] ?? data['state'] ?? '').toString(),
+      startAt: startAt,
+      sponsored: data['sponsored'] == true,
+    );
+  }).toList();
 
-  final dLat = (lat2 - lat1) * pi / 180;
-  final dLng = (lng2 - lng1) * pi / 180;
+  final byId = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+  for (final d in docs) {
+    byId[d.id] = d;
+  }
 
-  final a =
-      sin(dLat / 2) * sin(dLat / 2) +
-      cos(lat1 * pi / 180) *
-          cos(lat2 * pi / 180) *
-          sin(dLng / 2) *
-          sin(dLng / 2);
+  final search = _searchText.trim();
+  final selectedKey = _brasilStateKey;
 
-  final c = 2 * atan2(sqrt(a), sqrt(1 - a));
-  return earthRadius * c;
+  // Estado selecionado: lista de eventos do estado (com busca cidade/título).
+  if (selectedKey != null && selectedKey.isNotEmpty) {
+    var stateDocs = EventsBrasilExploreLogic.eventsForState(
+      events: refs,
+      stateKey: selectedKey,
+      preferBrazilCatalog: isBrazil,
+    )
+        .map((r) => byId[r.id])
+        .whereType<QueryDocumentSnapshot<Map<String, dynamic>>>()
+        .toList();
+
+    if (search.isNotEmpty) {
+      stateDocs = stateDocs.where((doc) {
+        final data = doc.data();
+        return EventsBrasilExploreLogic.matchesCityOrTitle(
+          query: search,
+          title: (data['title'] ?? '').toString(),
+          city: (data['city'] ?? '').toString(),
+        );
+      }).toList();
+    }
+
+    stateDocs.sort((a, b) {
+      final aData = a.data();
+      final bData = b.data();
+      final aStart = aData['startAt'] is Timestamp
+          ? (aData['startAt'] as Timestamp).toDate()
+          : null;
+      final bStart = bData['startAt'] is Timestamp
+          ? (bData['startAt'] as Timestamp).toDate()
+          : null;
+      return EventsBrasilExploreLogic.compareSponsoredThenStart(
+        aSponsored: aData['sponsored'] == true,
+        bSponsored: bData['sponsored'] == true,
+        aStart: aStart,
+        bStart: bStart,
+      );
+    });
+
+    final headerTitle = (_brasilStateName ?? '').trim().isNotEmpty
+        ? _brasilStateName!
+        : selectedKey;
+    final uf = (_brasilStateUf ?? '').trim();
+
+    if (stateDocs.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+        children: [
+          _brasilStateHeader(
+            title: headerTitle,
+            uf: uf,
+            onBack: () {
+              setState(() {
+                _brasilStateKey = null;
+                _brasilStateName = null;
+                _brasilStateUf = null;
+                _searchText = '';
+                _searchC.clear();
+              });
+            },
+          ),
+          const SizedBox(height: 40),
+          Center(
+            child: Text(
+              search.isNotEmpty
+                  ? AppTexts.t('events_empty_brasil_search')
+                  : AppTexts.t('events_empty_brasil_state'),
+              style: const TextStyle(
+                color: _muted,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 4, bottom: 90),
+      itemCount: stateDocs.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return _brasilStateHeader(
+            title: headerTitle,
+            uf: uf,
+            onBack: () {
+              setState(() {
+                _brasilStateKey = null;
+                _brasilStateName = null;
+                _brasilStateUf = null;
+                _searchText = '';
+                _searchC.clear();
+              });
+            },
+          );
+        }
+        return _eventCardFromDoc(stateDocs[index - 1]);
+      },
+    );
+  }
+
+  // Home Brasil: com busca ativa → resultados cidade/evento; senão → estados.
+  if (search.isNotEmpty) {
+    final matched = docs.where((doc) {
+      final data = doc.data();
+      return EventsBrasilExploreLogic.matchesCityOrTitle(
+        query: search,
+        title: (data['title'] ?? '').toString(),
+        city: (data['city'] ?? '').toString(),
+      );
+    }).toList();
+
+    matched.sort((a, b) {
+      final aData = a.data();
+      final bData = b.data();
+      final aStart = aData['startAt'] is Timestamp
+          ? (aData['startAt'] as Timestamp).toDate()
+          : null;
+      final bStart = bData['startAt'] is Timestamp
+          ? (bData['startAt'] as Timestamp).toDate()
+          : null;
+      return EventsBrasilExploreLogic.compareSponsoredThenStart(
+        aSponsored: aData['sponsored'] == true,
+        bSponsored: bData['sponsored'] == true,
+        aStart: aStart,
+        bStart: bStart,
+      );
+    });
+
+    if (matched.isEmpty) {
+      return Center(
+        child: Text(
+          AppTexts.t('events_empty_brasil_search'),
+          style: const TextStyle(
+            color: _muted,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 10, bottom: 90),
+      itemCount: matched.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(
+              AppTexts.t('events_brasil_title'),
+              style: const TextStyle(
+                color: _text,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
+            ),
+          );
+        }
+        return _eventCardFromDoc(matched[index - 1]);
+      },
+    );
+  }
+
+  final summaries = EventsBrasilExploreLogic.buildStateSummaries(
+    events: refs,
+    userStateRaw: userStateName,
+    preferBrazilCatalog: isBrazil,
+  );
+
+  if (summaries.isEmpty) {
+    return Center(
+      child: Text(
+        AppTexts.t('events_empty_brasil_states'),
+        style: const TextStyle(
+          color: _muted,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
+  return ListView.builder(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+    itemCount: summaries.length + 1,
+    itemBuilder: (context, index) {
+      if (index == 0) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            AppTexts.t('events_brasil_title'),
+            style: const TextStyle(
+              color: _text,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+            ),
+          ),
+        );
+      }
+
+      final state = summaries[index - 1];
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              setState(() {
+                _brasilStateKey = state.key;
+                _brasilStateName = state.name;
+                _brasilStateUf = state.uf;
+                _searchText = '';
+                _searchC.clear();
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _border),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          state.uf.isNotEmpty
+                              ? '${state.name} — ${state.uf}'
+                              : state.name,
+                          style: const TextStyle(
+                            color: _text,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatBrasilEventCount(state.eventCount),
+                          style: const TextStyle(
+                            color: _muted,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded, color: _muted),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Widget _brasilStateHeader({
+  required String title,
+  required String uf,
+  required VoidCallback onBack,
+}) {
+  final label = uf.isNotEmpty ? '$title — $uf' : title;
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(8, 4, 16, 8),
+    child: Row(
+      children: [
+        IconButton(
+          onPressed: onBack,
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          color: _remdyBlue,
+          tooltip: AppTexts.t('events_brasil_back'),
+        ),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: _text,
+              fontWeight: FontWeight.w900,
+              fontSize: 17,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _eventCardFromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+  final data = doc.data();
+  final title = (data['title'] ?? 'Evento').toString();
+  final eventCity = (data['city'] ?? '').toString();
+  final eventState = (data['stateName'] ?? '').toString();
+  final place = (data['placeName'] ?? '').toString();
+  final category = (data['category'] ?? 'Evento').toString();
+  final desc = (data['description'] ?? '').toString();
+  final startAt =
+      data['startAt'] is Timestamp ? data['startAt'] as Timestamp : null;
+  final attendees =
+      data['attendeesCount'] is int ? data['attendeesCount'] as int : 0;
+  final rawPhotos = data['photoUrls'];
+  final photoUrls = rawPhotos is List
+      ? rawPhotos
+          .map((e) => e.toString())
+          .where((e) => e.trim().isNotEmpty)
+          .toList()
+      : <String>[];
+  final coverUrl = (data['coverUrl'] ?? '').toString().trim();
+  final imageUrl = coverUrl.isNotEmpty
+      ? coverUrl
+      : (photoUrls.isNotEmpty ? photoUrls.first : '');
+  final rawAttendeesUids = data['attendeesUids'];
+  final attendeesUids = rawAttendeesUids is List
+      ? rawAttendeesUids.map((e) => e.toString()).toList()
+      : <String>[];
+
+  return _eventCard(
+    eventId: doc.id,
+    title: title,
+    city: eventCity,
+    state: eventState,
+    place: place,
+    startAt: startAt,
+    desc: desc,
+    imageUrl: imageUrl,
+    category: category,
+    attendees: attendees,
+    attendeesUids: attendeesUids,
+    photoUrls: photoUrls,
+    sponsored: data['sponsored'] == true,
+  );
 }
 
 @override
@@ -1535,21 +1899,37 @@ Widget build(BuildContext context) {
                     .toString()
                     .trim();
 
-                final myLat = (userData['lat'] as num?)?.toDouble();
-                final myLng = (userData['lng'] as num?)?.toDouble();
+                final myStateName = (userData['stateName'] ??
+                        userData['state'] ??
+                        '')
+                    .toString()
+                    .trim();
+
+                final latRaw = userData['lat'] ?? userData['cityLat'];
+                final lngRaw = userData['lng'] ?? userData['cityLng'];
+                final myLat =
+                    latRaw is num ? latRaw.toDouble() : null;
+                final myLng =
+                    lngRaw is num ? lngRaw.toDouble() : null;
+
+                final isBrazil = myCountry == 'br';
 
                 return Column(
                   children: [
                     _topHeader(),
-                    _searchBox(),
+                    _searchBox(
+                      hint: _searchHintForScope(isBrazil: isBrazil),
+                    ),
                     _categoryFilters(),
-                    _scopeFilters(myCity),
+                    _scopeFilters(myCity, isBrazil: isBrazil),
                     Expanded(
                       child: _eventsList(
                         country: myCountry,
                         city: myCity,
                         myLat: myLat,
                         myLng: myLng,
+                        userStateName: myStateName,
+                        isBrazil: isBrazil,
                       ),
                     ),
                   ],

@@ -510,7 +510,7 @@
   "events_sports": "Sports",
   "events_restaurant": "Restaurant",
   "events_city": "Ville",
-  "events_nearby": "À proximité",
+  "events_nearby": "Alentours",
   "events_country": "Pays",
   "events_cancel_attendance": "Annuler la participation",
   "events_join": "Participer",
@@ -1088,5 +1088,14 @@
   "group_transfer_need_member": "Ajoutez un autre membre avant de partir. Le propriétaire ne peut pas laisser le groupe vide.",
   "group_transfer_no_permission": "Permission refusée pour transférer la propriété.",
   "group_transfer_invalid": "Impossible de transférer la propriété.",
-  "group_transfer_error": "Erreur lors du transfert de propriété."
+  "group_transfer_error": "Erreur lors du transfert de propriété.",
+  "events_brasil_title": "Explorer",
+  "events_brasil_search_hint": "Rechercher par ville ou événement",
+  "events_brasil_state_search_hint": "Rechercher ville ou événement à {state}",
+  "events_brasil_events_count": "{count} événements",
+  "events_brasil_events_count_one": "{count} événement",
+  "events_brasil_back": "Régions",
+  "events_empty_brasil_states": "Aucune région avec des événements pour le moment.",
+  "events_empty_brasil_state": "Aucun événement dans cette région.",
+  "events_empty_brasil_search": "Aucun résultat pour cette recherche."
 }
