@@ -21,6 +21,8 @@ class EventManagementService {
     required String description,
     required String category,
     required DateTime startAt,
+    required DateTime endAt,
+    required String eventTimeZone,
     required String city,
     required String cityKey,
     required String stateName,
@@ -35,13 +37,16 @@ class EventManagementService {
     required bool sponsorInterested,
     String? coverUrl,
     List<String>? photoUrls,
+    Map<String, dynamic>? extraFields,
   }) async {
     final payload = <String, dynamic>{
       'requestId': _newRequestId(),
       'title': title,
       'description': description,
       'category': category,
-      'startAtMs': startAt.millisecondsSinceEpoch,
+      'startAtMs': startAt.toUtc().millisecondsSinceEpoch,
+      'endAtMs': endAt.toUtc().millisecondsSinceEpoch,
+      'eventTimeZone': eventTimeZone.trim(),
       'city': city,
       'cityKey': cityKey,
       'stateName': stateName,
@@ -61,6 +66,13 @@ class EventManagementService {
     if (photoUrls != null && photoUrls.isNotEmpty) {
       payload['photoUrls'] = photoUrls;
     }
+    if (extraFields != null && extraFields.isNotEmpty) {
+      // Core fields above win; extras fill editorial allowlist.
+      for (final e in extraFields.entries) {
+        if (e.key == 'requestId' || e.key == 'eventId') continue;
+        payload.putIfAbsent(e.key, () => e.value);
+      }
+    }
 
     final callable = _functions.httpsCallable('createEvent');
     final result = await callable.call(payload);
@@ -73,6 +85,8 @@ class EventManagementService {
     String? description,
     String? category,
     DateTime? startAt,
+    DateTime? endAt,
+    String? eventTimeZone,
     String? city,
     String? cityKey,
     String? stateName,
@@ -88,6 +102,7 @@ class EventManagementService {
     bool? sponsorInterested,
     String? coverUrl,
     List<String>? photoUrls,
+    Map<String, dynamic>? extraFields,
   }) async {
     final payload = <String, dynamic>{
       'eventId': eventId,
@@ -96,7 +111,13 @@ class EventManagementService {
     if (description != null) payload['description'] = description;
     if (category != null) payload['category'] = category;
     if (startAt != null) {
-      payload['startAtMs'] = startAt.millisecondsSinceEpoch;
+      payload['startAtMs'] = startAt.toUtc().millisecondsSinceEpoch;
+    }
+    if (endAt != null) {
+      payload['endAtMs'] = endAt.toUtc().millisecondsSinceEpoch;
+    }
+    if (eventTimeZone != null && eventTimeZone.trim().isNotEmpty) {
+      payload['eventTimeZone'] = eventTimeZone.trim();
     }
     if (city != null) payload['city'] = city;
     if (cityKey != null) payload['cityKey'] = cityKey;
@@ -119,6 +140,13 @@ class EventManagementService {
     }
     if (coverUrl != null) payload['coverUrl'] = coverUrl;
     if (photoUrls != null) payload['photoUrls'] = photoUrls;
+    if (extraFields != null && extraFields.isNotEmpty) {
+      for (final e in extraFields.entries) {
+        if (e.key == 'requestId' || e.key == 'eventId') continue;
+        // Named params already set take precedence.
+        payload.putIfAbsent(e.key, () => e.value);
+      }
+    }
 
     final callable = _functions.httpsCallable('updateEvent');
     final result = await callable.call(payload);
@@ -142,10 +170,35 @@ class EventManagementService {
     }
   }
 
-
   static Future<void> cancelEvent({required String eventId}) async {
     final callable = _functions.httpsCallable('cancelEvent');
     await callable.call(<String, dynamic>{'eventId': eventId});
+  }
+
+  static Future<void> archiveEvent({required String eventId}) async {
+    final callable = _functions.httpsCallable('archiveEvent');
+    await callable.call(<String, dynamic>{'eventId': eventId});
+  }
+
+  static Future<void> restoreEvent({required String eventId}) async {
+    final callable = _functions.httpsCallable('restoreEvent');
+    await callable.call(<String, dynamic>{'eventId': eventId});
+  }
+
+  static Future<Map<String, dynamic>> duplicateEvent({
+    required String eventId,
+  }) async {
+    final callable = _functions.httpsCallable('duplicateEvent');
+    final result = await callable.call(<String, dynamic>{'eventId': eventId});
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  static Future<void> deleteEventPermanently({required String eventId}) async {
+    final callable = _functions.httpsCallable('deleteEventPermanently');
+    await callable.call(<String, dynamic>{
+      'eventId': eventId,
+      'confirm': 'DELETE_PERMANENTLY',
+    });
   }
 
   static String cancelErrorKey(FirebaseFunctionsException e) {
@@ -186,6 +239,25 @@ class EventManagementService {
         return 'event_management_invalid_data';
       default:
         return 'event_management_update_error';
+    }
+  }
+
+  static String lifecycleErrorKey(FirebaseFunctionsException e) {
+    if (e.code == 'failed-precondition' &&
+        (e.message ?? '').contains('retention_required')) {
+      return 'events_error_retention';
+    }
+    switch (e.code) {
+      case 'permission-denied':
+        return 'events_error_delete_denied';
+      case 'unauthenticated':
+        return 'event_detail_login_required';
+      case 'not-found':
+        return 'event_management_unavailable';
+      case 'failed-precondition':
+        return 'events_error_delete_denied';
+      default:
+        return 'events_error_generic';
     }
   }
 }

@@ -1,9 +1,8 @@
-
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'events_page_new.dart';
+import '../services/event_deep_link_service.dart';
 
+/// Abre um evento a partir de deep link (`/e/{eventId}`).
 class EventDeepLinkPage extends StatefulWidget {
   final String eventId;
 
@@ -17,43 +16,22 @@ class EventDeepLinkPage extends StatefulWidget {
 }
 
 class _EventDeepLinkPageState extends State<EventDeepLinkPage> {
-
   @override
   void initState() {
     super.initState();
-    _openEvent();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openEvent());
   }
 
   Future<void> _openEvent() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('events')
-          .doc(widget.eventId)
-          .get();
+    final opened = await EventDeepLinkService.openEventById(
+      context,
+      eventId: widget.eventId,
+      replace: true,
+    );
 
-      if (!mounted) return;
-
-      if (!doc.exists) {
-        Navigator.pop(context);
-        return;
-      }
-
-      final data = doc.data() ?? {};
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-builder: (_) => EventsPage(
-  openEventId: widget.eventId,
-),
-
-
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      Navigator.pop(context);
+    if (!mounted) return;
+    if (!opened && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
   }
 
