@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.remdy.app",
+      "sha256_cert_fingerprints": [
+        "4e97471cc09c68a1502e113c2009f15f0015de422997583431044c2fa5a613e4"
+      ]
+    }
+  }
+]
