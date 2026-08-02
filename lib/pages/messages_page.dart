@@ -2,23 +2,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-
 import 'chat_page.dart';
 import '../l10n/app_texts.dart';
-
+import '../services/online_status.dart';
+import 'user_search_page.dart';
 
 class MessagesPage extends StatefulWidget {
   const MessagesPage({super.key});
-
 
   @override
   State<MessagesPage> createState() => _MessagesPageState();
 }
 
-
 class _MessagesPageState extends State<MessagesPage> {
   String? get _myUid => FirebaseAuth.instance.currentUser?.uid;
-
 
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
@@ -26,28 +23,22 @@ class _MessagesPageState extends State<MessagesPage> {
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
-
   String _loadedLocaleCode = '';
-
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-
     final locale = Localizations.localeOf(context);
     final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
 
-
     if (_loadedLocaleCode == nextCode) return;
     _loadedLocaleCode = nextCode;
-
 
     AppTexts.load(locale).then((_) {
       if (mounted) setState(() {});
     });
   }
-
 
   Future<void> _hideConversationForMe(String conversationId) async {
     final myUid = _myUid;
@@ -65,10 +56,8 @@ class _MessagesPageState extends State<MessagesPage> {
     }
   }
 
-
   void _openConversationActions(String conversationId) {
     final t = AppTexts.current;
-
 
     showModalBottomSheet(
       context: context,
@@ -124,7 +113,6 @@ class _MessagesPageState extends State<MessagesPage> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
@@ -157,7 +145,6 @@ class _MessagesPageState extends State<MessagesPage> {
         .where('participants', arrayContains: myUid)
         .limit(100);
 
-
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -173,6 +160,18 @@ class _MessagesPageState extends State<MessagesPage> {
           ),
         ),
         iconTheme: const IconThemeData(color: _muted),
+        actions: [
+          IconButton(
+            tooltip: t.get('user_search_title'),
+            icon: const Icon(Icons.search, color: _remdyBlue),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const UserSearchPage()),
+              );
+            },
+          ),
+        ],
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: convQuery.snapshots(),
@@ -183,7 +182,6 @@ class _MessagesPageState extends State<MessagesPage> {
           if (snap.hasError) {
             return Center(child: Text('${t.get('error')}: ${snap.error}'));
           }
-
 
           final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
             snap.data?.docs ?? [],
@@ -209,7 +207,6 @@ class _MessagesPageState extends State<MessagesPage> {
             );
           }
 
-
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: docs.length,
@@ -218,39 +215,31 @@ class _MessagesPageState extends State<MessagesPage> {
               final convDoc = docs[i];
               final data = convDoc.data();
 
-
               final hiddenRaw = data['hiddenFor'];
               final hiddenFor = (hiddenRaw is List)
                   ? hiddenRaw.map((e) => e.toString()).toList()
                   : <String>[];
 
-
               if (hiddenFor.contains(myUid)) {
                 return const SizedBox.shrink();
               }
 
-
               final participants =
                   (data['participants'] as List?)?.cast<String>() ?? [];
-
 
               final otherUid = participants.firstWhere(
                 (u) => u != myUid,
                 orElse: () => '',
               );
 
-
               final lastMessage = (data['lastMessage'] ?? '').toString();
-
 
               final unreadMap = (data['unread'] is Map)
                   ? Map<String, dynamic>.from(data['unread'])
                   : <String, dynamic>{};
 
-
               final myUnread =
                   (unreadMap[myUid] is int) ? unreadMap[myUid] as int : 0;
-
 
               final myUnread2 = (myUnread == 0 && data['unreadCount'] is Map)
                   ? ((data['unreadCount'][myUid] is int)
@@ -258,9 +247,7 @@ class _MessagesPageState extends State<MessagesPage> {
                       : 0)
                   : 0;
 
-
               final unreadFinal = myUnread > 0 ? myUnread : myUnread2;
-
 
               if (otherUid.isEmpty) {
                 return _ConversationTile(
@@ -285,14 +272,12 @@ class _MessagesPageState extends State<MessagesPage> {
                 );
               }
 
-
               return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 stream: db.collection('users').doc(otherUid).snapshots(),
                 builder: (context, userSnap) {
                   final u = userSnap.data?.data() ?? {};
                   final name = (u['name'] ?? t.get('user')).toString();
                   final photoUrl = (u['photoUrl'] ?? '').toString();
-
 
                   return _ConversationTile(
                     uid: otherUid,
@@ -324,7 +309,6 @@ class _MessagesPageState extends State<MessagesPage> {
   }
 }
 
-
 class _ConversationTile extends StatelessWidget {
   final String uid;
   final String name;
@@ -333,7 +317,6 @@ class _ConversationTile extends StatelessWidget {
   final int unread;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
-
 
   const _ConversationTile({
     required this.uid,
@@ -345,19 +328,16 @@ class _ConversationTile extends StatelessWidget {
     this.onLongPress,
   });
 
-
   static const Color _card = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
-
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
     final hasUnread = unread > 0;
-
 
     return InkWell(
       onTap: onTap,
@@ -383,7 +363,6 @@ class _ConversationTile extends StatelessWidget {
               uid: uid,
               photoUrl: photoUrl,
               size: 52,
-              onlineSeconds: 90,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -454,64 +433,20 @@ class _ConversationTile extends StatelessWidget {
   }
 }
 
-
 class _AvatarOnline extends StatelessWidget {
   final String uid;
   final String photoUrl;
   final double size;
-  final int onlineSeconds;
-
 
   const _AvatarOnline({
     required this.uid,
     required this.photoUrl,
     required this.size,
-    required this.onlineSeconds,
   });
-
-
-  DateTime? _toDateTime(dynamic v) {
-    if (v == null) return null;
-    if (v is Timestamp) return v.toDate();
-    if (v is int) {
-      if (v < 2000000000) {
-        return DateTime.fromMillisecondsSinceEpoch(v * 1000);
-      }
-      return DateTime.fromMillisecondsSinceEpoch(v);
-    }
-    if (v is num) {
-      final n = v.toInt();
-      if (n < 2000000000) {
-        return DateTime.fromMillisecondsSinceEpoch(n * 1000);
-      }
-      return DateTime.fromMillisecondsSinceEpoch(n);
-    }
-    if (v is String) return DateTime.tryParse(v);
-    return null;
-  }
-
-
-  bool _isOnlineFrom(Map<String, dynamic> data) {
-    final now = DateTime.now();
-    final lastSeen = _toDateTime(data['lastSeenAt']);
-    final updated = _toDateTime(data['updatedAt']);
-
-
-    bool recent(DateTime? dt) {
-      if (dt == null) return false;
-      final diff = now.difference(dt).inSeconds;
-      return diff <= onlineSeconds;
-    }
-
-
-    return recent(lastSeen) || recent(updated);
-  }
-
 
   @override
   Widget build(BuildContext context) {
     final hasUid = uid.trim().isNotEmpty;
-
 
     final avatar = Container(
       width: size,
@@ -531,24 +466,21 @@ class _AvatarOnline extends StatelessWidget {
           : null,
     );
 
-
     if (!hasUid) {
       return Stack(clipBehavior: Clip.none, children: [avatar]);
     }
 
-
     final db = FirebaseFirestore.instance;
     final pubStream = db.collection('publicUsers').doc(uid).snapshots();
-
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: pubStream,
       builder: (context, snap) {
+        final now = DateTime.now();
         Map<String, dynamic> data = {};
         if (snap.hasData && (snap.data?.exists ?? false)) {
           data = snap.data?.data() ?? {};
         }
-
 
         if (data.isEmpty) {
           return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -559,61 +491,36 @@ class _AvatarOnline extends StatelessWidget {
                       ? (s2.data?.data() ?? <String, dynamic>{})
                       : <String, dynamic>{};
 
-
-              final isOnline = _isOnlineFrom(d2);
-
-
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  avatar,
-                  Positioned(
-                    right: 2,
-                    bottom: 2,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: isOnline
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFFCBD5E1),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
-                  ),
-                ],
-              );
+              return _stack(avatar, OnlineStatus.isOnline(d2, now));
             },
           );
         }
 
-
-        final isOnline = _isOnlineFrom(data);
-
-
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            avatar,
-            Positioned(
-              right: 2,
-              bottom: 2,
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: isOnline
-                      ? const Color(0xFF22C55E)
-                      : const Color(0xFFCBD5E1),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-              ),
-            ),
-          ],
-        );
+        return _stack(avatar, OnlineStatus.isOnline(data, now));
       },
+    );
+  }
+
+  Widget _stack(Widget avatar, bool isOnline) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        avatar,
+        Positioned(
+          right: 2,
+          bottom: 2,
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color:
+                  isOnline ? const Color(0xFF22C55E) : const Color(0xFFCBD5E1),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

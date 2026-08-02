@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'share_extension_session_service.dart';
+
 class UserBootstrap {
-  static Future<void> ensureUserDoc({
+  static   Future<void> ensureUserDoc({
     String? referredBy, // opcional (convite)
   }) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -13,13 +15,14 @@ class UserBootstrap {
 
     final snap = await ref.get();
     if (snap.exists && snap.data()?['isBanned'] == true) {
+  await ShareExtensionSessionService.revokeLocalAndRemote();
   await FirebaseAuth.instance.signOut();
   throw Exception('ACCOUNT_BANNED');
 }
 
 
 
-    // dados mínimos (compatível com suas rules: uid/email não devem mudar)
+    // dados mínimos (compatível com rules: sem auto-concessão Premium)
     final baseData = <String, dynamic>{
       'uid': uid,
       'email': user.email ?? '',
@@ -31,6 +34,8 @@ class UserBootstrap {
       'isPremium': false,
       'isBanned': false,
       'invitesCount': 0,
+      'inviteRewardLevel': 0,
+      'isAmbassador': false,
       'invitesGoal': 5,
       'lastSeenAt': FieldValue.serverTimestamp(),
       'isOnline': true,

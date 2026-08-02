@@ -1,26 +1,21 @@
 import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 
-
 class TermsPage extends StatelessWidget {
   const TermsPage({super.key});
-
 
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
 
-
   String _terms() {
     final t = AppTexts.current;
     return '''
 ${t.get('terms_of_use')} — Remdy
-${t.get('last_update')}: 2026
-
+${t.get('last_update')}: ${t.get('legal_last_update_date')}
 
 ${t.get('terms_welcome')}
-
 
 1. ${t.get('terms_about_remdy')}
 ${t.get('terms_about_intro')}
@@ -28,75 +23,115 @@ ${t.get('terms_about_intro')}
 • ${t.get('terms_about_item_2')}
 • ${t.get('terms_about_item_3')}
 • ${t.get('terms_about_item_4')}
-
+• ${t.get('terms_about_item_5')}
+• ${t.get('terms_about_item_6')}
 
 ${t.get('terms_not_dating_app')}
-${t.get('terms_no_bots')}
+${t.get('terms_no_intent_promise')}
 
+2. ${t.get('terms_remi_title')}
+${t.get('terms_remi_intro')}
+• ${t.get('terms_remi_item_1')}
+• ${t.get('terms_remi_item_2')}
+• ${t.get('terms_remi_item_3')}
+• ${t.get('terms_remi_item_4')}
+• ${t.get('terms_remi_item_5')}
+• ${t.get('terms_remi_item_6')}
 
-2. ${t.get('terms_rules_title')}
+3. ${t.get('terms_age_title')}
+${t.get('terms_age_text')}
+
+4. ${t.get('terms_rules_title')}
 ${t.get('terms_rules_intro')}
 • ${t.get('terms_rules_item_1')}
 • ${t.get('terms_rules_item_2')}
 • ${t.get('terms_rules_item_3')}
 • ${t.get('terms_rules_item_4')}
 • ${t.get('terms_rules_item_5')}
-
+• ${t.get('terms_rules_item_6')}
+• ${t.get('terms_rules_item_7')}
+• ${t.get('terms_rules_item_8')}
+• ${t.get('terms_rules_item_9')}
+• ${t.get('terms_rules_item_10')}
+• ${t.get('terms_rules_item_11')}
 
 ${t.get('terms_rules_consequence')}
 
+5. ${t.get('terms_content_title')}
+${t.get('terms_content_intro')}
+• ${t.get('terms_content_item_1')}
+• ${t.get('terms_content_item_2')}
+• ${t.get('terms_content_item_3')}
+• ${t.get('terms_content_item_4')}
+• ${t.get('terms_content_item_5')}
+• ${t.get('terms_content_item_6')}
+• ${t.get('terms_content_item_7')}
 
-3. ${t.get('terms_photos_profile_title')}
-${t.get('terms_photos_intro')}
-• ${t.get('terms_photos_item_1')}
-• ${t.get('terms_photos_item_2')}
-• ${t.get('terms_photos_item_3')}
+${t.get('terms_content_rights')}
+${t.get('terms_content_moderation')}
 
+6. ${t.get('terms_events_title')}
+${t.get('terms_events_intro')}
+• ${t.get('terms_events_item_1')}
+• ${t.get('terms_events_item_2')}
+• ${t.get('terms_events_item_3')}
+• ${t.get('terms_events_item_4')}
+• ${t.get('terms_events_item_5')}
+• ${t.get('terms_events_item_6')}
+• ${t.get('terms_events_item_7')}
 
-4. ${t.get('privacy')}
-${t.get('terms_privacy_intro')}
-• ${t.get('terms_privacy_item_1')}
-• ${t.get('terms_privacy_item_2')}
-• ${t.get('terms_privacy_item_3')}
-• ${t.get('terms_privacy_item_4')}
+7. ${t.get('terms_moderation_title')}
+${t.get('terms_moderation_intro')}
+• ${t.get('terms_moderation_item_1')}
+• ${t.get('terms_moderation_item_2')}
+• ${t.get('terms_moderation_item_3')}
+• ${t.get('terms_moderation_item_4')}
+• ${t.get('terms_moderation_item_5')}
 
-
-${t.get('terms_privacy_usage')}
-${t.get('terms_privacy_no_sell')}
-
-
-5. ${t.get('security')}
-${t.get('terms_security_intro')}
-• ${t.get('terms_security_item_1')}
-• ${t.get('terms_security_item_2')}
-
-
-6. ${t.get('premium')}
+8. ${t.get('terms_premium_title')}
 ${t.get('terms_premium_intro')}
 • ${t.get('terms_premium_item_1')}
 • ${t.get('terms_premium_item_2')}
+• ${t.get('terms_premium_item_3')}
+• ${t.get('terms_premium_item_4')}
+• ${t.get('terms_premium_item_5')}
+• ${t.get('terms_premium_item_6')}
+• ${t.get('terms_premium_item_7')}
+• ${t.get('terms_premium_item_8')}
+• ${t.get('terms_premium_item_9')}
 
+9. ${t.get('terms_account_deletion_title')}
+${t.get('terms_account_deletion_intro')}
+• ${t.get('terms_account_deletion_item_1')}
+• ${t.get('terms_account_deletion_item_2')}
+• ${t.get('terms_account_deletion_item_3')}
+• ${t.get('terms_account_deletion_item_4')}
+• ${t.get('terms_account_deletion_item_5')}
+• ${t.get('terms_account_deletion_item_6')}
 
-7. ${t.get('terms_availability_title')}
+10. ${t.get('terms_liability_title')}
+${t.get('terms_liability_intro')}
+• ${t.get('terms_liability_item_1')}
+• ${t.get('terms_liability_item_2')}
+• ${t.get('terms_liability_item_3')}
+• ${t.get('terms_liability_item_4')}
+• ${t.get('terms_liability_item_5')}
+
+11. ${t.get('terms_availability_title')}
 ${t.get('terms_availability_text')}
 
-
-8. ${t.get('terms_account_closure_title')}
-${t.get('terms_account_closure_user')}
-${t.get('terms_account_closure_remdy')}
-
-
-9. ${t.get('terms_changes_title')}
+12. ${t.get('terms_changes_title')}
 ${t.get('terms_changes_text_1')}
 ${t.get('terms_changes_text_2')}
 
+13. ${t.get('terms_law_title')}
+${t.get('terms_law_text')}
 
-10. ${t.get('contact')}
+14. ${t.get('contact')}
 ${t.get('terms_contact_intro')}
-contact@remdy.app
+${t.get('support_email')}
 ''';
   }
-
 
   Widget _card({required Widget child}) {
     return Container(
@@ -110,11 +145,9 @@ contact@remdy.app
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
-
 
     return Scaffold(
       backgroundColor: _bg,
@@ -158,7 +191,6 @@ contact@remdy.app
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 12),
               ],
             ),
           ),
@@ -174,7 +206,6 @@ contact@remdy.app
               ),
             ),
           ),
-          const SizedBox(height: 14),
         ],
       ),
     );

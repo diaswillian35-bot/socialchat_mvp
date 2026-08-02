@@ -11,6 +11,9 @@ import 'forgot_password_page.dart';
 import 'splash_page.dart';
 import 'email_verification_page.dart';
 import '../l10n/app_texts.dart';
+import '../widgets/keyboard_safe_body.dart';
+import '../widgets/keyboard_dismiss.dart';
+
 
 
 
@@ -254,7 +257,7 @@ String _generateInviteCode(String name, String uid) {
     if (d['homeCountryCode'] == null) patch['homeCountryCode'] = '';
 if (d['countryCode'] == null) patch['countryCode'] = '';
 if (d['countryLocked'] == null) patch['countryLocked'] = false;
-if (d['isPremium'] == null) patch['isPremium'] = false;
+// isPremium é concedido somente pelo servidor (RevenueCat webhook/sync)
 
 
 final currentInviteCode = (d['inviteCode'] ?? '').toString().trim();
@@ -274,6 +277,9 @@ if (currentInviteCode.isEmpty) {
 
 
   Future<void> _goToApp() async {
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -363,6 +369,9 @@ await _ensureUserDoc(user, isNewUser: true);
 
 if (!mounted) return;
 
+FocusManager.instance.primaryFocus?.unfocus();
+await Future<void>.delayed(Duration.zero);
+if (!mounted) return;
 
 Navigator.pushReplacement(
   context,
@@ -574,15 +583,14 @@ final title =
     _isLogin ? t.get('login_title') : t.get('create_account_title');
 
    return Scaffold(
-
+      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFF6F7FB),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Container(
+      body: GestureDetector(
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        behavior: HitTestBehavior.opaque,
+        child: SafeArea(
+          child: KeyboardSafeFormBody(
+            child: Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -618,6 +626,8 @@ final title =
                     TextField(
                       controller: _emailC,
                       keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       decoration: InputDecoration(
                         labelText: t.get('email'),
                         border: OutlineInputBorder(),
@@ -627,6 +637,12 @@ final title =
                     TextField(
                       controller: _passC,
                       obscureText: _hidePass,
+                      textInputAction:
+                          _isLogin ? TextInputAction.done : TextInputAction.next,
+                      onSubmitted: (_) {
+                        if (_isLogin) dismissAppKeyboard();
+                      },
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       decoration: InputDecoration(
                         labelText: t.get('password'),
                         border: const OutlineInputBorder(),
@@ -644,6 +660,8 @@ final title =
                       TextField(
                         controller: _confirmC,
                         obscureText: _hideConfirm,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => dismissAppKeyboard(),
                         decoration: InputDecoration(
                           labelText:t.get ('confirm_password'),
                           border: const OutlineInputBorder(),
@@ -781,7 +799,6 @@ ElevatedButton(
             ),
           ),
         ),
-      ),
     );
   }
 }

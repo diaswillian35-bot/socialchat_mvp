@@ -5,7 +5,10 @@ import 'package:flutter/services.dart';
 
 
 import '../services/purchase_service.dart';
+import '../services/premium_access_service.dart';
 import '../l10n/app_texts.dart';
+import 'terms_page.dart';
+import 'privacy_page.dart';
 
 
 class PremiumPage extends StatefulWidget {
@@ -57,7 +60,8 @@ bool _adminPremiumEnabled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (uid == null) return;
       await _prepareRevenueCat();
-      await _syncPremiumFromRevenueCat();
+      // Sync de apoio (não grava isPremium no cliente)
+      await _requestServerPremiumSync();
     });
   }
 
@@ -108,20 +112,34 @@ bool _adminPremiumEnabled = true;
   }
 
 
-  Future<void> _syncPremiumFromRevenueCat() async {
+  Future<void> _requestServerPremiumSync() async {
     if (uid == null) return;
-
 
     try {
       await PurchaseService.instance.configure(appUserId: uid!);
-      final premium = await PurchaseService.instance.isPremium();
-
-
-      await _userDoc.set({
-        'isPremium': premium,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await PurchaseService.instance.syncEntitlementWithServer();
     } catch (_) {}
+  }
+
+  /// Aguarda o Firestore refletir isPremium (webhook/sync), sem gravar no cliente.
+  Future<bool> _waitForPremiumActive({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    if (uid == null) return false;
+
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        final snap = await _userDoc.get();
+        final data = snap.data() ?? {};
+        if (PremiumAccessService.isPremiumActiveFromData(data) &&
+            data['isPremium'] == true) {
+          return true;
+        }
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 900));
+    }
+    return false;
   }
 Future<void> _loadAdminPremiumPrice(Map<String, dynamic> userData) async {
   final code = (userData['homeCountryCode'] ??
@@ -187,22 +205,28 @@ String _formatPrice(String currency, double price) {
     final t = AppTexts.current;
     if (uid == null) return;
 
-
     if (!_hasPackage) {
       _snack(t.get('premium_in_setup_try_later'));
       return;
     }
 
-
     setState(() => _loading = true);
     try {
       await PurchaseService.instance.configure(appUserId: uid!);
       await PurchaseService.instance.buyPremium();
-      await _syncPremiumFromRevenueCat();
-
 
       if (!mounted) return;
-      _snack(t.get('premium_activated'));
+      _snack(t.get('premium_purchase_syncing'));
+
+      await _requestServerPremiumSync();
+      final active = await _waitForPremiumActive();
+
+      if (!mounted) return;
+      _snack(
+        active
+            ? t.get('premium_activated')
+            : t.get('premium_purchase_syncing'),
+      );
     } catch (e) {
       if (!mounted) return;
       _snack('${t.get('purchase_error')}: $e');
@@ -211,23 +235,27 @@ String _formatPrice(String currency, double price) {
     }
   }
 
-
   Future<void> _restorePremiumReal() async {
     final t = AppTexts.current;
     if (uid == null) return;
-
 
     setState(() => _loading = true);
     try {
       await PurchaseService.instance.configure(appUserId: uid!);
       await PurchaseService.instance.restore();
 
+      if (!mounted) return;
+      _snack(t.get('premium_purchase_syncing'));
 
-      await _syncPremiumFromRevenueCat();
-
+      await _requestServerPremiumSync();
+      final active = await _waitForPremiumActive();
 
       if (!mounted) return;
-      _snack(t.get('purchases_restored'));
+      _snack(
+        active
+            ? t.get('purchases_restored')
+            : t.get('premium_purchase_syncing'),
+      );
     } catch (e) {
       if (!mounted) return;
       _snack('${t.get('restore_error')}: $e');
@@ -252,6 +280,67 @@ String _formatPrice(String currency, double price) {
 
 
     return country;
+  }
+
+  String _formatPremiumUntilDate(DateTime date) {
+    final dd = date.day.toString().padLeft(2, '0');
+    final mm = date.month.toString().padLeft(2, '0');
+    return '$dd/$mm/${date.year}';
+  }
+
+  /// Título de status amigável (sem expor premiumType técnico).
+  String _premiumStatusTitle(Map<String, dynamic> data) {
+    final t = AppTexts.current;
+    if (data['isMaster'] == true) {
+      return t.get('premium_status_admin');
+    }
+    if (data['isPremium'] == true) {
+      return t.get('premium_status_subscription');
+    }
+    if (PremiumAccessService.hasActiveTimePremium(data)) {
+      final until = PremiumAccessService.premiumUntilFromData(data)!;
+      return '${t.get('premium_status_active_until')} ${_formatPremiumUntilDate(until)}';
+    }
+    return t.get('activate_premium_unlock_world');
+  }
+
+  String _premiumStatusSubtitle(Map<String, dynamic> data, bool accessActive) {
+    final t = AppTexts.current;
+    if (!accessActive) {
+      final until = PremiumAccessService.premiumUntilFromData(data);
+      if (until != null && !until.isAfter(DateTime.now())) {
+        return t.get('premium_benefit_expired');
+      }
+      return _hasPackage
+          ? t.get('subscribe_and_chat_outside_country')
+          : t.get('premium_products_not_connected');
+    }
+
+    if (data['isMaster'] == true) {
+      return t.get('you_are_already_premium');
+    }
+    if (data['isPremium'] == true) {
+      return t.get('if_change_phone_restore_purchase');
+    }
+    if (PremiumAccessService.hasActiveTimePremium(data)) {
+      return t.get('premium_status_temporary');
+    }
+    return t.get('you_are_already_premium');
+  }
+
+  String _premiumActiveButtonLabel(Map<String, dynamic> data) {
+    final t = AppTexts.current;
+    if (data['isMaster'] == true) {
+      return t.get('premium_status_admin');
+    }
+    if (data['isPremium'] == true) {
+      return t.get('premium_active_short');
+    }
+    if (PremiumAccessService.hasActiveTimePremium(data)) {
+      final until = PremiumAccessService.premiumUntilFromData(data)!;
+      return '${t.get('premium_status_active_until')} ${_formatPremiumUntilDate(until)}';
+    }
+    return t.get('premium_active_short');
   }
 
 
@@ -300,7 +389,8 @@ WidgetsBinding.instance.addPostFrameCallback((_) {
   _loadAdminPremiumPrice(data);
 });
 
-final isPremium = (data['isPremium'] ?? false) == true;
+final accessActive =
+    PremiumAccessService.isPremiumActiveFromData(data);
 
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: overlay,
@@ -354,8 +444,8 @@ final isPremium = (data['isPremium'] ?? false) == true;
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          isPremium
-                              ? t.get('your_premium_is_active')
+                          accessActive
+                              ? _premiumStatusTitle(data)
                               : t.get('activate_premium_unlock_world'),
                           style: const TextStyle(
                             fontSize: 15.5,
@@ -410,7 +500,7 @@ final isPremium = (data['isPremium'] ?? false) == true;
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isPremium
+                        accessActive
                             ? t.get('you_are_already_premium')
                             : t.get('ready_to_unlock_world'),
                         style: const TextStyle(
@@ -421,11 +511,7 @@ final isPremium = (data['isPremium'] ?? false) == true;
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        isPremium
-                            ? t.get('if_change_phone_restore_purchase')
-                            : (_hasPackage
-                                ? t.get('subscribe_and_chat_outside_country')
-                                : t.get('premium_products_not_connected')),
+                        _premiumStatusSubtitle(data, accessActive),
                         style: const TextStyle(
                           fontSize: 13,
                           color: _muted,
@@ -433,7 +519,7 @@ final isPremium = (data['isPremium'] ?? false) == true;
                         ),
                       ),
                       const SizedBox(height: 14),
-                      if (!isPremium)
+                      if (!accessActive)
   Container(
     width: double.infinity,
     decoration: BoxDecoration(
@@ -471,7 +557,7 @@ else
     onPressed: _loading ? null : _premiumAlreadyActiveInfo,
     icon: const Icon(Icons.star_rounded, size: 18),
     label: Text(
-      t.get('premium_active_short'),
+      _premiumActiveButtonLabel(data),
       style: const TextStyle(fontWeight: FontWeight.w900),
     ),
     style: OutlinedButton.styleFrom(
@@ -516,6 +602,55 @@ OutlinedButton.icon(
                     color: _muted,
                     fontWeight: FontWeight.w600,
                   ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TermsPage(),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          t.get('terms_of_use'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: _remdyBlue,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PrivacyPage(),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          t.get('privacy_policy'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: _remdyBlue,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

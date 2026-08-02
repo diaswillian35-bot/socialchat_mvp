@@ -5,8 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
-
 import '../pages/system_inbox_page.dart';
+import '../pages/delete_account_page.dart';
 
 enum MenuAction {
   profile,
@@ -96,9 +96,11 @@ class _MenuPageState extends State<MenuPage> {
 
   int _nextInviteTarget(int invites) {
     if (invites < 3) return 3;
-    if (invites < 15) return 15;
-    if (invites < 30) return 30;
-    return 30;
+    if (invites < 10) return 10;
+    if (invites < 20) return 20;
+    if (invites < 50) return 50;
+    if (invites < 100) return 100;
+    return 100;
   }
 
   Future<void> _open(BuildContext context, Widget page) async {
@@ -348,14 +350,33 @@ const Divider(height: 1),
               border: Border.all(color: _border),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: _item(
-              context: context,
-              icon: Icons.logout_rounded,
-              title: t.get('logout'),
-              onTap: () async {
-                await widget.onLogout();
-              },
-              color: Colors.red,
+            child: Column(
+              children: [
+                _item(
+                  context: context,
+                  icon: Icons.delete_forever_outlined,
+                  title: t.get('delete_my_account'),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const DeleteAccountPage(),
+                      ),
+                    );
+                  },
+                  color: Colors.red,
+                ),
+                const Divider(height: 1),
+                _item(
+                  context: context,
+                  icon: Icons.logout_rounded,
+                  title: t.get('logout'),
+                  onTap: () async {
+                    await widget.onLogout();
+                  },
+                  color: Colors.red,
+                ),
+              ],
             ),
           ),
         ],

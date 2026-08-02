@@ -8,6 +8,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../l10n/app_texts.dart';
+import '../services/premium_access_service.dart';
+import '../services/user_search_service.dart';
 import '../widget/city_search_dialog.dart';
 
 import 'Premium_page.dart'; // <-- se o seu for "premium_page.dart", troque aqui
@@ -27,13 +29,14 @@ class _ProfilePageState extends State<ProfilePage> {
   String _cityName = '';
   String _displayLocation = '';
   String _placeId = '';
-double? _selectedLat;
-double? _selectedLng;
+  double? _selectedLat;
+  double? _selectedLng;
 
-static const String _googlePlacesApiKey = 'AIzaSyCCu5KXXT2tSqL4kqwjDX6ySv49lqyCLs0';
+  static const String _googlePlacesApiKey =
+      'AIzaSyCCu5KXXT2tSqL4kqwjDX6ySv49lqyCLs0';
 
   bool _loading = false;
- 
+
   String _photoUrl = '';
   List<String> _gallery = []; // máx 9
   bool _isPremium = false;
@@ -42,7 +45,6 @@ static const String _googlePlacesApiKey = 'AIzaSyCCu5KXXT2tSqL4kqwjDX6ySv49lqyCL
   String _homeCountryCode = '';
   String _countryName = '';
   bool _localeLoaded = false;
-  
 
   String get _uid => FirebaseAuth.instance.currentUser!.uid;
   DocumentReference<Map<String, dynamic>> get _ref =>
@@ -72,22 +74,20 @@ static const String _googlePlacesApiKey = 'AIzaSyCCu5KXXT2tSqL4kqwjDX6ySv49lqyCL
     super.initState();
     _load();
   }
-@override
-void didChangeDependencies() {
-  super.didChangeDependencies();
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-  if (_localeLoaded) return;
-  _localeLoaded = true;
+    if (_localeLoaded) return;
+    _localeLoaded = true;
 
+    final locale = Localizations.localeOf(context);
 
-  final locale = Localizations.localeOf(context);
-
-
-  AppTexts.load(locale).then((_) {
-    if (mounted) setState(() {});
-  });
-}
+    AppTexts.load(locale).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   void dispose() {
@@ -105,23 +105,25 @@ void didChangeDependencies() {
 
       _nameC.text = (data['name'] ?? '').toString();
       _stateName = (data['stateName'] ?? '').toString().trim();
-_cityName = (data['cityName'] ?? '').toString().trim();
-_displayLocation = (data['displayLocation'] ?? '').toString().trim();
-_placeId = (data['placeId'] ?? '').toString();
+      _cityName = (data['cityName'] ?? '').toString().trim();
+      _displayLocation = (data['displayLocation'] ?? '').toString().trim();
+      _placeId = (data['placeId'] ?? '').toString();
 
-
-_cityC.text = _displayLocation.isNotEmpty
-    ? _displayLocation
-    : (_cityName.isNotEmpty ? _cityName : (data['city'] ?? '').toString());
+      _cityC.text = _displayLocation.isNotEmpty
+          ? _displayLocation
+          : (_cityName.isNotEmpty
+              ? _cityName
+              : (data['city'] ?? '').toString());
 
       _aboutC.text = (data['about'] ?? '').toString();
 
       _photoUrl = (data['photoUrl'] ?? '').toString();
-      _isPremium = data['isPremium'] == true;
+      _isPremium = PremiumAccessService.isPremiumActiveFromData(data);
 
       final g = data['gallery'];
       if (g is List) {
-        _gallery = g.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+        _gallery =
+            g.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
       } else {
         _gallery = [];
       }
@@ -130,7 +132,8 @@ _cityC.text = _displayLocation.isNotEmpty
       _homeCountryCode =
           (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
 
-      _countryName = _countryNames[_homeCountryCode] ?? AppTexts.current.get('your_country');
+      _countryName = _countryNames[_homeCountryCode] ??
+          AppTexts.current.get('your_country');
     } catch (_) {
       // silencioso
     } finally {
@@ -187,7 +190,7 @@ _cityC.text = _displayLocation.isNotEmpty
     if (_loading) return;
     if (_gallery.length >= 9) {
       ScaffoldMessenger.of(context).showSnackBar(
-         SnackBar(content: Text(AppTexts.current.get('gallery_limit_reached'))),
+        SnackBar(content: Text(AppTexts.current.get('gallery_limit_reached'))),
       );
       return;
     }
@@ -243,20 +246,19 @@ _cityC.text = _displayLocation.isNotEmpty
     if (_loading) return;
 
     final name = _nameC.text.trim();
- final city = _cityC.text.trim();
-
+    final city = _cityC.text.trim();
 
 // padrão novo
-_displayLocation = city;
-if (_cityName.isEmpty) {
-  _cityName = city;
-}
+    _displayLocation = city;
+    if (_cityName.isEmpty) {
+      _cityName = city;
+    }
 
     final about = _aboutC.text.trim();
 
     if (city.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-         SnackBar(
+        SnackBar(
           content: Text(AppTexts.current.get('city_required_events')),
           behavior: SnackBarBehavior.floating,
           margin: EdgeInsets.all(12),
@@ -270,43 +272,61 @@ if (_cityName.isEmpty) {
 
     try {
       // ✅ country é salvo automaticamente a partir do homeCountryCode
-    await _ref.set({
-  'name': name,
-  'city': city, // compatibilidade antiga
-  'cityName': _cityName.isNotEmpty ? _cityName : city,
-  'stateName': _stateName,
-  'displayLocation': _displayLocation.isNotEmpty ? _displayLocation : city,
-'lat': _selectedLat,
-'lng': _selectedLng,
-'placeId': _placeId,
+      await _ref.set({
+        'name': name,
+        'city': city, // compatibilidade antiga
+        'cityName': _cityName.isNotEmpty ? _cityName : city,
+        'stateName': _stateName,
+        'displayLocation':
+            _displayLocation.isNotEmpty ? _displayLocation : city,
+        'lat': _selectedLat,
+        'lng': _selectedLng,
+        'placeId': _placeId,
 
+        'country': _countryName,
+        'about': about,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-  'country': _countryName,
-  'about': about,
-  'updatedAt': FieldValue.serverTimestamp(),
-}, SetOptions(merge: true));
-
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null && uid.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('publicUsers')
+            .doc(uid)
+            .set({
+          'uid': uid,
+          'name': name,
+          'city': _cityName.isNotEmpty ? _cityName : city,
+          'state': _stateName,
+          'country': _countryName,
+          'updatedAt': FieldValue.serverTimestamp(),
+          ...PublicUserSearchFields.build(
+            name: name,
+            city: _cityName.isNotEmpty ? _cityName : city,
+            region: _stateName,
+            country: _countryName,
+          ),
+        }, SetOptions(merge: true));
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-       SnackBar(
-  content: Text(AppTexts.current.get('saved')),
-  duration: const Duration(seconds: 1),
-  behavior: SnackBarBehavior.floating,
-  margin: const EdgeInsets.all(12),
-),
-
+        SnackBar(
+          content: Text(AppTexts.current.get('saved')),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(12),
+        ),
       );
 
       if (Navigator.canPop(context)) Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-   ScaffoldMessenger.of(context).showSnackBar(
-  SnackBar(
-    content: Text('${AppTexts.current.get('save_error')}: $e'),
-  ),
-);
-
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppTexts.current.get('save_error')}: $e'),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -343,8 +363,8 @@ if (_cityName.isEmpty) {
 
   Widget _lockedCountryField() {
     return InputDecorator(
-      decoration: _inputDeco( AppTexts.current.get('country'),
-       
+      decoration: _inputDeco(
+        AppTexts.current.get('country'),
         helper: AppTexts.current.get('country_locked_helper'),
       ),
       child: Row(
@@ -406,7 +426,8 @@ if (_cityName.isEmpty) {
           child: CircleAvatar(
             radius: 46,
             backgroundColor: Colors.grey.shade200,
-            backgroundImage: _photoUrl.isNotEmpty ? NetworkImage(_photoUrl) : null,
+            backgroundImage:
+                _photoUrl.isNotEmpty ? NetworkImage(_photoUrl) : null,
             child: _photoUrl.isEmpty
                 ? const Icon(Icons.person, size: 42, color: Color(0xFF9CA3AF))
                 : null,
@@ -424,7 +445,8 @@ if (_cityName.isEmpty) {
                 gradient: _primaryGradient,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
+              child:
+                  const Icon(Icons.camera_alt, size: 18, color: Colors.white),
             ),
           ),
         ),
@@ -477,15 +499,15 @@ if (_cityName.isEmpty) {
               context: context,
               builder: (_) => AlertDialog(
                 title: Text(AppTexts.current.get('remove_photo_title')),
-                content: Text( AppTexts.current.get('remove_photo_content')),
+                content: Text(AppTexts.current.get('remove_photo_content')),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child:  Text(AppTexts.current.get('cancel')),
+                    child: Text(AppTexts.current.get('cancel')),
                   ),
                   TextButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: Text( AppTexts.current.get('remove')),
+                    child: Text(AppTexts.current.get('remove')),
                   ),
                 ],
               ),
@@ -564,7 +586,7 @@ if (_cityName.isEmpty) {
 
             TextField(
               controller: _nameC,
-              decoration: _inputDeco ( AppTexts.current.get ('name')),
+              decoration: _inputDeco(AppTexts.current.get('name')),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
@@ -573,41 +595,39 @@ if (_cityName.isEmpty) {
             _lockedCountryField(),
             const SizedBox(height: 12),
 
-           GestureDetector(
-  onTap: () async {
-    final city = await CitySearchDialog.open(
-      context: context,
-      countryCode: _homeCountryCode,
-      googleApiKey: _googlePlacesApiKey,
-    );
+            GestureDetector(
+              onTap: () async {
+                final city = await CitySearchDialog.open(
+                  context: context,
+                  countryCode: _homeCountryCode,
+                  googleApiKey: _googlePlacesApiKey,
+                );
 
-    if (city == null) return;
+                if (city == null) return;
 
-    setState(() {
-      _cityName = city.cityName;
-      _stateName = city.stateName;
-      _displayLocation = city.displayLocation;
+                setState(() {
+                  _cityName = city.cityName;
+                  _stateName = city.stateName;
+                  _displayLocation = city.displayLocation;
 
-_placeId = city.placeId;
+                  _placeId = city.placeId;
 
+                  _selectedLat = city.lat;
+                  _selectedLng = city.lng;
 
-     _selectedLat = city.lat;
-_selectedLng = city.lng;
-
-
-      _cityC.text = city.displayLocation;
-    });
-  },
-  child: AbsorbPointer(
-    child: TextField(
-      controller: _cityC,
-      decoration: _inputDeco(
-        AppTexts.current.get('city'),
-        hint: AppTexts.current.get('city_example'),
-      ),
-    ),
-  ),
-),
+                  _cityC.text = city.displayLocation;
+                });
+              },
+              child: AbsorbPointer(
+                child: TextField(
+                  controller: _cityC,
+                  decoration: _inputDeco(
+                    AppTexts.current.get('city'),
+                    hint: AppTexts.current.get('city_example'),
+                  ),
+                ),
+              ),
+            ),
 
             const SizedBox(height: 8),
 
@@ -617,18 +637,15 @@ _selectedLng = city.lng;
             TextField(
               controller: _aboutC,
               maxLines: 4,
-            
-
-decoration: _inputDeco(
-  AppTexts.current.get('about_you'),
-  helper:AppTexts.current.get('about_you_helper'),
-),
-
+              decoration: _inputDeco(
+                AppTexts.current.get('about_you'),
+                helper: AppTexts.current.get('about_you_helper'),
+              ),
             ),
 
             const SizedBox(height: 18),
-             Text(
-             AppTexts.current.get('gallery_up_to_9'),
+            Text(
+              AppTexts.current.get('gallery_up_to_9'),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
@@ -661,9 +678,9 @@ decoration: _inputDeco(
                   color: const Color(0xFF313A5F),
                 ),
                 label: Text(
-                 
-  _isPremium ? AppTexts.current.get('premium_active_short') : AppTexts.current.get('go_premium'),
-
+                  _isPremium
+                      ? AppTexts.current.get('premium_active_short')
+                      : AppTexts.current.get('go_premium'),
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF111827),

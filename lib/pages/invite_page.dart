@@ -4,8 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/invite_premium_service.dart';
 
-class InvitePage extends StatelessWidget {
+class InvitePage extends StatefulWidget {
   final int invites;
   final int limit;
   final String myUid;
@@ -19,6 +20,11 @@ class InvitePage extends StatelessWidget {
     required this.inviteCode,
   });
 
+  @override
+  State<InvitePage> createState() => _InvitePageState();
+}
+
+class _InvitePageState extends State<InvitePage> {
   static const Color _bg = Color(0xFFF8FAFC);
   static const Color _card = Colors.white;
   static const Color _text = Color(0xFF111827);
@@ -28,35 +34,73 @@ class InvitePage extends StatelessWidget {
   static const Color _logoBlue = Color(0xFF264E9A);
   static const Color _success = Color(0xFF16A34A);
 
+  bool _claimStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _claimPendingRewardIfAny();
+    });
+  }
+
+  Future<void> _claimPendingRewardIfAny() async {
+    if (_claimStarted) return;
+    _claimStarted = true;
+
+    try {
+      final result = await InvitePremiumService.claimInvitePremiumReward();
+      if (!mounted) return;
+      if (result['granted'] != true) return;
+
+      final days = result['rewardDays'];
+      final t = AppTexts.current;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            t.get('invite_reward_claimed').replaceAll('{days}', '$days'),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {}
+  }
+
   String _inviteLink() {
-    return 'https://remdy.app/invite?ref=$inviteCode';
+    return 'https://remdy.app/invite?ref=${widget.inviteCode}';
   }
 
   String _currentRewardLabel(int rewardLevel, AppTexts t) {
-    if (rewardLevel >= 30) return t.get('invite_reward_current_30');
-    if (rewardLevel >= 15) return t.get('invite_reward_current_15');
+    if (rewardLevel >= 100) return t.get('invite_reward_current_100');
+    if (rewardLevel >= 50) return t.get('invite_reward_current_50');
+    if (rewardLevel >= 20) return t.get('invite_reward_current_20');
+    if (rewardLevel >= 10) return t.get('invite_reward_current_10');
     if (rewardLevel >= 3) return t.get('invite_reward_current_3');
     return t.get('invite_reward_current_none');
   }
 
   int _nextRewardTarget(int invites) {
     if (invites < 3) return 3;
-    if (invites < 15) return 15;
-    if (invites < 30) return 30;
-    return 30;
+    if (invites < 10) return 10;
+    if (invites < 20) return 20;
+    if (invites < 50) return 50;
+    if (invites < 100) return 100;
+    return 100;
   }
 
   String _nextRewardLabel(int invites, AppTexts t) {
     if (invites < 3) return t.get('invite_reward_3');
-    if (invites < 15) return t.get('invite_reward_15');
-    if (invites < 30) return t.get('invite_reward_30');
+    if (invites < 10) return t.get('invite_reward_10');
+    if (invites < 20) return t.get('invite_reward_20');
+    if (invites < 50) return t.get('invite_reward_50');
+    if (invites < 100) return t.get('invite_reward_100');
     return t.get('invite_all_rewards_unlocked');
   }
 
   String _remainingText(int invites, AppTexts t) {
     final target = _nextRewardTarget(invites);
 
-    if (invites >= 30) {
+    if (invites >= 100) {
       return t.get('invite_all_rewards_unlocked');
     }
 
@@ -87,7 +131,10 @@ ${t.get('invite_share_description')}
     final t = AppTexts.current;
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('users').doc(myUid).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.myUid)
+          .snapshots(),
       builder: (context, snap) {
         final data = snap.data?.data() ?? {};
 
@@ -172,9 +219,7 @@ ${t.get('invite_share_description')}
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '• ${t.get('invite_reward_3')}\n'
-                      '• ${t.get('invite_reward_15')}\n'
-                      '• ${t.get('invite_reward_30')}',
+                      t.get('invite_rewards_table_text'),
                       style: const TextStyle(color: _muted),
                     ),
                     const SizedBox(height: 10),
@@ -208,6 +253,7 @@ ${t.get('invite_share_description')}
                               await Clipboard.setData(
                                 ClipboardData(text: _inviteLink()),
                               );
+                              if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(t.get('invite_code_copied')),
@@ -234,7 +280,8 @@ ${t.get('invite_share_description')}
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 13),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),

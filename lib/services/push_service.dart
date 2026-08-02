@@ -13,6 +13,7 @@ import '../pages/group_chat_page.dart';
 import '../pages/group_info_page.dart';
 import '../pages/chat_page.dart';
 import '../pages/event_detail_page.dart';
+import 'app_notification_state.dart';
 
 class PushService {
   static final navKey = GlobalKey<NavigatorState>();
@@ -27,12 +28,30 @@ class PushService {
   static bool _localInitialized = false;
 
   static Future<void> init() async {
+    AppNotificationState.instance.bind();
     await _initLocalNotifications();
+    await _applyIosForegroundPresentation(show: false);
     try {
       await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
         sound: true,
+      );
+    } catch (_) {}
+  }
+
+  /// iOS: em foreground o FCM nativo também não deve alertar/som.
+  static Future<void> _applyIosForegroundPresentation({
+    required bool show,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      if (!Platform.isIOS) return;
+      await FirebaseMessaging.instance
+          .setForegroundNotificationPresentationOptions(
+        alert: show,
+        badge: show,
+        sound: show,
       );
     } catch (_) {}
   }
@@ -73,12 +92,16 @@ class PushService {
 
   /// Chame 1x após login (com uid válido).
   static Future<void> start(String uid) async {
+    AppNotificationState.instance.bind();
     await _initLocalNotifications();
+    await _applyIosForegroundPresentation(show: false);
 
     if (!_started) {
       _started = true;
 
-      FirebaseMessaging.onMessage.listen(_showForegroundNotification);
+      // Continua recebendo FCM em foreground para dados/contadores,
+      // mas não cria notificação visual/local.
+      FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
       FirebaseMessaging.onMessageOpenedApp.listen((message) async {
         await _handleOpen(message);
@@ -186,7 +209,37 @@ class PushService {
     return 'unknown';
   }
 
-  static Future<void> _showForegroundNotification(RemoteMessage message) async {
+  /// Recebe FCM em foreground sem criar banner/local/som.
+  static Future<void> _onForegroundMessage(RemoteMessage message) async {
+    final data = Map<String, dynamic>.from(message.data);
+    if (kDebugMode) {
+      debugPrint(
+        'PushService foreground data '
+        'type=${data['type']} suppressVisual='
+        '${AppNotificationState.instance.shouldSuppressVisualNotification(data)} '
+        'skipUnread='
+        '${AppNotificationState.instance.shouldSkipUnreadIncrement(data)}',
+      );
+    }
+
+    // Regra: nunca notificação visual em primeiro plano.
+    if (AppNotificationState.instance.shouldSuppressVisualNotification(data)) {
+      return;
+    }
+
+    // Caminho defensivo (não deve ocorrer com a regra atual).
+    await _showLocalNotification(message);
+  }
+
+  /// Expõe a decisão para testes sem depender do plugin.
+  @visibleForTesting
+  static bool shouldDisplayLocalForMessage(RemoteMessage message) {
+    return AppNotificationState.instance.shouldShowLocalNotification(
+      Map<String, dynamic>.from(message.data),
+    );
+  }
+
+  static Future<void> _showLocalNotification(RemoteMessage message) async {
     final notification = message.notification;
     final data = message.data;
     final title = (notification?.title ??
@@ -207,14 +260,14 @@ class PushService {
     final payload = _encodePayload(data);
     final details = await _buildNotificationDetails(
       title: title,
-      body: body.isEmpty ? 'Nova notificação' : body,
+      body: body.isEmpty ? title : body,
       imageUrl: imageUrl.isNotEmpty ? imageUrl : null,
     );
 
     await _localNotifications.show(
       message.hashCode,
       title,
-      body.isEmpty ? 'Nova notificação' : body,
+      body.isEmpty ? title : body,
       details,
       payload: payload,
     );
@@ -231,7 +284,9 @@ class PushService {
       await file.writeAsBytes(response.bodyBytes, flush: true);
       return file.path;
     } catch (e) {
-      debugPrint('Push image download failed: $e');
+      if (kDebugMode) {
+        debugPrint('Push image download failed: $e');
+      }
       return null;
     }
   }
@@ -297,9 +352,26 @@ class PushService {
     await _handleOpen(RemoteMessage(data: _decodePayload(payload)));
   }
 
+  /// Resolve a rota de destino do tap (testável sem Navigator).
+  @visibleForTesting
+  static String resolveOpenRoute(Map<String, dynamic> data) {
+    final type = (data['type'] ?? '').toString().trim();
+    if (type.startsWith('event') ||
+        type == 'event_comment' ||
+        type == 'event_reply') {
+      return 'event';
+    }
+    if (type == 'group_join_request') return 'group_info';
+    if (type.startsWith('group')) return 'group';
+    if (type == 'chat' || type == 'private') return 'chat';
+    return 'unknown';
+  }
+
   static Future<void> _handleOpen(RemoteMessage message) async {
     final data = message.data;
-    debugPrint('PUSH OPEN: $data');
+    if (kDebugMode) {
+      debugPrint('PUSH OPEN: $data');
+    }
 
     final type = (data['type'] ?? '').toString().trim();
     final nav = navKey.currentState;
@@ -311,7 +383,9 @@ class PushService {
         type == 'event_needs_changes' ||
         type == 'event_changes_approved' ||
         type == 'event_changes_submitted' ||
-        type == 'event_moderation') {
+        type == 'event_moderation' ||
+        type == 'event_comment' ||
+        type == 'event_reply') {
       final eventId = (data['eventId'] ?? '').toString().trim();
       if (eventId.isEmpty) return;
 
@@ -339,10 +413,9 @@ class PushService {
         return;
       }
 
-      String groupName = (data['groupName'] ?? 'Grupo').toString().trim();
-      if (groupName.isEmpty) groupName = 'Grupo';
+      String groupName = (data['groupName'] ?? '').toString().trim();
 
-      if (groupName == 'Grupo') {
+      if (groupName.isEmpty) {
         try {
           final snap = await FirebaseFirestore.instance
               .collection('groups')
@@ -352,6 +425,8 @@ class PushService {
           if (n.isNotEmpty) groupName = n;
         } catch (_) {}
       }
+
+      if (groupName.isEmpty) groupName = 'Remdy';
 
       nav.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 2)),
@@ -375,15 +450,13 @@ class PushService {
           ),
         );
       }
-      // group_join_rejected: fica na aba Grupos
       return;
     }
 
     if (type == 'chat' || type == 'private') {
       final conversationId = (data['conversationId'] ?? '').toString().trim();
-      final otherUid = (data['otherUid'] ?? data['senderId'] ?? '')
-          .toString()
-          .trim();
+      final otherUid =
+          (data['otherUid'] ?? data['senderId'] ?? '').toString().trim();
       String otherName = (data['otherName'] ?? '').toString().trim();
 
       if (conversationId.isEmpty || otherUid.isEmpty) return;
@@ -399,7 +472,7 @@ class PushService {
         } catch (_) {}
       }
 
-      if (otherName.isEmpty) otherName = 'Usuário';
+      if (otherName.isEmpty) otherName = 'Remdy';
 
       nav.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 1)),

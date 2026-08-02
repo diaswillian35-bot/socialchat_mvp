@@ -1,10 +1,10 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-
-
 import 'package:socialchat_mvp/services/audio_playback_controller.dart';
-
+import 'package:socialchat_mvp/l10n/app_texts.dart';
 
 class AudioBubble extends StatefulWidget {
   final String audioUrl;
@@ -12,7 +12,7 @@ class AudioBubble extends StatefulWidget {
   final int durationMs;
   final String messageId;
   final String timeText;
-
+  final bool forwarded;
 
   const AudioBubble({
     super.key,
@@ -21,34 +21,35 @@ class AudioBubble extends StatefulWidget {
     required this.messageId,
     this.durationMs = 0,
     this.timeText = '',
+    this.forwarded = false,
   });
-
 
   @override
   State<AudioBubble> createState() => _AudioBubbleState();
 }
 
-
 class _AudioBubbleState extends State<AudioBubble> {
   final AudioPlayer _player = AudioPlayer();
 
-
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
-
+  bool _loading = false;
 
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<Duration?>? _durSub;
   StreamSubscription<PlayerState>? _stateSub;
 
-
   bool get _playing => _player.playing;
-
 
   static const Color _text = Color(0xFF111827);
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
+  void _log(String msg) {
+    if (kDebugMode) {
+      debugPrint('AudioBubble[${widget.messageId}]: $msg');
+    }
+  }
 
   @override
   void initState() {
@@ -56,7 +57,6 @@ class _AudioBubbleState extends State<AudioBubble> {
     _bindPlayer();
     _applyInitialDuration();
   }
-
 
   void _applyInitialDuration() {
     if (widget.durationMs > 0) {
@@ -66,18 +66,15 @@ class _AudioBubbleState extends State<AudioBubble> {
     }
   }
 
-
   void _bindPlayer() {
     _posSub?.cancel();
     _durSub?.cancel();
     _stateSub?.cancel();
 
-
     _posSub = _player.positionStream.listen((p) {
       if (!mounted) return;
       setState(() => _position = p);
     });
-
 
     _durSub = _player.durationStream.listen((d) {
       if (!mounted) return;
@@ -86,14 +83,17 @@ class _AudioBubbleState extends State<AudioBubble> {
       }
     });
 
-
     _stateSub = _player.playerStateStream.listen((st) async {
       if (!mounted) return;
 
-
       if (st.processingState == ProcessingState.completed) {
-        await _player.seek(Duration.zero);
-        await _player.pause();
+        _log('Stop (completed)');
+        try {
+          await _player.seek(Duration.zero);
+          await _player.pause();
+        } catch (e, stx) {
+          _log('Erro no completed: $e\n$stx');
+        }
         if (!mounted) return;
         setState(() => _position = Duration.zero);
       } else {
@@ -102,46 +102,32 @@ class _AudioBubbleState extends State<AudioBubble> {
     });
   }
 
-
   Future<void> _resetForNewMessage() async {
+    _log('Reset para nova mensagem/url');
     try {
       await _player.stop();
     } catch (_) {}
 
-
     AudioPlaybackController.instance.release(_player);
-
 
     _position = Duration.zero;
     _applyInitialDuration();
 
-
-    try {
-      await _player.setUrl(widget.audioUrl);
-    } catch (_) {
-      // carrega sob demanda quando clicar em play
-    }
-
-
     if (mounted) setState(() {});
   }
-
 
   @override
   void didUpdateWidget(covariant AudioBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-
     final changedMessage = oldWidget.messageId != widget.messageId;
     final changedUrl = oldWidget.audioUrl != widget.audioUrl;
     final changedDuration = oldWidget.durationMs != widget.durationMs;
-
 
     if (changedMessage || changedUrl) {
       _resetForNewMessage();
       return;
     }
-
 
     if (changedDuration && widget.durationMs > 0 && _duration == Duration.zero) {
       setState(() {
@@ -149,7 +135,6 @@ class _AudioBubbleState extends State<AudioBubble> {
       });
     }
   }
-
 
   @override
   void dispose() {
@@ -161,14 +146,12 @@ class _AudioBubbleState extends State<AudioBubble> {
     super.dispose();
   }
 
-
   String _fmt(Duration d) {
     final s = d.inSeconds;
     final m = (s ~/ 60).toString();
     final r = (s % 60).toString().padLeft(2, '0');
     return '$m:$r';
   }
-
 
   Duration get _safeDuration {
     if (_duration > Duration.zero) return _duration;
@@ -178,7 +161,6 @@ class _AudioBubbleState extends State<AudioBubble> {
     return Duration.zero;
   }
 
-
   double get _progress {
     final dur = _safeDuration.inMilliseconds;
     if (dur <= 0) return 0;
@@ -186,51 +168,63 @@ class _AudioBubbleState extends State<AudioBubble> {
     return pos / dur;
   }
 
+  Future<void> _ensureSourceLoaded() async {
+    if (_player.audioSource != null) return;
+    if (widget.audioUrl.trim().isEmpty) {
+      throw Exception('audioUrl vazio');
+    }
+    _log('Download/load iniciado url=${widget.audioUrl}');
+    final sw = Stopwatch()..start();
+    final d = await _player.setUrl(widget.audioUrl);
+    sw.stop();
+    if (d != null && d > Duration.zero) {
+      _duration = d;
+    }
+    _log('Player carregado em ${sw.elapsedMilliseconds}ms duration=$d');
+  }
 
   Future<void> _toggle() async {
     try {
       if (_playing) {
+        _log('Pause');
         await _player.pause();
         return;
       }
 
+      if (_loading) return;
+      _loading = true;
 
       await AudioPlaybackController.instance.playExclusive(_player);
+      await _ensureSourceLoaded();
 
-
-      if (_player.audioSource == null) {
-        await _player.setUrl(widget.audioUrl);
-      }
-
-
+      _log('Play');
       await _player.play();
-    } catch (e) {
-      debugPrint('ERRO PLAYER (${widget.messageId}): $e');
+    } catch (e, st) {
+      _log('Erro completo no play: $e\n$st');
+    } finally {
+      _loading = false;
+      if (mounted) setState(() {});
     }
   }
-
 
   void _seekToRatio(double ratio) {
     final dur = _safeDuration;
     if (dur <= Duration.zero) return;
-
 
     final ms =
         (dur.inMilliseconds * ratio).round().clamp(0, dur.inMilliseconds);
     _player.seek(Duration(milliseconds: ms));
   }
 
-
   @override
   Widget build(BuildContext context) {
     final bg = widget.isMe ? _remdyBlue : Colors.white;
     final fg = widget.isMe ? Colors.white : _text;
 
-
     final dur = _safeDuration;
     final left = _fmt(_position);
     final right = dur > Duration.zero ? _fmt(dur) : '--:--';
-
+    final forwardedLabel = AppTexts.current.get('forward_label');
 
     return Align(
       alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -243,84 +237,105 @@ class _AudioBubbleState extends State<AudioBubble> {
           borderRadius: BorderRadius.circular(16),
           border: widget.isMe ? null : Border.all(color: _border),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            InkWell(
-              onTap: _toggle,
-              borderRadius: BorderRadius.circular(999),
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Icon(
-                  _playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: fg,
-                  size: 26,
+            if (widget.forwarded)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  forwardedLabel,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontStyle: FontStyle.italic,
+                    color:
+                        widget.isMe ? Colors.white70 : const Color(0xFF6B7280),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  LayoutBuilder(
-                    builder: (_, c) {
-                      return GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapDown: (tap) {
-                          final x = tap.localPosition.dx;
-                          final w = c.maxWidth <= 0 ? 1.0 : c.maxWidth;
-                          final ratio = (x / w).clamp(0.0, 1.0);
-                          _seekToRatio(ratio);
-                        },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: Container(
-                            height: 6,
-                            color: widget.isMe
-                                ? Colors.white.withOpacity(0.25)
-                                : const Color(0xFFE5E7EB),
-                            child: FractionallySizedBox(
-                              alignment: Alignment.centerLeft,
-                              widthFactor: _progress.clamp(0.0, 1.0),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkWell(
+                  onTap: _toggle,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      _playing
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: fg,
+                      size: 26,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      LayoutBuilder(
+                        builder: (_, c) {
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTapDown: (tap) {
+                              final x = tap.localPosition.dx;
+                              final w = c.maxWidth <= 0 ? 1.0 : c.maxWidth;
+                              final ratio = (x / w).clamp(0.0, 1.0);
+                              _seekToRatio(ratio);
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
                               child: Container(
+                                height: 6,
                                 color: widget.isMe
-                                    ? Colors.white.withOpacity(0.85)
-                                    : _remdyBlue.withOpacity(0.75),
+                                    ? Colors.white.withValues(alpha: 0.25)
+                                    : const Color(0xFFE5E7EB),
+                                child: FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: _progress.clamp(0.0, 1.0),
+                                  child: Container(
+                                    color: widget.isMe
+                                        ? Colors.white.withValues(alpha: 0.85)
+                                        : _remdyBlue.withValues(alpha: 0.75),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Text(
-                        left,
-                        style: TextStyle(
-                          color: fg,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                          );
+                        },
                       ),
-                      const Spacer(),
-                      Text(
-                        widget.timeText.isEmpty
-                            ? right
-                            : '$right • ${widget.timeText}',
-                        style: TextStyle(
-                          color: fg.withOpacity(0.85),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text(
+                            left,
+                            style: TextStyle(
+                              color: fg,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            widget.timeText.isEmpty
+                                ? right
+                                : '$right • ${widget.timeText}',
+                            style: TextStyle(
+                              color: fg.withValues(alpha: 0.85),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),

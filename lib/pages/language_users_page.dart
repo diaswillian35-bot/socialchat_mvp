@@ -5,7 +5,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'chat_page.dart';
 import 'public_profile_page.dart';
+import '../l10n/app_texts.dart';
 import '../widget/remdy_app.dart';
+import '../services/international_chat_service.dart';
+import '../services/presence_online_set.dart';
+import '../services/presence_rtdb_config.dart';
+import '../widgets/international_premium_dialog.dart';
 
 
 class LanguageUsersPage extends StatelessWidget {
@@ -29,6 +34,84 @@ class LanguageUsersPage extends StatelessWidget {
   String _pairKey(String a, String b) {
     final list = [a, b]..sort();
     return '${list[0]}_${list[1]}';
+  }
+
+
+  Future<void> _openChatWithUser(
+    BuildContext context, {
+    required Map<String, dynamic> otherData,
+    required String otherUid,
+    required String otherName,
+  }) async {
+    if (!InternationalChatService.isActiveAccount(otherData)) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppTexts.current.get('profile_no_longer_available'),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final myData =
+        await InternationalChatService.fetchActiveUserData(_myUid);
+    if (myData == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppTexts.current.get('profile_no_longer_available'),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final canSend = InternationalChatService.canSendMessage(
+      senderData: myData,
+      recipientData: otherData,
+    );
+
+    if (!canSend) {
+      final exists =
+          await InternationalChatService.conversationExists(_myUid, otherUid);
+      if (!exists) {
+        if (context.mounted) {
+          await InternationalPremiumDialog.showStart(context);
+        }
+        return;
+      }
+    }
+
+    String convoId = '';
+    try {
+      convoId = await _getOrCreateConversation(otherUid);
+    } catch (e) {
+      debugPrint('ERRO AO CRIAR CONVERSA: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao abrir conversa: $e')),
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          conversationId: convoId,
+          otherUid: otherUid,
+          otherName: otherName,
+        ),
+      ),
+    );
   }
 
 
@@ -66,28 +149,18 @@ class LanguageUsersPage extends StatelessWidget {
   static const Color _card = Colors.white;
 
 
-  bool _isOnlineFromDoc(Map<String, dynamic> data) {
-    final ts = data['lastSeenAt'];
-    if (ts is! Timestamp) return false;
-
-
-    final lastSeen = ts.toDate();
-    // mantém a sua regra: < 2 min
-    return DateTime.now().difference(lastSeen).inMinutes < 2;
-  }
-
-
   @override
   Widget build(BuildContext context) {
     final db = FirebaseFirestore.instance;
+    final t = AppTexts.current;
 
 
     // ✅ padroniza sempre em minúsculo
     final code = languageCode.trim().toLowerCase();
 
 
-    // ✅ query estável: countryCode no Firestore é "ca", "br", etc
-    final q = db.collection('users').where('countryCode', isEqualTo: code);
+    // Perfis (Firestore). Presença só via RTDB nos UIDs listados.
+    final q = db.collection('users').where('homeCountryCode', isEqualTo: code);
 
 
     return Scaffold(
@@ -109,140 +182,106 @@ class LanguageUsersPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text('Erro: ${snap.error}'));
+            return Center(child: Text('${t.get('error')}: ${snap.error}'));
           }
 
 
           final docs = snap.data?.docs ?? [];
-          final filtered = docs.where((d) => d.id != _myUid).toList();
+          final filtered = docs.where((d) {
+            if (d.id == _myUid) return false;
+            return InternationalChatService.readHomeCountryCode(d.data()) == code;
+          }).toList();
 
 
           if (filtered.isEmpty) {
-            return const Center(child: Text('Nenhuma pessoa encontrada.'));
+            return Center(child: Text(t.get('no_people_found')));
           }
 
+          final uids = filtered.map((d) => d.id).toSet();
 
-          final onlineDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-          final offlineDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+          return PresenceOnlineSetBuilder(
+            uids: uids,
+            maxWatches: PresenceRtdbConfig.maxGroupPresenceWatches,
+            builder: (context, onlineUids) {
+              final onlineDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+              final offlineDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
+              for (final d in filtered) {
+                if (onlineUids.contains(d.id)) {
+                  onlineDocs.add(d);
+                } else {
+                  offlineDocs.add(d);
+                }
+              }
 
-          for (final d in filtered) {
-            final online = _isOnlineFromDoc(d.data());
-            if (online) {
-              onlineDocs.add(d);
-            } else {
-              offlineDocs.add(d);
-            }
-          }
+              final children = <Widget>[];
 
-
-          final children = <Widget>[];
-
-
-          if (onlineDocs.isNotEmpty) {
-            children.add(_SectionTitle(title: 'Online', count: onlineDocs.length));
-            children.add(const SizedBox(height: 10));
-            for (final d in onlineDocs) {
-              children.add(_UserCard(
-                doc: d,
-                flag: flag,
-                fallbackCountry: languageName,
-                isOnline: true,
-                onProfile: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => PublicProfilePage(userUid: d.id)),
-                  );
-                },
-                onChat: () async {
-                  final data = d.data();
-                  final otherUid = d.id;
-                  final otherName = (data['name'] ?? 'Usuário').toString();
-
-
-           String convoId = '';
-
-try {
-  convoId = await _getOrCreateConversation(otherUid);
-} catch (e) {
-  debugPrint('ERRO AO CRIAR CONVERSA: $e');
-
-  if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Erro ao abrir conversa: $e')),
-    );
-  }
-
-  return;
-}
-
-if (!context.mounted) return;
-
-Navigator.push(
-
-
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatPage(
-                        conversationId: convoId,
-                        otherUid: otherUid,
-                        otherName: otherName,
-                      ),
+              if (onlineDocs.isNotEmpty) {
+                children.add(_SectionTitle(
+                  title: t.get('status_online'),
+                  count: onlineDocs.length,
+                ));
+                children.add(const SizedBox(height: 10));
+                for (final d in onlineDocs) {
+                  children.add(_UserCard(
+                    doc: d,
+                    flag: flag,
+                    fallbackCountry: languageName,
+                    isOnline: true,
+                    onProfile: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => PublicProfilePage(userUid: d.id)),
+                      );
+                    },
+                    onChat: () => _openChatWithUser(
+                      context,
+                      otherData: d.data(),
+                      otherUid: d.id,
+                      otherName: (d.data()['name'] ?? t.get('user')).toString(),
                     ),
-                  );
-                },
-              ));
-              children.add(const SizedBox(height: 12));
-            }
-            children.add(const SizedBox(height: 10));
-          }
+                  ));
+                  children.add(const SizedBox(height: 12));
+                }
+                children.add(const SizedBox(height: 10));
+              }
 
-
-          if (offlineDocs.isNotEmpty) {
-            children.add(_SectionTitle(title: 'Offline', count: offlineDocs.length));
-            children.add(const SizedBox(height: 10));
-            for (final d in offlineDocs) {
-              children.add(_UserCard(
-                doc: d,
-                flag: flag,
-                fallbackCountry: languageName,
-                isOnline: false,
-                onProfile: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => PublicProfilePage(userUid: d.id)),
-                  );
-                },
-                onChat: () async {
-                  final data = d.data();
-                  final otherUid = d.id;
-                  final otherName = (data['name'] ?? 'Usuário').toString();
-
-
-                  final convoId = await _getOrCreateConversation(otherUid);
-                  if (!context.mounted) return;
-
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatPage(
-                        conversationId: convoId,
-                        otherUid: otherUid,
-                        otherName: otherName,
-                      ),
+              if (offlineDocs.isNotEmpty) {
+                children.add(_SectionTitle(
+                  title: t.get('status_offline'),
+                  count: offlineDocs.length,
+                ));
+                children.add(const SizedBox(height: 10));
+                for (final d in offlineDocs) {
+                  children.add(_UserCard(
+                    doc: d,
+                    flag: flag,
+                    fallbackCountry: languageName,
+                    isOnline: false,
+                    onProfile: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => PublicProfilePage(userUid: d.id)),
+                      );
+                    },
+                    onChat: () => _openChatWithUser(
+                      context,
+                      otherData: d.data(),
+                      otherUid: d.id,
+                      otherName: (d.data()['name'] ?? t.get('user')).toString(),
                     ),
-                  );
-                },
-              ));
-              children.add(const SizedBox(height: 12));
-            }
-          }
+                  ));
+                  children.add(const SizedBox(height: 12));
+                }
+              }
 
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-            children: children,
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                children: children,
+              );
+            },
           );
         },
       ),

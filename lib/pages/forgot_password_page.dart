@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../widgets/keyboard_safe_body.dart';
+
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -96,6 +98,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   @override
 Widget build(BuildContext context) {
   return Scaffold(
+    resizeToAvoidBottomInset: true,
     backgroundColor: Colors.white, // 🔥 fundo branco
     appBar: AppBar(
       backgroundColor: Colors.white,
@@ -107,12 +110,8 @@ Widget build(BuildContext context) {
       ),
     ),
     body: SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
+      child: KeyboardSafeFormBody(
+        child: Column(
               children: [
 
 
@@ -164,6 +163,7 @@ Widget build(BuildContext context) {
                       TextField(
                         controller: _emailC,
                         keyboardType: TextInputType.emailAddress,
+                        scrollPadding: const EdgeInsets.only(bottom: 120),
                         decoration: const InputDecoration(
                           labelText: 'E-mail',
                           border: OutlineInputBorder(),
@@ -196,8 +196,6 @@ Widget build(BuildContext context) {
                 ),
               ],
             ),
-          ),
-        ),
       ),
     ),
   );
