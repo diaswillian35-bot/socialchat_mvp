@@ -28,6 +28,21 @@ class MainActivity : FlutterActivity() {
                     pendingShare = null
                     result.success(share)
                 }
+                "peekPendingShare" -> {
+                    // Não consome: Dart acusa via ackPendingShare após UI.
+                    result.success(pendingShare)
+                }
+                "ackPendingShare" -> {
+                    val intentId = call.argument<String>("intentId")
+                    if (intentId != null && pendingShare?.get("intentId") == intentId) {
+                        pendingShare = null
+                    }
+                    result.success(null)
+                }
+                "appendTrace" -> {
+                    // Opcional (debug). Aceitar para não gerar MissingPluginException.
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
