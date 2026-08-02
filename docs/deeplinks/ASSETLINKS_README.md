@@ -1,12 +1,19 @@
-# Android App Links (DRAFT — não publicar ainda)
+# Android App Links (DRAFT — não publicar Hosting nesta etapa)
 
-Hospedar em: `https://remdy.app/.well-known/assetlinks.json`
+Destino: `https://remdy.app/.well-known/assetlinks.json`
 
-Arquivo preparado: `docs/deeplinks/assetlinks.json.DRAFT`
+Arquivo: `docs/deeplinks/assetlinks.json.DRAFT`
 
-- package: `com.remdy.app`
-- fingerprint incluído: **upload key Remdy** (`remdy_upload`)
-- Se o Google Play App Signing estiver ativo, adicionar também o SHA-256 do **App signing key certificate** da Play Console (Release > Setup > App integrity) antes de publicar.
-- Fingerprint de debug (somente testes locais; NÃO publicar em produção): `d9ef05e81a81808c21c209178122fcc06c44aeff1e3e369ec8f7257a8b55930b`
+## Conteúdo
+- `package_name`: `com.remdy.app`
+- relação: `delegate_permission/common.handle_all_urls`
+- SHA-256 **Play App Signing** (distribuição via Google Play)
+- SHA-256 **upload key Remdy** (necessário para App Links em builds release instaladas fora da Play / sideload QA)
 
-Não publicar este arquivo sem autorização.
+## Manifest
+Hosts HTTPS: `remdy.app` e `www.remdy.app` (`android:autoVerify="true"`).
+
+## Live vs draft
+O arquivo online hoje contém apenas o SHA-256 do App Signing.
+O draft adiciona o SHA-256 da upload key para sideload.
+Não publicar Hosting até autorização com plano de isolamento.

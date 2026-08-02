@@ -1,9 +1,9 @@
 {
   "project_info": {
     "project_number": "384686982032",
+    "firebase_url": "https://socialchatmvp-default-rtdb.firebaseio.com",
     "project_id": "socialchatmvp",
-    "storage_bucket": "socialchatmvp.firebasestorage.app",
-    "firebase_url": "https://socialchatmvp-default-rtdb.firebaseio.com"
+    "storage_bucket": "socialchatmvp.firebasestorage.app"
   },
   "client": [
     {
@@ -32,10 +32,10 @@
               "client_type": 3
             },
             {
-              "client_id": "384686982032-pevcnfea1dbk4p5o2lngoa56darfgjip.apps.googleusercontent.com",
+              "client_id": "384686982032-4sp1uq2le53s01ff5rc607lrdr3h2sq1.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.adminTalksy"
+                "bundle_id": "com.example.remdyEventsWeb"
               }
             }
           ]
@@ -76,10 +76,10 @@
               "client_type": 3
             },
             {
-              "client_id": "384686982032-pevcnfea1dbk4p5o2lngoa56darfgjip.apps.googleusercontent.com",
+              "client_id": "384686982032-4sp1uq2le53s01ff5rc607lrdr3h2sq1.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.adminTalksy"
+                "bundle_id": "com.example.remdyEventsWeb"
               }
             }
           ]
@@ -94,6 +94,22 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "384686982032-6519jdv63vqaqc7mnoomv78bh0mmapc4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.remdy.app",
+            "certificate_hash": "7ebe8b31740f8708c6c948bb8360d7a627680aff"
+          }
+        },
+        {
+          "client_id": "384686982032-fgrjkuvigbludmvp88e67khr1fa7rur6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.remdy.app",
+            "certificate_hash": "678aacd8ba9bf162f64623fc9823e23883be0ff9"
+          }
+        },
         {
           "client_id": "384686982032-s60n7ej467ks5isffa1fpdm30umhigmb.apps.googleusercontent.com",
           "client_type": 1,
@@ -120,10 +136,10 @@
               "client_type": 3
             },
             {
-              "client_id": "384686982032-pevcnfea1dbk4p5o2lngoa56darfgjip.apps.googleusercontent.com",
+              "client_id": "384686982032-4sp1uq2le53s01ff5rc607lrdr3h2sq1.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.adminTalksy"
+                "bundle_id": "com.example.remdyEventsWeb"
               }
             }
           ]
