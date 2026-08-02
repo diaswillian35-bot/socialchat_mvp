@@ -26,3 +26,12 @@ linter:
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
+
+analyzer:
+  exclude:
+    - tmp_*/
+    - tmp_part*/
+    - build/**
+    - ios/Pods/**
+    - android/.gradle/**
+    - "**/.dart_tool/**"

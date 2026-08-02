@@ -2,7 +2,8 @@
   "project_info": {
     "project_number": "384686982032",
     "project_id": "socialchatmvp",
-    "storage_bucket": "socialchatmvp.firebasestorage.app"
+    "storage_bucket": "socialchatmvp.firebasestorage.app",
+    "firebase_url": "https://socialchatmvp-default-rtdb.firebaseio.com"
   },
   "client": [
     {
