@@ -1,0 +1,52 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "presence": {
+      "$uid": {
+        ".read": "auth != null",
+        "connections": {
+          "$connectionId": {
+            ".write": "auth != null && auth.uid == $uid",
+            ".validate": "newData.isNumber()"
+          }
+        }
+      }
+    },
+
+    "presenceOnline": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
+
+    "presenceCounters": {
+      ".read": "auth != null",
+      ".write": false,
+      "byCountry": {
+        "$countryCode": {
+          ".read": "auth != null",
+          ".write": false
+        }
+      },
+      "world": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
+
+    "presenceIndex": {
+      ".read": "auth != null",
+      ".write": false
+    },
+
+    "presenceMeta": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    }
+  }
+}

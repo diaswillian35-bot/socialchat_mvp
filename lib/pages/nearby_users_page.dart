@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/international_chat_service.dart';
+import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
 
 /// Lista completa de novos usuários do país (ex.: Brasil — todos, sem filtro de cidade).
@@ -24,34 +26,6 @@ class NearbyUsersPage extends StatelessWidget {
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _primary = Color(0xFF313A5F);
 
-  static String _pairKey(String a, String b) {
-    final list = [a, b]..sort();
-    return '${list[0]}_${list[1]}';
-  }
-
-  static Future<String> _getOrCreateConversation(String myUid, String otherUid) async {
-    final db = FirebaseFirestore.instance;
-    final key = _pairKey(myUid, otherUid);
-    final ref = db.collection('conversations').doc(key);
-
-    final snap = await ref.get();
-    if (!snap.exists) {
-      await ref.set({
-        'participants': [myUid, otherUid],
-        'pairKey': key,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'lastMessage': '',
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'unread': {
-          myUid: 0,
-          otherUid: 0,
-        },
-      }, SetOptions(merge: true));
-    }
-    return ref.id;
-  }
-
   static Future<void> openChat(
     BuildContext context, {
     required String otherUid,
@@ -59,9 +33,42 @@ class NearbyUsersPage extends StatelessWidget {
   }) async {
     final myUid = FirebaseAuth.instance.currentUser?.uid;
     if (myUid == null || myUid.isEmpty) return;
+    if (otherUid.trim().isEmpty || otherUid == myUid) return;
 
     try {
-      final convoId = await _getOrCreateConversation(myUid, otherUid);
+      final myData = await InternationalChatService.fetchActiveUserData(myUid);
+      final otherData =
+          await InternationalChatService.fetchActiveUserData(otherUid);
+
+      if (myData == null || otherData == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppTexts.t('profile_no_longer_available')),
+            ),
+          );
+        }
+        return;
+      }
+
+      final canSend = InternationalChatService.canSendMessage(
+        senderData: myData,
+        recipientData: otherData,
+      );
+
+      if (!canSend) {
+        final exists =
+            await InternationalChatService.conversationExists(myUid, otherUid);
+        if (!exists) {
+          if (context.mounted) {
+            await InternationalPremiumDialog.showStart(context);
+          }
+          return;
+        }
+      }
+
+      final convoId = await InternationalChatService.getOrCreateConversation(
+          myUid, otherUid);
       if (!context.mounted) return;
 
       await Navigator.push(
@@ -72,6 +79,13 @@ class NearbyUsersPage extends StatelessWidget {
             otherUid: otherUid,
             otherName: otherName,
           ),
+        ),
+      );
+    } on ConversationLookupException {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppTexts.t('user_search_conversation_lookup_error')),
         ),
       );
     } catch (e) {
@@ -141,9 +155,10 @@ class NearbyUsersPage extends StatelessWidget {
     final filtered = docs.where((doc) {
       if (doc.id == myUid) return false;
       final data = doc.data();
+      if (!InternationalChatService.isActiveAccount(data)) return false;
       if (!_isRecent(data)) return false;
 
-      final code = (data['countryCode'] ?? '').toString().trim().toLowerCase();
+      final code = InternationalChatService.readHomeCountryCode(data);
       if (normalizedCountry.isNotEmpty &&
           code.isNotEmpty &&
           code != normalizedCountry) {
@@ -170,7 +185,8 @@ class NearbyUsersPage extends StatelessWidget {
     final t = AppTexts.current;
     final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final normalizedCountry = countryCode.trim().toLowerCase();
-    final subtitle = t.get('nearby_users_all_in_country')
+    final subtitle = t
+        .get('nearby_users_all_in_country')
         .replaceAll('{flag}', flag)
         .replaceAll('{country}', countryName);
 
@@ -226,8 +242,8 @@ class NearbyUsersPage extends StatelessWidget {
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
-            .collection('publicUsers')
-            .where('countryCode', isEqualTo: normalizedCountry)
+            .collection('users')
+            .where('homeCountryCode', isEqualTo: normalizedCountry)
             .limit(120)
             .snapshots(),
         builder: (context, snapshot) {
@@ -273,7 +289,7 @@ class NearbyUsersPage extends StatelessWidget {
               final data = doc.data();
               final name = (data['name'] ?? t.get('user')).toString();
               final photoUrl = (data['photoUrl'] ?? '').toString().trim();
-              final city = (data['city'] ?? data['cityName'] ?? '').toString();
+              final city = (data['cityName'] ?? data['city'] ?? '').toString();
               final createdAt = data['createdAt'] is Timestamp
                   ? data['createdAt'] as Timestamp
                   : null;
@@ -310,8 +326,9 @@ class NearbyUsersPage extends StatelessWidget {
                             CircleAvatar(
                               radius: 26,
                               backgroundColor: const Color(0xFFE8ECF5),
-                              backgroundImage:
-                                  photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                              backgroundImage: photoUrl.isNotEmpty
+                                  ? NetworkImage(photoUrl)
+                                  : null,
                               child: photoUrl.isEmpty
                                   ? Text(
                                       initial,

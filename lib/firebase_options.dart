@@ -49,6 +49,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '384686982032',
     projectId: 'socialchatmvp',
     storageBucket: 'socialchatmvp.firebasestorage.app',
+    // RTDB default criado em us-central1 em 2026-07-25.
+    databaseURL: 'https://socialchatmvp-default-rtdb.firebaseio.com',
   );
 
   static const FirebaseOptions web = FirebaseOptions(
@@ -58,6 +60,7 @@ class DefaultFirebaseOptions {
     projectId: 'socialchatmvp',
     authDomain: 'socialchatmvp.firebaseapp.com',
     storageBucket: 'socialchatmvp.firebasestorage.app',
+    databaseURL: 'https://socialchatmvp-default-rtdb.firebaseio.com',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -66,6 +69,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '384686982032',
     projectId: 'socialchatmvp',
     storageBucket: 'socialchatmvp.firebasestorage.app',
+    databaseURL: 'https://socialchatmvp-default-rtdb.firebaseio.com',
     androidClientId: '384686982032-pkl5vim1c1rb376nf95s89k617o2nobh.apps.googleusercontent.com',
     iosClientId: '384686982032-t0gf100tqvf27uircjudfbe6faavak02.apps.googleusercontent.com',
     iosBundleId: 'com.example.socialchatMvp',
@@ -78,6 +82,7 @@ class DefaultFirebaseOptions {
     projectId: 'socialchatmvp',
     authDomain: 'socialchatmvp.firebaseapp.com',
     storageBucket: 'socialchatmvp.firebasestorage.app',
+    databaseURL: 'https://socialchatmvp-default-rtdb.firebaseio.com',
   );
 
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
 import '../pages/nearby_users_page.dart';
+import '../services/international_chat_service.dart';
 import 'home_section_header.dart';
 
 /// Novos usuários perto de você — somente vitrine; chat segue regras existentes.
@@ -69,7 +70,7 @@ class HomeNearbyUsersSection extends StatelessWidget {
   bool _matchesCity(Map<String, dynamic> data) {
     final normalizedCity = city?.trim().toLowerCase() ?? '';
     if (normalizedCity.isEmpty) return true;
-    final userCity = (data['city'] ?? data['cityName'] ?? '')
+    final userCity = (data['cityName'] ?? data['city'] ?? '')
         .toString()
         .trim()
         .toLowerCase();
@@ -87,10 +88,11 @@ class HomeNearbyUsersSection extends StatelessWidget {
     final filtered = docs.where((doc) {
       if (doc.id == myUid) return false;
       final data = doc.data();
+      if (!InternationalChatService.isActiveAccount(data)) return false;
       if (strictCity && !_matchesCity(data)) return false;
       if (!_isRecent(data)) return false;
 
-      final code = (data['countryCode'] ?? '').toString().trim().toLowerCase();
+      final code = InternationalChatService.readHomeCountryCode(data);
       if (normalizedCountry.isNotEmpty &&
           code.isNotEmpty &&
           code != normalizedCountry) {
@@ -164,10 +166,11 @@ class HomeNearbyUsersSection extends StatelessWidget {
           },
         ),
         const SizedBox(height: 8),
+        // Fonte oficial: `users` (homeCountryCode). Evita órfãos de publicUsers.
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
-              .collection('publicUsers')
-              .where('countryCode', isEqualTo: normalizedCountry)
+              .collection('users')
+              .where('homeCountryCode', isEqualTo: normalizedCountry)
               .limit(60)
               .snapshots(),
           builder: (context, snapshot) {
