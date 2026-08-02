@@ -1,6 +1,5 @@
 import 'dart:io';
 
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -11,71 +10,61 @@ import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
 import '../services/group_ban_service.dart';
+import '../services/group_discovery_logic.dart';
 import '../services/group_lifecycle_service.dart';
+import '../services/group_location_normalize.dart';
 import '../services/group_roles_service.dart';
 import '../services/group_settings_service.dart';
 import '../services/group_join_request_service.dart';
 import '../services/international_chat_service.dart';
+import '../services/iso_country_names.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
-
 class GroupInfoPage extends StatefulWidget {
   final String groupId;
-
 
   const GroupInfoPage({
     super.key,
     required this.groupId,
   });
 
-
   @override
   State<GroupInfoPage> createState() => _GroupInfoPageState();
 }
 
-
 class _GroupInfoPageState extends State<GroupInfoPage> {
-  static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
   String _buildInviteLink(String code) {
-  return "https://remdy.app/g/$code";
-}
-
+    return "https://remdy.app/g/$code";
+  }
 
   String _loadedLocaleCode = '';
   String _groupCode = '';
 
-
   final ImagePicker _picker = ImagePicker();
-
 
   bool _loading = true;
   bool _saving = false;
   String? _busyJoinRequestUid;
 
-
   Map<String, dynamic>? _groupData;
   List<Map<String, dynamic>> _membersData = [];
 
-
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
-
 
   DocumentReference<Map<String, dynamic>> get _groupRef =>
       FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
-
 
   String _buildConversationId(String a, String b) {
     final ids = [a.trim(), b.trim()]..sort();
     return '${ids[0]}_${ids[1]}';
   }
-
 
   @override
   void initState() {
@@ -83,25 +72,20 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     _loadAll();
   }
 
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-
     final locale = Localizations.localeOf(context);
     final nextCode = '${locale.languageCode}_${locale.countryCode ?? ''}';
 
-
     if (_loadedLocaleCode == nextCode) return;
     _loadedLocaleCode = nextCode;
-
 
     AppTexts.load(locale).then((_) {
       if (mounted) setState(() {});
     });
   }
-
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -114,20 +98,16 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     );
   }
 
-
   Future<void> _loadAll() async {
     final t = AppTexts.current;
 
-
     setState(() => _loading = true);
-
 
     try {
       final groupSnap = await _groupRef.get();
       final data = groupSnap.data() ?? {};
       _groupData = data;
       _groupCode = (data['inviteCode'] ?? '').toString().trim();
-
 
       final membersRaw = data['members'];
       final memberIds = (membersRaw is List)
@@ -137,9 +117,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
               .toList()
           : <String>[];
 
-
       final loadedMembers = <Map<String, dynamic>>[];
-
 
       for (final uid in memberIds) {
         try {
@@ -148,7 +126,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
               .doc(uid)
               .get();
           final u = userSnap.data() ?? {};
-
 
           loadedMembers.add({
             'uid': uid,
@@ -166,7 +143,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
         }
       }
 
-
       if (!mounted) return;
       setState(() {
         _membersData = loadedMembers;
@@ -178,7 +154,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
       _toast('${t.get('errorLoadingGroup')}: $e');
     }
   }
-
 
   bool get _isAdmin {
     final myUid = _uid;
@@ -204,8 +179,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
 
   bool get _canModerate => _isOwner || _isAdmin;
 
-  String get _ownerId =>
-      (_groupData?['ownerId'] ?? '').toString().trim();
+  String get _ownerId => (_groupData?['ownerId'] ?? '').toString().trim();
 
   Future<void> _confirmBanUser(Map<String, dynamic> m) async {
     final t = AppTexts.current;
@@ -273,7 +247,8 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
       _toast(t.get('group_ban_success'));
       await _loadAll();
     } on FirebaseFunctionsException catch (e) {
-      _toast('${t.get(GroupBanService.messageForFunctionsError(e))}: ${e.message ?? e.code}');
+      _toast(
+          '${t.get(GroupBanService.messageForFunctionsError(e))}: ${e.message ?? e.code}');
     } catch (e) {
       _toast('${t.get('group_ban_error')}: $e');
     } finally {
@@ -466,29 +441,15 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     );
   }
 
-
   String _prettyCountry(String s) {
-    final t = AppTexts.current;
-
-
-    switch (s.trim().toLowerCase()) {
-      case 'canada':
-        return t.get('canada');
-      case 'brasil':
-      case 'brazil':
-        return t.get('brazil');
-      case 'portugal':
-        return t.get('portugal');
-      default:
-        if (s.trim().isEmpty) return '--';
-        return s.trim();
-    }
+    final code = GroupLocationNormalize.countryCode(s);
+    if (code.isEmpty) return '--';
+    final lang = Localizations.localeOf(context).toLanguageTag();
+    return IsoCountryNames.displayName(code, lang);
   }
-
 
   String _joinPolicyLabel(String policy) {
     final t = AppTexts.current;
-
 
     switch (policy.trim().toLowerCase()) {
       case 'approval':
@@ -502,10 +463,8 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     }
   }
 
-
   String _joinPolicyValueFromLabel(String label) {
     final t = AppTexts.current;
-
 
     if (label == t.get('admin_approval')) {
       return 'approval';
@@ -515,7 +474,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     }
     return 'open';
   }
-
 
   Future<void> _saveSettings(Map<String, dynamic> changes) async {
     final t = AppTexts.current;
@@ -543,7 +501,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     }
   }
 
-
   Future<void> _editBio() async {
     final t = AppTexts.current;
     if (!_isAdmin || _saving) return;
@@ -556,7 +513,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     final controller = TextEditingController(
       text: (_groupData?['bio'] ?? '').toString(),
     );
-
 
     final ok = await showDialog<bool>(
       context: context,
@@ -584,54 +540,28 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
       ),
     );
 
-
     if (ok != true) return;
-
 
     await _saveSettings({
       'bio': controller.text.trim(),
     });
   }
 
-
   Future<void> _togglePrivate(bool value) async {
     if (!_isAdmin || _saving) return;
-
 
     await _saveSettings({
       'isPrivate': value,
     });
   }
 
-
   Future<void> _changeJoinPolicy(String? label) async {
     if (!_isAdmin || _saving || label == null) return;
-
 
     await _saveSettings({
       'joinPolicy': _joinPolicyValueFromLabel(label),
     });
   }
-
-Future<void> _copyInviteCode() async {
-  final t = AppTexts.current;
-
-
-  final code = (_groupData?['inviteCode'] ?? '').toString().trim();
-  if (code.isEmpty) {
-    _toast(t.get('emptyInviteCode'));
-    return;
-  }
-
-
-  final inviteLink = _groupCode.isEmpty ? '' : _buildInviteLink(_groupCode);
-
-
-  await Clipboard.setData(ClipboardData(text: inviteLink));
-  _toast(t.get('codeCopied'));
-}
-
-
 
   Future<void> _pickGroupPhoto() async {
     final t = AppTexts.current;
@@ -648,16 +578,12 @@ Future<void> _copyInviteCode() async {
         imageQuality: 80,
       );
 
-
       if (file == null) return;
-
 
       setState(() => _saving = true);
 
-
       final myUid = _uid ?? 'unknown';
       final ext = file.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
-
 
       final ref = FirebaseStorage.instance
           .ref()
@@ -666,14 +592,12 @@ Future<void> _copyInviteCode() async {
           .child('avatar')
           .child('group_avatar_$myUid.$ext');
 
-
       await ref.putFile(
         File(file.path),
         SettableMetadata(
           contentType: ext == 'png' ? 'image/png' : 'image/jpeg',
         ),
       );
-
 
       final url = await ref.getDownloadURL();
       final path = ref.fullPath;
@@ -686,7 +610,6 @@ Future<void> _copyInviteCode() async {
         },
       );
 
-
       await _loadAll();
       if (mounted) _toast(t.get('group_edit_success'));
     } on FirebaseFunctionsException catch (e) {
@@ -698,7 +621,6 @@ Future<void> _copyInviteCode() async {
       if (mounted) setState(() => _saving = false);
     }
   }
-
 
   Future<void> _approveJoinRequest(String requestUid) async {
     final t = AppTexts.current;
@@ -748,7 +670,6 @@ Future<void> _copyInviteCode() async {
       if (mounted) setState(() => _busyJoinRequestUid = null);
     }
   }
-
 
   Future<String?> _pickNewOwnerUid() async {
     final t = AppTexts.current;
@@ -852,9 +773,10 @@ Future<void> _copyInviteCode() async {
           ? GroupLifecycleService.transferErrorKey(e)
           : GroupLifecycleService.leaveErrorKey(e);
       // Prefer transfer key when transfer likely failed.
-      final transferFailed = e.message?.toLowerCase().contains('transfer') == true
-          || e.message?.toLowerCase().contains('new owner') == true
-          || e.code == 'failed-precondition' && _isOwner && newOwnerUid != null;
+      final transferFailed = e.message?.toLowerCase().contains('transfer') ==
+              true ||
+          e.message?.toLowerCase().contains('new owner') == true ||
+          e.code == 'failed-precondition' && _isOwner && newOwnerUid != null;
       _toast(
         '${t.get(transferFailed ? GroupLifecycleService.transferErrorKey(e) : key)}: ${e.message ?? e.code}',
       );
@@ -924,43 +846,37 @@ Future<void> _copyInviteCode() async {
     }
   }
 
-
   Future<void> _openPrivateChatFromMember(Map<String, dynamic> m) async {
     final t = AppTexts.current;
     final myUid = _uid;
     if (myUid == null) return;
 
-
     final otherUid = (m['uid'] ?? '').toString().trim();
     final otherName = (m['name'] ?? t.get('user')).toString().trim();
-
 
     if (otherUid.isEmpty) {
       _toast(t.get('invalidUser'));
       return;
     }
 
-
     if (otherUid == myUid) {
       _toast(t.get('thisIsYourOwnProfile'));
       return;
     }
 
-
     try {
       final conversationId = _buildConversationId(myUid, otherUid);
-
 
       final convRef = FirebaseFirestore.instance
           .collection('conversations')
           .doc(conversationId);
 
-
       final snap = await convRef.get();
 
       if (!snap.exists) {
         final myData = await InternationalChatService.fetchUserData(myUid);
-        final otherData = await InternationalChatService.fetchUserData(otherUid);
+        final otherData =
+            await InternationalChatService.fetchUserData(otherUid);
         final canSend = InternationalChatService.canSendMessage(
           senderData: myData ?? {},
           recipientData: otherData ?? {},
@@ -986,9 +902,7 @@ Future<void> _copyInviteCode() async {
         });
       }
 
-
       if (!mounted) return;
-
 
       Navigator.push(
         context,
@@ -1005,20 +919,22 @@ Future<void> _copyInviteCode() async {
     }
   }
 
-
   Widget _groupHeader() {
     final t = AppTexts.current;
 
-
     final name = (_groupData?['name'] ?? t.get('group')).toString().trim();
-    final country = (_groupData?['country'] ?? '').toString().trim();
-    final city = (_groupData?['city'] ?? '').toString().trim();
+    final location = GroupDiscoveryLogic.cardLocation(_groupData ?? {});
+    final country = _prettyCountry(location.country);
+    final locationText = location.countryOnly
+        ? country
+        : location.scope == 'region'
+            ? '${t.get('groups_region_of_city').replaceAll('{city}', location.city)} · $country'
+            : '${location.city.isEmpty ? "--" : location.city} · $country';
     final bio = (_groupData?['bio'] ?? '').toString().trim();
     final avatarUrl = (_groupData?['avatarUrl'] ?? '').toString().trim();
     final isPrivate = _groupData?['isPrivate'] == true;
     final joinPolicy = (_groupData?['joinPolicy'] ?? 'open').toString();
     final membersCount = _membersData.length;
-
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1037,7 +953,7 @@ Future<void> _copyInviteCode() async {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
+                  color: Colors.white.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: Colors.white24),
                 ),
@@ -1102,7 +1018,7 @@ Future<void> _copyInviteCode() async {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${t.get('country_label')} ${_prettyCountry(country)} • ${t.get('city_label')} ${city.isEmpty ? "--" : city} • $membersCount ${membersCount == 1 ? t.get('member_singular') : t.get('member_plural')}',
+                  '$locationText • $membersCount ${membersCount == 1 ? t.get('member_singular') : t.get('member_plural')}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
@@ -1146,12 +1062,11 @@ Future<void> _copyInviteCode() async {
     );
   }
 
-
   Widget _pill({required IconData icon, required String text}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.white24),
       ),
@@ -1173,7 +1088,6 @@ Future<void> _copyInviteCode() async {
     );
   }
 
-
   Widget _card({required Widget child}) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1183,7 +1097,7 @@ Future<void> _copyInviteCode() async {
         border: Border.all(color: _border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -1192,7 +1106,6 @@ Future<void> _copyInviteCode() async {
       child: child,
     );
   }
-
 
   Future<void> _confirmPromote(Map<String, dynamic> m) async {
     final t = AppTexts.current;
@@ -1332,7 +1245,9 @@ Future<void> _copyInviteCode() async {
       margin: const EdgeInsets.only(right: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: filled ? const Color(0xFFEEF2FF) : const Color(0xFFF3F4F6),
+        color: filled
+            ? Theme.of(context).colorScheme.primaryContainer
+            : const Color(0xFFF3F4F6),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: _border),
       ),
@@ -1365,13 +1280,10 @@ Future<void> _copyInviteCode() async {
     final isAdminUser = admins.contains(uid);
     final isMe = uid == _uid;
 
-    final canPromote =
-        _isOwner && !isMe && !isOwnerUser && !isAdminUser;
-    final canDemote =
-        _isOwner && !isMe && !isOwnerUser && isAdminUser;
-    final canRemove = !isMe &&
-        !isOwnerUser &&
-        (_isOwner || (_isAdmin && !isAdminUser));
+    final canPromote = _isOwner && !isMe && !isOwnerUser && !isAdminUser;
+    final canDemote = _isOwner && !isMe && !isOwnerUser && isAdminUser;
+    final canRemove =
+        !isMe && !isOwnerUser && (_isOwner || (_isAdmin && !isAdminUser));
     final canBan = _canModerate && !isMe && !isOwnerUser;
     final showMenu = canPromote || canDemote || canRemove || canBan;
 
@@ -1431,8 +1343,7 @@ Future<void> _copyInviteCode() async {
                         label: roleLabel,
                         filled: isOwnerUser || isAdminUser,
                       ),
-                      if (isMe)
-                        _roleBadge(label: t.get('you'), filled: false),
+                      if (isMe) _roleBadge(label: t.get('you'), filled: false),
                     ],
                   ),
                 ],
@@ -1506,22 +1417,16 @@ Future<void> _copyInviteCode() async {
           ),
           const SizedBox(height: 12),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        
-stream: _groupRef
-    .collection('pendingRequests')
-    .where('status', isEqualTo: 'pending')
-    .snapshots(),
-
-
-
+            stream: _groupRef
+                .collection('pendingRequests')
+                .where('status', isEqualTo: 'pending')
+                .snapshots(),
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-
               final docs = snap.data?.docs ?? [];
-
 
               if (docs.isEmpty) {
                 return const Text(
@@ -1533,7 +1438,6 @@ stream: _groupRef
                 );
               }
 
-
               return Column(
                 children: docs.map((reqDoc) {
                   final req = reqDoc.data();
@@ -1542,7 +1446,6 @@ stream: _groupRef
                       : (req['uid'] ?? '').toString().trim();
                   final busyThis = _busyJoinRequestUid == requestUid;
                   final busyAny = _busyJoinRequestUid != null;
-
 
                   return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                     future: FirebaseFirestore.instance
@@ -1558,7 +1461,6 @@ stream: _groupRef
                       final avatarUrl =
                           (userData['avatarUrl'] ?? '').toString().trim();
                       final pic = photoUrl.isNotEmpty ? photoUrl : avatarUrl;
-
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 10),
@@ -1602,7 +1504,8 @@ stream: _groupRef
                                 child: SizedBox(
                                   width: 22,
                                   height: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 ),
                               )
                             else ...[
@@ -1646,7 +1549,6 @@ stream: _groupRef
     );
   }
 
-
   Widget _settingsCard({
     required AppTexts t,
     required bool isPrivate,
@@ -1665,6 +1567,44 @@ stream: _groupRef
             ),
           ),
           const SizedBox(height: 14),
+          if ((_groupData?['scope'] ?? '').toString() == 'region') ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t.get('create_group_region_radius_title'),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    t.get('create_group_region_radius_description'),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           Row(
             children: [
               const Icon(Icons.lock, color: _muted, size: 18),
@@ -1681,7 +1621,7 @@ stream: _groupRef
               ),
               Switch(
                 value: isPrivate,
-                activeColor: Colors.white,
+                activeThumbColor: Colors.white,
                 activeTrackColor: _remdyBlue,
                 inactiveThumbColor: const Color(0xFF6B7280),
                 inactiveTrackColor: const Color(0xFFE5E7EB),
@@ -1763,23 +1703,20 @@ stream: _groupRef
     );
   }
 
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTexts.current;
+    final inviteLink = _groupCode.isEmpty ? '' : _buildInviteLink(_groupCode);
 
-@override
-Widget build(BuildContext context) {
-  final t = AppTexts.current;
-  final inviteLink = _groupCode.isEmpty ? '' : _buildInviteLink(_groupCode);
-
-
-  final bio = (_groupData?['bio'] ?? '').toString().trim();
-  final isPrivate = _groupData?['isPrivate'] == true;
-  final joinPolicy = (_groupData?['joinPolicy'] ?? 'open').toString();
-
+    final bio = (_groupData?['bio'] ?? '').toString().trim();
+    final isPrivate = _groupData?['isPrivate'] == true;
+    final joinPolicy = (_groupData?['joinPolicy'] ?? 'open').toString();
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: _bg,
-        surfaceTintColor: _bg,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
@@ -1797,14 +1734,11 @@ Widget build(BuildContext context) {
           ? const Center(child: CircularProgressIndicator())
           : Stack(
               children: [
-                
                 ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                   children: [
                     _groupHeader(),
                     const SizedBox(height: 14),
-
-
                     _card(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1849,87 +1783,77 @@ Widget build(BuildContext context) {
                       ),
                     ),
                     const SizedBox(height: 14),
-
-
                     if (_isAdmin && joinPolicy == 'approval') ...[
                       _pendingRequestsCard(),
                       const SizedBox(height: 14),
                     ],
-
-
-                  if (_isAdmin) ...[
-  _settingsCard(
-    t: t,
-    isPrivate: isPrivate,
-    joinPolicy: joinPolicy,
-  ),
-  const SizedBox(height: 14),
-],
-
-                  if (_canModerate) ...[
-                    _bannedUsersCard(),
-                    const SizedBox(height: 14),
-                  ],
-
-
-
+                    if (_isAdmin) ...[
+                      _settingsCard(
+                        t: t,
+                        isPrivate: isPrivate,
+                        joinPolicy: joinPolicy,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    if (_canModerate) ...[
+                      _bannedUsersCard(),
+                      const SizedBox(height: 14),
+                    ],
                     _card(
-  child: Row(
-    children: [
-      const Icon(Icons.link_rounded, color: _muted, size: 18),
-      const SizedBox(width: 10),
-      Expanded(
-        child: Text(
-          inviteLink.isEmpty ? '--' : inviteLink,
-          style: const TextStyle(
-            color: _text,
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-      InkWell(
-        onTap: inviteLink.isEmpty
-            ? null
-            : () async {
-                await Clipboard.setData(ClipboardData(text: inviteLink));
-                _toast(t.get('group_code_copied'));
-              },
-        child: Text(
-          t.get('copy'),
-          style: const TextStyle(
-            color: _remdyBlue,
-            fontWeight: FontWeight.w800,
-            fontSize: 14,
-          ),
-        ),
-      ),
-      const SizedBox(width: 12),
-      InkWell(
-        onTap: inviteLink.isEmpty
-            ? null
-            : () async {
-                await Share.share(inviteLink);
-              },
-        child: Text(
-          t.get('share'),
-          style: const TextStyle(
-            color: _remdyBlue,
-            fontWeight: FontWeight.w800,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    ],
-  ),
-),
-
-const SizedBox(height: 14),
-
-
-
+                      child: Row(
+                        children: [
+                          const Icon(Icons.link_rounded,
+                              color: _muted, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              inviteLink.isEmpty ? '--' : inviteLink,
+                              style: const TextStyle(
+                                color: _text,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          InkWell(
+                            onTap: inviteLink.isEmpty
+                                ? null
+                                : () async {
+                                    await Clipboard.setData(
+                                        ClipboardData(text: inviteLink));
+                                    _toast(t.get('group_code_copied'));
+                                  },
+                            child: Text(
+                              t.get('copy'),
+                              style: const TextStyle(
+                                color: _remdyBlue,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          InkWell(
+                            onTap: inviteLink.isEmpty
+                                ? null
+                                : () async {
+                                    await Share.share(inviteLink);
+                                  },
+                            child: Text(
+                              t.get('share'),
+                              style: const TextStyle(
+                                color: _remdyBlue,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     Text(
                       '${t.get('members')} ${_membersData.length}',
                       style: const TextStyle(
@@ -1941,33 +1865,31 @@ const SizedBox(height: 14),
                     const SizedBox(height: 10),
                     ..._membersData.map(_memberTile),
                     const SizedBox(height: 16),
-
-
                     _card(
                       child: Column(
                         children: [
                           SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _saving ? null : _leaveGroup,
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: _remdyBlue,
-                                  side: const BorderSide(color: _border),
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _saving ? null : _leaveGroup,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: _remdyBlue,
+                                side: const BorderSide(color: _border),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(999),
                                 ),
-                                icon: const Icon(Icons.logout_rounded),
-                                label: Text(
-                                  t.get('leaveGroup'),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
+                              ),
+                              icon: const Icon(Icons.logout_rounded),
+                              label: Text(
+                                t.get('leaveGroup'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
+                          ),
                           if (_isOwner) ...[
                             const SizedBox(height: 10),
                             SizedBox(
@@ -2003,7 +1925,7 @@ const SizedBox(height: 14),
                 ),
                 if (_saving)
                   Container(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     child: const Center(
                       child: CircularProgressIndicator(),
                     ),

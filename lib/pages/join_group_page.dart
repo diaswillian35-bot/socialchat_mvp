@@ -1,46 +1,78 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-
+import '../l10n/app_texts.dart';
+import '../services/group_join_service.dart';
+import '../services/group_join_ui_logic.dart';
+import '../services/group_location_normalize.dart';
+import '../services/iso_country_names.dart';
+import '../services/safe_remdy_navigation.dart';
+import '../services/premium_access_service.dart';
 import '../widget/remdy_app.dart';
+import '../widgets/international_premium_dialog.dart';
 import 'group_chat_page.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter/services.dart';
+
+/// Rótulo de localização da tela Entrar no grupo.
+/// Usa ISO `countryCode` + [IsoCountryNames] — nunca o nome cru do Places.
+class JoinGroupLocationLabel {
+  JoinGroupLocationLabel._();
+
+  /// Formato: `Brasil • Navegantes` (país traduzido • cidade).
+  /// País-only: só o nome do país. Sem gravar no Firestore.
+  static String format(
+    Map<String, dynamic> group, {
+    required String languageCode,
+  }) {
+    final code = GroupLocationNormalize.countryCode(
+      group['countryCode'] ?? group['country'],
+    );
+    final country = code.isEmpty
+        ? '--'
+        : IsoCountryNames.displayName(code, languageCode);
+    final scope = GroupLocationNormalize.scope(group['scope']);
+    if (scope == 'country') return country;
+
+    final city = GroupLocationNormalize.cityDisplayName(group);
+    if (city.isEmpty) return country;
+    return '$country • $city';
+  }
+}
 
 class JoinGroupPage extends StatefulWidget {
   final String inviteCode;
-
 
   const JoinGroupPage({
     super.key,
     required this.inviteCode,
   });
 
-
   @override
   State<JoinGroupPage> createState() => _JoinGroupPageState();
 }
 
-
 class _JoinGroupPageState extends State<JoinGroupPage> {
-  static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _remdyBlue = Color(0xFF313A5F);
 
-
   bool _loading = true;
   bool _joining = false;
-
 
   DocumentSnapshot<Map<String, dynamic>>? _groupDoc;
   String? _error;
 
+  String get _code => GroupJoinService.normalizeInviteCode(widget.inviteCode);
 
-  String get _code => widget.inviteCode.trim().toUpperCase();
-
+  String _t(String key) {
+    try {
+      return AppTexts.current.get(key);
+    } catch (_) {
+      return key;
+    }
+  }
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -53,6 +85,12 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     );
   }
 
+  Future<void> _popOrExit() async {
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    // Nunca SystemNavigator.pop — volta ao shell seguro do Remdy.
+    SafeRemdyNavigation.popOrShell(context, shellIndex: 2);
+  }
 
   @override
   void initState() {
@@ -60,17 +98,14 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     _loadGroupByCode();
   }
 
-
   Future<void> _loadGroupByCode() async {
     if (!mounted) return;
-
 
     setState(() {
       _loading = true;
       _error = null;
       _groupDoc = null;
     });
-
 
     try {
       final q = await FirebaseFirestore.instance
@@ -79,31 +114,25 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
           .limit(1)
           .get();
 
-
       if (q.docs.isEmpty) {
         if (!mounted) return;
         setState(() {
-          _error = 'Convite inválido ou expirado.';
+          _error = _t('group_invite_expired');
           _loading = false;
         });
         return;
       }
-
 
       final doc = q.docs.first;
       final data = doc.data();
-      final deleted = data['deleted'] == true;
-
-
-      if (deleted) {
+      if (data['deleted'] == true) {
         if (!mounted) return;
         setState(() {
-          _error = 'Convite inválido ou expirado.';
+          _error = _t('group_unavailable');
           _loading = false;
         });
         return;
       }
-
 
       if (!mounted) return;
       setState(() {
@@ -113,31 +142,27 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Erro ao carregar convite: $e';
+        _error = '${_t('group_error_join_prefix')} $e';
         _loading = false;
       });
     }
   }
 
-
   Future<bool> _isUserPremium(String uid) async {
     try {
       final snap =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final data = snap.data() ?? {};
-      return data['isPremium'] == true;
+      return PremiumAccessService.isPremiumActiveFromData(snap.data());
     } catch (_) {
       return false;
     }
   }
-
 
   Future<void> _openGroupChat({
     required String groupId,
     required String groupName,
   }) async {
     if (!mounted) return;
-
 
     Navigator.pushReplacement(
       context,
@@ -150,191 +175,150 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     );
   }
 
-
   Future<void> _join() async {
     final user = FirebaseAuth.instance.currentUser;
 
-
     if (user == null) {
-      _toast('Faça login primeiro para entrar no grupo.');
+      _toast(_t('group_login_to_join'));
       return;
     }
 
+    if (_groupDoc == null) return;
 
-    if (_groupDoc == null || _joining) return;
-
+    if (!GroupJoinUiLogic.canStartJoin(
+      isJoining: _joining,
+      isBanned: false,
+    )) {
+      return;
+    }
 
     setState(() => _joining = true);
 
-
     try {
       final doc = _groupDoc!;
-      final groupId = doc.id;
       final data = doc.data() ?? {};
-
-
-      final String name = (data['name'] ?? 'Grupo').toString().trim();
       final bool isPremiumGroup = data['isPremiumGroup'] == true;
-      final String joinPolicy =
-          (data['joinPolicy'] ?? 'open').toString().trim();
-
-
-      final membersRaw = data['members'];
-      final members = (membersRaw is List)
-          ? membersRaw
-              .map((e) => e.toString().trim())
-              .where((e) => e.isNotEmpty)
-              .toList()
-          : <String>[];
-
-
-      final alreadyMember = members.contains(user.uid);
-
 
       if (isPremiumGroup) {
         final premium = await _isUserPremium(user.uid);
         if (!premium) {
-          _toast('Esse grupo é Premium. Faça upgrade para entrar.');
-          if (mounted) setState(() => _joining = false);
+          if (!mounted) return;
+          await InternationalPremiumDialog.showStart(context);
           return;
         }
       }
 
-
-      final groupRef =
-          FirebaseFirestore.instance.collection('groups').doc(groupId);
-
-
-      if (joinPolicy == 'approval' && !alreadyMember) {
-       final reqRef = groupRef.collection('pendingRequests').doc(user.uid);
-        final reqSnap = await reqRef.get();
-        final reqData = reqSnap.data();
-        final currentStatus = (reqData?['status'] ?? '').toString().trim();
-
-
-      if (currentStatus == 'pending') {
-  _toast('Seu pedido já está pendente de aprovação.');
-
-  await Future.delayed(const Duration(milliseconds: 700));
-
-  if (!mounted) return;
-
-  if (Navigator.of(context).canPop()) {
-    Navigator.of(context).pop();
-  } else {
-    SystemNavigator.pop();
-  }
-
-  return;
-}
-
-
-
-      await reqRef.set({
-  'uid': user.uid,
-  'status': 'pending',
-  'createdAt': FieldValue.serverTimestamp(),
-}, SetOptions(merge: true));
-
-if (!mounted) return;
-
-ScaffoldMessenger.of(context).showSnackBar(
-  const SnackBar(
-    content: Text('Pedido enviado ✅ Aguardando aprovação do admin.'),
-  ),
-);
-
-await Future.delayed(const Duration(milliseconds: 700));
-
-if (!mounted) return;
-
-if (Navigator.of(context).canPop()) {
-  Navigator.of(context).pop();
-} else {
-  SystemNavigator.pop();
-}
-
-return;
-
-
-
-      }
-
-
-      if (!alreadyMember) {
-        await groupRef.set({
-          'members': FieldValue.arrayUnion([user.uid]),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'membersCount': FieldValue.increment(1),
-          'unread.${user.uid}': 0,
-        }, SetOptions(merge: true));
-      } else {
-        await groupRef.set({
-          'updatedAt': FieldValue.serverTimestamp(),
-          'unread.${user.uid}': 0,
-        }, SetOptions(merge: true));
-      }
-
-
-      await groupRef.collection('reads').doc(user.uid).set({
-        'lastReadAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'lastJoinedGroupId': groupId,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-
-      if (!alreadyMember) {
-        _toast('Entrou no grupo ✅');
-      } else {
-        _toast('Você já faz parte deste grupo ✅');
-      }
-
-
-      await _openGroupChat(
-        groupId: groupId,
-        groupName: name.isEmpty ? 'Grupo' : name,
+      final result = await GroupJoinService.joinByInviteCode(
+        inviteCode: _code,
+        uid: user.uid,
       );
+
+      if (!mounted) return;
+
+      final decision = GroupJoinUiLogic.fromResult(result);
+
+      if (decision.debugDetail != null) {
+        debugPrint(
+          'JoinGroupPage detail [${decision.effect}]: ${decision.debugDetail}',
+        );
+      }
+
+      switch (decision.effect) {
+        case GroupJoinUiEffect.enterChat:
+          if (result.groupId == null) {
+            _toast(_t(result.messageKey));
+            return;
+          }
+          _toast(_t(result.messageKey));
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+            'lastJoinedGroupId': result.groupId,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          final name = (result.groupName ?? '').trim();
+          await _openGroupChat(
+            groupId: result.groupId!,
+            groupName: name.isEmpty ? _t('group_generic') : name,
+          );
+          return;
+
+        case GroupJoinUiEffect.showPending:
+          _toast(
+            result.outcome == GroupJoinOutcome.pendingCreated
+                ? _t('group_request_pending_toast')
+                : _t('group_awaiting_approval'),
+          );
+          await _popOrExit();
+          return;
+
+        case GroupJoinUiEffect.showBanned:
+        case GroupJoinUiEffect.showInviteOnly:
+        case GroupJoinUiEffect.showLoginRequired:
+        case GroupJoinUiEffect.showUnavailable:
+        case GroupJoinUiEffect.showNetworkError:
+          _toast(_t(decision.messageKey ?? result.messageKey));
+          if (result.outcome == GroupJoinOutcome.invalidInvite ||
+              result.outcome == GroupJoinOutcome.groupUnavailable) {
+            await _popOrExit();
+          }
+          return;
+
+        case GroupJoinUiEffect.showPremiumRequired:
+          await InternationalPremiumDialog.showStart(context);
+          return;
+
+        case GroupJoinUiEffect.showGenericError:
+          final detail = kDebugMode ? (result.errorDetail ?? '') : '';
+          _toast(
+            '${_t(decision.messageKey ?? result.messageKey)} $detail'.trim(),
+          );
+          return;
+
+        case GroupJoinUiEffect.showJoining:
+        case GroupJoinUiEffect.idle:
+          return;
+      }
     } catch (e) {
-      _toast('Erro ao entrar: $e');
+      debugPrint('JoinGroupPage._join unexpected: $e');
+      _toast('${_t('group_error_join_prefix')} $e');
     } finally {
-      if (mounted) setState(() => _joining = false);
+      if (mounted) {
+        setState(() => _joining = false);
+      } else {
+        _joining = false;
+      }
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
     final group = _groupDoc?.data() ?? {};
 
-
-    final name = (group['name'] ?? 'Grupo').toString().trim();
-    final country = (group['country'] ?? '').toString().trim();
-    final city = (group['city'] ?? '').toString().trim();
+    final name = (group['name'] ?? _t('group_generic')).toString().trim();
+    final lang = Localizations.localeOf(context).toLanguageTag();
+    final locationLabel = JoinGroupLocationLabel.format(
+      group,
+      languageCode: lang,
+    );
     final bio = (group['bio'] ?? '').toString().trim();
     final avatarUrl = (group['avatarUrl'] ?? '').toString().trim();
 
-
     final isPremiumGroup = group['isPremiumGroup'] == true;
-    final joinPolicy = (group['joinPolicy'] ?? 'open').toString().trim();
-
+    final joinPolicy =
+        GroupJoinService.normalizeJoinPolicy(group['joinPolicy']);
 
     final joinButtonText = joinPolicy == 'approval'
-        ? 'Pedir para entrar'
-        : 'Entrar no grupo';
-
+        ? _t('group_join_group')
+        : _t('group_join_group');
 
     final joinPolicyLabel = joinPolicy == 'approval'
-        ? 'Aprovação'
-        : (joinPolicy == 'inviteOnly' ? 'Somente convite' : 'Entrada livre');
-
+        ? _t('group_awaiting_approval')
+        : (joinPolicy == 'inviteOnly'
+            ? _t('group_invite_only_message')
+            : _t('group_join_group'));
 
     return Scaffold(
-      backgroundColor: _bg,
-      appBar: const RemdyAppBar(title: 'Entrar no grupo'),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: RemdyAppBar(title: _t('group_join_group')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -365,8 +349,8 @@ return;
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            width: 58,
-                            height: 58,
+                            width: 150,
+                            height: 150,
                             decoration: BoxDecoration(
                               color: const Color(0xFFF1F5F9),
                               borderRadius: BorderRadius.circular(14),
@@ -377,6 +361,8 @@ return;
                               child: avatarUrl.isNotEmpty
                                   ? Image.network(
                                       avatarUrl,
+                                      width: 150,
+                                      height: 150,
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) =>
                                           const Icon(Icons.groups_rounded),
@@ -393,7 +379,7 @@ return;
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  name.isEmpty ? 'Grupo' : name,
+                                  name.isEmpty ? _t('group_generic') : name,
                                   style: const TextStyle(
                                     color: _text,
                                     fontWeight: FontWeight.w900,
@@ -402,7 +388,7 @@ return;
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'País: ${country.isEmpty ? '--' : country} • Cidade: ${city.isEmpty ? '--' : city}',
+                                  locationLabel,
                                   style: const TextStyle(
                                     color: _muted,
                                     fontWeight: FontWeight.w700,
@@ -462,8 +448,8 @@ return;
                         ),
                         child: _joining
                             ? const SizedBox(
-                                height: 18,
-                                width: 18,
+                                height: 50,
+                                width: 50,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   color: Colors.white,
@@ -478,35 +464,33 @@ return;
                               ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Obs: se você não estiver logado, faça login primeiro.',
-                      style: TextStyle(
-                        color: _muted,
-                        fontWeight: FontWeight.w600,
+                    if (FirebaseAuth.instance.currentUser == null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        _t('group_login_to_join'),
+                        style: const TextStyle(
+                          color: _muted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
+                    ],
                   ],
                 ),
     );
   }
 }
 
-
 class _Tag extends StatelessWidget {
   final String text;
   final bool filled;
-
 
   const _Tag({
     required this.text,
     required this.filled,
   });
 
-
   static const Color _remdyBlue = Color(0xFF313A5F);
-
 
   @override
   Widget build(BuildContext context) {
