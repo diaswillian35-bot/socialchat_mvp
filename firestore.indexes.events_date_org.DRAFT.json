@@ -77,6 +77,17 @@
         {"fieldPath": "status", "order": "ASCENDING"},
         {"fieldPath": "isActive", "order": "ASCENDING"},
         {"fieldPath": "countryCode", "order": "ASCENDING"},
+        {"fieldPath": "stateCode", "order": "ASCENDING"},
+        {"fieldPath": "startAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "isActive", "order": "ASCENDING"},
+        {"fieldPath": "countryCode", "order": "ASCENDING"},
         {"fieldPath": "stateName", "order": "ASCENDING"},
         {"fieldPath": "startAt", "order": "ASCENDING"}
       ]

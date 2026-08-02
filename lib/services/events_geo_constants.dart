@@ -10,4 +10,7 @@ class EventsGeoConstants {
 
   /// Página nacional / arredores: mais docs que a lista por cidade.
   static const int publicExplorePageSize = 300;
+
+  /// Página seguinte (cursor) para exploração nacional.
+  static const int publicExplorePageSizeMax = 500;
 }

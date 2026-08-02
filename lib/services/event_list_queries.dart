@@ -80,18 +80,53 @@ class EventListQueries {
   }
 
   /// País inteiro (Arredores / Brasil): sem regionKey e com page size maior.
+  /// Use [startAfter] para paginar além do limite de 300.
   static Query<Map<String, dynamic>> publicUpcomingExplore({
     required String countryCode,
     int limit = EventsGeoConstants.publicExplorePageSize,
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
   }) {
-    return publicUpcoming(countryCode: countryCode, limit: limit);
+    Query<Map<String, dynamic>> q = _publicBase(countryCode: countryCode)
+        .where('startAt', isGreaterThan: _now)
+        .orderBy('startAt');
+    if (startAfter != null) q = q.startAfterDocument(startAfter);
+    return q.limit(limit.clamp(1, EventsGeoConstants.publicExplorePageSizeMax));
   }
 
   static Query<Map<String, dynamic>> publicLiveExplore({
     required String countryCode,
     int limit = EventsGeoConstants.publicExplorePageSize,
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
   }) {
-    return publicLive(countryCode: countryCode, limit: limit);
+    final now = _now;
+    Query<Map<String, dynamic>> q = _publicBase(countryCode: countryCode)
+        .where('startAt', isLessThanOrEqualTo: now)
+        .where('endAt', isGreaterThanOrEqualTo: now)
+        .orderBy('startAt')
+        .orderBy('endAt');
+    if (startAfter != null) q = q.startAfterDocument(startAfter);
+    return q.limit(limit.clamp(1, EventsGeoConstants.publicExplorePageSizeMax));
+  }
+
+  /// Preferência: stateCode; fallback stateName (compat legado).
+  /// Índice DRAFT: status+isActive+countryCode+stateCode+startAt.
+  static Query<Map<String, dynamic>> publicUpcomingByState({
+    required String countryCode,
+    required String stateCode,
+    String? stateName,
+    int limit = EventsGeoConstants.publicExplorePageSize,
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+  }) {
+    final code = stateCode.trim().toUpperCase();
+    Query<Map<String, dynamic>> q = _publicBase(countryCode: countryCode);
+    if (code.isNotEmpty) {
+      q = q.where('stateCode', isEqualTo: code);
+    } else if (stateName != null && stateName.trim().isNotEmpty) {
+      q = q.where('stateName', isEqualTo: stateName.trim());
+    }
+    q = q.where('startAt', isGreaterThan: _now).orderBy('startAt');
+    if (startAfter != null) q = q.startAfterDocument(startAfter);
+    return q.limit(limit.clamp(1, EventsGeoConstants.publicExplorePageSizeMax));
   }
 
   // --- Meus eventos (por seção; pageSize 20) ---

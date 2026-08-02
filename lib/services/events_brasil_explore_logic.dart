@@ -79,10 +79,15 @@ class EventsBrasilExploreLogic {
     final buckets = <String, _StateBucket>{};
 
     for (final e in events) {
-      final raw = e.stateName;
+      final rawCode = e.stateCode;
+      final rawName = e.stateName;
       final key = preferBrazilCatalog
-          ? BrazilStates.groupingKey(raw)
-          : raw.trim().toLowerCase();
+          ? (BrazilStates.groupingKey(
+                rawCode.trim().isNotEmpty ? rawCode : rawName,
+              ))
+          : (rawCode.trim().isNotEmpty
+              ? rawCode.trim().toLowerCase()
+              : rawName.trim().toLowerCase());
       if (key.isEmpty) continue;
 
       final bucket = buckets.putIfAbsent(
@@ -90,9 +95,15 @@ class EventsBrasilExploreLogic {
         () => _StateBucket(
           key: key,
           name: preferBrazilCatalog
-              ? BrazilStates.displayName(raw)
-              : raw.trim(),
-          uf: preferBrazilCatalog ? BrazilStates.displayUf(raw) : '',
+              ? BrazilStates.displayName(
+                  rawCode.trim().isNotEmpty ? rawCode : rawName,
+                )
+              : (rawName.trim().isNotEmpty ? rawName.trim() : rawCode.trim()),
+          uf: preferBrazilCatalog
+              ? BrazilStates.displayUf(
+                  rawCode.trim().isNotEmpty ? rawCode : rawName,
+                )
+              : (rawCode.trim().length == 2 ? rawCode.trim().toUpperCase() : ''),
         ),
       );
       if (!bucket.ids.add(e.id)) continue;
@@ -139,8 +150,12 @@ class EventsBrasilExploreLogic {
     for (final e in events) {
       if (e.id.isEmpty || !seen.add(e.id)) continue;
       final key = preferBrazilCatalog
-          ? BrazilStates.groupingKey(e.stateName)
-          : e.stateName.trim().toLowerCase();
+          ? BrazilStates.groupingKey(
+              e.stateCode.trim().isNotEmpty ? e.stateCode : e.stateName,
+            )
+          : (e.stateCode.trim().isNotEmpty
+              ? e.stateCode.trim().toLowerCase()
+              : e.stateName.trim().toLowerCase());
       if (key != want) continue;
       filtered.add(e);
     }
@@ -199,6 +214,7 @@ class BrasilEventRef {
     required this.title,
     required this.city,
     required this.stateName,
+    this.stateCode = '',
     this.startAt,
     this.sponsored = false,
   });
@@ -207,6 +223,7 @@ class BrasilEventRef {
   final String title;
   final String city;
   final String stateName;
+  final String stateCode;
   final DateTime? startAt;
   final bool sponsored;
 }

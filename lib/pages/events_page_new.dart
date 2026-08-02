@@ -1501,6 +1501,7 @@ Widget _buildBrasilExplore({
       title: (data['title'] ?? '').toString(),
       city: (data['city'] ?? '').toString(),
       stateName: (data['stateName'] ?? data['state'] ?? '').toString(),
+      stateCode: (data['stateCode'] ?? '').toString(),
       startAt: startAt,
       sponsored: data['sponsored'] == true,
     );
