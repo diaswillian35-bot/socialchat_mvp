@@ -1,33 +1,106 @@
-const { onDocumentCreated, onDocumentWritten, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentWritten,
+  onDocumentUpdated,
+} = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 
 const admin = require("firebase-admin");
+const { validateOpenJoin } = require("./group_open_join_logic");
 function distanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
 
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
 
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) *
-    Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) *
-    Math.sin(dLon / 2);
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c;
 }
 
-
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+/** Place Details server-side — nunca no app/Git. Configurar via Secret Manager. */
+const GOOGLE_PLACES_API_KEY = defineSecret("GOOGLE_PLACES_API_KEY");
+
+const {
+  resolveTrustedCityPlace,
+} = require("./group_places");
+const {
+  buildCanonicalGeoFields,
+  clientForgedRegionalGeo,
+  REGION_RADIUS_KM,
+} = require("./group_geo_canonical");
+
+const {
+  EVENT_CREATE_ALLOWED,
+  EVENT_UPDATE_ALLOWED,
+  EVENT_PENDING_EDITORIAL_KEYS,
+  resolveEventOwnerUid,
+  validateEventEditorial,
+  buildEventEditorialPatch: buildEventEditorialPatchCore,
+  buildCreateEditorialFields,
+  asTrimmedString,
+} = require("./event_editorial");
+const {
+  scheduleSocialImageJob,
+  SOCIAL_TRIGGER_FIELDS,
+} = require("./event_social_hooks");
+
+function buildEventEditorialPatch(dataIn, editorial) {
+  return buildEventEditorialPatchCore(dataIn, editorial, (ms) =>
+    admin.firestore.Timestamp.fromMillis(ms),
+  );
+}
+
+const eventInteractions = require("./event_interactions_helpers");
+const {
+  normalizeCountryCode: normalizeIsoCountryCode,
+} = require("./group_places_logic");
 
 admin.initializeApp();
 
 const { deleteMyAccount } = require("./delete_my_account");
 exports.deleteMyAccount = deleteMyAccount;
+
+const { forwardMessage } = require("./forward_message");
+exports.forwardMessage = forwardMessage;
+
+const {
+  issueShareExtensionSession,
+  revokeShareExtensionSessions,
+  listShareDestinations,
+  sendShareMessage,
+  purgeExpiredShareExtensionData,
+} = require("./share_extension");
+exports.issueShareExtensionSession = issueShareExtensionSession;
+exports.revokeShareExtensionSessions = revokeShareExtensionSessions;
+exports.listShareDestinations = listShareDestinations;
+exports.sendShareMessage = sendShareMessage;
+exports.purgeExpiredShareExtensionData = purgeExpiredShareExtensionData;
+
+// Presença migrou para Realtime Database (onDisconnect).
+// NÃO exportar onPublicUserSessionWritten — evita CF a cada heartbeat Firestore.
+// Arquivo local: ./presence_aggregate.js (legado; não fazer deploy).
+// const { onPublicUserSessionWritten } = require("./presence_aggregate");
+// exports.onPublicUserSessionWritten = onPublicUserSessionWritten;
+
+// Contadores/índice derivados — deploy somente quando RTDB estiver ativo:
+const {
+  onPresenceConnectionWritten,
+  reconcilePresenceCounters,
+  reconcilePresenceCountersNow,
+} = require("./presence_rtdb_counters");
+exports.onPresenceConnectionWritten = onPresenceConnectionWritten;
+exports.reconcilePresenceCounters = reconcilePresenceCounters;
+exports.reconcilePresenceCountersNow = reconcilePresenceCountersNow;
 
 const {
   claimInvitePremiumReward,
@@ -43,18 +116,50 @@ const {
 exports.revenueCatWebhook = revenueCatWebhook;
 exports.syncRevenueCatEntitlement = syncRevenueCatEntitlement;
 
+const { createSearchUsersHandler } = require("./user_search");
+// Busca segura de usuários: filtragem server-side, retorna só campos públicos.
+exports.searchUsers = onCall(
+  { region: "us-central1" },
+  createSearchUsersHandler({
+    getFirestore: () => admin.firestore(),
+    HttpsError,
+    documentIdPath: admin.firestore.FieldPath.documentId(),
+  }),
+);
+
+// Link preview seguro (SSRF-hardened): ver functions/link_preview_logic.js
+// para a CACHE POLICY completa.
+const { fetchLinkPreview } = require("./link_preview");
+exports.fetchLinkPreview = fetchLinkPreview;
+
 const {
-  maskUid: remiMaskUid,
   assertUserCanUseRemi,
   validateMessageText: remiValidateMessageText,
+  validateRequestId: remiValidateRequestId,
   sanitizeHistory: remiSanitizeHistory,
+  sanitizeLanguage: remiSanitizeLanguage,
+  sanitizeGoal: remiSanitizeGoal,
+  sanitizeLesson: remiSanitizeLesson,
   formatHistoryForPrompt: remiFormatHistoryForPrompt,
+  buildMemoryPromptText: remiBuildMemoryPromptText,
   resolveRemiPlan,
   acquireRemiLock,
   consumeRemiQuota,
+  refundRemiQuota,
+  getIdempotentResult,
+  beginIdempotentRequest,
+  completeIdempotentRequest,
+  failIdempotentRequest,
   releaseRemiLock,
   assertAppCheckIfEnforced,
+  remiSafeLog,
 } = require("./remi_usage");
+const {
+  REMI_MODEL,
+  REMI_MAX_OUTPUT_TOKENS,
+  buildRemiSystemPrompt,
+  estimateApproxTokens,
+} = require("./remi_prompt");
 
 const ANDROID_CHANNEL_ID = "high_importance_channel";
 
@@ -63,7 +168,8 @@ function pushAllowed(userData, kind) {
   if (kind === "chat" && userData.notifChat === false) return false;
   if (kind === "group" && userData.notifGroups === false) return false;
   if (kind === "event" && userData.notifEvents === false) return false;
-  if (kind === "group_join_request" && userData.notifGroups === false) return false;
+  if (kind === "group_join_request" && userData.notifGroups === false)
+    return false;
   return true;
 }
 
@@ -88,7 +194,9 @@ async function collectTokensForUid(uid, kind) {
     .get();
 
   for (const tokenDoc of tokensSnap.docs) {
-    const token = (tokenDoc.data().token || tokenDoc.id || "").toString().trim();
+    const token = (tokenDoc.data().token || tokenDoc.id || "")
+      .toString()
+      .trim();
     if (token) tokens.push(token);
   }
 
@@ -182,7 +290,10 @@ function unreadFromMap(unreadMap, uid) {
 }
 
 function userCountryFromData(userData) {
-  const home = (userData?.homeCountryCode || "").toString().trim().toLowerCase();
+  const home = (userData?.homeCountryCode || "")
+    .toString()
+    .trim()
+    .toLowerCase();
   if (home) return home;
   return (userData?.countryCode || "").toString().trim().toLowerCase();
 }
@@ -219,7 +330,7 @@ function assertCanAccessInternationalGroup(groupData, userData) {
   if (isPremiumUserData(userData)) return;
   throw new HttpsError(
     "permission-denied",
-    "Premium required for international groups."
+    "Premium required for international groups.",
   );
 }
 
@@ -330,7 +441,6 @@ async function deleteInvalidTokens(response, tokens) {
   }
 }
 
-
 exports.onGroupMessageCreated = onDocumentCreated(
   "groups/{groupId}/messages/{msgId}",
   async (event) => {
@@ -375,7 +485,7 @@ exports.onGroupMessageCreated = onDocumentCreated(
         .where("isActive", "==", true)
         .get();
       const bannedSet = new Set(
-        bannedSnap.docs.map((d) => d.id).filter(Boolean)
+        bannedSnap.docs.map((d) => d.id).filter(Boolean),
       );
 
       let groupName = "Grupo";
@@ -404,7 +514,7 @@ exports.onGroupMessageCreated = onDocumentCreated(
         }
 
         const banSnap = await tx.get(
-          groupRef.collection("bannedUsers").doc(senderId)
+          groupRef.collection("bannedUsers").doc(senderId),
         );
         if (banSnap.exists && banSnap.data()?.isActive === true) {
           return false;
@@ -471,12 +581,12 @@ exports.onGroupMessageCreated = onDocumentCreated(
       });
 
       console.log(
-        `Push grupo enviado. Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`
+        `Push grupo enviado. Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`,
       );
     } catch (e) {
       console.error("Erro onGroupMessageCreated:", e);
     }
-  }
+  },
 );
 exports.onPrivateMessageCreated = onDocumentCreated(
   "conversations/{conversationId}/messages/{messageId}",
@@ -493,7 +603,10 @@ exports.onPrivateMessageCreated = onDocumentCreated(
         .trim();
       if (!senderId) return;
 
-      const convRef = admin.firestore().collection("conversations").doc(conversationId);
+      const convRef = admin
+        .firestore()
+        .collection("conversations")
+        .doc(conversationId);
       const convSnap = await convRef.get();
       if (!convSnap.exists) return;
 
@@ -501,8 +614,8 @@ exports.onPrivateMessageCreated = onDocumentCreated(
       const participants = Array.isArray(conv.participants)
         ? conv.participants
         : Array.isArray(conv.members)
-        ? conv.members
-        : [];
+          ? conv.members
+          : [];
 
       const targetUids = participants.filter((uid) => uid && uid !== senderId);
       if (targetUids.length === 0) return;
@@ -512,8 +625,8 @@ exports.onPrivateMessageCreated = onDocumentCreated(
         msgType === "audio"
           ? "🎤 Áudio"
           : msgType === "image"
-          ? "📷 Foto"
-          : (msg.text || "Nova mensagem").toString();
+            ? "📷 Foto"
+            : (msg.text || "Nova mensagem").toString();
 
       const unreadPatch = {};
       for (const uid of targetUids) {
@@ -529,13 +642,17 @@ exports.onPrivateMessageCreated = onDocumentCreated(
           ...unreadPatch,
           hiddenFor: admin.firestore.FieldValue.arrayRemove(...targetUids),
         },
-        { merge: true }
+        { merge: true },
       );
 
       let body = preview;
       let senderName = "Alguém";
       let senderImage = "";
-      const senderSnap = await admin.firestore().collection("users").doc(senderId).get();
+      const senderSnap = await admin
+        .firestore()
+        .collection("users")
+        .doc(senderId)
+        .get();
       const senderData = senderSnap.data() || {};
       const senderLabel = (senderData.name || "").toString().trim();
       if (senderLabel) senderName = senderLabel;
@@ -560,31 +677,60 @@ exports.onPrivateMessageCreated = onDocumentCreated(
       });
 
       console.log(
-        `Push privado enviado (${conversationId}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`
+        `Push privado enviado (${conversationId}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`,
       );
     } catch (e) {
       console.error("Erro onPrivateMessageCreated:", e);
     }
-  }
+  },
 );
-
-
-
-
 
 exports.askRemi = onCall(
   {
     secrets: [GEMINI_API_KEY],
     region: "us-central1",
-    // App Check: set enforceAppCheck: true after configuring App Check in
-    // Firebase Console and in the Flutter app. Optional env REMI_ENFORCE_APP_CHECK=true
-    // enables a soft check without breaking dev builds.
+    // App Check: NÃO ativar enforceAppCheck até validar tokens Android/iPhone.
+    // Soft check opcional: REMI_ENFORCE_APP_CHECK=true (ainda desligado).
   },
   async (request) => {
     const startedAt = Date.now();
     let uid = null;
     let lockHeld = false;
+    let quotaReserved = false;
+    let requestId = null;
+    let replyDelivered = false;
+    let plan = "free";
+    let approxInputTokens = 0;
     const db = admin.firestore();
+
+    const failAndMaybeRefund = async (errorCategory) => {
+      if (quotaReserved && requestId && !replyDelivered) {
+        try {
+          await refundRemiQuota(db, uid, requestId);
+        } catch (refundErr) {
+          remiSafeLog("remi_refund_failed", {
+            uid,
+            status: "refund_error",
+            errorCategory: "refund",
+            level: "error",
+            durationMs: Date.now() - startedAt,
+            model: REMI_MODEL,
+          });
+        }
+      }
+      if (requestId && uid && !replyDelivered) {
+        await failIdempotentRequest(db, uid, requestId);
+      }
+      remiSafeLog("remi_request_failed", {
+        uid,
+        plan,
+        durationMs: Date.now() - startedAt,
+        model: REMI_MODEL,
+        status: "error",
+        approxInputTokens,
+        errorCategory,
+      });
+    };
 
     try {
       if (!request.auth || !request.auth.uid) {
@@ -594,19 +740,30 @@ exports.askRemi = onCall(
       uid = request.auth.uid;
       assertAppCheckIfEnforced(request);
 
+      requestId = remiValidateRequestId(request.data?.requestId);
       const text = remiValidateMessageText(request.data?.text);
       const historyItems = remiSanitizeHistory(request.data?.history);
       const history = remiFormatHistoryForPrompt(historyItems);
-
-      const language = (request.data?.language || "English")
-        .toString()
-        .trim();
-
-      const goal = (request.data?.goal || "").toString().trim();
-
-      const lesson = (request.data?.lesson || "").toString().trim();
-
+      const language = remiSanitizeLanguage(request.data?.language);
+      const goal = remiSanitizeGoal(request.data?.goal);
+      const lesson = remiSanitizeLesson(request.data?.lesson);
       const showPronunciation = request.data?.showPronunciation === true;
+
+      // Idempotência: retry com mesmo requestId devolve resultado sem Gemini/quota.
+      const earlyHit = await getIdempotentResult(db, uid, requestId);
+      if (earlyHit && earlyHit.status === "done") {
+        remiSafeLog("remi_success", {
+          uid,
+          plan,
+          durationMs: Date.now() - startedAt,
+          model: REMI_MODEL,
+          status: "ok",
+          idempotentHit: true,
+          approxInputTokens: 0,
+          approxOutputTokens: estimateApproxTokens(earlyHit.reply),
+        });
+        return { reply: earlyHit.reply };
+      }
 
       const userSnap = await db.collection("users").doc(uid).get();
       if (!userSnap.exists) {
@@ -614,378 +771,272 @@ exports.askRemi = onCall(
       }
       const userData = userSnap.data() || {};
       assertUserCanUseRemi(userData);
-      const plan = resolveRemiPlan(userData);
+      plan = resolveRemiPlan(userData);
 
       await acquireRemiLock(db, uid, plan);
       lockHeld = true;
 
-      let memoryText = "";
-
-      try {
-        const memoryDoc = await db.doc(`users/${uid}/remi/memory`).get();
-
-        if (memoryDoc.exists) {
-          const memory = memoryDoc.data();
-
-          memoryText = `
-User memory:
-- Learning language: ${memory.learningLanguage || ""}
-- Level: ${memory.level || ""}
-- Total Remi messages: ${memory.totalMessages || 0}
-- Conversation style: ${memory.conversationStyle || ""}
-- Important facts: ${(memory.importantFacts || []).join(", ")}
-- Last user message: ${memory.lastUserMessage || ""}
-- Last Remi reply: ${memory.lastRemiReply || ""}
-`;
-        }
-      } catch (e) {
-        console.error("remi_memory_read_failed", remiMaskUid(uid), e.message || e);
+      const begin = await beginIdempotentRequest(db, uid, requestId);
+      if (begin.hit) {
+        remiSafeLog("remi_success", {
+          uid,
+          plan,
+          durationMs: Date.now() - startedAt,
+          model: REMI_MODEL,
+          status: "ok",
+          idempotentHit: true,
+          approxOutputTokens: estimateApproxTokens(begin.reply),
+        });
+        return { reply: begin.reply };
       }
 
-      await consumeRemiQuota(db, uid, plan);
+      // Uma única leitura de memória.
+      let memory = null;
+      let memoryText = "";
+      try {
+        const memoryDoc = await db.doc(`users/${uid}/remi/memory`).get();
+        if (memoryDoc.exists) {
+          memory = memoryDoc.data() || {};
+          memoryText = remiBuildMemoryPromptText(memory, historyItems);
+        }
+      } catch (e) {
+        remiSafeLog("remi_memory_read_failed", {
+          uid,
+          status: "memory_read_error",
+          errorCategory: "firestore",
+          level: "error",
+          durationMs: Date.now() - startedAt,
+          model: REMI_MODEL,
+        });
+      }
+
+      // Reserva cota antes do Gemini (impede concorrência com lock).
+      await consumeRemiQuota(db, uid, plan, requestId);
+      quotaReserved = true;
 
       const apiKey = GEMINI_API_KEY.value();
+      const prompt = buildRemiSystemPrompt({
+        memoryText,
+        language,
+        goal,
+        lesson,
+        showPronunciation,
+        history,
+        text,
+      });
+      approxInputTokens = estimateApproxTokens(prompt);
 
- const prompt = `
-${memoryText}
-
-You are Remi, an AI language coach inside the Remdy app.
-Your job is to help users practice real-life conversations naturally.
-
-CORE RULES:
-- Target language: ${language}
-- Goal: ${goal}
-- Lesson: ${lesson}
-- ${language} is the target language the user wants to practice.
-- Detect the language of the user's message.
-- If the user writes in the target language, respond in ${language}.
-- If the user writes in another language, answer naturally in that language, then gently guide back to ${language} when useful.
-
-- Use the user's native/app language only when it helps beginners understand.
-- Keep replies very short: 1 to 2 complete sentences.
-- Never end with an unfinished sentence.
-- Do not ask a question in every reply.
-- Do not sound like a strict teacher.
-- Sound warm, casual, human, and practical.
-
-MEMORY:
-- Use user memory only when clearly relevant.
-- Do not mention Remdy/founder status unless the user is clearly talking about Remdy, app, startup, business, or app development.
-- Do not assume programming, work, weekends, or daily plans are about Remdy.
-- Do not repeat memory facts too often.
-- Do not ask for information already in memory.
-
-LANGUAGE LEVEL:
-Estimate the user's level naturally.
-
-Beginner:
-- use simple words
-- short explanations
-- app/native language + target language when useful
-- one new phrase at a time
-
-Intermediate:
-- use more target language
-- introduce natural expressions
-- correct only what helps communication
-
-Advanced:
-- use mostly target language
-- teach native-style expressions
-- focus on sounding natural
-CORRECTIONS:
-
-- Do not correct every message.
-- If the user's message is understandable, continue naturally.
-- Only correct when:
-  - the user asks for correction
-  - the meaning is unclear
-  - the user is doing a lesson exercise
-- Communication is more important than perfect grammar.
-- In emotional conversations, respond first as a human.
-- Never use:
-  - wrong
-  - incorrect
-  - grammar mistake
-
-
-- Never say "wrong", "incorrect", or "grammar mistake".
-- Prefer:
-  "A more natural way to say this is..."
-  "You can also say..."
-  "People usually say..."
-
-CONVERSATION STYLE:
-- React naturally to what the user says.
-- Continue the current topic.
-- Sometimes just comment instead of asking.
-- Avoid generic praise like "Great", "Amazing", "Perfect" too often.
-- Do not overexplain.
-- Keep lessons subtle and conversational.
-- Human connection comes before grammar.
-
-ROLEPLAY:
-If the selected Lesson is a real-life situation, enter the situation directly.
-Do not say "Let's do a roleplay" every time.
-
-Examples:
-Coffee Shop: "Hi! What can I get for you today?"
-Airport: "Good afternoon. May I see your passport?"
-Hotel: "Welcome. Do you have a reservation?"
-Restaurant: "Hi! Are you ready to order?"
-Job Interview: "Tell me a little about yourself."
-Meeting People: "Hi, I'm Sarah. Nice to meet you."
-
-Use the Goal and Lesson naturally:
-- Travel: real travel situations
-- Work: real work situations
-- Friends: social conversations
-- Events: meeting people
-- Daily Life: everyday routines and small talk
-
-PRONUNCIATION:
-Pronunciation mode: ${showPronunciation ? "ON" : "OFF"}
-
-If Pronunciation mode is ON:
-- For useful target-language phrases, include a simple pronunciation guide.
-- Write pronunciation in a way the user can read easily.
-- Keep it short.
-
-Format:
-Phrase:
-What's your name?
-
-Pronunciation:
-uóts iór nêim
-
-Meaning:
-Qual é o seu nome?
-
-If Pronunciation mode is OFF:
-- Do not include pronunciation.
-
-Conversation history:
-${history}
-
-User message:
-${text}
-`;
-
-
-
-
-      const response = await fetch(
-       `
-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}
-`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: "user",
-                parts: [{ text: prompt }],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 1000,
+      let response;
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${REMI_MODEL}:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
             },
-          }),
-          signal: AbortSignal.timeout(55000),
-        }
-      );
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: prompt }],
+                },
+              ],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: REMI_MAX_OUTPUT_TOKENS,
+              },
+            }),
+            signal: AbortSignal.timeout(55000),
+          },
+        );
+      } catch (netErr) {
+        const isTimeout =
+          netErr &&
+          (netErr.name === "TimeoutError" ||
+            netErr.name === "AbortError" ||
+            /timeout/i.test(String(netErr.message || "")));
+        await failAndMaybeRefund(isTimeout ? "timeout" : "gemini_network");
+        throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+      }
 
       let json;
       try {
         json = await response.json();
-      } catch (parseErr) {
-        console.error(
-          "remi_gemini_parse_error",
-          remiMaskUid(uid),
-          parseErr.message || parseErr
-        );
+      } catch (_) {
+        await failAndMaybeRefund("gemini_parse");
         throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
       }
 
       if (!response.ok) {
-        console.error(
-          "remi_gemini_error",
-          remiMaskUid(uid),
-          response.status,
-          json?.error?.code || "unknown"
-        );
+        await failAndMaybeRefund("gemini_http");
         throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
       }
 
-      const reply =
-        json?.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "";
+      const reply = (
+        json?.candidates?.[0]?.content?.parts?.[0]?.text || ""
+      ).toString().trim();
 
-      if (uid) {
-        try {
-
-let importantFacts = [];
-
-try {
-  const memorySnap = await admin
-    .firestore()
-    .doc(`users/${uid}/remi/memory`)
-    .get();
-
-  if (memorySnap.exists) {
-    importantFacts = memorySnap.data().importantFacts || [];
-  }
-} catch (_) {}
-
-
-function addFactIfMatch({
-  lowerText,
-  importantFacts,
-  fact,
-  patterns,
-}) {
-  if (
-    patterns.some((p) => lowerText.includes(p)) &&
-    !importantFacts.includes(fact)
-  ) {
-    importantFacts.push(fact);
-  }
-}
-
-
-
-const lowerText = text.toLowerCase();
-
-
-addFactIfMatch({
-  lowerText,
-  importantFacts,
-  fact: "Lives in Canada",
-  patterns: [
-    "eu moro no canad",
-    "moro no canad",
-    "vivo no canad",
-    "estou no canad",
-  ],
-});
-
-
-
-
-addFactIfMatch({
-  lowerText,
-  importantFacts,
-  fact: "Founder of Remdy",
-  patterns: [
-    "sou fundador da remdy",
-    "sou o fundador da remdy",
-    "fundador da remdy",
-    "criei a remdy",
-    "fundei a remdy",
-    "esse aplicativo é meu",
-    "esse app é meu",
-    "desenvolvi a remdy",
-  ],
-});
-
-
-
-addFactIfMatch({
-  lowerText,
-  importantFacts,
-  fact: "Married",
-  patterns: [
-    "sou casado",
-    "eu sou casado",
-    "tenho esposa",
-    "minha esposa",
-  ],
-});
-addFactIfMatch({
-  lowerText,
-  importantFacts,
-  fact: "Speaks Portuguese",
-  patterns: [
-    "falo português",
-    "eu falo português",
-    "minha língua é português",
-  ],
-});
-
-
-addFactIfMatch({
-  
-  lowerText,
-  importantFacts,
-  fact: "Works in Construction",
-  patterns: [
-    "trabalho na construção",
-    "trabalho em construção",
-    "sou da construção",
-    "trabalho com construção",
-  ],
-});
-
-
-
-
-
-
-    await admin
-      .firestore()
-      .doc(`users/${uid}/remi/memory`)
-     
-.set(
-  {
-    learningLanguage: language,
-    lastLesson: lesson,
-    lastGoal: goal,
-    lastUserMessage: text,
-    lastRemiReply: reply,
-    importantFacts: importantFacts,
-    totalMessages: admin.firestore.FieldValue.increment(1),
-    updatedAt: new Date(),
-  },
-  { merge: true }
-);
-
-        } catch (e) {
-          console.error("remi_memory_write_failed", remiMaskUid(uid), e.message || e);
-        }
+      if (!reply) {
+        await failAndMaybeRefund("gemini_empty");
+        throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
       }
 
-      console.log("remi_success", {
-        uid: remiMaskUid(uid),
+      // Resposta válida entregue — NÃO reembolsar cota daqui em diante.
+      replyDelivered = true;
+      try {
+        await completeIdempotentRequest(db, uid, requestId, reply);
+      } catch (_) {
+        remiSafeLog("remi_idempotency_complete_failed", {
+          uid,
+          status: "idempotency_write_error",
+          errorCategory: "firestore",
+          level: "error",
+          durationMs: Date.now() - startedAt,
+          model: REMI_MODEL,
+        });
+      }
+
+      try {
+        let importantFacts = Array.isArray(memory?.importantFacts)
+          ? [...memory.importantFacts]
+          : [];
+
+        function addFactIfMatch({ lowerText, fact, patterns }) {
+          if (
+            patterns.some((p) => lowerText.includes(p)) &&
+            !importantFacts.includes(fact)
+          ) {
+            importantFacts.push(fact);
+          }
+        }
+
+        const lowerText = text.toLowerCase();
+
+        addFactIfMatch({
+          lowerText,
+          fact: "Lives in Canada",
+          patterns: [
+            "eu moro no canad",
+            "moro no canad",
+            "vivo no canad",
+            "estou no canad",
+          ],
+        });
+        addFactIfMatch({
+          lowerText,
+          fact: "Founder of Remdy",
+          patterns: [
+            "sou fundador da remdy",
+            "sou o fundador da remdy",
+            "fundador da remdy",
+            "criei a remdy",
+            "fundei a remdy",
+            "esse aplicativo é meu",
+            "esse app é meu",
+            "desenvolvi a remdy",
+          ],
+        });
+        addFactIfMatch({
+          lowerText,
+          fact: "Married",
+          patterns: [
+            "sou casado",
+            "eu sou casado",
+            "tenho esposa",
+            "minha esposa",
+          ],
+        });
+        addFactIfMatch({
+          lowerText,
+          fact: "Speaks Portuguese",
+          patterns: [
+            "falo português",
+            "eu falo português",
+            "minha língua é português",
+          ],
+        });
+        addFactIfMatch({
+          lowerText,
+          fact: "Works in Construction",
+          patterns: [
+            "trabalho na construção",
+            "trabalho em construção",
+            "sou da construção",
+            "trabalho com construção",
+          ],
+        });
+
+        await db.doc(`users/${uid}/remi/memory`).set(
+          {
+            learningLanguage: language,
+            lastLesson: lesson,
+            lastGoal: goal,
+            lastUserMessage: text,
+            lastRemiReply: reply,
+            importantFacts,
+            totalMessages: admin.firestore.FieldValue.increment(1),
+            updatedAt: new Date(),
+          },
+          { merge: true },
+        );
+      } catch (_) {
+        remiSafeLog("remi_memory_write_failed", {
+          uid,
+          status: "memory_write_error",
+          errorCategory: "firestore",
+          level: "error",
+          durationMs: Date.now() - startedAt,
+          model: REMI_MODEL,
+        });
+      }
+
+      remiSafeLog("remi_success", {
+        uid,
         plan,
-        latencyMs: Date.now() - startedAt,
+        durationMs: Date.now() - startedAt,
+        model: REMI_MODEL,
+        status: "ok",
+        approxInputTokens,
+        approxOutputTokens: estimateApproxTokens(reply),
+        idempotentHit: false,
       });
 
-      return {
-        reply: reply || "Remi did not return text.",
-      };
+      return { reply };
     } catch (e) {
       if (e instanceof HttpsError) {
-        console.log("remi_rejected", {
-          uid: remiMaskUid(uid),
-          code: e.code,
-          reason: e.message,
-        });
+        const alreadyLogged =
+          e.message === "REMI_TEMPORARY_ERROR" && quotaReserved;
+        if (!alreadyLogged) {
+          remiSafeLog("remi_rejected", {
+            uid,
+            plan,
+            durationMs: Date.now() - startedAt,
+            model: REMI_MODEL,
+            status: "rejected",
+            errorCategory: e.message || e.code || "https_error",
+          });
+        }
+        // Falhas de validação/quota/auth: sem refund (cota não reservada ou limite).
+        // Falhas pós-cota já tratadas em failAndMaybeRefund.
+        if (
+          quotaReserved &&
+          !replyDelivered &&
+          e.message !== "REMI_TEMPORARY_ERROR"
+        ) {
+          await failAndMaybeRefund("function_error");
+        }
         throw e;
       }
-      console.error("remi_internal_error", remiMaskUid(uid), e.message || e);
+      await failAndMaybeRefund("internal");
       throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
     } finally {
       if (lockHeld && uid) {
         await releaseRemiLock(db, uid);
       }
     }
-  }
+  },
 );
-
 
 exports.onGroupJoinRequestCreated = onDocumentCreated(
   "groups/{groupId}/pendingRequests/{uid}",
@@ -1000,7 +1051,11 @@ exports.onGroupJoinRequestCreated = onDocumentCreated(
       const groupId = event.params.groupId;
       const requestUid = event.params.uid;
 
-      const groupSnap = await admin.firestore().collection("groups").doc(groupId).get();
+      const groupSnap = await admin
+        .firestore()
+        .collection("groups")
+        .doc(groupId)
+        .get();
       if (!groupSnap.exists) return;
 
       const group = groupSnap.data() || {};
@@ -1009,10 +1064,15 @@ exports.onGroupJoinRequestCreated = onDocumentCreated(
       if (admins.length === 0) return;
 
       const userName = (req.name || "Alguém").toString();
-      const targetAdmins = admins.filter((adminUid) => adminUid && adminUid !== requestUid);
+      const targetAdmins = admins.filter(
+        (adminUid) => adminUid && adminUid !== requestUid,
+      );
       if (targetAdmins.length === 0) return;
 
-      const uniqueTokens = await collectTokensForUids(targetAdmins, "group_join_request");
+      const uniqueTokens = await collectTokensForUids(
+        targetAdmins,
+        "group_join_request",
+      );
       if (uniqueTokens.length === 0) return;
 
       const title = "Novo pedido de entrada";
@@ -1030,21 +1090,15 @@ exports.onGroupJoinRequestCreated = onDocumentCreated(
       });
 
       console.log(
-        `Push pedido de entrada enviado (${groupId}/${requestUid}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`
+        `Push pedido de entrada enviado (${groupId}/${requestUid}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`,
       );
     } catch (e) {
       console.error("Erro onGroupJoinRequestCreated:", e);
     }
-  }
+  },
 );
 
-async function notifyEventCreator({
-  creatorUid,
-  title,
-  body,
-  eventId,
-  type,
-}) {
+async function notifyEventCreator({ creatorUid, title, body, eventId, type }) {
   if (!creatorUid) return;
   const tokens = await collectTokensForUid(creatorUid, "event");
   if (!tokens.length) return;
@@ -1071,6 +1125,14 @@ exports.onEventUpdated = onDocumentUpdated(
 
       if (!data) return;
 
+      // likesCount-only (toggleEventLike): sem push, sem fanout, sem revisão.
+      if (
+        before &&
+        eventInteractions.onlyLikesCountChanged(before, data)
+      ) {
+        return;
+      }
+
       const creatorUid = (
         data.createdBy ||
         data.ownerUid ||
@@ -1080,7 +1142,10 @@ exports.onEventUpdated = onDocumentUpdated(
         .toString()
         .trim();
       const eventTitle = (data.title || "Seu evento").toString().trim();
-      const statusBefore = (before?.status || "").toString().trim().toLowerCase();
+      const statusBefore = (before?.status || "")
+        .toString()
+        .trim()
+        .toLowerCase();
       const statusAfter = (data.status || "").toString().trim().toLowerCase();
 
       // Push ao organizador: aprovado / rejeitado / precisa de alterações.
@@ -1151,7 +1216,10 @@ exports.onEventUpdated = onDocumentUpdated(
       const title = (data.title || "Novo evento").toString().trim();
       const city = (data.city || "").toString().trim();
       const category = (data.category || "").toString().trim();
-      const countryCode = (data.countryCode || "").toString().trim().toLowerCase();
+      const countryCode = (data.countryCode || "")
+        .toString()
+        .trim()
+        .toLowerCase();
       // creatorUid já resolvido acima para push ao organizador.
 
       const eventLat = Number(data.lat || data.latitude);
@@ -1178,9 +1246,9 @@ exports.onEventUpdated = onDocumentUpdated(
         .collection("users")
         .where("homeCountryCode", "==", countryCode)
         .get();
-console.log(
-  `Evento ${eventId} - usuários encontrados no país (${countryCode}): ${usersSnap.docs.length}`
-);
+      console.log(
+        `Evento ${eventId} - usuários encontrados no país (${countryCode}): ${usersSnap.docs.length}`,
+      );
 
       for (const userDoc of usersSnap.docs) {
         if (userDoc.id === creatorUid) continue;
@@ -1188,11 +1256,10 @@ console.log(
         const userData = userDoc.data() || {};
         if (!pushAllowed(userData, "event")) continue;
 
-        const lang = (
-          userData.appLanguageCode ||
-          userData.languageCode ||
-          "pt"
-        ).toString().substring(0, 2).toLowerCase();
+        const lang = (userData.appLanguageCode || userData.languageCode || "pt")
+          .toString()
+          .substring(0, 2)
+          .toLowerCase();
 
         const finalLang = tokensByLang[lang] ? lang : "pt";
 
@@ -1202,16 +1269,21 @@ console.log(
         if (!userLat || !userLng) continue;
 
         const distance = distanceKm(eventLat, eventLng, userLat, userLng);
-        console.log(`${userData.name || userDoc.id} -> ${distance.toFixed(1)} km`);
+        console.log(
+          `${userData.name || userDoc.id} -> ${distance.toFixed(1)} km`,
+        );
 
         if (distance > radiusKm) continue;
         console.log(`✔ Dentro do raio: ${userData.name || userDoc.id}`);
 
-        await userDoc.ref.set({
-          hasNewEvents: true,
-          lastNewEventId: eventId,
-          lastNewEventAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+        await userDoc.ref.set(
+          {
+            hasNewEvents: true,
+            lastNewEventId: eventId,
+            lastNewEventAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
 
         const userTokens = await collectTokensForUid(userDoc.id, "event");
         if (userTokens.length > 0) {
@@ -1247,7 +1319,9 @@ console.log(
         const notifTitle = city ? `${pushTitle} (${city})` : pushTitle;
         const notifBody = `${title}${category ? " • " + category : ""}`;
 
-        console.log(`Idioma ${lang}: ${uniqueTokens.length} token(s) para envio`);
+        console.log(
+          `Idioma ${lang}: ${uniqueTokens.length} token(s) para envio`,
+        );
 
         const response = await sendPush({
           tokens: uniqueTokens,
@@ -1264,12 +1338,12 @@ console.log(
       }
 
       console.log(
-        `Push evento enviado. Success: ${totalSuccess}, Fail: ${totalFail}`
+        `Push evento enviado. Success: ${totalSuccess}, Fail: ${totalFail}`,
       );
     } catch (e) {
       console.error("Erro onEventUpdated:", e);
     }
-  }
+  },
 );
 
 function normalizeGroupInviteCode(raw) {
@@ -1284,6 +1358,97 @@ function normalizeGroupJoinPolicy(raw) {
   }
   return "open";
 }
+
+/**
+ * Self-join seguro em grupo aberto.
+ *
+ * O cliente não atualiza /groups/{groupId}; a transação Admin SDK preserva a
+ * lista original exatamente e altera somente members/membersCount/updatedAt.
+ */
+exports.joinOpenGroup = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+  const groupId = (request.data?.groupId || "").toString().trim();
+  if (!groupId || groupId.length > 128) {
+    throw new HttpsError("invalid-argument", "Invalid groupId.");
+  }
+
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const userRef = db.collection("users").doc(uid);
+  const banRef = groupRef.collection("bannedUsers").doc(uid);
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      // Todas as leituras antes da escrita; a transação serializa dois joins.
+      const [groupSnap, userSnap, banSnap] = await Promise.all([
+        tx.get(groupRef),
+        tx.get(userRef),
+        tx.get(banRef),
+      ]);
+      const groupData = groupSnap.data() || {};
+      const decision = validateOpenJoin({
+        groupExists: groupSnap.exists,
+        groupData,
+        userExists: userSnap.exists,
+        userData: userSnap.data() || {},
+        banExists: banSnap.exists,
+        banData: banSnap.data() || {},
+        uid,
+      });
+
+      if (decision.error) {
+        throw new HttpsError(decision.error, decision.reason);
+      }
+
+      const groupName = (
+        groupData.name ||
+        groupData.title ||
+        "Grupo"
+      ).toString();
+      if (decision.alreadyMember) {
+        return {
+          groupId,
+          groupName,
+          alreadyMember: true,
+          joined: false,
+        };
+      }
+
+      tx.update(groupRef, {
+        members: decision.members,
+        membersCount: decision.membersCount,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        groupId,
+        groupName,
+        alreadyMember: false,
+        joined: true,
+      };
+    });
+
+    console.log(
+      JSON.stringify({
+        action: "group_open_join",
+        groupId,
+        userId: uid,
+        joined: result.joined,
+        alreadyMember: result.alreadyMember,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+    return result;
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error("joinOpenGroup:", error);
+    throw new HttpsError("internal", "Could not join group.");
+  }
+});
 
 /**
  * Entrada segura em grupo inviteOnly via código.
@@ -1329,10 +1494,7 @@ exports.joinGroupByInviteCode = onCall(
 
     if (querySnap.size > 1) {
       console.error("inviteCode conflict: multiple groups share same code");
-      throw new HttpsError(
-        "failed-precondition",
-        "Invite code conflict."
-      );
+      throw new HttpsError("failed-precondition", "Invite code conflict.");
     }
 
     const groupRef = querySnap.docs[0].ref;
@@ -1349,10 +1511,7 @@ exports.joinGroupByInviteCode = onCall(
         const groupName = (data.name || data.title || "Grupo").toString();
 
         if (data.deleted === true) {
-          throw new HttpsError(
-            "failed-precondition",
-            "Group unavailable."
-          );
+          throw new HttpsError("failed-precondition", "Group unavailable.");
         }
 
         const docCode = normalizeGroupInviteCode(data.inviteCode);
@@ -1364,20 +1523,17 @@ exports.joinGroupByInviteCode = onCall(
         if (policy !== "inviteOnly") {
           throw new HttpsError(
             "failed-precondition",
-            "Group does not accept invite-only join."
+            "Group does not accept invite-only join.",
           );
         }
 
         assertCanAccessInternationalGroup(data, userData);
 
         const banSnap = await tx.get(
-          groupRef.collection("bannedUsers").doc(uid)
+          groupRef.collection("bannedUsers").doc(uid),
         );
         if (banSnap.exists && banSnap.data()?.isActive === true) {
-          throw new HttpsError(
-            "permission-denied",
-            "Cannot join this group."
-          );
+          throw new HttpsError("permission-denied", "Cannot join this group.");
         }
 
         const membersRaw = Array.isArray(data.members) ? data.members : [];
@@ -1404,7 +1560,7 @@ exports.joinGroupByInviteCode = onCall(
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             [`unread.${uid}`]: 0,
           },
-          { merge: true }
+          { merge: true },
         );
 
         return {
@@ -1423,7 +1579,7 @@ exports.joinGroupByInviteCode = onCall(
           alreadyMember: result.alreadyMember,
           joined: result.joined,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
 
       return result;
@@ -1432,7 +1588,7 @@ exports.joinGroupByInviteCode = onCall(
       console.error("Erro joinGroupByInviteCode:", e);
       throw new HttpsError("internal", "Could not join group.");
     }
-  }
+  },
 );
 
 function asUidList(raw) {
@@ -1452,155 +1608,151 @@ function isGroupOwnerOrAdminData(data, uid) {
 /**
  * Banir membro do grupo (owner/admin). Admin SDK — cliente não escreve bannedUsers.
  */
-exports.banGroupMember = onCall(
-  { region: "us-central1" },
-  async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
-    }
+exports.banGroupMember = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
 
-    const actorUid = request.auth.uid;
-    const groupId = (request.data?.groupId || "").toString().trim();
-    const targetUid = (request.data?.targetUid || "").toString().trim();
-    const reason = (request.data?.reason || "").toString().trim().slice(0, 300);
+  const actorUid = request.auth.uid;
+  const groupId = (request.data?.groupId || "").toString().trim();
+  const targetUid = (request.data?.targetUid || "").toString().trim();
+  const reason = (request.data?.reason || "").toString().trim().slice(0, 300);
 
-    if (!groupId || !targetUid) {
-      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
-    }
-    if (actorUid === targetUid) {
-      throw new HttpsError("failed-precondition", "Cannot ban yourself.");
-    }
+  if (!groupId || !targetUid) {
+    throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+  }
+  if (actorUid === targetUid) {
+    throw new HttpsError("failed-precondition", "Cannot ban yourself.");
+  }
 
-    const db = admin.firestore();
-    const groupRef = db.collection("groups").doc(groupId);
-    const banRef = groupRef.collection("bannedUsers").doc(targetUid);
-    const pendingRef = groupRef.collection("pendingRequests").doc(targetUid);
-    const actorRef = db.collection("users").doc(actorUid);
-    const targetRef = db.collection("users").doc(targetUid);
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const banRef = groupRef.collection("bannedUsers").doc(targetUid);
+  const pendingRef = groupRef.collection("pendingRequests").doc(targetUid);
+  const actorRef = db.collection("users").doc(actorUid);
+  const targetRef = db.collection("users").doc(targetUid);
 
-    try {
-      const result = await db.runTransaction(async (tx) => {
-        const groupSnap = await tx.get(groupRef);
-        const actorSnap = await tx.get(actorRef);
-        const targetSnap = await tx.get(targetRef);
-        const banSnap = await tx.get(banRef);
-        const pendingSnap = await tx.get(pendingRef);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const groupSnap = await tx.get(groupRef);
+      const actorSnap = await tx.get(actorRef);
+      const targetSnap = await tx.get(targetRef);
+      const banSnap = await tx.get(banRef);
+      const pendingSnap = await tx.get(pendingRef);
 
-        if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
-        }
+      if (!groupSnap.exists) {
+        throw new HttpsError("not-found", "Group not found.");
+      }
 
-        const data = groupSnap.data() || {};
-        if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
-        }
+      const data = groupSnap.data() || {};
+      if (data.deleted === true) {
+        throw new HttpsError("failed-precondition", "Group unavailable.");
+      }
 
-        if (!isGroupOwnerOrAdminData(data, actorUid)) {
-          throw new HttpsError("permission-denied", "Not allowed.");
-        }
+      if (!isGroupOwnerOrAdminData(data, actorUid)) {
+        throw new HttpsError("permission-denied", "Not allowed.");
+      }
 
-        const ownerId = (data.ownerId || "").toString().trim();
-        if (targetUid === ownerId) {
-          throw new HttpsError("failed-precondition", "Cannot ban the owner.");
-        }
+      const ownerId = (data.ownerId || "").toString().trim();
+      if (targetUid === ownerId) {
+        throw new HttpsError("failed-precondition", "Cannot ban the owner.");
+      }
 
-        if (!actorSnap.exists) {
-          throw new HttpsError("failed-precondition", "Actor profile missing.");
-        }
-        const actorData = actorSnap.data() || {};
-        if (actorData.isBanned === true) {
-          throw new HttpsError("permission-denied", "Account is banned.");
-        }
-        const actorName = (actorData.name || "").toString().trim() || "Admin";
+      if (!actorSnap.exists) {
+        throw new HttpsError("failed-precondition", "Actor profile missing.");
+      }
+      const actorData = actorSnap.data() || {};
+      if (actorData.isBanned === true) {
+        throw new HttpsError("permission-denied", "Account is banned.");
+      }
+      const actorName = (actorData.name || "").toString().trim() || "Admin";
 
-        const targetData = targetSnap.exists ? targetSnap.data() || {} : {};
-        const targetName =
-          (targetData.name || "").toString().trim() || "User";
-        const targetPhoto = (
-          targetData.photoUrl ||
-          targetData.avatarUrl ||
-          ""
-        ).toString();
+      const targetData = targetSnap.exists ? targetSnap.data() || {} : {};
+      const targetName = (targetData.name || "").toString().trim() || "User";
+      const targetPhoto = (
+        targetData.photoUrl ||
+        targetData.avatarUrl ||
+        ""
+      ).toString();
 
-        let members = asUidList(data.members);
-        let admins = asUidList(data.admins);
-        const wasMember = members.includes(targetUid);
+      let members = asUidList(data.members);
+      let admins = asUidList(data.admins);
+      const wasMember = members.includes(targetUid);
 
-        members = members.filter((m) => m !== targetUid);
-        admins = admins.filter((a) => a !== targetUid);
+      members = members.filter((m) => m !== targetUid);
+      admins = admins.filter((a) => a !== targetUid);
 
-        const patch = {
-          members,
-          admins,
-          membersCount: members.length,
+      const patch = {
+        members,
+        admins,
+        membersCount: members.length,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        [`unread.${targetUid}`]: admin.firestore.FieldValue.delete(),
+      };
+
+      tx.set(groupRef, patch, { merge: true });
+
+      tx.set(
+        banRef,
+        {
+          uid: targetUid,
+          name: targetName,
+          photoUrl: targetPhoto,
+          reason,
+          bannedAt: admin.firestore.FieldValue.serverTimestamp(),
+          bannedBy: actorUid,
+          bannedByName: actorName,
+          isActive: true,
+          unbannedAt: null,
+          unbannedBy: "",
+          unbannedByName: "",
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          [`unread.${targetUid}`]: admin.firestore.FieldValue.delete(),
-        };
-
-        tx.set(groupRef, patch, { merge: true });
-
-        tx.set(
-          banRef,
-          {
-            uid: targetUid,
-            name: targetName,
-            photoUrl: targetPhoto,
-            reason,
-            bannedAt: admin.firestore.FieldValue.serverTimestamp(),
-            bannedBy: actorUid,
-            bannedByName: actorName,
-            isActive: true,
-            unbannedAt: null,
-            unbannedBy: "",
-            unbannedByName: "",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        if (pendingSnap.exists) {
-          const p = pendingSnap.data() || {};
-          if ((p.status || "").toString().trim() === "pending") {
-            tx.set(
-              pendingRef,
-              {
-                status: "rejected",
-                rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
-                rejectedBy: actorUid,
-                rejectionReason: "banned",
-              },
-              { merge: true }
-            );
-          }
-        }
-
-        return {
-          groupId,
-          targetUid,
-          wasMember,
-          alreadyBanned: banSnap.exists && banSnap.data()?.isActive === true,
-        };
-      });
-
-      console.log(
-        JSON.stringify({
-          action: "group_member_banned",
-          groupId,
-          targetUid,
-          performedBy: actorUid,
-          reason: reason ? "[set]" : "",
-          createdAt: new Date().toISOString(),
-        })
+        },
+        { merge: true },
       );
 
-      return { success: true, ...result };
-    } catch (e) {
-      if (e instanceof HttpsError) throw e;
-      console.error("Erro banGroupMember:", e);
-      throw new HttpsError("internal", "Could not ban member.");
-    }
+      if (pendingSnap.exists) {
+        const p = pendingSnap.data() || {};
+        if ((p.status || "").toString().trim() === "pending") {
+          tx.set(
+            pendingRef,
+            {
+              status: "rejected",
+              rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+              rejectedBy: actorUid,
+              rejectionReason: "banned",
+            },
+            { merge: true },
+          );
+        }
+      }
+
+      return {
+        groupId,
+        targetUid,
+        wasMember,
+        alreadyBanned: banSnap.exists && banSnap.data()?.isActive === true,
+      };
+    });
+
+    console.log(
+      JSON.stringify({
+        action: "group_member_banned",
+        groupId,
+        targetUid,
+        performedBy: actorUid,
+        reason: reason ? "[set]" : "",
+        createdAt: new Date().toISOString(),
+      }),
+    );
+
+    return { success: true, ...result };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro banGroupMember:", e);
+    throw new HttpsError("internal", "Could not ban member.");
   }
-);
+});
 
 /**
  * Desbanir membro — não readiciona em members.
@@ -1617,7 +1769,10 @@ exports.unbanGroupMember = onCall(
     const targetUid = (request.data?.targetUid || "").toString().trim();
 
     if (!groupId || !targetUid) {
-      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+      throw new HttpsError(
+        "invalid-argument",
+        "groupId and targetUid required.",
+      );
     }
 
     const db = admin.firestore();
@@ -1675,7 +1830,7 @@ exports.unbanGroupMember = onCall(
             unbannedByName: actorName,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
-          { merge: true }
+          { merge: true },
         );
 
         return {
@@ -1692,7 +1847,7 @@ exports.unbanGroupMember = onCall(
           targetUid,
           performedBy: actorUid,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
 
       return { success: true, ...result };
@@ -1701,7 +1856,7 @@ exports.unbanGroupMember = onCall(
       console.error("Erro unbanGroupMember:", e);
       throw new HttpsError("internal", "Could not unban member.");
     }
-  }
+  },
 );
 
 /**
@@ -1719,7 +1874,10 @@ exports.promoteGroupAdmin = onCall(
     const targetUid = (request.data?.targetUid || "").toString().trim();
 
     if (!groupId || !targetUid) {
-      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+      throw new HttpsError(
+        "invalid-argument",
+        "groupId and targetUid required.",
+      );
     }
 
     const db = admin.firestore();
@@ -1752,7 +1910,10 @@ exports.promoteGroupAdmin = onCall(
         }
 
         if (targetUid === ownerId) {
-          throw new HttpsError("failed-precondition", "Owner is already admin.");
+          throw new HttpsError(
+            "failed-precondition",
+            "Owner is already admin.",
+          );
         }
 
         if (banSnap.exists && banSnap.data()?.isActive === true) {
@@ -1763,7 +1924,10 @@ exports.promoteGroupAdmin = onCall(
         let admins = asUidList(data.admins);
 
         if (!members.includes(targetUid)) {
-          throw new HttpsError("failed-precondition", "Target is not a member.");
+          throw new HttpsError(
+            "failed-precondition",
+            "Target is not a member.",
+          );
         }
 
         if (admins.includes(targetUid)) {
@@ -1778,7 +1942,7 @@ exports.promoteGroupAdmin = onCall(
             admins,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
-          { merge: true }
+          { merge: true },
         );
 
         return { groupId, targetUid, alreadyAdmin: false };
@@ -1791,7 +1955,7 @@ exports.promoteGroupAdmin = onCall(
           targetUid,
           performedBy: actorUid,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
 
       return { success: true, ...result };
@@ -1800,7 +1964,7 @@ exports.promoteGroupAdmin = onCall(
       console.error("Erro promoteGroupAdmin:", e);
       throw new HttpsError("internal", "Could not promote admin.");
     }
-  }
+  },
 );
 
 /**
@@ -1818,7 +1982,10 @@ exports.demoteGroupAdmin = onCall(
     const targetUid = (request.data?.targetUid || "").toString().trim();
 
     if (!groupId || !targetUid) {
-      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+      throw new HttpsError(
+        "invalid-argument",
+        "groupId and targetUid required.",
+      );
     }
 
     const db = admin.firestore();
@@ -1849,7 +2016,10 @@ exports.demoteGroupAdmin = onCall(
         }
 
         if (targetUid === ownerId) {
-          throw new HttpsError("failed-precondition", "Cannot demote the owner.");
+          throw new HttpsError(
+            "failed-precondition",
+            "Cannot demote the owner.",
+          );
         }
 
         const members = asUidList(data.members);
@@ -1860,7 +2030,10 @@ exports.demoteGroupAdmin = onCall(
         }
 
         if (!members.includes(targetUid)) {
-          throw new HttpsError("failed-precondition", "Target is not a member.");
+          throw new HttpsError(
+            "failed-precondition",
+            "Target is not a member.",
+          );
         }
 
         admins = admins.filter((a) => a !== targetUid);
@@ -1871,7 +2044,7 @@ exports.demoteGroupAdmin = onCall(
             admins,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
-          { merge: true }
+          { merge: true },
         );
 
         return { groupId, targetUid, alreadyMemberOnly: false };
@@ -1884,7 +2057,7 @@ exports.demoteGroupAdmin = onCall(
           targetUid,
           performedBy: actorUid,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
 
       return { success: true, ...result };
@@ -1893,7 +2066,7 @@ exports.demoteGroupAdmin = onCall(
       console.error("Erro demoteGroupAdmin:", e);
       throw new HttpsError("internal", "Could not demote admin.");
     }
-  }
+  },
 );
 
 /**
@@ -1913,7 +2086,10 @@ exports.removeGroupMember = onCall(
     const targetUid = (request.data?.targetUid || "").toString().trim();
 
     if (!groupId || !targetUid) {
-      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+      throw new HttpsError(
+        "invalid-argument",
+        "groupId and targetUid required.",
+      );
     }
     if (actorUid === targetUid) {
       throw new HttpsError("failed-precondition", "Use leave group instead.");
@@ -1947,7 +2123,10 @@ exports.removeGroupMember = onCall(
 
         const ownerId = (data.ownerId || "").toString().trim();
         if (targetUid === ownerId) {
-          throw new HttpsError("failed-precondition", "Cannot remove the owner.");
+          throw new HttpsError(
+            "failed-precondition",
+            "Cannot remove the owner.",
+          );
         }
 
         let members = asUidList(data.members);
@@ -1962,7 +2141,7 @@ exports.removeGroupMember = onCall(
         if (!actorIsOwner && targetIsAdmin) {
           throw new HttpsError(
             "permission-denied",
-            "Admin cannot remove another admin."
+            "Admin cannot remove another admin.",
           );
         }
 
@@ -1978,7 +2157,7 @@ exports.removeGroupMember = onCall(
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             [`unread.${targetUid}`]: admin.firestore.FieldValue.delete(),
           },
-          { merge: true }
+          { merge: true },
         );
 
         return {
@@ -1996,7 +2175,7 @@ exports.removeGroupMember = onCall(
           targetUid,
           performedBy: actorUid,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
 
       return { success: true, ...result };
@@ -2005,9 +2184,8 @@ exports.removeGroupMember = onCall(
       console.error("Erro removeGroupMember:", e);
       throw new HttpsError("internal", "Could not remove member.");
     }
-  }
+  },
 );
-
 
 /**
  * Transferir ownership do grupo — somente owner atual.
@@ -2026,14 +2204,11 @@ exports.transferGroupOwnership = onCall(
     if (!groupId || !newOwnerUid) {
       throw new HttpsError(
         "invalid-argument",
-        "groupId and newOwnerUid required."
+        "groupId and newOwnerUid required.",
       );
     }
     if (uid === newOwnerUid) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Already the owner."
-      );
+      throw new HttpsError("failed-precondition", "Already the owner.");
     }
 
     const db = admin.firestore();
@@ -2058,7 +2233,7 @@ exports.transferGroupOwnership = onCall(
         if (uid !== ownerId) {
           throw new HttpsError(
             "permission-denied",
-            "Only owner can transfer ownership."
+            "Only owner can transfer ownership.",
           );
         }
 
@@ -2067,7 +2242,7 @@ exports.transferGroupOwnership = onCall(
         if (!members.includes(newOwnerUid)) {
           throw new HttpsError(
             "failed-precondition",
-            "New owner must be a member."
+            "New owner must be a member.",
           );
         }
 
@@ -2087,7 +2262,7 @@ exports.transferGroupOwnership = onCall(
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedBy: uid,
           },
-          { merge: true }
+          { merge: true },
         );
 
         return { groupId, previousOwnerId: uid, newOwnerUid };
@@ -2098,7 +2273,7 @@ exports.transferGroupOwnership = onCall(
           action: "group_ownership_transferred",
           ...result,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
       return { success: true, ...result };
     } catch (e) {
@@ -2106,195 +2281,189 @@ exports.transferGroupOwnership = onCall(
       console.error("Erro transferGroupOwnership:", e);
       throw new HttpsError("internal", "Could not transfer ownership.");
     }
-  }
+  },
 );
 
 /**
  * Saída voluntária — membro/admin (não owner).
  */
-exports.leaveGroup = onCall(
-  { region: "us-central1" },
-  async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
-    }
+exports.leaveGroup = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
 
-    const uid = request.auth.uid;
-    const groupId = (request.data?.groupId || "").toString().trim();
-    if (!groupId) {
-      throw new HttpsError("invalid-argument", "groupId required.");
-    }
+  const uid = request.auth.uid;
+  const groupId = (request.data?.groupId || "").toString().trim();
+  if (!groupId) {
+    throw new HttpsError("invalid-argument", "groupId required.");
+  }
 
-    const db = admin.firestore();
-    const groupRef = db.collection("groups").doc(groupId);
-    const userRef = db.collection("users").doc(uid);
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const userRef = db.collection("users").doc(uid);
 
-    try {
-      const result = await db.runTransaction(async (tx) => {
-        const groupSnap = await tx.get(groupRef);
-        const userSnap = await tx.get(userRef);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const groupSnap = await tx.get(groupRef);
+      const userSnap = await tx.get(userRef);
 
-        if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
-        }
+      if (!groupSnap.exists) {
+        throw new HttpsError("not-found", "Group not found.");
+      }
 
-        const data = groupSnap.data() || {};
-        if (data.deleted === true) {
-          return { groupId, alreadyLeft: true, deleted: true };
-        }
+      const data = groupSnap.data() || {};
+      if (data.deleted === true) {
+        return { groupId, alreadyLeft: true, deleted: true };
+      }
 
-        if (userSnap.exists && userSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Account is banned.");
-        }
+      if (userSnap.exists && userSnap.data()?.isBanned === true) {
+        throw new HttpsError("permission-denied", "Account is banned.");
+      }
 
-        const ownerId = (data.ownerId || "").toString().trim();
-        if (uid === ownerId) {
-          throw new HttpsError(
-            "failed-precondition",
-            "Owner cannot leave the group."
-          );
-        }
-
-        let members = asUidList(data.members);
-        let admins = asUidList(data.admins);
-        const wasMember = members.includes(uid);
-        const wasAdmin = admins.includes(uid);
-
-        if (!wasMember && !wasAdmin) {
-          return { groupId, alreadyLeft: true, deleted: false };
-        }
-
-        members = members.filter((m) => m !== uid);
-        admins = admins.filter((a) => a !== uid);
-
-        tx.set(
-          groupRef,
-          {
-            members,
-            admins,
-            membersCount: members.length,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            [`unread.${uid}`]: admin.firestore.FieldValue.delete(),
-          },
-          { merge: true }
+      const ownerId = (data.ownerId || "").toString().trim();
+      if (uid === ownerId) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Owner cannot leave the group.",
         );
+      }
 
-        return {
-          groupId,
-          alreadyLeft: false,
-          deleted: false,
-          wasMember,
-          wasAdmin,
-        };
-      });
+      let members = asUidList(data.members);
+      let admins = asUidList(data.admins);
+      const wasMember = members.includes(uid);
+      const wasAdmin = admins.includes(uid);
 
-      // Limpeza idempotente de subcoleções (fora da transação).
-      try {
-        await groupRef.collection("presence").doc(uid).delete();
-      } catch (_) {}
-      try {
-        await groupRef.collection("reads").doc(uid).delete();
-      } catch (_) {}
+      if (!wasMember && !wasAdmin) {
+        return { groupId, alreadyLeft: true, deleted: false };
+      }
 
-      console.log(
-        JSON.stringify({
-          action: "group_member_left",
-          groupId,
-          performedBy: uid,
-          createdAt: new Date().toISOString(),
-        })
+      members = members.filter((m) => m !== uid);
+      admins = admins.filter((a) => a !== uid);
+
+      tx.set(
+        groupRef,
+        {
+          members,
+          admins,
+          membersCount: members.length,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          [`unread.${uid}`]: admin.firestore.FieldValue.delete(),
+        },
+        { merge: true },
       );
 
-      return { success: true, ...result };
-    } catch (e) {
-      if (e instanceof HttpsError) throw e;
-      console.error("Erro leaveGroup:", e);
-      throw new HttpsError("internal", "Could not leave group.");
-    }
+      return {
+        groupId,
+        alreadyLeft: false,
+        deleted: false,
+        wasMember,
+        wasAdmin,
+      };
+    });
+
+    // Limpeza idempotente de subcoleções (fora da transação).
+    try {
+      await groupRef.collection("presence").doc(uid).delete();
+    } catch (_) {}
+    try {
+      await groupRef.collection("reads").doc(uid).delete();
+    } catch (_) {}
+
+    console.log(
+      JSON.stringify({
+        action: "group_member_left",
+        groupId,
+        performedBy: uid,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+
+    return { success: true, ...result };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro leaveGroup:", e);
+    throw new HttpsError("internal", "Could not leave group.");
   }
-);
+});
 
 /**
  * Exclusão lógica do grupo — somente owner.
  */
-exports.deleteGroup = onCall(
-  { region: "us-central1" },
-  async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
-    }
+exports.deleteGroup = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
 
-    const uid = request.auth.uid;
-    const groupId = (request.data?.groupId || "").toString().trim();
-    if (!groupId) {
-      throw new HttpsError("invalid-argument", "groupId required.");
-    }
+  const uid = request.auth.uid;
+  const groupId = (request.data?.groupId || "").toString().trim();
+  if (!groupId) {
+    throw new HttpsError("invalid-argument", "groupId required.");
+  }
 
-    const db = admin.firestore();
-    const groupRef = db.collection("groups").doc(groupId);
-    const userRef = db.collection("users").doc(uid);
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const userRef = db.collection("users").doc(uid);
 
-    try {
-      const result = await db.runTransaction(async (tx) => {
-        const groupSnap = await tx.get(groupRef);
-        const userSnap = await tx.get(userRef);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const groupSnap = await tx.get(groupRef);
+      const userSnap = await tx.get(userRef);
 
-        if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
-        }
+      if (!groupSnap.exists) {
+        throw new HttpsError("not-found", "Group not found.");
+      }
 
-        const data = groupSnap.data() || {};
-        const ownerId = (data.ownerId || "").toString().trim();
+      const data = groupSnap.data() || {};
+      const ownerId = (data.ownerId || "").toString().trim();
 
-        if (uid !== ownerId) {
-          throw new HttpsError("permission-denied", "Only owner can delete.");
-        }
+      if (uid !== ownerId) {
+        throw new HttpsError("permission-denied", "Only owner can delete.");
+      }
 
-        if (userSnap.exists && userSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Account is banned.");
-        }
+      if (userSnap.exists && userSnap.data()?.isBanned === true) {
+        throw new HttpsError("permission-denied", "Account is banned.");
+      }
 
-        if (data.deleted === true) {
-          return { groupId, alreadyDeleted: true };
-        }
+      if (data.deleted === true) {
+        return { groupId, alreadyDeleted: true };
+      }
 
-        tx.set(
-          groupRef,
-          {
-            deleted: true,
-            isActive: false,
-            deletedAt: admin.firestore.FieldValue.serverTimestamp(),
-            deletedBy: uid,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        return { groupId, alreadyDeleted: false };
-      });
-
-      // Limpa presence do owner (best-effort).
-      try {
-        await groupRef.collection("presence").doc(uid).delete();
-      } catch (_) {}
-
-      console.log(
-        JSON.stringify({
-          action: "group_deleted",
-          groupId,
-          performedBy: uid,
-          createdAt: new Date().toISOString(),
-        })
+      tx.set(
+        groupRef,
+        {
+          deleted: true,
+          isActive: false,
+          deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+          deletedBy: uid,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
       );
 
-      return { success: true, ...result };
-    } catch (e) {
-      if (e instanceof HttpsError) throw e;
-      console.error("Erro deleteGroup:", e);
-      throw new HttpsError("internal", "Could not delete group.");
-    }
+      return { groupId, alreadyDeleted: false };
+    });
+
+    // Limpa presence do owner (best-effort).
+    try {
+      await groupRef.collection("presence").doc(uid).delete();
+    } catch (_) {}
+
+    console.log(
+      JSON.stringify({
+        action: "group_deleted",
+        groupId,
+        performedBy: uid,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+
+    return { success: true, ...result };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("Erro deleteGroup:", e);
+    throw new HttpsError("internal", "Could not delete group.");
   }
-);
+});
 
 function normalizeJoinPolicyStrict(raw) {
   const p = (raw || "").toString().trim();
@@ -2315,13 +2484,14 @@ const GROUP_SETTINGS_OWNER_ONLY = new Set([
   "scope",
   "city",
   "cityName",
+  "cityKey",
   "country",
   "countryCode",
   "stateName",
   "displayLocation",
   "placeId",
-  "latitude",
-  "longitude",
+  // latitude/longitude/regionCenter* NÃO são editáveis diretamente:
+  // o servidor deriva de placeId via Places Details.
   "regionKey",
 ]);
 
@@ -2346,7 +2516,7 @@ const GROUP_SETTINGS_FORBIDDEN = new Set([
  * Edição segura de configurações do grupo (allowlist).
  */
 exports.updateGroupSettings = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: [GOOGLE_PLACES_API_KEY] },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
       throw new HttpsError("unauthenticated", "Login required.");
@@ -2359,7 +2529,11 @@ exports.updateGroupSettings = onCall(
     if (!groupId) {
       throw new HttpsError("invalid-argument", "groupId required.");
     }
-    if (!changesIn || typeof changesIn !== "object" || Array.isArray(changesIn)) {
+    if (
+      !changesIn ||
+      typeof changesIn !== "object" ||
+      Array.isArray(changesIn)
+    ) {
       throw new HttpsError("invalid-argument", "changes object required.");
     }
 
@@ -2368,12 +2542,20 @@ exports.updateGroupSettings = onCall(
       throw new HttpsError("invalid-argument", "No changes provided.");
     }
 
+    // Cliente não pode gravar centro/geohash/raio diretamente.
+    const blockedDirectGeo = [
+      "regionCenterLat",
+      "regionCenterLng",
+      "regionCenterGeohash",
+      "regionRadiusKm",
+      "regionCenterCity",
+      "regionCenterCountryCode",
+      "latitude",
+      "longitude",
+    ];
     for (const key of keys) {
-      if (GROUP_SETTINGS_FORBIDDEN.has(key)) {
-        throw new HttpsError(
-          "invalid-argument",
-          `Field not allowed: ${key}`
-        );
+      if (GROUP_SETTINGS_FORBIDDEN.has(key) || blockedDirectGeo.includes(key)) {
+        throw new HttpsError("invalid-argument", `Field not allowed: ${key}`);
       }
     }
 
@@ -2381,7 +2563,103 @@ exports.updateGroupSettings = onCall(
     const groupRef = db.collection("groups").doc(groupId);
     const actorRef = db.collection("users").doc(actorUid);
 
+    const geoKeys = new Set([
+      "scope",
+      "city",
+      "cityName",
+      "cityKey",
+      "country",
+      "countryCode",
+      "stateName",
+      "displayLocation",
+      "placeId",
+      "regionKey",
+    ]);
+    const geoTouched = keys.some((k) => geoKeys.has(k));
+
     try {
+      const groupSnapPre = await groupRef.get();
+      if (!groupSnapPre.exists) {
+        throw new HttpsError("not-found", "Group not found.");
+      }
+      const dataPre = groupSnapPre.data() || {};
+      if (dataPre.deleted === true || dataPre.isActive === false) {
+        throw new HttpsError("failed-precondition", "Group unavailable.");
+      }
+
+      let trustedPlace = null;
+      let canonicalGeo = null;
+      if (geoTouched) {
+        const nextScope = (
+          changesIn.scope !== undefined ? changesIn.scope : dataPre.scope || "city"
+        )
+          .toString()
+          .trim();
+        if (!["city", "region", "country"].includes(nextScope)) {
+          throw new HttpsError("invalid-argument", "Invalid scope.");
+        }
+        const nextCountryCode = normalizeIsoCountryCode(
+          changesIn.countryCode !== undefined
+            ? changesIn.countryCode
+            : dataPre.countryCode || dataPre.country,
+        );
+        const nextCountryName = (
+          changesIn.country !== undefined
+            ? changesIn.country
+            : dataPre.country || ""
+        )
+          .toString()
+          .trim();
+        const nextPlaceId = (
+          changesIn.placeId !== undefined
+            ? changesIn.placeId
+            : dataPre.placeId || ""
+        )
+          .toString()
+          .trim();
+
+        if (nextScope === "country") {
+          if (!nextCountryCode || !nextCountryName) {
+            throw new HttpsError("invalid-argument", "Invalid location.");
+          }
+          canonicalGeo = buildCanonicalGeoFields("country", {
+            countryCode: nextCountryCode,
+            countryName: nextCountryName,
+          });
+        } else {
+          if (!nextPlaceId) {
+            throw new HttpsError("invalid-argument", "placeId required.");
+          }
+          if (!nextCountryCode) {
+            throw new HttpsError("invalid-argument", "Invalid country.");
+          }
+          try {
+            const resolved = await resolveTrustedCityPlace({
+              placeId: nextPlaceId,
+              expectedCountryCode: nextCountryCode,
+              apiKey: GOOGLE_PLACES_API_KEY.value(),
+              db,
+            });
+            trustedPlace = resolved.place;
+          } catch (placeErr) {
+            throw mapPlacesError(placeErr);
+          }
+          canonicalGeo = buildCanonicalGeoFields(nextScope, {
+            place: trustedPlace,
+            countryName: nextCountryName || trustedPlace.countryName,
+            countryCode: nextCountryCode,
+            stateName:
+              changesIn.stateName !== undefined
+                ? changesIn.stateName
+                : dataPre.stateName || "",
+            displayLocation:
+              changesIn.displayLocation !== undefined
+                ? changesIn.displayLocation
+                : dataPre.displayLocation || "",
+          });
+        }
+      }
+
       const result = await db.runTransaction(async (tx) => {
         const groupSnap = await tx.get(groupRef);
         const actorSnap = await tx.get(actorRef);
@@ -2397,6 +2675,12 @@ exports.updateGroupSettings = onCall(
 
         if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
           throw new HttpsError("permission-denied", "Not allowed.");
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(actorSnap.data() || {}, "isActive") &&
+          actorSnap.data().isActive === false
+        ) {
+          throw new HttpsError("permission-denied", "Account is disabled.");
         }
 
         const ownerId = (data.ownerId || "").toString().trim();
@@ -2417,16 +2701,24 @@ exports.updateGroupSettings = onCall(
           const ownerOnly = GROUP_SETTINGS_OWNER_ONLY.has(key);
 
           if (!shared && !ownerOnly) {
-            throw new HttpsError(
-              "invalid-argument",
-              `Unknown field: ${key}`
-            );
+            throw new HttpsError("invalid-argument", `Unknown field: ${key}`);
           }
           if (ownerOnly && !isOwner) {
             throw new HttpsError(
               "permission-denied",
-              `Only owner can edit: ${key}`
+              `Only owner can edit: ${key}`,
             );
+          }
+
+          // Campos geo são aplicados via canonicalGeo (owner-only).
+          if (geoKeys.has(key)) {
+            if (!isOwner) {
+              throw new HttpsError(
+                "permission-denied",
+                `Only owner can edit: ${key}`,
+              );
+            }
+            continue;
           }
 
           let value = changesIn[key];
@@ -2470,77 +2762,21 @@ exports.updateGroupSettings = onCall(
                   "invalid-argument",
                   key === "avatarPath"
                     ? "Invalid avatar path."
-                    : "Invalid avatar URL."
+                    : "Invalid avatar URL.",
                 );
               }
             }
             value = s;
-          } else if (key === "scope") {
-            value = (value || "").toString().trim();
-            if (!["city", "region", "country"].includes(value)) {
-              throw new HttpsError("invalid-argument", "Invalid scope.");
-            }
-          } else if (
-            key === "city" ||
-            key === "cityName" ||
-            key === "country" ||
-            key === "countryCode" ||
-            key === "stateName" ||
-            key === "displayLocation" ||
-            key === "placeId" ||
-            key === "regionKey"
-          ) {
-            value = (value || "").toString().trim();
-            if (value.length > 120) {
-              throw new HttpsError("invalid-argument", `${key} too long.`);
-            }
-          } else if (key === "latitude" || key === "longitude") {
-            if (value === null || value === "") {
-              value = null;
-            } else if (typeof value !== "number" || Number.isNaN(value)) {
-              throw new HttpsError("invalid-argument", `Invalid ${key}.`);
-            }
           }
 
           patch[key] = value;
           changedFields.push(key);
         }
 
-        const geoKeys = new Set([
-          "scope",
-          "city",
-          "cityName",
-          "country",
-          "countryCode",
-          "stateName",
-          "displayLocation",
-          "placeId",
-          "regionKey",
-          "latitude",
-          "longitude",
-        ]);
-        const geoTouched = changedFields.some((k) => geoKeys.has(k));
-        if (geoTouched) {
-          const next = { ...data, ...patch };
-          const scope = (next.scope || "city").toString().trim();
-          if (!["city", "region", "country"].includes(scope)) {
-            throw new HttpsError("invalid-argument", "Invalid location.");
-          }
-          if (scope === "city") {
-            const city = (next.cityName || next.city || "").toString().trim();
-            if (!city) {
-              throw new HttpsError("invalid-argument", "Invalid location.");
-            }
-          } else if (scope === "region") {
-            const region = (next.regionKey || "").toString().trim();
-            if (!region) {
-              throw new HttpsError("invalid-argument", "Invalid location.");
-            }
-          } else if (scope === "country") {
-            const cc = (next.countryCode || "").toString().trim();
-            if (!cc || cc.length > 3) {
-              throw new HttpsError("invalid-argument", "Invalid location.");
-            }
+        if (canonicalGeo) {
+          Object.assign(patch, canonicalGeo);
+          for (const k of Object.keys(canonicalGeo)) {
+            if (!changedFields.includes(k)) changedFields.push(k);
           }
         }
 
@@ -2564,7 +2800,7 @@ exports.updateGroupSettings = onCall(
           performedBy: result.performedBy,
           changedFields: result.changedFields,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
 
       return { success: true, ...result };
@@ -2573,8 +2809,25 @@ exports.updateGroupSettings = onCall(
       console.error("Erro updateGroupSettings:", e);
       throw new HttpsError("internal", "Could not update group.");
     }
-  }
+  },
 );
+
+function mapPlacesError(placeErr) {
+  const code = placeErr && placeErr.code;
+  if (code === "not-a-city") {
+    return new HttpsError("invalid-argument", "Place is not a city.");
+  }
+  if (code === "country-mismatch") {
+    return new HttpsError("invalid-argument", "City/country mismatch.");
+  }
+  if (code === "invalid-place" || code === "invalid-country") {
+    return new HttpsError("invalid-argument", "Invalid placeId.");
+  }
+  if (code === "places-unavailable") {
+    return new HttpsError("failed-precondition", "Places lookup unavailable.");
+  }
+  return new HttpsError("invalid-argument", "Invalid location.");
+}
 
 const GROUP_CREATE_ALLOWED = new Set([
   "name",
@@ -2584,6 +2837,7 @@ const GROUP_CREATE_ALLOWED = new Set([
   "scope",
   "city",
   "cityName",
+  "cityKey",
   "country",
   "countryCode",
   "stateName",
@@ -2592,6 +2846,12 @@ const GROUP_CREATE_ALLOWED = new Set([
   "latitude",
   "longitude",
   "regionKey",
+  "regionCenterCity",
+  "regionCenterCountryCode",
+  "regionCenterLat",
+  "regionCenterLng",
+  "regionRadiusKm",
+  "regionCenterGeohash",
   "requestId",
 ]);
 
@@ -2627,60 +2887,14 @@ function generateGroupInviteCode() {
   return code;
 }
 
-function validateCreateGeo(payload) {
-  const scope = (payload.scope || "city").toString().trim();
-  if (!["city", "region", "country"].includes(scope)) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
-  }
-
-  const city = (payload.cityName || payload.city || "").toString().trim();
-  const country = (payload.country || "").toString().trim();
-  const countryCode = (payload.countryCode || "").toString().trim();
-  const regionKey = (payload.regionKey || "").toString().trim();
-
-  if (!country) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
-  }
-  if (!city) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
-  }
-  if (countryCode && countryCode.length > 3) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
-  }
-
-  if (scope === "region" && !regionKey) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
-  }
-  if (scope === "country" && !countryCode && !country) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
-  }
-
-  for (const key of ["latitude", "longitude"]) {
-    const value = payload[key];
-    if (value === null || value === undefined || value === "") continue;
-    if (typeof value !== "number" || Number.isNaN(value)) {
-      throw new HttpsError("invalid-argument", `Invalid ${key}.`);
-    }
-  }
-  if (typeof payload.latitude === "number") {
-    if (payload.latitude < -90 || payload.latitude > 90) {
-      throw new HttpsError("invalid-argument", "Invalid latitude.");
-    }
-  }
-  if (typeof payload.longitude === "number") {
-    if (payload.longitude < -180 || payload.longitude > 180) {
-      throw new HttpsError("invalid-argument", "Invalid longitude.");
-    }
-  }
-
-  return scope;
-}
-
 /**
  * Criação segura de grupo — campos internos só no backend.
  * Convenção: owner também fica em admins (compatível com create_group_page).
+ * Cidade/região: placeId → Places Details (server) → coords/geohash/raio.
  */
-exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
+exports.createGroup = onCall(
+  { region: "us-central1", secrets: [GOOGLE_PLACES_API_KEY] },
+  async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -2747,47 +2961,79 @@ exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
     return s;
   };
 
+  const scope = strField("scope", 40) || "city";
+  if (!["city", "region", "country"].includes(scope)) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+
+  const countryName = strField("country", 80);
+  const countryCode = normalizeIsoCountryCode(strField("countryCode", 3));
+  const placeId = strField("placeId", 200);
+  const stateName = strField("stateName", 120);
+  const displayLocation = strField("displayLocation", 160);
+
+  if (!countryName) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+  if (!countryCode) {
+    throw new HttpsError("invalid-argument", "Invalid location.");
+  }
+
+  // Cliente pode enviar radius/coords, mas não são autoritativos.
+  if (
+    dataIn.regionRadiusKm !== undefined &&
+    dataIn.regionRadiusKm !== null &&
+    dataIn.regionRadiusKm !== "" &&
+    Number(dataIn.regionRadiusKm) !== REGION_RADIUS_KM
+  ) {
+    throw new HttpsError("invalid-argument", "Invalid regional radius.");
+  }
+
+  const db = admin.firestore();
+  let canonicalGeo;
+  try {
+    if (scope === "country") {
+      canonicalGeo = buildCanonicalGeoFields("country", {
+        countryCode,
+        countryName,
+      });
+    } else {
+      if (!placeId) {
+        throw new HttpsError("invalid-argument", "placeId required.");
+      }
+      const resolved = await resolveTrustedCityPlace({
+        placeId,
+        expectedCountryCode: countryCode,
+        apiKey: GOOGLE_PLACES_API_KEY.value(),
+        db,
+      });
+      canonicalGeo = buildCanonicalGeoFields(scope, {
+        place: resolved.place,
+        countryName,
+        countryCode,
+        stateName,
+        displayLocation,
+      });
+      if (clientForgedRegionalGeo(dataIn, canonicalGeo)) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Forged regional coordinates rejected.",
+        );
+      }
+    }
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    throw mapPlacesError(e);
+  }
+
   const payload = {
     name,
     bio,
     joinPolicy,
     isPrivate,
-    scope: strField("scope", 40) || "city",
-    city: strField("city", 120),
-    cityName: strField("cityName", 120),
-    country: strField("country", 80),
-    countryCode: strField("countryCode", 3).toLowerCase(),
-    stateName: strField("stateName", 120),
-    displayLocation: strField("displayLocation", 160),
-    placeId: strField("placeId", 200),
-    regionKey: strField("regionKey", 120),
-    latitude:
-      dataIn.latitude === null || dataIn.latitude === undefined || dataIn.latitude === ""
-        ? null
-        : dataIn.latitude,
-    longitude:
-      dataIn.longitude === null ||
-      dataIn.longitude === undefined ||
-      dataIn.longitude === ""
-        ? null
-        : dataIn.longitude,
+    ...canonicalGeo,
   };
 
-  if (!payload.cityName && payload.city) payload.cityName = payload.city;
-  if (!payload.city && payload.cityName) payload.city = payload.cityName;
-  if (!payload.displayLocation) {
-    payload.displayLocation = payload.cityName || payload.city;
-  }
-  if (!payload.regionKey) {
-    const s = payload.stateName.trim().toLowerCase();
-    payload.regionKey = s
-      ? s.replace(/ /g, "_").replace(/\./g, "").replace(/-/g, "_")
-      : "default";
-  }
-
-  validateCreateGeo(payload);
-
-  const db = admin.firestore();
   const userRef = db.collection("users").doc(uid);
   const requestRef = db
     .collection("groupCreationRequests")
@@ -2801,22 +3047,17 @@ exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
   if (userData.isBanned === true) {
     throw new HttpsError("permission-denied", "Account is banned.");
   }
-  if (
-    Object.prototype.hasOwnProperty.call(userData, "isActive") &&
-    userData.isActive === false
-  ) {
-    throw new HttpsError("permission-denied", "Account is disabled.");
-  }
-  if (
-    userData.isDisabled === true ||
-    userData.disabled === true ||
-    userData.deactivated === true
-  ) {
+  if (isAccountDisabledData(userData)) {
     throw new HttpsError("permission-denied", "Account is disabled.");
   }
 
-  const performedByName =
-    (userData.name || "").toString().trim() || "User";
+  // Free/Premium: join internacional continua validado nos fluxos de join.
+  assertCanAccessInternationalGroup(
+    { countryCode: payload.countryCode, isPremiumGroup: false },
+    userData,
+  );
+
+  const performedByName = (userData.name || "").toString().trim() || "User";
 
   const existingReq = await requestRef.get();
   if (existingReq.exists) {
@@ -2861,6 +3102,7 @@ exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
           countryCode: payload.countryCode,
           city: payload.city,
           cityName: payload.cityName,
+          cityKey: payload.cityKey,
           stateName: payload.stateName,
           displayLocation: payload.displayLocation,
           placeId: payload.placeId,
@@ -2868,6 +3110,12 @@ exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
           longitude: payload.longitude,
           scope: payload.scope,
           regionKey: payload.regionKey,
+          regionCenterCity: payload.regionCenterCity,
+          regionCenterCountryCode: payload.regionCenterCountryCode,
+          regionCenterLat: payload.regionCenterLat,
+          regionCenterLng: payload.regionCenterLng,
+          regionRadiusKm: payload.regionRadiusKm,
+          regionCenterGeohash: payload.regionCenterGeohash,
           avatarUrl: "",
           avatarPath: "",
           ownerId: uid,
@@ -2877,7 +3125,6 @@ exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
           inviteCode,
           isPrivate: payload.isPrivate,
           joinPolicy: payload.joinPolicy,
-          // Flag explícita (join/chat internacional também checa país do usuário).
           isPremiumGroup: false,
           deleted: false,
           isActive: true,
@@ -2917,8 +3164,9 @@ exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
             groupId: result.groupId,
             performedBy: uid,
             performedByName,
+            scope: payload.scope,
             createdAt: new Date().toISOString(),
-          })
+          }),
         );
       }
 
@@ -2934,8 +3182,8 @@ exports.createGroup = onCall({ region: "us-central1" }, async (request) => {
   }
 
   throw new HttpsError("internal", "Could not allocate invite code.");
-});
-
+},
+);
 
 function isAccountDisabledData(userData) {
   if (!userData) return false;
@@ -3002,13 +3250,13 @@ exports.approveGroupJoinRequest = onCall(
     if (!groupId || !requestUid) {
       throw new HttpsError(
         "invalid-argument",
-        "groupId and requestUid required."
+        "groupId and requestUid required.",
       );
     }
     if (actorUid === requestUid) {
       throw new HttpsError(
         "permission-denied",
-        "Cannot approve your own request."
+        "Cannot approve your own request.",
       );
     }
 
@@ -3051,7 +3299,7 @@ exports.approveGroupJoinRequest = onCall(
         if (policy !== "approval") {
           throw new HttpsError(
             "failed-precondition",
-            "Group does not accept join requests."
+            "Group does not accept join requests.",
           );
         }
 
@@ -3086,33 +3334,29 @@ exports.approveGroupJoinRequest = onCall(
         if (status !== "pending") {
           throw new HttpsError(
             "failed-precondition",
-            "Request is not pending."
+            "Request is not pending.",
           );
         }
 
         if (!targetSnap.exists) {
           throw new HttpsError(
             "failed-precondition",
-            "Requester profile missing."
+            "Requester profile missing.",
           );
         }
         const targetData = targetSnap.data() || {};
         if (targetData.isBanned === true || isAccountDisabledData(targetData)) {
-          throw new HttpsError(
-            "failed-precondition",
-            "Requester cannot join."
-          );
+          throw new HttpsError("failed-precondition", "Requester cannot join.");
         }
 
         if (banSnap.exists && banSnap.data()?.isActive === true) {
           throw new HttpsError(
             "failed-precondition",
-            "Requester is banned from this group."
+            "Requester is banned from this group.",
           );
         }
 
         assertCanAccessInternationalGroup(data, targetSnap.data() || {});
-
 
         let newlyAdded = false;
         if (!alreadyMember) {
@@ -3145,7 +3389,7 @@ exports.approveGroupJoinRequest = onCall(
             approvedBy: actorUid,
             approvedByName: actorName,
           },
-          { merge: true }
+          { merge: true },
         );
 
         return {
@@ -3166,7 +3410,7 @@ exports.approveGroupJoinRequest = onCall(
             targetUid: requestUid,
             performedBy: actorUid,
             createdAt: new Date().toISOString(),
-          })
+          }),
         );
         await notifyJoinRequestDecision({
           requestUid,
@@ -3188,7 +3432,7 @@ exports.approveGroupJoinRequest = onCall(
       console.error("Erro approveGroupJoinRequest:", e);
       throw new HttpsError("internal", "Could not approve request.");
     }
-  }
+  },
 );
 
 /**
@@ -3212,13 +3456,13 @@ exports.rejectGroupJoinRequest = onCall(
     if (!groupId || !requestUid) {
       throw new HttpsError(
         "invalid-argument",
-        "groupId and requestUid required."
+        "groupId and requestUid required.",
       );
     }
     if (actorUid === requestUid) {
       throw new HttpsError(
         "permission-denied",
-        "Cannot reject your own request."
+        "Cannot reject your own request.",
       );
     }
 
@@ -3282,14 +3526,14 @@ exports.rejectGroupJoinRequest = onCall(
         if (status === "approved") {
           throw new HttpsError(
             "failed-precondition",
-            "Request is not pending."
+            "Request is not pending.",
           );
         }
 
         if (status !== "pending") {
           throw new HttpsError(
             "failed-precondition",
-            "Request is not pending."
+            "Request is not pending.",
           );
         }
 
@@ -3325,7 +3569,7 @@ exports.rejectGroupJoinRequest = onCall(
             performedBy: actorUid,
             reason: result.reason || "",
             createdAt: new Date().toISOString(),
-          })
+          }),
         );
         await notifyJoinRequestDecision({
           requestUid,
@@ -3347,9 +3591,8 @@ exports.rejectGroupJoinRequest = onCall(
       console.error("Erro rejectGroupJoinRequest:", e);
       throw new HttpsError("internal", "Could not reject request.");
     }
-  }
+  },
 );
-
 
 /**
  * Zera unread do próprio usuário e atualiza reads/{uid}.
@@ -3401,7 +3644,7 @@ exports.markGroupAsRead = onCall({ region: "us-central1" }, async (request) => {
           [`unread.${uid}`]: 0,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       );
 
       tx.set(
@@ -3411,7 +3654,7 @@ exports.markGroupAsRead = onCall({ region: "us-central1" }, async (request) => {
           lastReadAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       );
     });
 
@@ -3422,7 +3665,6 @@ exports.markGroupAsRead = onCall({ region: "us-central1" }, async (request) => {
     throw new HttpsError("internal", "Could not mark group as read.");
   }
 });
-
 
 function asAttendeeUidList(raw) {
   if (!Array.isArray(raw)) return [];
@@ -3499,14 +3741,14 @@ exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
       if (!eventAcceptsJoin(data)) {
         throw new HttpsError(
           "failed-precondition",
-          "Event is not available for joining."
+          "Event is not available for joining.",
         );
       }
 
       if (eventStartAtHasPassed(data)) {
         throw new HttpsError(
           "failed-precondition",
-          "Event no longer accepts attendees."
+          "Event no longer accepts attendees.",
         );
       }
 
@@ -3522,8 +3764,7 @@ exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
       }
 
       let uids = asAttendeeUidList(data.attendeesUids);
-      const alreadyJoined =
-        attendeeSnap.exists || uids.includes(uid);
+      const alreadyJoined = attendeeSnap.exists || uids.includes(uid);
 
       if (alreadyJoined) {
         if (!uids.includes(uid)) {
@@ -3532,8 +3773,7 @@ exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
         const count = Math.max(uids.length, 0);
         // Garante documento do attendee se só existir no array.
         if (!attendeeSnap.exists) {
-          const name =
-            (userData.name || "").toString().trim() || "User";
+          const name = (userData.name || "").toString().trim() || "User";
           const photoUrl = (
             userData.photoUrl ||
             userData.profilePhotoUrl ||
@@ -3555,7 +3795,7 @@ exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
               attendeesCount: count,
               participantsCount: count,
             },
-            { merge: true }
+            { merge: true },
           );
         }
         return {
@@ -3592,7 +3832,7 @@ exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
           participantsCount: count,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       );
 
       return {
@@ -3612,7 +3852,7 @@ exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
           performedBy: uid,
           performedByName: result.performedByName || "",
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
     }
 
@@ -3665,8 +3905,10 @@ exports.leaveEvent = onCall({ region: "us-central1" }, async (request) => {
 
       if (!wasJoined) {
         const count = Math.max(
-          typeof data.attendeesCount === "number" ? data.attendeesCount : uids.length,
-          0
+          typeof data.attendeesCount === "number"
+            ? data.attendeesCount
+            : uids.length,
+          0,
         );
         return {
           eventId,
@@ -3691,7 +3933,7 @@ exports.leaveEvent = onCall({ region: "us-central1" }, async (request) => {
           participantsCount: count,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       );
 
       const actorName =
@@ -3715,7 +3957,7 @@ exports.leaveEvent = onCall({ region: "us-central1" }, async (request) => {
           performedBy: uid,
           performedByName: result.performedByName || "",
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
     }
 
@@ -3733,31 +3975,20 @@ exports.leaveEvent = onCall({ region: "us-central1" }, async (request) => {
   }
 });
 
-
-const EVENT_COMMENT_MAX_LEN = 1000;
-const EVENT_COMMENT_REPLY_PREVIEW_LEN = 280;
+const EVENT_COMMENT_MAX_LEN = eventInteractions.EVENT_COMMENT_MAX_LEN;
+const EVENT_COMMENT_REPLY_PREVIEW_LEN =
+  eventInteractions.EVENT_COMMENT_REPLY_PREVIEW_LEN;
 
 function eventOrganizerUid(data) {
-  if (!data) return "";
-  return (
-    data.organizerId ||
-    data.createdBy ||
-    data.ownerId ||
-    data.userId ||
-    ""
-  )
-    .toString()
-    .trim();
+  return eventInteractions.eventOrganizerUid(data);
 }
 
 function eventAllowsComments(data) {
-  if (!data) return false;
-  if (data.deleted === true) return false;
-  if (data.isActive !== true) return false;
-  const status = (data.status || "").toString().trim().toLowerCase();
-  if (status === "cancelled") return false;
-  if (status !== "approved") return false;
-  return true;
+  return eventInteractions.eventAllowsComments(data);
+}
+
+function eventAllowsLikes(data) {
+  return eventInteractions.eventAllowsLikes(data);
 }
 
 function resolveUserProfileNamePhoto(userData) {
@@ -3771,195 +4002,472 @@ function resolveUserProfileNamePhoto(userData) {
   return { name, photoUrl };
 }
 
+function resolveRootCommentId(parent) {
+  return eventInteractions.resolveRootCommentId(parent);
+}
+
 /**
  * Criar comentário/resposta em evento.
  */
-exports.createEventComment = onCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
-  }
-
-  const uid = request.auth.uid;
-  const dataIn = request.data || {};
-  const eventId = (dataIn.eventId || "").toString().trim();
-  if (!eventId) {
-    throw new HttpsError("invalid-argument", "eventId required.");
-  }
-
-  if (dataIn.text !== undefined && typeof dataIn.text !== "string") {
-    throw new HttpsError("invalid-argument", "Invalid text.");
-  }
-  const text = (dataIn.text || "").toString().trim();
-  if (!text) {
-    throw new HttpsError("invalid-argument", "Comment is empty.");
-  }
-  if (text.length > EVENT_COMMENT_MAX_LEN) {
-    throw new HttpsError("invalid-argument", "Comment is too long.");
-  }
-
-  let replyToCommentId = "";
-  if (
-    dataIn.replyToCommentId !== undefined &&
-    dataIn.replyToCommentId !== null &&
-    dataIn.replyToCommentId !== ""
-  ) {
-    if (typeof dataIn.replyToCommentId !== "string") {
-      throw new HttpsError("invalid-argument", "Invalid replyToCommentId.");
+exports.createEventComment = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
     }
-    replyToCommentId = dataIn.replyToCommentId.trim();
-  }
 
-  const requestId = (dataIn.requestId || "").toString().trim();
-  if (!requestId || requestId.length < 8 || requestId.length > 128) {
-    throw new HttpsError("invalid-argument", "requestId required.");
-  }
-  if (!/^[A-Za-z0-9_-]+$/.test(requestId)) {
-    throw new HttpsError("invalid-argument", "Invalid requestId.");
-  }
+    const uid = request.auth.uid;
+    const dataIn = request.data || {};
+    // Ignora uid/name/likesCount/autor enviados pelo cliente.
+    const eventId = (dataIn.eventId || "").toString().trim();
+    if (!eventInteractions.isValidEventId(eventId)) {
+      throw new HttpsError("invalid-argument", "eventId required.");
+    }
 
-  const db = admin.firestore();
-  const eventRef = db.collection("events").doc(eventId);
-  const commentsRef = eventRef.collection("comments");
-  const requestRef = db
-    .collection("eventCommentRequests")
-    .doc(`${uid}_${requestId}`);
-  const userRef = db.collection("users").doc(uid);
-  const publicRef = db.collection("publicUsers").doc(uid);
+    const sanitized = eventInteractions.sanitizeCommentText(dataIn.text);
+    if (sanitized.error === "invalid") {
+      throw new HttpsError("invalid-argument", "Invalid text.");
+    }
+    if (sanitized.error === "empty") {
+      throw new HttpsError("invalid-argument", "Comment is empty.");
+    }
+    if (sanitized.error === "too_long") {
+      throw new HttpsError("invalid-argument", "Comment is too long.");
+    }
+    const text = sanitized.text;
 
-  try {
-    const result = await db.runTransaction(async (tx) => {
-      const requestSnap = await tx.get(requestRef);
-      if (requestSnap.exists) {
-        const prev = requestSnap.data() || {};
-        return {
-          eventId,
-          commentId: (prev.commentId || "").toString(),
-          created: false,
-          alreadyCreated: true,
-          isReply: !!prev.isReply,
-        };
+    let replyToCommentId = "";
+    if (
+      dataIn.replyToCommentId !== undefined &&
+      dataIn.replyToCommentId !== null &&
+      dataIn.replyToCommentId !== ""
+    ) {
+      if (typeof dataIn.replyToCommentId !== "string") {
+        throw new HttpsError("invalid-argument", "Invalid replyToCommentId.");
       }
-
-      const eventSnap = await tx.get(eventRef);
-      const userSnap = await tx.get(userRef);
-      const publicSnap = await tx.get(publicRef);
-
-      let parentSnap = null;
-      if (replyToCommentId) {
-        parentSnap = await tx.get(commentsRef.doc(replyToCommentId));
+      replyToCommentId = dataIn.replyToCommentId.trim();
+      if (
+        replyToCommentId &&
+        !eventInteractions.isValidClientId(replyToCommentId)
+      ) {
+        throw new HttpsError("invalid-argument", "Invalid replyToCommentId.");
       }
+    }
 
-      if (!eventSnap.exists) {
-        throw new HttpsError("not-found", "Event not found.");
-      }
-      const eventData = eventSnap.data() || {};
-      if (!eventAllowsComments(eventData)) {
-        throw new HttpsError(
-          "failed-precondition",
-          "Event is not available for comments."
-        );
-      }
+    const requestId = (dataIn.requestId || "").toString().trim();
+    if (!eventInteractions.isValidClientId(requestId)) {
+      throw new HttpsError("invalid-argument", "requestId required.");
+    }
 
-      if (!userSnap.exists && !publicSnap.exists) {
-        throw new HttpsError("failed-precondition", "User profile not found.");
+    let clientCommentId = "";
+    if (
+      dataIn.commentId !== undefined &&
+      dataIn.commentId !== null &&
+      dataIn.commentId !== ""
+    ) {
+      if (typeof dataIn.commentId !== "string") {
+        throw new HttpsError("invalid-argument", "Invalid commentId.");
       }
-      const userData = userSnap.exists
-        ? userSnap.data() || {}
-        : publicSnap.data() || {};
-      if (userData.isBanned === true || isAccountDisabledData(userData)) {
-        throw new HttpsError("permission-denied", "Account is banned.");
+      clientCommentId = dataIn.commentId.trim();
+      if (!eventInteractions.isValidClientId(clientCommentId)) {
+        throw new HttpsError("invalid-argument", "Invalid commentId.");
       }
+    }
 
-      let replyToName = null;
-      let replyToText = null;
-      if (replyToCommentId) {
-        if (!parentSnap || !parentSnap.exists) {
-          throw new HttpsError("not-found", "Parent comment not found.");
+    let clientCreatedAtMs = null;
+    if (
+      dataIn.clientCreatedAtMs !== undefined &&
+      dataIn.clientCreatedAtMs !== null &&
+      dataIn.clientCreatedAtMs !== ""
+    ) {
+      const n = Number(dataIn.clientCreatedAtMs);
+      if (!Number.isFinite(n) || n <= 0) {
+        throw new HttpsError("invalid-argument", "Invalid clientCreatedAtMs.");
+      }
+      clientCreatedAtMs = Math.floor(n);
+    }
+
+    const db = admin.firestore();
+    const eventRef = db.collection("events").doc(eventId);
+    const commentsRef = eventRef.collection("comments");
+    const requestRef = db
+      .collection("eventCommentRequests")
+      .doc(`${uid}_${requestId}`);
+    const userRef = db.collection("users").doc(uid);
+    const publicRef = db.collection("publicUsers").doc(uid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const requestSnap = await tx.get(requestRef);
+        if (requestSnap.exists) {
+          const prev = requestSnap.data() || {};
+          return {
+            eventId,
+            commentId: (prev.commentId || "").toString(),
+            created: false,
+            alreadyCreated: true,
+            isReply: !!prev.isReply,
+            replyToUid: (prev.replyToUid || "").toString(),
+            organizerUid: (prev.organizerUid || "").toString(),
+            performedByName: (prev.performedByName || "").toString(),
+          };
         }
-        const parent = parentSnap.data() || {};
-        if (parent.isDeleted === true) {
+
+        const eventSnap = await tx.get(eventRef);
+        const userSnap = await tx.get(userRef);
+        const publicSnap = await tx.get(publicRef);
+
+        let parentSnap = null;
+        if (replyToCommentId) {
+          parentSnap = await tx.get(commentsRef.doc(replyToCommentId));
+        }
+
+        let existingCommentSnap = null;
+        if (clientCommentId) {
+          existingCommentSnap = await tx.get(commentsRef.doc(clientCommentId));
+        }
+
+        if (!eventSnap.exists) {
+          throw new HttpsError("not-found", "Event not found.");
+        }
+        const eventData = eventSnap.data() || {};
+        if (!eventAllowsComments(eventData)) {
+          const status = (eventData.status || "").toString().toLowerCase();
+          if (status === "cancelled" || status === "canceled") {
+            throw new HttpsError(
+              "failed-precondition",
+              "Event is cancelled.",
+            );
+          }
           throw new HttpsError(
             "failed-precondition",
-            "Parent comment is deleted."
+            "Event is not available for comments.",
           );
         }
-        replyToName =
-          (parent.name || parent.userName || "").toString().trim() || "User";
-        const parentText = (parent.text || "").toString();
-        replyToText =
-          parentText.length > EVENT_COMMENT_REPLY_PREVIEW_LEN
-            ? parentText.slice(0, EVENT_COMMENT_REPLY_PREVIEW_LEN)
-            : parentText;
-      }
 
-      const { name, photoUrl } = resolveUserProfileNamePhoto(userData);
-      const organizerUid = eventOrganizerUid(eventData);
-      const isOrganizer = organizerUid === uid;
+        if (!userSnap.exists && !publicSnap.exists) {
+          throw new HttpsError(
+            "failed-precondition",
+            "User profile not found.",
+          );
+        }
+        const userData = userSnap.exists
+          ? userSnap.data() || {}
+          : publicSnap.data() || {};
+        if (userData.isBanned === true || isAccountDisabledData(userData)) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
 
-      const commentRef = commentsRef.doc();
-      const payload = {
-        uid,
-        name,
-        photoUrl,
-        text,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        likesCount: 0,
-        likedBy: [],
-        isDeleted: false,
-        readByOrganizer: isOrganizer,
-        replyToCommentId: replyToCommentId || null,
-        replyToName: replyToName,
-        replyToText: replyToText,
-      };
+        let replyToName = null;
+        let replyToText = null;
+        let replyToUid = null;
+        let rootCommentId = null;
+        let visualReplyToCommentId = replyToCommentId || null;
 
-      tx.set(commentRef, payload);
-      tx.set(requestRef, {
-        uid,
-        eventId,
-        commentId: commentRef.id,
-        requestId,
-        isReply: !!replyToCommentId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        if (replyToCommentId) {
+          if (!parentSnap || !parentSnap.exists) {
+            throw new HttpsError("not-found", "Parent comment not found.");
+          }
+          const parent = parentSnap.data() || {};
+          const meta = eventInteractions.buildReplyMetaFromParent({
+            replyToCommentId,
+            parent,
+          });
+          if (meta.error === "parent_deleted") {
+            throw new HttpsError(
+              "failed-precondition",
+              "Parent comment is deleted.",
+            );
+          }
+          if (meta.error) {
+            throw new HttpsError("not-found", "Parent comment not found.");
+          }
+          replyToUid = meta.replyToUid;
+          replyToName = meta.replyToName;
+          replyToText = meta.replyToText;
+          rootCommentId = meta.rootCommentId;
+          visualReplyToCommentId = meta.replyToCommentId;
+        }
+
+        if (existingCommentSnap && existingCommentSnap.exists) {
+          const existing = existingCommentSnap.data() || {};
+          if ((existing.uid || "").toString() !== uid) {
+            throw new HttpsError(
+              "already-exists",
+              "Comment id already exists.",
+            );
+          }
+          tx.set(requestRef, {
+            uid,
+            eventId,
+            commentId: clientCommentId,
+            requestId,
+            isReply: !!replyToCommentId,
+            replyToUid: replyToUid || "",
+            organizerUid: eventOrganizerUid(eventData),
+            performedByName: (existing.name || "").toString(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return {
+            eventId,
+            commentId: clientCommentId,
+            created: false,
+            alreadyCreated: true,
+            isReply: !!replyToCommentId,
+            replyToUid: replyToUid || "",
+            organizerUid: eventOrganizerUid(eventData),
+            performedByName: (existing.name || "").toString(),
+          };
+        }
+
+        const { name, photoUrl } = resolveUserProfileNamePhoto(userData);
+        const organizerUid = eventOrganizerUid(eventData);
+        const isOrganizer = organizerUid === uid;
+
+        const commentRef = clientCommentId
+          ? commentsRef.doc(clientCommentId)
+          : commentsRef.doc();
+        const payload = {
+          uid,
+          name,
+          photoUrl,
+          text,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          clientCreatedAt: clientCreatedAtMs
+            ? admin.firestore.Timestamp.fromMillis(clientCreatedAtMs)
+            : null,
+          likesCount: 0,
+          likedBy: [],
+          isDeleted: false,
+          readByOrganizer: isOrganizer,
+          replyToCommentId: visualReplyToCommentId,
+          replyToUid: replyToUid,
+          replyToName: replyToName,
+          replyToText: replyToText,
+          rootCommentId: rootCommentId,
+        };
+
+        tx.set(commentRef, payload);
+        tx.set(requestRef, {
+          uid,
+          eventId,
+          commentId: commentRef.id,
+          requestId,
+          isReply: !!replyToCommentId,
+          replyToUid: replyToUid || "",
+          organizerUid,
+          performedByName: name,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return {
+          eventId,
+          commentId: commentRef.id,
+          created: true,
+          alreadyCreated: false,
+          isReply: !!replyToCommentId,
+          replyToUid: replyToUid || "",
+          organizerUid,
+          performedByName: name,
+          textPreview:
+            text.length > 120 ? `${text.slice(0, 117)}...` : text,
+        };
       });
 
-      return {
-        eventId,
-        commentId: commentRef.id,
-        created: true,
-        alreadyCreated: false,
-        isReply: !!replyToCommentId,
-        performedByName: name,
-      };
-    });
+      if (result.created) {
+        console.log(
+          JSON.stringify({
+            action: result.isReply
+              ? "event_comment_replied"
+              : "event_comment_created",
+            eventId,
+            commentId: result.commentId,
+            performedBy: uid,
+            createdAt: new Date().toISOString(),
+          }),
+        );
 
-    if (result.created) {
-      console.log(
-        JSON.stringify({
-          action: result.isReply
-            ? "event_comment_replied"
-            : "event_comment_created",
-          eventId,
-          commentId: result.commentId,
-          performedBy: uid,
-          performedByName: result.performedByName || "",
-          createdAt: new Date().toISOString(),
-        })
-      );
+        if (
+          eventInteractions.shouldSendCommentPush({
+            created: result.created,
+            alreadyCreated: result.alreadyCreated,
+          })
+        ) {
+          try {
+            const notifyUids = eventInteractions.resolveCommentPushTargets({
+              actorUid: uid,
+              isReply: result.isReply,
+              replyToUid: result.replyToUid,
+              organizerUid: result.organizerUid,
+            });
+            if (notifyUids.length > 0) {
+              const type = result.isReply ? "event_reply" : "event_comment";
+              const title = result.isReply
+                ? "Nova resposta"
+                : "Novo comentário no evento";
+              const body = result.textPreview
+                ? `Novo comentário: ${result.textPreview}`
+                : "Novo comentário no evento";
+              await sendPushToUids({
+                uids: notifyUids,
+                title,
+                body,
+                data: {
+                  type,
+                  eventId,
+                  commentId: result.commentId || "",
+                },
+                prefKey: "event",
+              });
+            }
+          } catch (pushErr) {
+            console.error("createEventComment push error:", pushErr);
+          }
+        }
+      }
+
+      return {
+        success: true,
+        eventId: result.eventId,
+        commentId: result.commentId,
+        created: result.created,
+        alreadyCreated: result.alreadyCreated,
+      };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro createEventComment:", e);
+      throw new HttpsError("internal", "Could not create comment.");
+    }
+  },
+);
+
+/**
+ * Curtir/descurtir evento (set semântico / idempotente).
+ * Contrato: { eventId, desiredLiked: boolean }
+ * requestId opcional só para log/diagnóstico — NÃO persiste coleção.
+ * Nome legado toggleEventLike — age como setEventLike.
+ * Sem push. Cliente não define uid nem likesCount.
+ *
+ * Custo: lê event + likes/{uid} (+ user); writes só se estado mudar
+ * (no máx. 1 like doc + 1 likesCount). No-op = 0 writes.
+ */
+exports.toggleEventLike = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
     }
 
-    return {
-      success: true,
-      eventId: result.eventId,
-      commentId: result.commentId,
-      created: result.created,
-      alreadyCreated: result.alreadyCreated,
-    };
-  } catch (e) {
-    if (e instanceof HttpsError) throw e;
-    console.error("Erro createEventComment:", e);
-    throw new HttpsError("internal", "Could not create comment.");
-  }
-});
+    const uid = request.auth.uid;
+    const dataIn = request.data || {};
+    // Ignora qualquer uid/likesCount enviado pelo cliente.
+    const eventId = (dataIn.eventId || "").toString().trim();
+    if (!eventInteractions.isValidEventId(eventId)) {
+      throw new HttpsError("invalid-argument", "eventId required.");
+    }
+
+    const parsed = eventInteractions.parseDesiredLiked(dataIn.desiredLiked);
+    if (parsed.error === "missing") {
+      throw new HttpsError("invalid-argument", "desiredLiked required.");
+    }
+    if (parsed.error === "invalid_type") {
+      throw new HttpsError("invalid-argument", "desiredLiked must be boolean.");
+    }
+    const desiredLiked = parsed.desiredLiked;
+
+    // Opcional: diagnóstico apenas (nunca gravado).
+    const requestIdDiag = (dataIn.requestId || "").toString().trim();
+
+    const db = admin.firestore();
+    const eventRef = db.collection("events").doc(eventId);
+    const likeRef = eventRef.collection("likes").doc(uid);
+    const userRef = db.collection("users").doc(uid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const eventSnap = await tx.get(eventRef);
+        const likeSnap = await tx.get(likeRef);
+        const userSnap = await tx.get(userRef);
+
+        if (!eventSnap.exists) {
+          throw new HttpsError("not-found", "Event not found.");
+        }
+        const eventData = eventSnap.data() || {};
+        if (!eventAllowsLikes(eventData)) {
+          const status = (eventData.status || "").toString().toLowerCase();
+          if (status === "cancelled" || status === "canceled") {
+            throw new HttpsError(
+              "failed-precondition",
+              "Event is cancelled.",
+            );
+          }
+          throw new HttpsError(
+            "failed-precondition",
+            "Event is not available.",
+          );
+        }
+
+        if (!userSnap.exists) {
+          throw new HttpsError(
+            "failed-precondition",
+            "User profile not found.",
+          );
+        }
+        const userData = userSnap.data() || {};
+        if (userData.isBanned === true || isAccountDisabledData(userData)) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
+
+        const currentlyLiked = likeSnap.exists;
+        const currentCount = eventInteractions.normalizeLikesCount(
+          eventData.likesCount,
+        );
+        const next = eventInteractions.applyDesiredLike({
+          currentCount,
+          currentlyLiked,
+          desiredLiked,
+        });
+
+        if (next.changed) {
+          if (desiredLiked) {
+            tx.set(likeRef, {
+              uid,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          } else {
+            tx.delete(likeRef);
+          }
+          // Somente likesCount — sem updatedAt/status.
+          tx.set(eventRef, { likesCount: next.likesCount }, { merge: true });
+        }
+
+        return {
+          eventId,
+          liked: next.liked,
+          likesCount: next.likesCount,
+          changed: next.changed,
+        };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: result.liked ? "event_liked" : "event_unliked",
+          eventId,
+          likesCount: result.likesCount,
+          changed: result.changed === true,
+          ...(requestIdDiag ? { requestId: requestIdDiag } : {}),
+          createdAt: new Date().toISOString(),
+        }),
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro toggleEventLike:", e);
+      throw new HttpsError("internal", "Could not toggle event like.");
+    }
+  },
+);
 
 /**
  * Curtir/descurtir comentário de evento.
@@ -3977,7 +4485,7 @@ exports.toggleEventCommentLike = onCall(
     if (!eventId || !commentId) {
       throw new HttpsError(
         "invalid-argument",
-        "eventId and commentId required."
+        "eventId and commentId required.",
       );
     }
 
@@ -4010,7 +4518,7 @@ exports.toggleEventCommentLike = onCall(
         if (comment.isDeleted === true) {
           throw new HttpsError(
             "failed-precondition",
-            "Comment is no longer available."
+            "Comment is no longer available.",
           );
         }
 
@@ -4029,7 +4537,7 @@ exports.toggleEventCommentLike = onCall(
             likedBy,
             likesCount,
           },
-          { merge: true }
+          { merge: true },
         );
 
         return {
@@ -4049,7 +4557,7 @@ exports.toggleEventCommentLike = onCall(
           commentId,
           performedBy: uid,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
 
       return {
@@ -4061,372 +4569,115 @@ exports.toggleEventCommentLike = onCall(
       console.error("Erro toggleEventCommentLike:", e);
       throw new HttpsError("internal", "Could not toggle like.");
     }
-  }
+  },
 );
 
 /**
  * Exclusão lógica de comentário de evento.
  */
-exports.deleteEventComment = onCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
-  }
+exports.deleteEventComment = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
 
-  const uid = request.auth.uid;
-  const eventId = (request.data?.eventId || "").toString().trim();
-  const commentId = (request.data?.commentId || "").toString().trim();
-  if (!eventId || !commentId) {
-    throw new HttpsError(
-      "invalid-argument",
-      "eventId and commentId required."
-    );
-  }
+    const uid = request.auth.uid;
+    const eventId = (request.data?.eventId || "").toString().trim();
+    const commentId = (request.data?.commentId || "").toString().trim();
+    if (!eventId || !commentId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "eventId and commentId required.",
+      );
+    }
 
-  const db = admin.firestore();
-  const eventRef = db.collection("events").doc(eventId);
-  const commentRef = eventRef.collection("comments").doc(commentId);
+    const db = admin.firestore();
+    const eventRef = db.collection("events").doc(eventId);
+    const commentRef = eventRef.collection("comments").doc(commentId);
 
-  try {
-    const result = await db.runTransaction(async (tx) => {
-      const eventSnap = await tx.get(eventRef);
-      const commentSnap = await tx.get(commentRef);
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const eventSnap = await tx.get(eventRef);
+        const commentSnap = await tx.get(commentRef);
 
-      if (!eventSnap.exists) {
-        throw new HttpsError("not-found", "Event not found.");
-      }
-      if (!commentSnap.exists) {
-        throw new HttpsError("not-found", "Comment not found.");
-      }
+        if (!eventSnap.exists) {
+          throw new HttpsError("not-found", "Event not found.");
+        }
+        if (!commentSnap.exists) {
+          throw new HttpsError("not-found", "Comment not found.");
+        }
 
-      const eventData = eventSnap.data() || {};
-      const comment = commentSnap.data() || {};
-      const authorUid = (comment.uid || comment.userId || comment.authorId || "")
-        .toString()
-        .trim();
-      const organizerUid = eventOrganizerUid(eventData);
-      const canDelete = authorUid === uid || organizerUid === uid;
+        const eventData = eventSnap.data() || {};
+        const comment = commentSnap.data() || {};
+        const authorUid = (
+          comment.uid ||
+          comment.userId ||
+          comment.authorId ||
+          ""
+        )
+          .toString()
+          .trim();
+        const organizerUid = eventOrganizerUid(eventData);
+        const canDelete = authorUid === uid || organizerUid === uid;
 
-      if (!canDelete) {
-        throw new HttpsError(
-          "permission-denied",
-          "Not allowed to delete this comment."
+        if (!canDelete) {
+          throw new HttpsError(
+            "permission-denied",
+            "Not allowed to delete this comment.",
+          );
+        }
+
+        if (comment.isDeleted === true) {
+          return {
+            eventId,
+            commentId,
+            deleted: true,
+            alreadyDeleted: true,
+          };
+        }
+
+        tx.set(
+          commentRef,
+          {
+            isDeleted: true,
+            deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+            deletedBy: uid,
+          },
+          { merge: true },
         );
-      }
 
-      if (comment.isDeleted === true) {
         return {
           eventId,
           commentId,
           deleted: true,
-          alreadyDeleted: true,
+          alreadyDeleted: false,
         };
+      });
+
+      if (!result.alreadyDeleted) {
+        console.log(
+          JSON.stringify({
+            action: "event_comment_deleted",
+            eventId,
+            commentId,
+            performedBy: uid,
+            createdAt: new Date().toISOString(),
+          }),
+        );
       }
 
-      tx.set(
-        commentRef,
-        {
-          isDeleted: true,
-          deletedAt: admin.firestore.FieldValue.serverTimestamp(),
-          deletedBy: uid,
-        },
-        { merge: true }
-      );
-
       return {
-        eventId,
-        commentId,
-        deleted: true,
-        alreadyDeleted: false,
+        success: true,
+        ...result,
       };
-    });
-
-    if (!result.alreadyDeleted) {
-      console.log(
-        JSON.stringify({
-          action: "event_comment_deleted",
-          eventId,
-          commentId,
-          performedBy: uid,
-          createdAt: new Date().toISOString(),
-        })
-      );
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro deleteEventComment:", e);
+      throw new HttpsError("internal", "Could not delete comment.");
     }
-
-    return {
-      success: true,
-      ...result,
-    };
-  } catch (e) {
-    if (e instanceof HttpsError) throw e;
-    console.error("Erro deleteEventComment:", e);
-    throw new HttpsError("internal", "Could not delete comment.");
-  }
-});
-
-
-const EVENT_ALLOWED_CATEGORIES = new Set([
-  "Restaurante",
-  "café",
-  "Esportes",
-  "Show",
-  "Geral",
-  "Música",
-  "Cultura",
-  "Idiomas",
-]);
-
-const EVENT_CREATE_ALLOWED = new Set([
-  "requestId",
-  "title",
-  "description",
-  "category",
-  "startAtMs",
-  "city",
-  "cityKey",
-  "stateName",
-  "placeName",
-  "address",
-  "placeDisplay",
-  "lat",
-  "lng",
-  "countryCode",
-  "regionKey",
-  "scope",
-  "sponsorInterested",
-  "coverUrl",
-  "photoUrls",
-]);
-
-const EVENT_UPDATE_ALLOWED = new Set([
-  "title",
-  "description",
-  "category",
-  "startAtMs",
-  "city",
-  "cityKey",
-  "stateName",
-  "placeName",
-  "address",
-  "placeDisplay",
-  "lat",
-  "lng",
-  "countryCode",
-  "regionKey",
-  "scope",
-  "sponsorInterested",
-  "coverUrl",
-  "photoUrls",
-]);
-
-function resolveEventOwnerUid(data) {
-  const keys = ["createdBy", "organizerId", "ownerId", "userId"];
-  const found = [];
-  for (const key of keys) {
-    const v = (data?.[key] || "").toString().trim();
-    if (v) found.push(v);
-  }
-  const unique = [...new Set(found)];
-  if (unique.length === 0) {
-    return { ok: false, reason: "missing" };
-  }
-  if (unique.length > 1) {
-    return { ok: false, reason: "inconsistent", uids: unique };
-  }
-  return { ok: true, uid: unique[0] };
-}
-
-function asTrimmedString(value, field, { required = false, max = 500 } = {}) {
-  if (value === undefined || value === null) {
-    if (required) {
-      throw new HttpsError("invalid-argument", `${field} required.`);
-    }
-    return "";
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
-  }
-  if (typeof value === "object") {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
-  }
-  const out = value.toString().trim();
-  if (required && !out) {
-    throw new HttpsError("invalid-argument", `${field} required.`);
-  }
-  if (out.length > max) {
-    throw new HttpsError("invalid-argument", `${field} too long.`);
-  }
-  return out;
-}
-
-function asOptionalNumber(value, field) {
-  if (value === undefined || value === null || value === "") return null;
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
-  }
-  return n;
-}
-
-function asPhotoUrls(value) {
-  if (value === undefined || value === null) return null;
-  if (!Array.isArray(value)) {
-    throw new HttpsError("invalid-argument", "Invalid photoUrls.");
-  }
-  if (value.length > 5) {
-    throw new HttpsError("invalid-argument", "Too many photos.");
-  }
-  const out = [];
-  for (const item of value) {
-    if (typeof item !== "string") {
-      throw new HttpsError("invalid-argument", "Invalid photoUrls.");
-    }
-    const url = item.trim();
-    if (!url) continue;
-    if (url.length > 2048) {
-      throw new HttpsError("invalid-argument", "Invalid photoUrls.");
-    }
-    if (!/^https:\/\//i.test(url)) {
-      throw new HttpsError("invalid-argument", "Invalid photoUrls.");
-    }
-    out.push(url);
-  }
-  return out;
-}
-
-function asCoverUrl(value) {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") {
-    throw new HttpsError("invalid-argument", "Invalid coverUrl.");
-  }
-  const url = value.trim();
-  if (!url) return "";
-  if (url.length > 2048 || !/^https:\/\//i.test(url)) {
-    throw new HttpsError("invalid-argument", "Invalid coverUrl.");
-  }
-  return url;
-}
-
-function parseStartAtMs(value) {
-  if (value === undefined || value === null) {
-    throw new HttpsError("invalid-argument", "startAtMs required.");
-  }
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new HttpsError("invalid-argument", "Invalid startAtMs.");
-  }
-  // sanity: year 2000..2100
-  if (n < 946684800000 || n > 4102444800000) {
-    throw new HttpsError("invalid-argument", "Invalid startAtMs.");
-  }
-  return n;
-}
-
-function validateEventEditorial(dataIn, { forUpdate = false } = {}) {
-  const allowed = forUpdate ? EVENT_UPDATE_ALLOWED : EVENT_CREATE_ALLOWED;
-  for (const key of Object.keys(dataIn || {})) {
-    if (key === "eventId" && forUpdate) continue;
-    if (!allowed.has(key)) {
-      throw new HttpsError("invalid-argument", `Field not allowed: ${key}`);
-    }
-  }
-
-  const title = asTrimmedString(dataIn.title, "title", {
-    required: !forUpdate,
-    max: 120,
-  });
-  const description = asTrimmedString(dataIn.description, "description", {
-    required: !forUpdate,
-    max: 5000,
-  });
-  const category = asTrimmedString(dataIn.category, "category", {
-    required: !forUpdate,
-    max: 40,
-  });
-  if (category && !EVENT_ALLOWED_CATEGORIES.has(category)) {
-    throw new HttpsError("invalid-argument", "Invalid category.");
-  }
-
-  let startAtMs = null;
-  if (dataIn.startAtMs !== undefined && dataIn.startAtMs !== null) {
-    startAtMs = parseStartAtMs(dataIn.startAtMs);
-  } else if (!forUpdate) {
-    throw new HttpsError("invalid-argument", "startAtMs required.");
-  }
-
-  const city = asTrimmedString(dataIn.city, "city", {
-    required: !forUpdate,
-    max: 120,
-  });
-  const cityKey = asTrimmedString(dataIn.cityKey, "cityKey", {
-    required: false,
-    max: 120,
-  });
-  const stateName = asTrimmedString(dataIn.stateName, "stateName", {
-    required: false,
-    max: 120,
-  });
-  const placeName = asTrimmedString(dataIn.placeName, "placeName", {
-    required: !forUpdate,
-    max: 200,
-  });
-  const address = asTrimmedString(dataIn.address, "address", {
-    required: false,
-    max: 400,
-  });
-  const placeDisplay = asTrimmedString(dataIn.placeDisplay, "placeDisplay", {
-    required: false,
-    max: 400,
-  });
-  const countryCode = asTrimmedString(dataIn.countryCode, "countryCode", {
-    required: !forUpdate,
-    max: 8,
-  }).toLowerCase();
-  const regionKey = asTrimmedString(dataIn.regionKey, "regionKey", {
-    required: false,
-    max: 80,
-  });
-  const scope = asTrimmedString(dataIn.scope, "scope", {
-    required: false,
-    max: 40,
-  });
-
-  const lat =
-    dataIn.lat !== undefined ? asOptionalNumber(dataIn.lat, "lat") : undefined;
-  const lng =
-    dataIn.lng !== undefined ? asOptionalNumber(dataIn.lng, "lng") : undefined;
-
-  let sponsorInterested;
-  if (dataIn.sponsorInterested !== undefined) {
-    if (typeof dataIn.sponsorInterested !== "boolean") {
-      throw new HttpsError("invalid-argument", "Invalid sponsorInterested.");
-    }
-    sponsorInterested = dataIn.sponsorInterested;
-  }
-
-  const photoUrls = asPhotoUrls(dataIn.photoUrls);
-  const coverUrl = asCoverUrl(dataIn.coverUrl);
-
-  return {
-    title,
-    description,
-    category,
-    startAtMs,
-    city,
-    cityKey: cityKey || city.toLowerCase(),
-    stateName,
-    placeName,
-    address,
-    placeDisplay,
-    countryCode,
-    regionKey,
-    scope: scope || "city",
-    lat,
-    lng,
-    sponsorInterested,
-    photoUrls,
-    coverUrl,
-  };
-}
+  },
+);
 
 /**
  * Criar evento — ownership e aprovação só no backend.
@@ -4448,7 +4699,9 @@ exports.createEvent = onCall({ region: "us-central1" }, async (request) => {
 
   const editorial = validateEventEditorial(dataIn, { forUpdate: false });
   const db = admin.firestore();
-  const requestRef = db.collection("eventCreateRequests").doc(`${uid}_${requestId}`);
+  const requestRef = db
+    .collection("eventCreateRequests")
+    .doc(`${uid}_${requestId}`);
   const userRef = db.collection("users").doc(uid);
   const publicRef = db.collection("publicUsers").doc(uid);
 
@@ -4478,30 +4731,12 @@ exports.createEvent = onCall({ region: "us-central1" }, async (request) => {
       }
 
       const eventRef = db.collection("events").doc();
-      const sponsorInterested = editorial.sponsorInterested === true;
       const payload = {
-        title: editorial.title,
-        description: editorial.description,
-        category: editorial.category,
+        ...buildCreateEditorialFields(editorial),
         startAt: admin.firestore.Timestamp.fromMillis(editorial.startAtMs),
-        city: editorial.city,
-        cityKey: editorial.cityKey,
-        stateName: editorial.stateName,
-        placeName: editorial.placeName,
-        address: editorial.address,
-        placeDisplay: editorial.placeDisplay,
-        lat: editorial.lat === undefined ? null : editorial.lat,
-        lng: editorial.lng === undefined ? null : editorial.lng,
-        countryCode: editorial.countryCode,
-        regionKey: editorial.regionKey,
-        scope: editorial.scope,
-        coverUrl:
-          typeof editorial.coverUrl === "string" && editorial.coverUrl
-            ? editorial.coverUrl
-            : "",
-        photoUrls: Array.isArray(editorial.photoUrls)
-          ? editorial.photoUrls
-          : [],
+        endAt: admin.firestore.Timestamp.fromMillis(editorial.endAtMs),
+        archived: false,
+        deleted: false,
         createdBy: uid,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -4509,8 +4744,6 @@ exports.createEvent = onCall({ region: "us-central1" }, async (request) => {
         isActive: false,
         attendeesCount: 0,
         attendeesUids: [],
-        sponsorInterested,
-        sponsorStatus: sponsorInterested ? "interested" : "none",
         sponsored: false,
         featured: false,
         featuredUntil: null,
@@ -4540,8 +4773,10 @@ exports.createEvent = onCall({ region: "us-central1" }, async (request) => {
           eventId: result.eventId,
           performedBy: uid,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
+      // Imagem social: fire-and-forget — falha não desfaz criação.
+      scheduleSocialImageJob(result.eventId, "createEvent");
     }
 
     return {
@@ -4561,87 +4796,90 @@ exports.createEvent = onCall({ region: "us-central1" }, async (request) => {
  * Abortar evento pending incompleto (falha de upload/finalize no app).
  * Soft-delete para o Admin não listar documento parcial.
  */
-exports.abortIncompleteEvent = onCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
-  }
+exports.abortIncompleteEvent = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
 
-  const uid = request.auth.uid;
-  const dataIn = request.data || {};
-  const eventId = asTrimmedString(dataIn.eventId, "eventId", {
-    required: true,
-    max: 128,
-  });
-  const reason = asTrimmedString(dataIn.reason, "reason", {
-    required: false,
-    max: 200,
-  });
-
-  const db = admin.firestore();
-  const eventRef = db.collection("events").doc(eventId);
-
-  try {
-    const result = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(eventRef);
-      if (!snap.exists) {
-        return { aborted: false, reason: "not_found" };
-      }
-
-      const data = snap.data() || {};
-      if (data.deleted === true) {
-        return { aborted: true, reason: "already_deleted" };
-      }
-
-      const owner = resolveEventOwnerUid(data);
-      if (!owner.ok || owner.uid !== uid) {
-        throw new HttpsError(
-          "permission-denied",
-          "Not allowed to abort this event."
-        );
-      }
-
-      const statusNow = (data.status || "").toString().trim().toLowerCase();
-      if (statusNow !== "pending" && statusNow !== "rejected") {
-        throw new HttpsError(
-          "failed-precondition",
-          "Only pending/rejected events can be aborted."
-        );
-      }
-
-      tx.set(
-        eventRef,
-        {
-          deleted: true,
-          isActive: false,
-          status: "cancelled",
-          abortedAt: admin.firestore.FieldValue.serverTimestamp(),
-          abortedBy: uid,
-          abortReason: reason || "incomplete_create",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      return { aborted: true, reason: "ok" };
+    const uid = request.auth.uid;
+    const dataIn = request.data || {};
+    const eventId = asTrimmedString(dataIn.eventId, "eventId", {
+      required: true,
+      max: 128,
+    });
+    const reason = asTrimmedString(dataIn.reason, "reason", {
+      required: false,
+      max: 200,
     });
 
-    console.log(
-      JSON.stringify({
-        action: "event_abort_incomplete",
-        eventId,
-        performedBy: uid,
-        result,
-        createdAt: new Date().toISOString(),
-      })
-    );
+    const db = admin.firestore();
+    const eventRef = db.collection("events").doc(eventId);
 
-    return { success: true, eventId, ...result };
-  } catch (e) {
-    if (e instanceof HttpsError) throw e;
-    console.error("Erro abortIncompleteEvent:", e);
-    throw new HttpsError("internal", "Could not abort incomplete event.");
-  }
-});
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(eventRef);
+        if (!snap.exists) {
+          return { aborted: false, reason: "not_found" };
+        }
+
+        const data = snap.data() || {};
+        if (data.deleted === true) {
+          return { aborted: true, reason: "already_deleted" };
+        }
+
+        const owner = resolveEventOwnerUid(data);
+        if (!owner.ok || owner.uid !== uid) {
+          throw new HttpsError(
+            "permission-denied",
+            "Not allowed to abort this event.",
+          );
+        }
+
+        const statusNow = (data.status || "").toString().trim().toLowerCase();
+        if (statusNow !== "pending" && statusNow !== "rejected") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Only pending/rejected events can be aborted.",
+          );
+        }
+
+        tx.set(
+          eventRef,
+          {
+            deleted: true,
+            isActive: false,
+            status: "cancelled",
+            abortedAt: admin.firestore.FieldValue.serverTimestamp(),
+            abortedBy: uid,
+            abortReason: reason || "incomplete_create",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        return { aborted: true, reason: "ok" };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "event_abort_incomplete",
+          eventId,
+          performedBy: uid,
+          result,
+          createdAt: new Date().toISOString(),
+        }),
+      );
+
+      return { success: true, eventId, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro abortIncompleteEvent:", e);
+      throw new HttpsError("internal", "Could not abort incomplete event.");
+    }
+  },
+);
 
 /**
  * Atualizar campos editoriais do evento — aprovação/ownership só no backend.
@@ -4697,17 +4935,17 @@ exports.updateEvent = onCall({ region: "us-central1" }, async (request) => {
             reason: owner.reason,
             uids: owner.uids || [],
             performedBy: uid,
-          })
+          }),
         );
         throw new HttpsError(
           "failed-precondition",
-          "Event ownership is inconsistent."
+          "Event ownership is inconsistent.",
         );
       }
       if (owner.uid !== uid) {
         throw new HttpsError(
           "permission-denied",
-          "Not allowed to edit this event."
+          "Not allowed to edit this event.",
         );
       }
 
@@ -4722,12 +4960,11 @@ exports.updateEvent = onCall({ region: "us-central1" }, async (request) => {
       if (statusNow === "cancelled") {
         throw new HttpsError(
           "failed-precondition",
-          "Cancelled event cannot be edited."
+          "Cancelled event cannot be edited.",
         );
       }
 
-      const published =
-        statusNow === "approved" && data.isActive === true;
+      const published = statusNow === "approved" && data.isActive === true;
 
       const editorialPatch = buildEventEditorialPatch(dataIn, editorial);
       if (Object.keys(editorialPatch).length === 0) {
@@ -4738,7 +4975,7 @@ exports.updateEvent = onCall({ region: "us-central1" }, async (request) => {
         const pendingChanges = buildPendingChangesMap(
           data,
           editorialPatch,
-          uid
+          uid,
         );
         const patch = {
           pendingChanges,
@@ -4749,10 +4986,8 @@ exports.updateEvent = onCall({ region: "us-central1" }, async (request) => {
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
         // Clear previous rejection-of-changes markers if any.
-        patch.pendingChangesRejectedAt =
-          admin.firestore.FieldValue.delete();
-        patch.pendingChangesRejectedBy =
-          admin.firestore.FieldValue.delete();
+        patch.pendingChangesRejectedAt = admin.firestore.FieldValue.delete();
+        patch.pendingChangesRejectedBy = admin.firestore.FieldValue.delete();
         patch.pendingChangesRejectionReason =
           admin.firestore.FieldValue.delete();
 
@@ -4802,8 +5037,18 @@ exports.updateEvent = onCall({ region: "us-central1" }, async (request) => {
         createdAt: new Date().toISOString(),
         updateMode: result.updateMode,
         changedFields: result.changedFields,
-      })
+      }),
     );
+
+    // Só regenera quando o patch editorial live mudou campos de social.
+    // pending_changes (evento já publicado) não altera capa/título live ainda.
+    if (
+      result.updateMode === "direct_pending" &&
+      Array.isArray(result.changedFields) &&
+      result.changedFields.some((k) => SOCIAL_TRIGGER_FIELDS.includes(k))
+    ) {
+      scheduleSocialImageJob(eventId, "updateEvent");
+    }
 
     return {
       success: true,
@@ -4819,73 +5064,6 @@ exports.updateEvent = onCall({ region: "us-central1" }, async (request) => {
     throw new HttpsError("internal", "Could not update event.");
   }
 });
-
-const EVENT_PENDING_EDITORIAL_KEYS = [
-  "title",
-  "description",
-  "category",
-  "startAt",
-  "city",
-  "cityKey",
-  "stateName",
-  "placeName",
-  "address",
-  "placeDisplay",
-  "lat",
-  "lng",
-  "countryCode",
-  "regionKey",
-  "scope",
-  "coverUrl",
-  "photoUrls",
-  "sponsorInterested",
-  "sponsorStatus",
-];
-
-function buildEventEditorialPatch(dataIn, editorial) {
-  const patch = {};
-  if (dataIn.title !== undefined) patch.title = editorial.title;
-  if (dataIn.description !== undefined) {
-    patch.description = editorial.description;
-  }
-  if (dataIn.category !== undefined) patch.category = editorial.category;
-  if (dataIn.startAtMs !== undefined) {
-    patch.startAt = admin.firestore.Timestamp.fromMillis(editorial.startAtMs);
-  }
-  if (dataIn.city !== undefined) patch.city = editorial.city;
-  if (dataIn.cityKey !== undefined || dataIn.city !== undefined) {
-    patch.cityKey = editorial.cityKey;
-  }
-  if (dataIn.stateName !== undefined) patch.stateName = editorial.stateName;
-  if (dataIn.placeName !== undefined) patch.placeName = editorial.placeName;
-  if (dataIn.address !== undefined) patch.address = editorial.address;
-  if (dataIn.placeDisplay !== undefined) {
-    patch.placeDisplay = editorial.placeDisplay;
-  }
-  if (dataIn.countryCode !== undefined) {
-    patch.countryCode = editorial.countryCode;
-  }
-  if (dataIn.regionKey !== undefined) patch.regionKey = editorial.regionKey;
-  if (dataIn.scope !== undefined) patch.scope = editorial.scope;
-  if (dataIn.lat !== undefined) {
-    patch.lat = editorial.lat === undefined ? null : editorial.lat;
-  }
-  if (dataIn.lng !== undefined) {
-    patch.lng = editorial.lng === undefined ? null : editorial.lng;
-  }
-  if (dataIn.sponsorInterested !== undefined) {
-    const interested = editorial.sponsorInterested === true;
-    patch.sponsorInterested = interested;
-    patch.sponsorStatus = interested ? "interested" : "none";
-  }
-  if (dataIn.photoUrls !== undefined) {
-    patch.photoUrls = editorial.photoUrls || [];
-  }
-  if (dataIn.coverUrl !== undefined) {
-    patch.coverUrl = editorial.coverUrl === null ? "" : editorial.coverUrl;
-  }
-  return patch;
-}
 
 function cloneEditorialBaseFromEvent(data) {
   const base = {};
@@ -4912,9 +5090,7 @@ function buildPendingChangesMap(data, editorialPatch, uid) {
       ? data.pendingChanges
       : null;
 
-  const base = existing
-    ? { ...existing }
-    : cloneEditorialBaseFromEvent(data);
+  const base = existing ? { ...existing } : cloneEditorialBaseFromEvent(data);
 
   // Remove previous meta before rebuild.
   delete base.submittedAt;
@@ -5000,20 +5176,17 @@ exports.approveEventPendingChanges = onCall(
         if (statusNow === "cancelled") {
           throw new HttpsError(
             "failed-precondition",
-            "Cancelled event cannot be updated."
+            "Cancelled event cannot be updated.",
           );
         }
         if (data.hasPendingChanges !== true) {
-          throw new HttpsError(
-            "failed-precondition",
-            "No pending changes."
-          );
+          throw new HttpsError("failed-precondition", "No pending changes.");
         }
         const pending = data.pendingChanges;
         if (!pending || typeof pending !== "object" || Array.isArray(pending)) {
           throw new HttpsError(
             "failed-precondition",
-            "Invalid pendingChanges."
+            "Invalid pendingChanges.",
           );
         }
 
@@ -5045,7 +5218,7 @@ exports.approveEventPendingChanges = onCall(
           eventId,
           performedBy: adminUid,
           createdAt: new Date().toISOString(),
-        })
+        }),
       );
 
       return { success: true, ...result };
@@ -5054,7 +5227,7 @@ exports.approveEventPendingChanges = onCall(
       console.error("Erro approveEventPendingChanges:", e);
       throw new HttpsError("internal", "Could not approve pending changes.");
     }
-  }
+  },
 );
 
 /**
@@ -5071,7 +5244,7 @@ exports.rejectEventPendingChanges = onCall(
     const reason = asTrimmedString(
       request.data?.reason ?? request.data?.rejectionReason,
       "reason",
-      { required: false, max: 500 }
+      { required: false, max: 500 },
     );
     const db = admin.firestore();
     const eventRef = db.collection("events").doc(eventId);
@@ -5090,7 +5263,7 @@ exports.rejectEventPendingChanges = onCall(
         if (statusNow === "cancelled") {
           throw new HttpsError(
             "failed-precondition",
-            "Cancelled event cannot be updated."
+            "Cancelled event cannot be updated.",
           );
         }
         if (data.hasPendingChanges !== true) {
@@ -5123,7 +5296,7 @@ exports.rejectEventPendingChanges = onCall(
             eventId,
             performedBy: adminUid,
             createdAt: new Date().toISOString(),
-          })
+          }),
         );
       }
 
@@ -5133,176 +5306,179 @@ exports.rejectEventPendingChanges = onCall(
       console.error("Erro rejectEventPendingChanges:", e);
       throw new HttpsError("internal", "Could not reject pending changes.");
     }
-  }
+  },
 );
-
 
 /**
  * Registrar visualização única de evento (viewsCount).
  */
-exports.registerEventView = onCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
-  }
+exports.registerEventView = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
 
-  const uid = request.auth.uid;
-  const eventId = (request.data?.eventId || "").toString().trim();
-  if (!eventId || eventId.length > 128) {
-    throw new HttpsError("invalid-argument", "eventId required.");
-  }
+    const uid = request.auth.uid;
+    const eventId = (request.data?.eventId || "").toString().trim();
+    if (!eventId || eventId.length > 128) {
+      throw new HttpsError("invalid-argument", "eventId required.");
+    }
 
-  // viewerSessionId aceito mas não é fonte de verdade quando há auth.
-  const sessionRaw = request.data?.viewerSessionId;
-  if (
-    sessionRaw !== undefined &&
-    sessionRaw !== null &&
-    typeof sessionRaw !== "string"
-  ) {
-    throw new HttpsError("invalid-argument", "Invalid viewerSessionId.");
-  }
+    // viewerSessionId aceito mas não é fonte de verdade quando há auth.
+    const sessionRaw = request.data?.viewerSessionId;
+    if (
+      sessionRaw !== undefined &&
+      sessionRaw !== null &&
+      typeof sessionRaw !== "string"
+    ) {
+      throw new HttpsError("invalid-argument", "Invalid viewerSessionId.");
+    }
 
-  const db = admin.firestore();
-  const eventRef = db.collection("events").doc(eventId);
-  const viewRef = eventRef.collection("views").doc(uid);
-  const userRef = db.collection("users").doc(uid);
+    const db = admin.firestore();
+    const eventRef = db.collection("events").doc(eventId);
+    const viewRef = eventRef.collection("views").doc(uid);
+    const userRef = db.collection("users").doc(uid);
 
-  try {
-    const result = await db.runTransaction(async (tx) => {
-      const eventSnap = await tx.get(eventRef);
-      const viewSnap = await tx.get(viewRef);
-      const userSnap = await tx.get(userRef);
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const eventSnap = await tx.get(eventRef);
+        const viewSnap = await tx.get(viewRef);
+        const userSnap = await tx.get(userRef);
 
-      if (!eventSnap.exists) {
-        throw new HttpsError("not-found", "Event not found.");
-      }
-
-      const data = eventSnap.data() || {};
-      if (data.deleted === true) {
-        throw new HttpsError("failed-precondition", "Event unavailable.");
-      }
-
-      const status = (data.status || "").toString().trim().toLowerCase();
-      if (status === "cancelled") {
-        throw new HttpsError("failed-precondition", "Event unavailable.");
-      }
-      if (status !== "approved" || data.isActive !== true) {
-        throw new HttpsError("failed-precondition", "Event unavailable.");
-      }
-
-      if (userSnap.exists) {
-        const userData = userSnap.data() || {};
-        if (userData.isBanned === true || isAccountDisabledData(userData)) {
-          throw new HttpsError("permission-denied", "Account is banned.");
+        if (!eventSnap.exists) {
+          throw new HttpsError("not-found", "Event not found.");
         }
-      }
 
-      const owner = resolveEventOwnerUid(data);
-      const isOrganizer = owner.ok && owner.uid === uid;
+        const data = eventSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Event unavailable.");
+        }
 
-      let viewsCount =
-        typeof data.viewsCount === "number" && Number.isFinite(data.viewsCount)
-          ? Math.max(0, Math.floor(data.viewsCount))
-          : 0;
+        const status = (data.status || "").toString().trim().toLowerCase();
+        if (status === "cancelled") {
+          throw new HttpsError("failed-precondition", "Event unavailable.");
+        }
+        if (status !== "approved" || data.isActive !== true) {
+          throw new HttpsError("failed-precondition", "Event unavailable.");
+        }
 
-      // Organizador não infla o contador público.
-      if (isOrganizer) {
+        if (userSnap.exists) {
+          const userData = userSnap.data() || {};
+          if (userData.isBanned === true || isAccountDisabledData(userData)) {
+            throw new HttpsError("permission-denied", "Account is banned.");
+          }
+        }
+
+        const owner = resolveEventOwnerUid(data);
+        const isOrganizer = owner.ok && owner.uid === uid;
+
+        let viewsCount =
+          typeof data.viewsCount === "number" &&
+          Number.isFinite(data.viewsCount)
+            ? Math.max(0, Math.floor(data.viewsCount))
+            : 0;
+
+        // Organizador não infla o contador público.
+        if (isOrganizer) {
+          if (viewSnap.exists) {
+            tx.set(
+              viewRef,
+              {
+                lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true },
+            );
+          } else {
+            tx.set(viewRef, {
+              uid,
+              firstViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+              lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+              viewCount: 0,
+              isOrganizer: true,
+            });
+          }
+          return {
+            eventId,
+            counted: false,
+            countedUnique: false,
+            viewsCount,
+            totalOpensCount: viewsCount,
+          };
+        }
+
         if (viewSnap.exists) {
+          const prev = viewSnap.data() || {};
+          const prevOpens =
+            typeof prev.viewCount === "number" ? prev.viewCount : 1;
           tx.set(
             viewRef,
             {
               lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+              viewCount: prevOpens + 1,
             },
-            { merge: true }
+            { merge: true },
           );
-        } else {
-          tx.set(viewRef, {
-            uid,
-            firstViewedAt: admin.firestore.FieldValue.serverTimestamp(),
-            lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
-            viewCount: 0,
-            isOrganizer: true,
-          });
+          return {
+            eventId,
+            counted: false,
+            countedUnique: false,
+            viewsCount,
+            totalOpensCount: viewsCount,
+          };
         }
-        return {
-          eventId,
-          counted: false,
-          countedUnique: false,
-          viewsCount,
-          totalOpensCount: viewsCount,
-        };
-      }
 
-      if (viewSnap.exists) {
-        const prev = viewSnap.data() || {};
-        const prevOpens =
-          typeof prev.viewCount === "number" ? prev.viewCount : 1;
+        viewsCount += 1;
+        tx.set(viewRef, {
+          uid,
+          firstViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+          viewCount: 1,
+          isOrganizer: false,
+        });
         tx.set(
-          viewRef,
+          eventRef,
           {
-            lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
-            viewCount: prevOpens + 1,
+            viewsCount,
           },
-          { merge: true }
+          { merge: true },
         );
+
         return {
           eventId,
-          counted: false,
-          countedUnique: false,
+          counted: true,
+          countedUnique: true,
           viewsCount,
           totalOpensCount: viewsCount,
         };
-      }
-
-      viewsCount += 1;
-      tx.set(viewRef, {
-        uid,
-        firstViewedAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
-        viewCount: 1,
-        isOrganizer: false,
       });
-      tx.set(
-        eventRef,
-        {
-          viewsCount,
-        },
-        { merge: true }
-      );
+
+      if (result.counted) {
+        console.log(
+          JSON.stringify({
+            action: "event_view_registered",
+            eventId,
+            performedBy: uid,
+            createdAt: new Date().toISOString(),
+          }),
+        );
+      }
 
       return {
-        eventId,
-        counted: true,
-        countedUnique: true,
-        viewsCount,
-        totalOpensCount: viewsCount,
+        success: true,
+        eventId: result.eventId,
+        counted: result.counted,
+        countedUnique: result.countedUnique,
+        viewsCount: result.viewsCount,
+        totalOpensCount: result.totalOpensCount,
       };
-    });
-
-    if (result.counted) {
-      console.log(
-        JSON.stringify({
-          action: "event_view_registered",
-          eventId,
-          performedBy: uid,
-          createdAt: new Date().toISOString(),
-        })
-      );
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro registerEventView:", e);
+      throw new HttpsError("internal", "Could not register view.");
     }
-
-    return {
-      success: true,
-      eventId: result.eventId,
-      counted: result.counted,
-      countedUnique: result.countedUnique,
-      viewsCount: result.viewsCount,
-      totalOpensCount: result.totalOpensCount,
-    };
-  } catch (e) {
-    if (e instanceof HttpsError) throw e;
-    console.error("Erro registerEventView:", e);
-    throw new HttpsError("internal", "Could not register view.");
-  }
-});
+  },
+);
 
 /**
  * Cancelar evento — somente organizador (createdBy/ownerUid/organizerId).
@@ -5336,15 +5512,17 @@ exports.cancelEvent = onCall({ region: "us-central1" }, async (request) => {
         throw new HttpsError("permission-denied", "Not allowed.");
       }
 
-      const owner =
-        (data.organizerId || data.createdBy || data.ownerUid || data.userId || "")
-          .toString()
-          .trim();
+      const owner = (
+        data.organizerId ||
+        data.createdBy ||
+        data.ownerUid ||
+        data.userId ||
+        ""
+      )
+        .toString()
+        .trim();
       if (owner !== uid) {
-        throw new HttpsError(
-          "permission-denied",
-          "Only organizer can cancel."
-        );
+        throw new HttpsError("permission-denied", "Only organizer can cancel.");
       }
 
       const statusNow = (data.status || "").toString().trim().toLowerCase();
@@ -5361,7 +5539,7 @@ exports.cancelEvent = onCall({ region: "us-central1" }, async (request) => {
           cancelledBy: uid,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       );
       return { eventId, alreadyCancelled: false };
     });
@@ -5372,7 +5550,7 @@ exports.cancelEvent = onCall({ region: "us-central1" }, async (request) => {
         eventId,
         performedBy: uid,
         createdAt: new Date().toISOString(),
-      })
+      }),
     );
     return { success: true, ...result };
   } catch (e) {
@@ -5382,3 +5560,237 @@ exports.cancelEvent = onCall({ region: "us-central1" }, async (request) => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// Event lifecycle (local prep — do not deploy without authorization)
+// ---------------------------------------------------------------------------
+
+function assertEventOwner(uid, data) {
+  const owner = resolveEventOwnerUid(data);
+  if (!owner.ok || owner.uid !== uid) {
+    throw new HttpsError("permission-denied", "Only organizer can manage.");
+  }
+  return owner.uid;
+}
+
+function eventHasFinancialRetention(data) {
+  if (!data || typeof data !== "object") return false;
+  if (data.retentionRequired === true) return true;
+  if (data.hasPayments === true) return true;
+  if (data.paymentRetention === true) return true;
+  if (data.disputed === true) return true;
+  if (data.ticketSales === true) return true;
+  if (Array.isArray(data.orderIds) && data.orderIds.length > 0) return true;
+  if (data.boosted === true) return true;
+  const boostStatus = (data.boostStatus || "").toString().toLowerCase();
+  if (boostStatus && !["none", "expired", "cancelled", "canceled"].includes(boostStatus)) {
+    return true;
+  }
+  for (const key of Object.keys(data)) {
+    if (/^stripe/i.test(key) && data[key]) return true;
+  }
+  return false;
+}
+
+exports.archiveEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
+  const uid = request.auth.uid;
+  const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
+  const db = admin.firestore();
+  const ref = db.collection("events").doc(eventId);
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Event not found.");
+    const data = snap.data() || {};
+    assertEventOwner(uid, data);
+    if (data.archived === true) return { eventId, alreadyArchived: true };
+    tx.set(
+      ref,
+      {
+        archived: true,
+        archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        archivedBy: uid,
+        isActive: false,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return { eventId, alreadyArchived: false };
+  });
+  return { success: true, ...result };
+});
+
+exports.restoreEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
+  const uid = request.auth.uid;
+  const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
+  const db = admin.firestore();
+  const ref = db.collection("events").doc(eventId);
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Event not found.");
+    const data = snap.data() || {};
+    assertEventOwner(uid, data);
+    if (data.archived !== true) return { eventId, alreadyRestored: true };
+    // Não reaprova automaticamente.
+    tx.set(
+      ref,
+      {
+        archived: false,
+        archivedAt: admin.firestore.FieldValue.delete(),
+        archivedBy: admin.firestore.FieldValue.delete(),
+        restoredAt: admin.firestore.FieldValue.serverTimestamp(),
+        restoredBy: uid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return { eventId, alreadyRestored: false };
+  });
+  return { success: true, ...result };
+});
+
+exports.duplicateEvent = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
+  const uid = request.auth.uid;
+  const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
+  const db = admin.firestore();
+  const srcRef = db.collection("events").doc(eventId);
+  const srcSnap = await srcRef.get();
+  if (!srcSnap.exists) throw new HttpsError("not-found", "Event not found.");
+  const src = srcSnap.data() || {};
+  assertEventOwner(uid, src);
+
+  // Datas antigas NÃO são copiadas. Placeholder de agenda obrigatório no schema
+  // (start/end) — organizador deve editar antes de publicar. needsSchedule=true.
+  const startMs = Date.now() + 14 * 24 * 3600 * 1000;
+  const endMs = startMs + 2 * 3600 * 1000;
+  const tz =
+    parseEventTimeZone(src.eventTimeZone, { required: false }) ||
+    "America/Toronto";
+
+  const newRef = db.collection("events").doc();
+  const payload = {
+    title: (src.title || "").toString(),
+    description: (src.description || "").toString(),
+    category: (src.category || "").toString(),
+    city: (src.city || "").toString(),
+    cityKey: (src.cityKey || "").toString(),
+    stateName: (src.stateName || "").toString(),
+    placeName: (src.placeName || "").toString(),
+    address: (src.address || "").toString(),
+    placeDisplay: (src.placeDisplay || "").toString(),
+    lat: src.lat ?? null,
+    lng: src.lng ?? null,
+    countryCode: (src.countryCode || "").toString(),
+    regionKey: (src.regionKey || "").toString(),
+    scope: (src.scope || "city").toString(),
+    coverUrl: typeof src.coverUrl === "string" ? src.coverUrl : "",
+    photoUrls: Array.isArray(src.photoUrls) ? src.photoUrls.slice(0, 5) : [],
+    startAt: admin.firestore.Timestamp.fromMillis(startMs),
+    endAt: admin.firestore.Timestamp.fromMillis(endMs),
+    eventTimeZone: tz,
+    needsSchedule: true,
+    duplicatedFrom: eventId,
+    createdBy: uid,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    status: "pending",
+    isActive: false,
+    archived: false,
+    deleted: false,
+    attendeesCount: 0,
+    attendeesUids: [],
+    sponsorInterested: false,
+    sponsorStatus: "none",
+    sponsored: false,
+    featured: false,
+    featuredUntil: null,
+  };
+  await newRef.set(payload);
+  return { success: true, eventId: newRef.id, needsSchedule: true };
+});
+
+exports.deleteEventPermanently = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
+  const uid = request.auth.uid;
+  const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
+  const confirm = asTrimmedString(request.data?.confirm, "confirm", { required: true, max: 64 });
+  if (confirm !== "DELETE_PERMANENTLY") {
+    throw new HttpsError("invalid-argument", "Strong confirmation required.");
+  }
+  const db = admin.firestore();
+  const ref = db.collection("events").doc(eventId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    return { success: true, eventId, alreadyDeleted: true };
+  }
+  const data = snap.data() || {};
+  assertEventOwner(uid, data);
+
+  if (eventHasFinancialRetention(data)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "retention_required",
+    );
+  }
+
+  const status = (data.status || "").toString().toLowerCase();
+  const endAt = data.endAt;
+  let endMs = null;
+  if (endAt && typeof endAt.toMillis === "function") endMs = endAt.toMillis();
+  const now = Date.now();
+  const isPast = endMs != null && endMs < now;
+  const isCancelled = status === "cancelled" || status === "canceled";
+  const isArchived = data.archived === true;
+  if (!(isPast || isCancelled || isArchived)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Only past, cancelled, or archived events can be permanently deleted.",
+    );
+  }
+
+  if (data.deleted === true && data.permanentlyDeletedAt) {
+    return { success: true, eventId, alreadyDeleted: true };
+  }
+
+  // Soft marker + cleanup de subcoleções ligadas ao evento.
+  await ref.set(
+    {
+      deleted: true,
+      isActive: false,
+      permanentlyDeletedAt: admin.firestore.FieldValue.serverTimestamp(),
+      permanentlyDeletedBy: uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  async function deleteCollection(path) {
+    const col = db.collection(path);
+    while (true) {
+      const batchSnap = await col.limit(200).get();
+      if (batchSnap.empty) break;
+      const batch = db.batch();
+      for (const d of batchSnap.docs) batch.delete(d.ref);
+      await batch.commit();
+      if (batchSnap.size < 200) break;
+    }
+  }
+
+  await deleteCollection(`events/${eventId}/attendees`);
+  await deleteCollection(`events/${eventId}/comments`);
+  await deleteCollection(`events/${eventId}/likes`);
+
+  // Best-effort Storage cleanup under events/{eventId}/
+  try {
+    const bucket = admin.storage().bucket();
+    await bucket.deleteFiles({ prefix: `events/${eventId}/` });
+  } catch (e) {
+    console.warn("deleteEventPermanently storage cleanup failed", eventId, e);
+  }
+
+  // Remover doc do evento após limpar derivados (sem tocar users/conversations).
+  await ref.delete();
+  return { success: true, eventId, alreadyDeleted: false };
+});

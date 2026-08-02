@@ -4,8 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../pages/system_inbox_page.dart';
-import 'remi_chat_page.dart';
-import 'remi_intro_page.dart';
+import 'remi_entry_page.dart';
 
 import 'language_users_page.dart' as lusers;
 import 'profile_page.dart';
@@ -25,10 +24,14 @@ import 'package:socialchat_mvp/pages/privacy_page.dart';
 import 'package:socialchat_mvp/pages/about_page.dart';
 import 'package:socialchat_mvp/widgets/home_discover_section.dart';
 import 'package:socialchat_mvp/widgets/home_nearby_users_section.dart';
-import '../services/presence_service.dart';
+import '../services/online_status.dart';
+import '../services/presence_watch.dart';
 import '../services/premium_access_service.dart';
 import '../services/purchase_service.dart';
+import '../services/user_search_service.dart';
 import '../services/app_badge_service.dart';
+import '../services/share_extension_session_service.dart';
+import '../widgets/remdy_logo.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -45,24 +48,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _syncedPublicOnce = false;
   Timer? _presenceTimer;
   bool _presenceStarted = false;
-  Timer? _liveCountTick;
   String _localeLoaded = '';
-
-  /// Janela e tolerância definidas em [PresenceService] (fonte única).
-  Stream<QuerySnapshot<Map<String, dynamic>>> _onlineUsersStream() {
-    final since = PresenceService.onlineQuerySince(DateTime.now());
-    return db
-        .collection('publicUsers')
-        .where('lastSeenAt', isGreaterThan: since)
-        .snapshots(includeMetadataChanges: true);
-  }
-
-  bool _isCountedOnline(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-    DateTime now,
-  ) {
-    return PresenceService.isPublicUserOnline(doc.data(), now);
-  }
 
   DocumentReference<Map<String, dynamic>> _userDoc(String uid) =>
       db.collection('users').doc(uid);
@@ -82,36 +68,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   String? get uidOrNull => FirebaseAuth.instance.currentUser?.uid;
 
-  int _countOnlineByCountry({
-    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required String homeCode,
-    required DateTime now,
-    required bool sameCountry,
-  }) {
-    return docs.where((doc) {
-      if (!_isCountedOnline(doc, now)) return false;
-      final code = (doc.data()['countryCode'] ?? '')
-          .toString()
-          .trim()
-          .toLowerCase();
-      if (code.isEmpty) return false;
-      return sameCountry ? code == homeCode : code != homeCode;
-    }).length;
-  }
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _liveCountTick = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (mounted) setState(() {});
-    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _liveCountTick?.cancel();
     super.dispose();
   }
 
@@ -376,6 +341,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await PurchaseService.instance.logOut();
     } catch (_) {}
     await AppBadgeService.setBadge(0);
+    await ShareExtensionSessionService.revokeLocalAndRemote();
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
 
@@ -429,6 +395,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         'countryCode': homeCode,
         'name': name,
         'photoUrl': photoUrl,
+        ...PublicUserSearchFields.build(
+          name: name,
+          countryCode: homeCode,
+        ),
         'updatedAt': FieldValue.serverTimestamp(),
         'lastSeenAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -455,20 +425,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _userDoc(uid).snapshots(),
       builder: (context, snap) {
-      
-if (!snap.hasData) {
-  return const Scaffold(
-    body: Center(child: CircularProgressIndicator()),
-  );
-}
-
+        if (!snap.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
         final data = snap.data!.data() ?? {};
 
-        final homeCode = (data['homeCountryCode'] ?? '')
-            .toString()
-            .trim()
-            .toLowerCase();
+        final homeCode =
+            (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
 
         if (homeCode.isEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -488,7 +454,6 @@ if (!snap.hasData) {
 
         final isPremiumActive =
             PremiumAccessService.isPremiumActiveFromData(data);
-
 
         final int invites = (data['invitesCount'] is int)
             ? data['invitesCount'] as int
@@ -515,14 +480,10 @@ if (!snap.hasData) {
         final userCity =
             (data['cityName'] ?? data['city'] ?? '').toString().trim();
 
-  final countriesStream = db
-    .collection('configCountries')
-    .where('enabled', isEqualTo: true)
-    .snapshots();
-
-
-
-        final onlineStream = _onlineUsersStream();
+        final countriesStream = db
+            .collection('configCountries')
+            .where('enabled', isEqualTo: true)
+            .snapshots();
 
         bool canOpenCountry(_Country item) {
           if (isPremiumActive) return true;
@@ -540,126 +501,112 @@ if (!snap.hasData) {
             scrolledUnderElevation: 0,
             centerTitle: true,
             toolbarHeight: 88,
-      leading: IconButton(
-  icon: StreamBuilder<int>(
-    stream: _systemInboxUnreadCount(uid),
-    builder: (context, snap) {
-      final unread = snap.data ?? 0;
+            leading: IconButton(
+              icon: StreamBuilder<int>(
+                stream: _systemInboxUnreadCount(uid),
+                builder: (context, snap) {
+                  final unread = snap.data ?? 0;
 
-      return Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const Icon(Icons.menu_rounded),
-          if (unread > 0)
-            Positioned(
-              right: -1,
-              top: -1,
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.menu_rounded),
+                      if (unread > 0)
+                        Positioned(
+                          right: -1,
+                          top: -1,
+                          child: Container(
+                            width: 10,
+                            height: 10,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MenuPage(
+                      name: name,
+                      photoUrl: photoUrl,
+                      isPremium: isPremiumActive,
+                      invites: invites,
+                      limit: limit,
+                      profilePage: const ProfilePage(),
+                      invitePage: InvitePage(
+                        invites: invites,
+                        limit: limit,
+                        myUid: uid,
+                        inviteCode: inviteCode,
+                      ),
+                      premiumPage: const PremiumPage(),
+                      languagePage: const LanguagePage(),
+                      notificationsPage: const NotificationsPage(),
+                      systemInboxPage: const SystemInboxPage(),
+                      faqPage: const FaqPage(),
+                      contactPage: const ContactPage(),
+                      termsPage: const TermsPage(),
+                      policyPage: const PrivacyPage(),
+                      aboutPage: const AboutPage(),
+                      onLogout: _logout,
+                    ),
+                  ),
+                );
+              },
             ),
-        ],
-      );
-    },
-  ),
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MenuPage(
-          name: name,
-          photoUrl: photoUrl,
-          isPremium: isPremiumActive,
-          invites: invites,
-          limit: limit,
-          profilePage: const ProfilePage(),
-          invitePage: InvitePage(
-            invites: invites,
-            limit: limit,
-            myUid: uid,
-            inviteCode: inviteCode,
-          ),
-          premiumPage: const PremiumPage(),
-          languagePage: const LanguagePage(),
-          notificationsPage: const NotificationsPage(),
-          systemInboxPage: const SystemInboxPage(),
-          faqPage: const FaqPage(),
-          contactPage: const ContactPage(),
-          termsPage: const TermsPage(),
-          policyPage: const PrivacyPage(),
-          aboutPage: const AboutPage(),
-          onLogout: _logout,
-        ),
-      ),
-    );
-  },
-),
-
-            title: Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Image.asset(
-                'assets/remdy_icon.png',
-                height: 70,
-                fit: BoxFit.contain,
-              ),
-            ),
+            title: const RemdyLogo(),
             iconTheme: const IconThemeData(color: _muted),
             actions: [
-             Padding(
-  padding: const EdgeInsets.only(right: 8),
-  child: InkWell(
-    borderRadius: BorderRadius.circular(999),
-    onTap: () {
-    Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (_) => const RemiChatPage(
-      language: 'English',
-      goal: 'Daily Life',
-      lesson: 'Small Talk',
-    ),
-  ),
-);
-
-    },
-    child: Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 7,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: _border),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.forum_rounded,
-            size: 17,
-            color: _remdyBlue,
-          ),
-          SizedBox(width: 6),
-          Text(
-            'Remi',
-            style: TextStyle(
-              color: _remdyBlue,
-              fontWeight: FontWeight.w900,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    ),
-  ),
-),
- 
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const RemiEntryPage(),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: _border),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.forum_rounded,
+                          size: 17,
+                          color: _remdyBlue,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Remi',
+                          style: TextStyle(
+                            color: _remdyBlue,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               GestureDetector(
                 onTap: _openProfile,
                 child: Padding(
@@ -709,7 +656,6 @@ if (!snap.hasData) {
                       ),
                     ),
                     const SizedBox(height: 8),
-
                     Row(
                       children: [
                         Text(_flagEmoji(homeCode),
@@ -726,17 +672,11 @@ if (!snap.hasData) {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                          stream: onlineStream,
+                        StreamBuilder<int>(
+                          stream: PresenceWatch.watchCountryOnlineCount(homeCode),
+                          initialData: 0,
                           builder: (context, s) {
-                            final docs = s.data?.docs ?? [];
-                            final countNow = DateTime.now();
-                            final n = _countOnlineByCountry(
-                              docs: docs,
-                              homeCode: homeCode,
-                              now: countNow,
-                              sameCountry: true,
-                            );
+                            final n = s.data ?? 0;
 
                             return Row(
                               children: [
@@ -744,7 +684,10 @@ if (!snap.hasData) {
                                     size: 10, color: Colors.green),
                                 const SizedBox(width: 6),
                                 Text(
-                                  '$n ${t.get('online')}',
+                                  OnlineStatus.formatOnlineCount(
+                                    count: n,
+                                    onlineWord: t.get('online'),
+                                  ),
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -757,9 +700,7 @@ if (!snap.hasData) {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 8),
-
                     Row(
                       children: [
                         const Text('🌍', style: TextStyle(fontSize: 16)),
@@ -777,17 +718,13 @@ if (!snap.hasData) {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                          stream: onlineStream,
+                        StreamBuilder<int>(
+                          stream: PresenceWatch.watchWorldOnlineCount(
+                            excludeCountryCode: homeCode,
+                          ),
+                          initialData: 0,
                           builder: (context, s) {
-                            final docs = s.data?.docs ?? [];
-                            final countNow = DateTime.now();
-                            final world = _countOnlineByCountry(
-                              docs: docs,
-                              homeCode: homeCode,
-                              now: countNow,
-                              sameCountry: false,
-                            );
+                            final world = s.data ?? 0;
 
                             return Row(
                               children: [
@@ -795,7 +732,10 @@ if (!snap.hasData) {
                                     size: 10, color: Colors.green),
                                 const SizedBox(width: 6),
                                 Text(
-                                  '$world ${t.get('online')}',
+                                  OnlineStatus.formatOnlineCount(
+                                    count: world,
+                                    onlineWord: t.get('online'),
+                                  ),
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -822,139 +762,142 @@ if (!snap.hasData) {
               ),
               const SizedBox(height: 8),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-  stream: countriesStream,
-  builder: (context, countrySnap) {
-   
-if (countrySnap.connectionState == ConnectionState.waiting &&
-    !countrySnap.hasData) {
-  return const Center(child: CircularProgressIndicator());
-}
+                stream: countriesStream,
+                builder: (context, countrySnap) {
+                  if (countrySnap.connectionState == ConnectionState.waiting &&
+                      !countrySnap.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
+                  if (countrySnap.hasError) {
+                    return Center(
+                        child: Text('Erro países: ${countrySnap.error}'));
+                  }
 
-    if (countrySnap.hasError) {
-      return Center(child: Text('Erro países: ${countrySnap.error}'));
-    }
+                  final countryDocs = countrySnap.data?.docs ?? [];
 
-    final countryDocs = countrySnap.data?.docs ?? [];
+                  final sortedCountries = countryDocs.map((doc) {
+                    final d = doc.data();
 
-final sortedCountries = countryDocs.map((doc) {
-  final d = doc.data();
+                    final code =
+                        (d['code'] ?? doc.id).toString().trim().toUpperCase();
 
-  final code = (d['code'] ?? doc.id).toString().trim().toUpperCase();
+                    return _Country(
+                      code: code,
+                      name: _countryName(code),
+                      flag: (d['flag'] ?? '').toString().trim(),
+                      premiumOnly: d['premiumOnly'] == true,
+                      betaOnly: d['betaOnly'] == true,
+                      order: d['order'] is num
+                          ? (d['order'] as num).toInt()
+                          : 999999,
+                    );
+                  }).where((c) {
+                    return c.code.isNotEmpty && c.name.isNotEmpty;
+                  }).toList();
 
-return _Country(
-  code: code,
-  name: _countryName(code),
-  flag: (d['flag'] ?? '').toString().trim(),
+                  sortedCountries.sort((a, b) {
+                    final aIsMine = a.code.toLowerCase() == homeCode;
+                    final bIsMine = b.code.toLowerCase() == homeCode;
 
-    premiumOnly: d['premiumOnly'] == true,
-    betaOnly: d['betaOnly'] == true,
-    order: d['order'] is num ? (d['order'] as num).toInt() : 999999,
-  );
-}).where((c) {
-  return c.code.isNotEmpty && c.name.isNotEmpty;
-}).toList();
+                    if (aIsMine != bIsMine) return aIsMine ? -1 : 1;
 
-sortedCountries.sort((a, b) {
-  final aIsMine = a.code.toLowerCase() == homeCode;
-  final bIsMine = b.code.toLowerCase() == homeCode;
+                    return a.order.compareTo(b.order);
+                  });
 
-  if (aIsMine != bIsMine) return aIsMine ? -1 : 1;
+                  if (sortedCountries.isEmpty) {
+                    return const Center(
+                      child: Text('Nenhum país disponível'),
+                    );
+                  }
 
-  return a.order.compareTo(b.order);
-});
+                  bool canOpenCountry(_Country item) {
+                    if (item.premiumOnly && !isPremiumActive) return false;
+                    if (isPremiumActive) return true;
+                    return item.code.trim().toLowerCase() == homeCode;
+                  }
 
-
-
-    if (sortedCountries.isEmpty) {
-      return const Center(
-        child: Text('Nenhum país disponível'),
-      );
-    }
-
-    bool canOpenCountry(_Country item) {
-      if (item.premiumOnly && !isPremiumActive) return false;
-      if (isPremiumActive) return true;
-      return item.code.trim().toLowerCase() == homeCode;
-    }
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: sortedCountries.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 1.0,
-      ),
-      itemBuilder: (context, i) {
-        final item = sortedCountries[i];
-        final isMyCountry =
-            item.code.trim().toLowerCase() == homeCode;
-        // Free: selo informativo em países internacionais (sem bloquear/abrir cinza).
-        final showPremiumBadge = !isPremiumActive && !isMyCountry;
-
-        return InkWell(
-          onTap: () => _openCountry(item: item),
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  item.flag.isNotEmpty ? item.flag : _flagEmoji(item.code),
-                  style: const TextStyle(fontSize: 28, height: 1),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item.name,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF111827),
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (showPremiumBadge) ...[
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: sortedCountries.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      childAspectRatio: 1.0,
                     ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Text(
-                      t.get('premium'),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  },
-),
+                    itemBuilder: (context, i) {
+                      final item = sortedCountries[i];
+                      final isMyCountry =
+                          item.code.trim().toLowerCase() == homeCode;
+                      // Free: selo informativo em países internacionais (sem bloquear/abrir cinza).
+                      final showPremiumBadge = !isPremiumActive && !isMyCountry;
 
+                      return InkWell(
+                        onTap: () => _openCountry(item: item),
+                        borderRadius: BorderRadius.circular(18),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFE5E7EB)),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                item.flag.isNotEmpty
+                                    ? item.flag
+                                    : _flagEmoji(item.code),
+                                style: const TextStyle(fontSize: 28, height: 1),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                item.name,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF111827),
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (showPremiumBadge) ...[
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                        color: const Color(0xFFE2E8F0)),
+                                  ),
+                                  child: Text(
+                                    t.get('premium'),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
               const SizedBox(height: 16),
               HomeDiscoverSection(
                 countryCode: homeCode,
@@ -966,7 +909,6 @@ sortedCountries.sort((a, b) {
                 countryName: userCountryName,
                 city: userCity.isEmpty ? null : userCity,
               ),
-
             ],
           ),
         );

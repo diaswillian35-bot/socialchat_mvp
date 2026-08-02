@@ -1,12 +1,282 @@
 rules_version = '2';
 
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if false;
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function conversationDoc(conversationId) {
+      return firestore.get(
+        /databases/(default)/documents/conversations/$(conversationId)
+      );
+    }
+
+    function conversationExists(conversationId) {
+      return firestore.exists(
+        /databases/(default)/documents/conversations/$(conversationId)
+      );
+    }
+
+    function isConversationParticipant(conversationId) {
+      return signedIn()
+        && conversationExists(conversationId)
+        && uid() in conversationDoc(conversationId).data.participants;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isAudio() {
+      return request.resource.contentType.matches('audio/.*');
+    }
+
+    function underMb(mb) {
+      return request.resource.size < mb * 1024 * 1024;
+    }
+
+    function groupDoc(groupId) {
+      return firestore.get(
+        /databases/(default)/documents/groups/$(groupId)
+      );
+    }
+
+    function groupExists(groupId) {
+      return firestore.exists(
+        /databases/(default)/documents/groups/$(groupId)
+      );
+    }
+
+    function groupMembers(groupId) {
+      return groupDoc(groupId).data.members is list
+        ? groupDoc(groupId).data.members
+        : [];
+    }
+
+    function groupAdmins(groupId) {
+      return groupDoc(groupId).data.admins is list
+        ? groupDoc(groupId).data.admins
+        : [];
+    }
+
+    function isGroupOwner(groupId) {
+      return signedIn()
+        && groupExists(groupId)
+        && groupDoc(groupId).data.ownerId == uid();
+    }
+
+    function isGroupAdmin(groupId) {
+      return signedIn()
+        && groupExists(groupId)
+        && uid() in groupAdmins(groupId);
+    }
+
+    function isGroupMember(groupId) {
+      return signedIn()
+        && groupExists(groupId)
+        && uid() in groupMembers(groupId);
+    }
+
+    function isGroupAuthorized(groupId) {
+      return !isGroupStorageBanned(groupId)
+        && (
+          isGroupMember(groupId)
+          || isGroupOwner(groupId)
+          || isGroupAdmin(groupId)
+        );
+    }
+
+    function isGroupStorageBanned(groupId) {
+      return signedIn()
+        && firestore.exists(
+          /databases/(default)/documents/groups/$(groupId)/bannedUsers/$(uid())
+        )
+        && firestore.get(
+          /databases/(default)/documents/groups/$(groupId)/bannedUsers/$(uid())
+        ).data.isActive == true;
+    }
+
+    function groupNotDeleted(groupId) {
+      return groupExists(groupId)
+        && (
+          !('deleted' in groupDoc(groupId).data.keys())
+          || groupDoc(groupId).data.deleted == false
+        );
+    }
+
+    function isAllowedGroupImage() {
+      return request.resource.contentType in [
+        'image/jpeg',
+        'image/png',
+        'image/webp'
+      ];
+    }
+
+    function isAllowedGroupAudio() {
+      return request.resource.contentType in [
+        'audio/mp4',
+        'audio/mpeg',
+        'audio/aac',
+        'audio/x-m4a',
+        'audio/m4a'
+      ];
+    }
+
+    // =========================
+    // CHAT PRIVADO — ÁUDIO
+    // Path real do app: chat_audio/{conversationId}/{fileName}
+    // =========================
+    match /chat_audio/{conversationId}/{fileName} {
+      allow read: if isConversationParticipant(conversationId);
+
+      allow write: if isConversationParticipant(conversationId)
+        && isAudio()
+        && underMb(15);
+    }
+
+    // =========================
+    // CHAT PRIVADO — IMAGENS
+    // Path: chat_images/{conversationId}/{fileName}
+    // =========================
+    match /chat_images/{conversationId}/{fileName} {
+      allow read: if isConversationParticipant(conversationId);
+
+      allow write: if isConversationParticipant(conversationId)
+        && isImage()
+        && underMb(10);
+    }
+
+    // =========================
+    // PERFIL / GALERIA
+    // Path: users/{userId}/...
+    // =========================
+    match /users/{userId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && uid() == userId
+        && isImage()
+        && underMb(10);
+    }
+
+    // =========================
+    // GRUPOS — caminhos reais do app
+    // images: groups/{groupId}/images/{uid}/{file}
+    // audio:  groups/{groupId}/audio/{uid}/{file}
+    // avatar: groups/{groupId}/avatar/{file}   (singular)
+    // =========================
+
+    // Avatar/capa: leitura para autenticados (lista/join/descoberta via URL).
+    // Escrita só owner/admin. Criação de grupo NÃO faz upload antes do doc.
+    match /groups/{groupId}/avatar/{fileName} {
+      allow read: if signedIn();
+
+      allow write: if (isGroupOwner(groupId) || isGroupAdmin(groupId))
+        && groupNotDeleted(groupId)
+        && isAllowedGroupImage()
+        && underMb(10);
+
+      allow delete: if isGroupOwner(groupId) || isGroupAdmin(groupId);
+    }
+
+    // Imagens do chat — só membros/owner/admin
+    match /groups/{groupId}/images/{uploaderId}/{fileName} {
+      allow read: if isGroupAuthorized(groupId);
+
+      allow write: if isGroupAuthorized(groupId)
+        && groupNotDeleted(groupId)
+        && uploaderId == uid()
+        && isAllowedGroupImage()
+        && underMb(10);
+
+      allow delete: if isGroupOwner(groupId)
+        || isGroupAdmin(groupId)
+        || (isGroupAuthorized(groupId) && uploaderId == uid());
+    }
+
+    // Áudio do chat — só membros/owner/admin
+    match /groups/{groupId}/audio/{uploaderId}/{fileName} {
+      allow read: if isGroupAuthorized(groupId);
+
+      allow write: if isGroupAuthorized(groupId)
+        && groupNotDeleted(groupId)
+        && uploaderId == uid()
+        && isAllowedGroupAudio()
+        && underMb(15);
+
+      allow delete: if isGroupOwner(groupId)
+        || isGroupAdmin(groupId)
+        || (isGroupAuthorized(groupId) && uploaderId == uid());
+    }
+
+    // Bloqueia qualquer outro caminho sob groups/
+    match /groups/{groupId}/{allPaths=**} {
+      allow read, write, delete: if false;
+    }
+
+    // =========================
+    // EVENTOS
+    // Padrão oficial: events/{eventId}/photos/{fileName}
+    // Legado (somente leitura/delete próprio): events/{uid}/{fileName}
+    // =========================
+    function eventDoc(eventId) {
+      return firestore.get(
+        /databases/(default)/documents/events/$(eventId)
+      );
+    }
+
+    function eventExists(eventId) {
+      return firestore.exists(
+        /databases/(default)/documents/events/$(eventId)
+      );
+    }
+
+    function isEventOrganizer(eventId) {
+      return signedIn()
+        && eventExists(eventId)
+        && eventDoc(eventId).data.deleted != true
+        && (
+          eventDoc(eventId).data.createdBy == uid()
+          || eventDoc(eventId).data.organizerId == uid()
+          || eventDoc(eventId).data.ownerId == uid()
+          || eventDoc(eventId).data.userId == uid()
+        );
+    }
+
+    match /events/{eventId}/photos/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if isEventOrganizer(eventId)
+        && isImage()
+        && underMb(10);
+      allow delete: if isEventOrganizer(eventId);
+    }
+
+    // Paths legados events/{uid}/{file} — sem novos writes.
+    match /events/{legacyOwnerId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if false;
+      allow delete: if signedIn() && legacyOwnerId == uid();
+    }
+
+    match /events/{allPaths=**} {
+      allow read: if signedIn();
+      allow write, delete: if false;
+    }
+
+    // =========================
+    // POSTS
+    // Path: posts/{postId}/...
+    // =========================
+    match /posts/{postId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && isImage()
+        && underMb(10);
     }
   }
 }

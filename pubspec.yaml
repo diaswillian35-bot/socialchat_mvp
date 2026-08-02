@@ -2,7 +2,7 @@ name: socialchat_mvp
 description: "A new Flutter project."
 publish_to: "none"
 
-version: 1.0.0+1
+version: 1.0.2+3
 
 environment:
   sdk: ">=2.17.0 <4.0.0"
@@ -45,7 +45,9 @@ dependencies:
   app_links: ^6.4.1
   http: ^1.2.2
   cloud_functions: ^5.6.2
+  timezone: ^0.9.4
   flutter_tts: ^4.2.5
+  firebase_database: ^11.3.10
  
 
 dev_dependencies:

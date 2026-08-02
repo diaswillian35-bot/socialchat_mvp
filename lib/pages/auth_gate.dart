@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 
@@ -8,175 +7,63 @@ import 'login_page.dart';
 import 'splash_page.dart';
 import 'main_shell_page.dart';
 import 'email_verification_page.dart';
+import '../l10n/app_texts.dart';
+import '../services/group_join_service.dart';
 import '../services/push_service.dart';
+import '../services/event_deep_link_service.dart';
+import '../services/invite_premium_service.dart';
+import '../services/share_in_service.dart';
+import '../services/share_extension_session_service.dart';
 import 'group_chat_page.dart';
 
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
-
-  int _rewardDaysForInviteCount(int count) {
-    if (count >= 100) return 90;
-    if (count >= 50) return 60;
-    if (count >= 20) return 30;
-    if (count >= 10) return 7;
-    if (count >= 3) return 1;
-    return 0;
-  }
-
-
-  int _rewardLevelForInviteCount(int count) {
-    if (count >= 100) return 100;
-    if (count >= 50) return 50;
-    if (count >= 20) return 20;
-    if (count >= 10) return 10;
-    if (count >= 3) return 3;
-    return 0;
-  }
-
+  static bool _applyingPendingGroup = false;
+  static bool _applyingPendingInvite = false;
 
   Future<void> _applyPendingInviteIfAny(User user) async {
-    final prefs = await SharedPreferences.getInstance();
-    final ref = prefs.getString('pending_invite_ref') ?? '';
+    if (_applyingPendingInvite) return;
+    _applyingPendingInvite = true;
 
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ref = prefs.getString('pending_invite_ref') ?? '';
 
-    print('DEBUG invite: entrou _applyPendingInviteIfAny');
-    print('DEBUG invite: pendingRef = $ref');
+      print('DEBUG invite: entrou _applyPendingInviteIfAny');
+      print('DEBUG invite: pendingRef = $ref');
 
+      if (ref.isEmpty) return;
 
-    if (ref.isEmpty) return;
+      final result = await InvitePremiumService.applyInviteCode(ref);
+      print('DEBUG invite: applyInviteCode result = $result');
 
-
-    final firestore = FirebaseFirestore.instance;
-
-
-    final inviterQuery = await firestore
-        .collection('users')
-        .where('inviteCode', isEqualTo: ref)
-        .limit(1)
-        .get();
-
-
-    print('DEBUG invite: inviterQuery docs = ${inviterQuery.docs.length}');
-
-
-    if (inviterQuery.docs.isEmpty) return;
-
-
-    final inviterUid = inviterQuery.docs.first.id;
-    print('DEBUG invite: inviterUid = $inviterUid');
-
-
-    if (user.uid == inviterUid) {
-      print('DEBUG invite: auto convite bloqueado');
-      return;
-    }
-
-
-    final userRef = firestore.collection('users').doc(user.uid);
-    final inviterRef = firestore.collection('users').doc(inviterUid);
-
-
-    final userSnap = await userRef.get();
-    final userData = userSnap.data() ?? {};
-
-
-    final alreadyInvited = (userData['invitedBy'] ?? '').toString().trim();
-    print('DEBUG invite: alreadyInvited = $alreadyInvited');
-
-
-    if (alreadyInvited.isNotEmpty) return;
-
-
-    String snackMessage = '🎉 Convite aplicado: $ref';
-
-
-    await firestore.runTransaction((tx) async {
-      final inviterSnap = await tx.get(inviterRef);
-      final inviterData = inviterSnap.data() ?? {};
-
-
-      final currentInvites = (inviterData['invitesCount'] is num)
-          ? (inviterData['invitesCount'] as num).toInt()
-          : 0;
-
-
-      final currentRewardLevel = (inviterData['inviteRewardLevel'] is num)
-          ? (inviterData['inviteRewardLevel'] as num).toInt()
-          : 0;
-
-
-      final newInvitesCount = currentInvites + 1;
-      final nextRewardLevel = _rewardLevelForInviteCount(newInvitesCount);
-      final rewardDays = _rewardDaysForInviteCount(newInvitesCount);
-
-
-      print('DEBUG invite: currentInvites = $currentInvites');
-      print('DEBUG invite: newInvitesCount = $newInvitesCount');
-      print('DEBUG invite: currentRewardLevel = $currentRewardLevel');
-      print('DEBUG invite: nextRewardLevel = $nextRewardLevel');
-      print('DEBUG invite: rewardDays = $rewardDays');
-      print('DEBUG invite: vai salvar invitedBy no user ${user.uid}');
-
-
-      tx.set(userRef, {
-        'invitedBy': inviterUid,
-        'invitedByCode': ref,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-
-      final Map<String, dynamic> inviterPatch = {
-        'invitesCount': newInvitesCount,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-
-      if (nextRewardLevel > currentRewardLevel && rewardDays > 0) {
-        DateTime baseDate = DateTime.now();
-
-
-        final premiumUntilRaw = inviterData['premiumUntil'];
-        if (premiumUntilRaw is Timestamp) {
-          final existing = premiumUntilRaw.toDate();
-          if (existing.isAfter(baseDate)) {
-            baseDate = existing;
-          }
-        }
-
-
-        final newPremiumUntil = baseDate.add(Duration(days: rewardDays));
-
-
-        inviterPatch['premiumType'] = 'trial';
-        inviterPatch['premiumUntil'] = Timestamp.fromDate(newPremiumUntil);
-        inviterPatch['inviteRewardLevel'] = nextRewardLevel;
-
-
-        if (nextRewardLevel >= 100) {
-          inviterPatch['isAmbassador'] = true;
-        }
-
-
-        snackMessage =
-            '🎉 Convite aplicado: $ref • Recompensa liberada: $rewardDays dia(s)';
+      if (result['applied'] == true || result['alreadyApplied'] == true) {
+        await prefs.remove('pending_invite_ref');
+        print('DEBUG invite: pending_invite_ref removido');
       }
 
+      final ctx = PushService.navKey.currentContext;
+      if (ctx == null) return;
 
-      tx.set(inviterRef, inviterPatch, SetOptions(merge: true));
-    });
+      final t = AppTexts.current;
+      String snackMessage;
+      if (result['alreadyApplied'] == true) {
+        snackMessage = t.get('invite_already_applied');
+      } else if (result['applied'] == true && result['rewardGranted'] == true) {
+        final days = result['rewardDays'];
+        snackMessage = t
+            .get('invite_applied_with_reward')
+            .replaceAll('{ref}', ref)
+            .replaceAll('{days}', '$days');
+      } else if (result['applied'] == true) {
+        snackMessage =
+            t.get('invite_applied').replaceAll('{ref}', ref);
+      } else {
+        return;
+      }
 
-
-    print('DEBUG invite: transaction concluída');
-
-
-    await prefs.remove('pending_invite_ref');
-    print('DEBUG invite: pending_invite_ref removido');
-
-
-    final ctx = PushService.navKey.currentContext;
-    if (ctx != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(
@@ -186,88 +73,90 @@ class AuthGate extends StatelessWidget {
           ),
         );
       });
+    } catch (e) {
+      print('DEBUG invite: applyInviteCode erro = $e');
+    } finally {
+      _applyingPendingInvite = false;
     }
   }
 
 
 Future<void> _applyPendingGroupIfAny(User user) async {
+  if (_applyingPendingGroup) return;
+  _applyingPendingGroup = true;
+
+  try {
   final prefs = await SharedPreferences.getInstance();
-  final code = prefs.getString('pending_group_code') ?? '';
+  final rawCode = prefs.getString('pending_group_code') ?? '';
+  final code = GroupJoinService.normalizeInviteCode(rawCode);
 
   print('DEBUG group: pending code = $code');
 
-  if (code.isEmpty) return;
+  if (code.isEmpty) {
+    if (rawCode.isNotEmpty) {
+      await prefs.remove('pending_group_code');
+    }
+    return;
+  }
 
-  final firestore = FirebaseFirestore.instance;
+  final result = await GroupJoinService.joinByInviteCode(
+    inviteCode: code,
+    uid: user.uid,
+  );
 
-  final groupQuery = await firestore
-      .collection('groups')
-      .where('inviteCode', isEqualTo: code)
-      .limit(1)
-      .get();
-
-  if (groupQuery.docs.isEmpty) return;
-
-  final groupDoc = groupQuery.docs.first;
-  final groupRef = groupDoc.reference;
-
-  final uid = user.uid;
-
-  final groupData = groupDoc.data();
-final members = (groupData['members'] ?? []) as List;
-
-if (members.contains(uid)) {
+  // Limpa após processamento concluído ou erro definitivo.
   await prefs.remove('pending_group_code');
-  return;
-}
 
+  final ctx = PushService.navKey.currentContext;
+  if (ctx == null) return;
 
-  await groupRef.update({
-    'members': FieldValue.arrayUnion([uid]),
-    'membersCount': FieldValue.increment(1),
-  });
+  String message;
+  try {
+    final t = AppTexts.current;
+    if (result.outcome == GroupJoinOutcome.error) {
+      message =
+          '${t.get(result.messageKey)} ${result.errorDetail ?? ''}'.trim();
+    } else if (result.outcome == GroupJoinOutcome.pendingCreated) {
+      message = t.get('group_request_pending_toast');
+    } else {
+      message = t.get(result.messageKey);
+    }
+  } catch (_) {
+    message = result.messageKey;
+  }
 
-await prefs.remove('pending_group_code');
-
-final ctx = PushService.navKey.currentContext;
-if (ctx != null) {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     ScaffoldMessenger.of(ctx).showSnackBar(
-      const SnackBar(
- 
-
-        content: Text('🎉 Você entrou no grupo!'),
+      SnackBar(
+        content: Text(message),
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 4),
+        duration: const Duration(seconds: 4),
       ),
-      
     );
-     {
-  Navigator.push(
-    ctx,
-    MaterialPageRoute(
-      
 
-builder: (_) {
-  final groupData = groupDoc.data();
-  final groupName = (groupData['name'] ?? groupData['title'] ?? 'Grupo').toString();
+    if (result.didEnterChat &&
+        result.groupId != null &&
+        result.groupId!.isNotEmpty) {
+      final groupName = (result.groupName ?? '').trim().isEmpty
+          ? 'Grupo'
+          : result.groupName!.trim();
 
-
-  return GroupChatPage(
-    groupId: groupDoc.id,
-    groupName: groupName,
-  );
-},
-
-    ),
-  );
-};
-
+      Navigator.push(
+        ctx,
+        MaterialPageRoute(
+          builder: (_) => GroupChatPage(
+            groupId: result.groupId!,
+            groupName: groupName,
+          ),
+        ),
+      );
+    }
   });
-}
 
-print('DEBUG group: entrou no grupo com sucesso');
-
+  print('DEBUG group: pending outcome = ${result.outcome}');
+  } finally {
+    _applyingPendingGroup = false;
+  }
 }
 
   @override
@@ -294,6 +183,11 @@ if (isEmailPasswordLogin && !user.emailVerified) {
 WidgetsBinding.instance.addPostFrameCallback((_) {
   _applyPendingInviteIfAny(user);
   _applyPendingGroupIfAny(user);
+  EventDeepLinkService.applyPendingIfAny();
+  // Auth + primeiro frame: processa fila prefs e poll do App Group.
+  ShareInService.applyPendingIfAny();
+  ShareInService.pollNativePending();
+  ShareExtensionSessionService.ensureSession();
 });
 
 return const MainShell();

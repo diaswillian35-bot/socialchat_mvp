@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "socialchatmvp"
-  }
+  },
+  "targets": {
+    "socialchatmvp": {
+      "hosting": {
+        "app": [
+          "socialchatmvp"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

@@ -21,9 +21,13 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/events/$(eventId));
     }
 
+    function eventExists(eventId) {
+      return exists(/databases/$(database)/documents/events/$(eventId));
+    }
+
     function isEventOrganizer(eventId) {
       return signedIn()
-        && eventDoc(eventId).exists
+        && eventExists(eventId)
         && ownerIdFromMap(eventDoc(eventId).data) == uid();
     }
 
@@ -84,12 +88,20 @@ service cloud.firestore {
 
     function isPremiumUser(userId) {
       let d = userDoc(userId).data;
-      return d.get('isMaster', false) == true
-        || d.get('isPremium', false) == true
-        || d.get('premiumUntil', timestamp.date(1970, 1, 1)) > request.time;
+      // Campos null (isMaster/premiumUntil: null) não usam o default de get()
+      // e quebram comparações → Null value error. Sempre testar `is timestamp`.
+      let master = d.get('isMaster', false) == true;
+      let untilRaw = d.get('premiumUntil', timestamp.date(1970, 1, 1));
+      let untilActive = untilRaw is timestamp && untilRaw > request.time;
+      // Se a chave premiumUntil existe (mesmo null/expirado): só until futuro libera.
+      // Sem a chave: legado isPremium == true ainda conta.
+      let hasUntilKey = d.keys().hasAny(['premiumUntil']);
+      let legacyPremium = !hasUntilKey && d.get('isPremium', false) == true;
+      return master || untilActive || legacyPremium;
     }
 
-    // Campos de Premium/assinatura/convite — somente Admin SDK / Functions.
+    // Campos de Premium/assinatura/convite/admin — somente Admin SDK / Functions.
+    // homeCountryCode NÃO entra aqui: tem regra própria (primeira definição).
     function premiumInviteProtectedKeys() {
       return [
         'isPremium',
@@ -108,15 +120,34 @@ service cloud.firestore {
         'isAmbassador',
         'invitesCount',
         'isMaster',
-        'homeCountryCode'
+        'isAdmin',
+        'isPlatformAdmin',
+        'isBanned',
+        'accountDeleted',
+        'invitedBy',
+        'invitedByCode',
+        'role',
+        'roles',
+        'permissions'
       ];
     }
 
     function premiumInviteFieldsUnchanged() {
-      return !request.resource.data
-        .diff(resource.data)
-        .affectedKeys()
-        .hasAny(premiumInviteProtectedKeys());
+      return resource != null
+        && !request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasAny(premiumInviteProtectedKeys());
+    }
+
+    // homeCountryCode: criar/primeira definição OK; depois só o mesmo valor (case-insensitive).
+    function homeCountryCodeChangeAllowed() {
+      return resource != null
+        && (
+          normCountryCode(resource.data.get('homeCountryCode', '')).size() == 0
+          || normCountryCode(resource.data.get('homeCountryCode', ''))
+            == normCountryCode(request.resource.data.get('homeCountryCode', ''))
+        );
     }
 
     function isUserCreatePremiumSafe() {
@@ -136,7 +167,14 @@ service cloud.firestore {
         && (!('isAmbassador' in d) || d.isAmbassador == false)
         && (!('invitesCount' in d) || d.invitesCount == 0)
         && (!('isMaster' in d) || d.isMaster == false)
-        && (!('isPremium' in d) || d.isPremium == false);
+        && (!('isAdmin' in d) || d.isAdmin == false)
+        && (!('isPlatformAdmin' in d) || d.isPlatformAdmin == false)
+        && (!('isPremium' in d) || d.isPremium == false)
+        && (!('isBanned' in d) || d.isBanned == false)
+        && (!('accountDeleted' in d) || d.accountDeleted == false)
+        && (!('role' in d) || d.role == null || d.role == '')
+        && (!('roles' in d))
+        && (!('permissions' in d));
     }
 
     function isInternationalBetween(uidA, uidB) {
@@ -202,10 +240,11 @@ service cloud.firestore {
         && uid() == userId
         && isUserCreatePremiumSafe();
 
-      // Update: perfil ok; campos Premium/assinatura/convite protegidos (Admin only).
+      // Update: perfil ok; Premium/admin protegidos; homeCountryCode só 1ª definição ou mesmo valor.
       allow update: if signedIn()
         && uid() == userId
-        && premiumInviteFieldsUnchanged();
+        && premiumInviteFieldsUnchanged()
+        && homeCountryCodeChangeAllowed();
 
       allow delete: if false;
 
@@ -226,12 +265,67 @@ service cloud.firestore {
     }
 
     // =========================
+    // PRESENCE COUNTERS (server-only; RTDB mirror)
+    // =========================
+    match /presenceState/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /presenceCounters/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /presenceReconcileCheckpoint/{docId} {
+      allow read, write: if false;
+    }
+
+    // =========================
     // PUBLIC PROFILES (app Remdy)
     // =========================
     match /publicUsers/{userId} {
       allow read: if signedIn();
-      allow create, update: if signedIn() && uid() == userId;
+      // Cliente pode criar/atualizar perfil público, mas NÃO pode forçar
+      // isOnline:false no agregado (offline do agregado = Cloud Function / TTL).
+      allow create: if signedIn() && uid() == userId;
+      allow update: if signedIn()
+        && uid() == userId
+        && (
+          !('isOnline' in request.resource.data.diff(resource.data).affectedKeys())
+          || request.resource.data.isOnline == true
+        );
       allow delete: if false;
+
+      // Sessões/aparelhos do mesmo UID — escrita só do dono.
+      // Leitura assinada para prune local; o contador usa o doc pai.
+      match /sessions/{sessionId} {
+        allow read: if signedIn() && uid() == userId;
+        allow create, update: if signedIn()
+          && uid() == userId
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'sessionId',
+            'isOnline',
+            'lastSeenAt',
+            'updatedAt',
+            'platform'
+          ])
+          && request.resource.data.uid == userId
+          && request.resource.data.uid == uid()
+          && request.resource.data.sessionId == sessionId
+          && request.resource.data.isOnline is bool
+          && request.resource.data.updatedAt is timestamp
+          && (
+            !('lastSeenAt' in request.resource.data)
+            || request.resource.data.lastSeenAt is timestamp
+          )
+          && (
+            !('platform' in request.resource.data)
+            || request.resource.data.platform is string
+          );
+        allow delete: if signedIn() && uid() == userId;
+      }
     }
 
     // =========================
@@ -262,12 +356,22 @@ service cloud.firestore {
       // Criação/edição editorial somente via Cloud Functions createEvent/updateEvent.
       allow create: if false;
       // App: sem update client (cancelEvent CF). Admin_Talksy: aprova/rejeita via cliente.
+      // likesCount NÃO é editável pelo cliente — somente Admin SDK (toggleEventLike).
       allow update: if hasAdminPermission('events');
       allow delete: if hasAdminPermission('events');
 
       match /comments/{commentId} {
         allow read: if signedIn();
         // Criar/curtir/excluir somente via Cloud Functions (Admin SDK).
+        allow create, update, delete: if false;
+      }
+
+      // Curtidas escaláveis: events/{eventId}/likes/{uid}
+      // Contador agregado (likesCount) só via Cloud Function toggleEventLike.
+      match /likes/{likeUid} {
+        // Leitura pontual do próprio like (sem list da coleção / sem listener global).
+        allow get: if signedIn() && uid() == likeUid;
+        allow list: if false;
         allow create, update, delete: if false;
       }
 
@@ -329,10 +433,18 @@ service cloud.firestore {
           && request.resource.data.toUid in partsFrom(conv(cid).data)
           && request.resource.data.toUid != uid()
           && isValidMessagePayload()
-          && canSendMessageInConversation(cid);
+          && canSendMessageInConversation(cid)
+          // linkPreview/linkPreviewStatus são escritos somente pela Cloud
+          // Function fetchLinkPreview via Admin SDK (bypassa Rules).
+          && !('linkPreview' in request.resource.data)
+          && !('linkPreviewStatus' in request.resource.data);
 
         // Apagar para mim (hiddenFor) ou soft-delete do autor.
+        // linkPreview/linkPreviewStatus nunca são afetados por updates do
+        // cliente (só a Cloud Function fetchLinkPreview, via Admin SDK).
         allow update: if isParticipantById(cid)
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['linkPreview', 'linkPreviewStatus'])
           && (
             (
               request.resource.data.diff(resource.data).affectedKeys()
@@ -393,21 +505,26 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/groups/$(gid));
     }
 
+    // get() retorna Resource sem propriedade `.exists` — usar exists(path).
+    function groupExistsById(gid) {
+      return exists(/databases/$(database)/documents/groups/$(gid));
+    }
+
     function isOwnerOfGroup(gid) {
       return signedIn()
-        && groupDocById(gid).exists
-        && groupDocById(gid).data.ownerId == uid();
+        && groupExistsById(gid)
+        && groupDocById(gid).data.get('ownerId', '') == uid();
     }
 
     function isAdminOfGroup(gid) {
       return signedIn()
-        && groupDocById(gid).exists
+        && groupExistsById(gid)
         && uid() in groupAdmins(groupDocById(gid).data);
     }
 
     function isMemberOfGroup(gid) {
       return signedIn()
-        && groupDocById(gid).exists
+        && groupExistsById(gid)
         && uid() in groupMembers(groupDocById(gid).data);
     }
 
@@ -441,9 +558,11 @@ service cloud.firestore {
     }
 
     function isGroupBanned(gid, who) {
+      // Fail-closed: doc de ban existente sem isActive explícito = banido.
+      // isActive:false = desbanido. Null/ausente no doc existente ≠ liberar.
       let banPath = /databases/$(database)/documents/groups/$(gid)/bannedUsers/$(who);
       return exists(banPath)
-        && get(banPath).data.get('isActive', false) == true;
+        && get(banPath).data.get('isActive', true) == true;
     }
 
     function groupOwnerIdUnchanged() {
@@ -496,29 +615,12 @@ service cloud.firestore {
         );
     }
 
-    // Não-membro entra somente em grupo open (self-join no cliente).
-    // inviteOnly: apenas Cloud Function joinGroupByInviteCode (Admin SDK).
-    // approval: pendingRequests.
-    function isGroupOpenSelfJoin() {
-      let policy = resource.data.get('joinPolicy', 'open');
-      return signedIn()
-        && !(uid() in groupMembers(resource.data))
-        && resource.data.get('deleted', false) == false
-        && policy == 'open'
-        && canAccessInternationalGroup(groupId)
-        && groupOwnerIdUnchanged()
-        && groupAdmins(request.resource.data) == groupAdmins(resource.data)
-        && request.resource.data.get('deleted', false) == resource.data.get('deleted', false)
-        && request.resource.data.get('joinPolicy', 'open') == policy
-        && request.resource.data.get('scope', '') == resource.data.get('scope', '')
-        && groupAffectedKeys().hasOnly(['members', 'membersCount', 'unread', 'updatedAt'])
-        && listOnlyAddedUid(groupMembers(resource.data), groupMembers(request.resource.data), uid())
-        && request.resource.data.membersCount is int
-        && request.resource.data.membersCount == groupMembers(resource.data).size() + 1;
-    }
+    // Self-join open: somente Cloud Function joinOpenGroup (Admin SDK).
+    // Rules não conseguem provar a ordem exata de um prefixo de lista
+    // arbitrário; por isso o cliente não atualiza o documento do grupo.
 
     // Metadados lastMessage/unread: somente onGroupMessageCreated / markGroupAsRead (Admin SDK).
-    // Cliente NÃO atualiza lastMessage nem o mapa unread completo.
+    // Cliente NÃO atualiza lastMessage nem o mapa unread.
 
     // Saída voluntária: somente via Cloud Function leaveGroup (Admin SDK).
     // Soft-delete: somente via Cloud Function deleteGroup (Admin SDK).
@@ -540,14 +642,10 @@ service cloud.firestore {
       // Criação somente via Cloud Function createGroup (Admin SDK).
       allow create: if false;
 
-      allow update: if signedIn()
-        && !isGroupBanned(groupId, uid())
-        && resource.data.get('deleted', false) == false
-        && request.resource.data.get('deleted', false) == false
-        && groupOwnerIdUnchanged()
-        && (
-          isGroupOpenSelfJoin()
-        );
+      // Toda mutação do documento raiz passa por Functions/Admin SDK:
+      // joinOpenGroup, approveGroupJoinRequest, leaveGroup,
+      // updateGroupSettings e deleteGroup.
+      allow update: if false;
 
       allow delete: if false;
 
@@ -566,10 +664,13 @@ service cloud.firestore {
         }
 
         function groupNotDeleted() {
-          return groupDocById(groupId).exists
-            && groupDocById(groupId).data.get('deleted', false) == false;
+          return groupExistsById(groupId)
+            && groupDocById(groupId).data.get('deleted', false) != true;
         }
 
+        // NÃO adicionar 'linkPreview' / 'linkPreviewStatus' a esta allowlist:
+        // esses campos são escritos somente pela Cloud Function
+        // fetchLinkPreview via Admin SDK (bypassa Rules), nunca pelo cliente.
         function messageCreateKeysOk() {
           return request.resource.data.keys().hasOnly([
             'id',
@@ -660,7 +761,10 @@ service cloud.firestore {
 
         allow create: if isValidMessageCreate();
 
-        allow update: if isMessageDeleteForMe() || isMessageSoftDeleteForAll();
+        // linkPreview/linkPreviewStatus nunca são afetados por updates do
+        // cliente (só a Cloud Function fetchLinkPreview, via Admin SDK).
+        allow update: if !messageAffectedKeys().hasAny(['linkPreview', 'linkPreviewStatus'])
+          && (isMessageDeleteForMe() || isMessageSoftDeleteForAll());
 
         allow delete: if false;
       }
@@ -675,8 +779,8 @@ service cloud.firestore {
 
         allow create, update: if signedIn()
           && uid() == readerId
-          && groupDocById(groupId).exists
-          && groupDocById(groupId).data.get('deleted', false) == false
+          && groupExistsById(groupId)
+          && groupDocById(groupId).data.get('deleted', false) != true
           && !isGroupBanned(groupId, uid())
           && (isMemberOfGroup(groupId) || isOwnerOrAdminOfGroup(groupId))
           && request.resource.data.keys().hasOnly([
@@ -712,15 +816,20 @@ service cloud.firestore {
           ]);
         }
 
-        function isValidPendingCreate() {
-          return isPendingRequester()
-            && groupDocById(groupId).exists
-            && groupDocById(groupId).data.get('deleted', false) == false
+        // deleted ausente/null deve contar como ativo (legado).
+        function groupAllowsPendingJoin() {
+          return groupExistsById(groupId)
+            && groupDocById(groupId).data.get('deleted', false) != true
+            && groupJoinPolicy(groupId) == 'approval'
             && !isGroupBanned(groupId, uid())
             && canAccessInternationalGroup(groupId)
-            && groupJoinPolicy(groupId) == 'approval'
             && !isMemberOfGroup(groupId)
-            && !isOwnerOrAdminOfGroup(groupId)
+            && !isOwnerOrAdminOfGroup(groupId);
+        }
+
+        function isValidPendingCreate() {
+          return isPendingRequester()
+            && groupAllowsPendingJoin()
             && request.resource.data.uid == uid()
             && request.resource.data.status == 'pending'
             && pendingCreateKeysOk();
@@ -729,8 +838,7 @@ service cloud.firestore {
         // Solicitante: re-pedido (ex. após rejected) ou manter pending — nunca self-approve.
         function isRequesterPendingUpdate() {
           return isPendingRequester()
-            && !isOwnerOrAdminOfGroup(groupId)
-            && !isGroupBanned(groupId, uid())
+            && groupAllowsPendingJoin()
             && request.resource.data.uid == uid()
             && request.resource.data.status == 'pending'
             && pendingAffectedKeys().hasOnly([
@@ -739,14 +847,17 @@ service cloud.firestore {
               'photoUrl',
               'status',
               'createdAt'
-            ])
-            && !isMemberOfGroup(groupId)
-            && groupJoinPolicy(groupId) == 'approval';
+            ]);
         }
 
         // Aprovação/rejeição: somente Cloud Functions (Admin SDK).
 
-        allow read: if isPendingRequester() || isOwnerOrAdminOfGroup(groupId);
+        allow get: if isPendingRequester() || isOwnerOrAdminOfGroup(groupId);
+        allow list: if groupExistsById(groupId)
+          && (
+            groupDocById(groupId).data.get('ownerId', '') == uid()
+            || uid() in groupAdmins(groupDocById(groupId).data)
+          );
 
         allow create: if isValidPendingCreate();
 
@@ -774,8 +885,8 @@ service cloud.firestore {
 
         allow create, update: if signedIn()
           && presenceId == uid()
-          && groupDocById(groupId).exists
-          && groupDocById(groupId).data.get('deleted', false) == false
+          && groupExistsById(groupId)
+          && groupDocById(groupId).data.get('deleted', false) != true
           && !isGroupBanned(groupId, uid())
           && (isMemberOfGroup(groupId) || isOwnerOrAdminOfGroup(groupId))
           && request.resource.data.keys().hasOnly([
@@ -784,6 +895,7 @@ service cloud.firestore {
             'recording',
             'isOnline',
             'lastSeen',
+            'lastSeenAt',
             'updatedAt',
             'deviceId'
           ])
@@ -817,6 +929,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Cache server-side de Place Details (Admin SDK only).
+    match /placesCache/{placeId} {
+      allow read, write: if false;
+    }
+
     // Escritas somente via Cloud Functions (Admin SDK).
     match /boost_checkouts/{docId} {
       allow read, write: if false;
@@ -827,6 +944,10 @@ service cloud.firestore {
     }
 
     match /portal_qr_login_sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /portal_qr_login_rate_limits/{docId} {
       allow read, write: if false;
     }
 
@@ -851,9 +972,47 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Remi usage counters — somente Admin SDK (Cloud Functions).
+    // Remi usage counters + idempotency — somente Admin SDK (Cloud Functions).
     match /remiUsage/{uid} {
       allow read, write: if false;
+      match /requests/{requestId} {
+        allow read, write: if false;
+      }
+    }
+
+    // =========================
+    // LINK PREVIEW (fetchLinkPreview Cloud Function) — server-only
+    // =========================
+    // Cache de preview de link: linkPreviewCache/{hash}. Ver CACHE POLICY
+    // em functions/link_preview_logic.js. Somente Admin SDK lê/escreve.
+    match /linkPreviewCache/{id} {
+      allow read, write: if false;
+    }
+
+    // Janelas de rate limit internas (link preview, busca, etc.).
+    // Somente Admin SDK lê/escreve.
+    match /_rateLimits/{id} {
+      allow read, write: if false;
+    }
+
+    // Share Extension sessions / idempotency — Admin SDK only (deny-all clients).
+    match /shareExtensionSessions/{sid} {
+      allow read, write: if false;
+    }
+    match /shareExtensionIdempotency/{id} {
+      allow read, write: if false;
+    }
+    match /forwardIdempotency/{id} {
+      allow read, write: if false;
+    }
+
+    // collectionGroup('pendingRequests') — badges de pedido pendente do próprio uid.
+    // Comparar resource.data.uid (não o wildcard): em collectionGroup o id do
+    // doc pode não bindar de forma segura em alguns avaliadores → Null value.
+    match /{path=**}/pendingRequests/{pendingReqId} {
+      allow read: if signedIn()
+        && resource.data.keys().hasAll(['uid'])
+        && resource.data.uid == uid();
     }
   }
 }

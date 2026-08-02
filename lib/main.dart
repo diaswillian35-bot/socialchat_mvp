@@ -2,38 +2,51 @@ import 'dart:async';
 
 
 import 'package:app_links/app_links.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'firebase_options.dart';
 import 'l10n/app_texts.dart';
 import 'pages/auth_gate.dart';
 import 'pages/join_group_page.dart';
+import 'services/app_orientation.dart';
+import 'services/firebase_bootstrap.dart';
+import 'services/group_join_service.dart';
 import 'services/locale_controller.dart';
 import 'services/push_service.dart';
+import 'services/remdy_link_router.dart';
+import 'services/safe_remdy_navigation.dart';
 import 'pages/event_deep_link_page.dart';
 import 'pages/portal_qr_login_approve_page.dart';
+import 'services/event_deep_link_service.dart';
+import 'services/invite_premium_service.dart';
+import 'services/share_in_service.dart';
+import 'services/share_extension_session_service.dart';
+import 'widgets/keyboard_dismiss.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'utils/event_timezone.dart';
 
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Separate isolate: own Firebase registry; still must be idempotent.
+  await ensureFirebaseInitialized();
 }
 
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await ensureFirebaseInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  tzdata.initializeTimeZones();
+  EventTimezone.markReady();
+
+  // Vertical-only em celulares (antes de runApp; não altera o bootstrap Firebase).
+  await AppOrientation.lockToPortraitUp();
 
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   await PushService.init();
@@ -61,7 +74,7 @@ class MyApp extends StatefulWidget {
 }
 
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _openingGroupInvite = false;
 String _lastGroupInviteCode = '';
 
@@ -77,7 +90,29 @@ String _lastGroupInviteCode = '';
   void initState() {
     super.initState();
     print('DEBUG main: initState MyApp');
+    WidgetsBinding.instance.addObserver(this);
+    RemdyLinkRouter.handler = _handleIncomingLink;
     _setupDeepLinks();
+    // Share-in nativo (Android ACTION_SEND / iOS Share Extension).
+    ShareInService.start();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (identical(RemdyLinkRouter.handler, _handleIncomingLink)) {
+      RemdyLinkRouter.handler = null;
+    }
+    _linkSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ShareInService.onAppResumed();
+      ShareExtensionSessionService.ensureSession();
+    }
   }
 
 
@@ -137,26 +172,6 @@ String _lastGroupInviteCode = '';
   }
 
 
-  int _rewardDaysForInviteCount(int count) {
-    if (count >= 100) return 90;
-    if (count >= 50) return 60;
-    if (count >= 20) return 30;
-    if (count >= 10) return 7;
-    if (count >= 3) return 1;
-    return 0;
-  }
-
-
-  int _rewardLevelForInviteCount(int count) {
-    if (count >= 100) return 100;
-    if (count >= 50) return 50;
-    if (count >= 20) return 20;
-    if (count >= 10) return 10;
-    if (count >= 3) return 3;
-    return 0;
-  }
-
-
   Future<void> _saveInviteRef(String ref) async {
     print('DEBUG main: entrou _saveInviteRef com ref = $ref');
 
@@ -175,104 +190,49 @@ String _lastGroupInviteCode = '';
       return;
     }
 
-
-    final firestore = FirebaseFirestore.instance;
-
-
-    final inviterQuery = await firestore
-        .collection('users')
-        .where('inviteCode', isEqualTo: ref)
-        .limit(1)
-        .get();
-
-
-    print('DEBUG main: inviterQuery docs = ${inviterQuery.docs.length}');
-
-
-    if (inviterQuery.docs.isEmpty) return;
-
-
-    final inviterUid = inviterQuery.docs.first.id;
-    if (user.uid == inviterUid) return;
-
-
-    final userRef = firestore.collection('users').doc(user.uid);
-    final inviterRef = firestore.collection('users').doc(inviterUid);
-
-
-    await firestore.runTransaction((tx) async {
-      final userSnap = await tx.get(userRef);
-      final inviterSnap = await tx.get(inviterRef);
-
-
-      final userData = userSnap.data() ?? {};
-      final inviterData = inviterSnap.data() ?? {};
-
-
-      final currentInvitedBy =
-          (userData['invitedBy'] ?? '').toString().trim();
-      if (currentInvitedBy.isNotEmpty) return;
-
-
-      final currentInvites = (inviterData['invitesCount'] is num)
-          ? (inviterData['invitesCount'] as num).toInt()
-          : 0;
-
-
-      final currentRewardLevel = (inviterData['inviteRewardLevel'] is num)
-          ? (inviterData['inviteRewardLevel'] as num).toInt()
-          : 0;
-
-
-      final newInvitesCount = currentInvites + 1;
-      final nextRewardLevel = _rewardLevelForInviteCount(newInvitesCount);
-      final rewardDays = _rewardDaysForInviteCount(newInvitesCount);
-
-
-      tx.set(userRef, {
-        'invitedBy': inviterUid,
-        'invitedByCode': ref,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-
-      final Map<String, dynamic> inviterPatch = {
-        'invitesCount': newInvitesCount,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-
-      if (nextRewardLevel > currentRewardLevel && rewardDays > 0) {
-        DateTime baseDate = DateTime.now();
-
-
-        final premiumUntilRaw = inviterData['premiumUntil'];
-        if (premiumUntilRaw is Timestamp) {
-          final existing = premiumUntilRaw.toDate();
-          if (existing.isAfter(baseDate)) {
-            baseDate = existing;
-          }
-        }
-
-
-        final newPremiumUntil = baseDate.add(Duration(days: rewardDays));
-
-
-        inviterPatch['premiumType'] = 'trial';
-        inviterPatch['premiumUntil'] = Timestamp.fromDate(newPremiumUntil);
-        inviterPatch['inviteRewardLevel'] = nextRewardLevel;
-
-
-        if (nextRewardLevel >= 100) {
-          inviterPatch['isAmbassador'] = true;
-        }
+    try {
+      final result = await InvitePremiumService.applyInviteCode(ref);
+      print('DEBUG main: applyInviteCode result = $result');
+      if (result['applied'] == true || result['alreadyApplied'] == true) {
+        await prefs.remove('pending_invite_ref');
       }
-
-
-      tx.set(inviterRef, inviterPatch, SetOptions(merge: true));
-    });
+    } catch (e) {
+      print('DEBUG main: applyInviteCode erro = $e');
+    }
   }
 
+
+  Future<void> _openGroupInviteByCode(String rawCode) async {
+    final code = GroupJoinService.normalizeInviteCode(rawCode);
+    if (code.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('pending_group_code', code);
+
+    if (_openingGroupInvite && _lastGroupInviteCode == code) {
+      return;
+    }
+
+    _openingGroupInvite = true;
+    _lastGroupInviteCode = code;
+
+    Future.delayed(const Duration(milliseconds: 700), () async {
+      final nav = PushService.navKey.currentState;
+
+      if (nav == null) {
+        _openingGroupInvite = false;
+        return;
+      }
+
+      // Sempre deixa MainShell sob JoinGroupPage — Voltar não fecha o app.
+      await SafeRemdyNavigation.openOverShell(
+        nav: nav,
+        shellIndex: 2,
+        page: JoinGroupPage(inviteCode: code),
+      );
+      _openingGroupInvite = false;
+    });
+  }
 
   Future<void> _handleIncomingLink(Uri uri) async {
   print('DEBUG main: _handleIncomingLink uri = $uri');
@@ -291,49 +251,45 @@ String _lastGroupInviteCode = '';
   if (segments.length >= 2 && segments.first.toLowerCase() == 'g') {
     final code = segments[1].trim();
     if (code.isEmpty) return;
-    
-if (_openingGroupInvite &&
-    _lastGroupInviteCode == code) {
-  return;
-}
-
-_openingGroupInvite = true;
-_lastGroupInviteCode = code;
-
-
-
-Future.delayed(const Duration(milliseconds: 700), () {
-  final nav = PushService.navKey.currentState;
-  
-if (nav == null) {
-  _openingGroupInvite = false;
-  return;
-}
-
-
-  nav.pushAndRemoveUntil(
-    MaterialPageRoute(
-      builder: (_) => JoinGroupPage(inviteCode: code),
-    ),
-    (route) => false,
-  );
-  _openingGroupInvite = false;
-});
-
-
-
-
+    await _openGroupInviteByCode(code);
     return;
   }
-if (segments.length >= 2 && segments.first.toLowerCase() == 'e') {
+
+  // 🔹 GRUPO (legado): /group?code=CODIGO
+  if (segments.isNotEmpty && segments.first.toLowerCase() == 'group') {
+    final code = uri.queryParameters['code']?.trim() ?? '';
+    if (code.isNotEmpty) {
+      await _openGroupInviteByCode(code);
+    }
+    return;
+  }
+
+if (segments.length >= 2 &&
+    (segments.first.toLowerCase() == 'e' ||
+        segments.first.toLowerCase() == 'events' ||
+        segments.first.toLowerCase() == 'event')) {
   final eventId = segments[1].trim();
 
   if (eventId.isNotEmpty) {
-    nav.pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => EventDeepLinkPage(eventId: eventId),
-      ),
-    );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      await EventDeepLinkService.savePendingEventId(eventId);
+      return;
+    }
+
+    final ctx = PushService.navKey.currentContext;
+    if (ctx != null) {
+      await EventDeepLinkService.openEventById(
+        ctx,
+        eventId: eventId,
+      );
+    } else {
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => EventDeepLinkPage(eventId: eventId),
+        ),
+      );
+    }
   }
 
   return;
@@ -355,20 +311,15 @@ if (segments.length >= 2 &&
 }
 
 
-  // 🔹 CONVITE GERAL: /invite?ref=CODE
+  // 🔹 CONVITE GERAL: /invite?ref=CODE  (também aceita ?code= para grupo)
   if (segments.isNotEmpty && segments.first.toLowerCase() == 'invite') {
     final ref = uri.queryParameters['ref']?.trim() ?? '';
     print('DEBUG main: ref capturado = $ref');
     final groupCode = uri.queryParameters['code'] ?? '';
 
 if (groupCode.trim().isNotEmpty) {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setString('pending_group_code', groupCode.trim());
-
-  print('DEBUG group invite saved = $groupCode');
+  await _openGroupInviteByCode(groupCode);
 }
-
-
 
     if (ref.isEmpty) return;
 
@@ -402,16 +353,7 @@ if (groupCode.trim().isNotEmpty) {
 
     return;
   }
-}
-
-
-
-  @override
-  void dispose() {
-    _linkSub?.cancel();
-    super.dispose();
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -432,13 +374,44 @@ if (groupCode.trim().isNotEmpty) {
           ],
           theme: ThemeData(
             useMaterial3: true,
+            // Remdy navy — ColorScheme.light (não fromSeed) evita surface/containers
+            // lilás/rosa gerados pelo seed Material 3.
             primaryColor: const Color(0xFF313A5F),
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF313A5F),
-            ).copyWith(
-              primary: const Color(0xFF313A5F),
-              secondary: const Color(0xFF313A5F),
-              tertiary: const Color(0xFF313A5F),
+            scaffoldBackgroundColor: Colors.white,
+            canvasColor: Colors.white,
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF313A5F),
+              onPrimary: Colors.white,
+              primaryContainer: Color(0xFFE8EAF0),
+              onPrimaryContainer: Color(0xFF313A5F),
+              secondary: Color(0xFF313A5F),
+              onSecondary: Colors.white,
+              secondaryContainer: Color(0xFFE8EAF0),
+              onSecondaryContainer: Color(0xFF313A5F),
+              tertiary: Color(0xFF313A5F),
+              onTertiary: Colors.white,
+              tertiaryContainer: Color(0xFFE8EAF0),
+              onTertiaryContainer: Color(0xFF313A5F),
+              error: Color(0xFFB91C1C),
+              onError: Colors.white,
+              errorContainer: Color(0xFFFEE2E2),
+              onErrorContainer: Color(0xFF7F1D1D),
+              surface: Colors.white,
+              onSurface: Color(0xFF111827),
+              onSurfaceVariant: Color(0xFF6B7280),
+              surfaceContainerHighest: Color(0xFFF1F5F9),
+              outline: Color(0xFFE5E7EB),
+              outlineVariant: Color(0xFFE5E7EB),
+              shadow: Color(0xFF111827),
+              scrim: Color(0xFF111827),
+              inverseSurface: Color(0xFF111827),
+              onInverseSurface: Colors.white,
+              inversePrimary: Color(0xFFAEB6D4),
+            ),
+            cardTheme: const CardThemeData(
+              color: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
             ),
             snackBarTheme: const SnackBarThemeData(
               backgroundColor: Color(0xFF313A5F),
@@ -449,17 +422,40 @@ if (groupCode.trim().isNotEmpty) {
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.white,
               foregroundColor: Color(0xFF111827),
+              surfaceTintColor: Colors.transparent,
               elevation: 0,
               centerTitle: false,
             ),
             bottomSheetTheme: const BottomSheetThemeData(
               backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
             ),
             dialogTheme: const DialogThemeData(
               backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
             ),
             popupMenuTheme: const PopupMenuThemeData(
               color: Colors.white,
+              surfaceTintColor: Colors.transparent,
+            ),
+            floatingActionButtonTheme: const FloatingActionButtonThemeData(
+              backgroundColor: Color(0xFF313A5F),
+              foregroundColor: Colors.white,
+            ),
+            filledButtonTheme: FilledButtonThemeData(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF313A5F),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: const Color(0xFFE5E7EB),
+                disabledForegroundColor: const Color(0xFF9CA3AF),
+              ),
+            ),
+            outlinedButtonTheme: OutlinedButtonThemeData(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF313A5F),
+                side: const BorderSide(color: Color(0xFF313A5F)),
+                disabledForegroundColor: const Color(0xFF9CA3AF),
+              ),
             ),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(
@@ -469,8 +465,18 @@ if (groupCode.trim().isNotEmpty) {
                 ),
               ),
             ),
+            progressIndicatorTheme: const ProgressIndicatorThemeData(
+              color: Color(0xFF313A5F),
+            ),
           ),
           home: const AuthGate(),
+          builder: (context, child) {
+            return KeyboardLifecycleGuard(
+              child: IosNumericKeyboardDoneBar(
+                child: child ?? const SizedBox.shrink(),
+              ),
+            );
+          },
         );
       },
     );

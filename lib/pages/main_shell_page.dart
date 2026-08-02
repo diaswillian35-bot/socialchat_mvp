@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -11,9 +12,11 @@ import 'create_group_page.dart';
 
 import '../services/presence_service.dart';
 import '../services/push_service.dart';
+import '../services/android_back_navigation.dart';
 import '../l10n/app_texts.dart';
 import '../widgets/keyboard_dismiss.dart';
 import '../services/app_badge_service.dart';
+import '../services/share_extension_session_service.dart';
 
 
 class MainShell extends StatefulWidget {
@@ -28,7 +31,9 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   late int _index;
-
+  DateTime? _lastExitPromptAt;
+  final GlobalKey<GroupsListPageState> _groupsListKey =
+      GlobalKey<GroupsListPageState>();
 
   static const Color _remdyBlue = Color(0xFF313A5F);
 
@@ -46,6 +51,7 @@ Future<void> _checkBannedUser() async {
 
   if (snap.data()?['isBanned'] == true) {
     await AppBadgeService.setBadge(0);
+    await ShareExtensionSessionService.revokeLocalAndRemote();
     await FirebaseAuth.instance.signOut();
   }
 }
@@ -210,7 +216,7 @@ Stream<int> _activeEventsStream() {
     final pages = <Widget>[
       const HomePage(),
       const MessagesPage(),
-      const GroupsListPage(),
+      GroupsListPage(key: _groupsListKey),
       const EventsPage(),
     ];
 
@@ -224,7 +230,51 @@ Stream<int> _activeEventsStream() {
             final messages = msgSnap.data ?? 0;
             final groups = groupSnap.data ?? 0;
             _syncAppBadge(messages, groups);
-            return Scaffold(
+            // PopScope intercepta só o Voltar do Android quando o shell é a
+            // rota do topo. NÃO altera a seta interna do AppBar nas páginas
+            // empilhadas. NÃO chama PresenceService (presença RTDB intacta).
+            return PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, result) {
+                if (didPop) return;
+                assert(
+                  !AndroidBackNavigation.shouldAffectPresenceOnInternalBack(),
+                );
+                final keyboardOpen = AndroidBackNavigation.isKeyboardOpen(
+                  MediaQuery.viewInsetsOf(context).bottom,
+                );
+                final decision = AndroidBackNavigation.decide(
+                  keyboardOpen: keyboardOpen,
+                  currentTabIndex: _index,
+                  lastExitPromptAt: _lastExitPromptAt,
+                  now: DateTime.now(),
+                );
+                switch (decision) {
+                  case AndroidBackDecision.dismissKeyboard:
+                    dismissAppKeyboard();
+                    break;
+                  case AndroidBackDecision.goHomeTab:
+                    dismissAppKeyboard();
+                    setState(() => _index = AndroidBackNavigation.homeTabIndex);
+                    break;
+                  case AndroidBackDecision.showExitHint:
+                    _lastExitPromptAt = DateTime.now();
+                    final messenger = ScaffoldMessenger.of(context);
+                    messenger.hideCurrentSnackBar();
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(t.get('press_again_to_exit')),
+                        behavior: SnackBarBehavior.floating,
+                        duration: AndroidBackNavigation.exitConfirmWindow,
+                      ),
+                    );
+                    break;
+                  case AndroidBackDecision.allowExit:
+                    SystemNavigator.pop();
+                    break;
+                }
+              },
+              child: Scaffold(
       resizeToAvoidBottomInset: true,
       body: KeyboardDismissOnTap(
         child: IndexedStack(
@@ -238,14 +288,17 @@ Stream<int> _activeEventsStream() {
 
               backgroundColor: _remdyBlue,
               foregroundColor: Colors.white,
-              onPressed: () {
+              onPressed: () async {
                 dismissAppKeyboard();
-                Navigator.push(
+                await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => const CreateGroupPage(),
                   ),
                 );
+                if (!mounted) return;
+                // IndexedStack mantém GroupsListPage vivo com cache antigo.
+                await _groupsListKey.currentState?.reloadMine(selectMine: true);
               },
               child: const Icon(Icons.add),
             )
@@ -365,7 +418,8 @@ BottomNavigationBarItem(
 
         ],
       ),
-    );
+    ),
+            );
           },
         );
       },

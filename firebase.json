@@ -31,6 +31,23 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "emulators": {
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8080
+    },
+    "database": {
+      "host": "127.0.0.1",
+      "port": 9000
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  },
   "storage": {
     "rules": "storage.rules"
   },
@@ -56,42 +73,97 @@
       }
     }
   },
-  "hosting": {
-    "public": "public",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "/e/**",
-        "function": "renderPublicEventPage"
-      },
-      {
-        "source": "/eventos/**",
-        "function": "renderPublicEventsSearch"
-      },
-      {
-        "source": "/eventos",
-        "function": "renderPublicEventsSearch"
-      },
-      {
-        "source": "/sitemap-events.xml",
-        "function": "publicEventsSitemap"
-      },
-      {
-        "source": "/api/public/events",
-        "function": "publicEventsApi"
-      },
-      {
-        "source": "/g/**",
-        "destination": "/index.html"
-      },
-      {
-        "source": "/invite",
-        "destination": "/index.html"
-      }
-    ]
-  }
+  "hosting": [
+    {
+      "target": "app",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "/portal-login",
+          "headers": [
+            {
+              "key": "Referrer-Policy",
+              "value": "no-referrer"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; object-src 'none'"
+            }
+          ]
+        },
+        {
+          "source": "/portal-login/**",
+          "headers": [
+            {
+              "key": "Referrer-Policy",
+              "value": "no-referrer"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; object-src 'none'"
+            }
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/e/**",
+          "function": "renderPublicEventPage"
+        },
+        {
+          "source": "/eventos/**",
+          "function": "renderPublicEventsSearch"
+        },
+        {
+          "source": "/eventos",
+          "function": "renderPublicEventsSearch"
+        },
+        {
+          "source": "/sitemap-events.xml",
+          "function": "publicEventsSitemap"
+        },
+        {
+          "source": "/api/public/events",
+          "function": "publicEventsApi"
+        },
+        {
+          "source": "/g/**",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/invite",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/portal-login",
+          "destination": "/portal-login/index.html"
+        },
+        {
+          "source": "/portal-login/**",
+          "destination": "/portal-login/index.html"
+        }
+      ]
+    }
+  ]
 }
