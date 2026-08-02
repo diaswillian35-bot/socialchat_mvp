@@ -4,6 +4,7 @@
 *.pyc
 *.swp
 .DS_Store
+.recovered/
 .atom/
 .build/
 .buildlog/
@@ -43,3 +44,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android upload signing secrets (never commit)
+**/key.properties
+**/*.jks
+**/*.keystore
+**/remdy-upload-credentials.txt
+
+# Local QA dumps
+tmp_part*/
+tmp_*/
+android/app/Untitled
+.firebase/
+
