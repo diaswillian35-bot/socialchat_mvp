@@ -16,6 +16,8 @@ assert.strictEqual(REMI_MAX_OUTPUT_TOKENS, 300);
 const prompt = buildRemiSystemPrompt({
   memoryText: "User memory:\n- Learning language: English",
   language: "English",
+  languageCode: "en",
+  uiLanguageCode: "pt",
   goal: "Travel",
   lesson: "Coffee Shop",
   showPronunciation: false,
@@ -27,8 +29,8 @@ const prompt = buildRemiSystemPrompt({
 assert.ok(prompt.length < 2800, `prompt too large: ${prompt.length}`);
 assert.ok(prompt.length > 800, `prompt too small: ${prompt.length}`);
 assert.ok(prompt.includes("Remi"));
-assert.ok(prompt.includes("pt-BR"));
-assert.ok(prompt.includes("pt-PT"));
+assert.ok(prompt.includes("Target language code: en"));
+assert.ok(prompt.includes("UI / explanation language code: pt"));
 assert.ok(prompt.includes("Never end mid-sentence"));
 assert.ok(!prompt.includes("uóts iór nêim")); // exemplo longo removido
 assert.ok(!prompt.includes("Good afternoon. May I see your passport?"));
@@ -39,6 +41,8 @@ assert.ok(approx > 200 && approx < 900);
 const withPron = buildRemiSystemPrompt({
   memoryText: "",
   language: "French",
+  languageCode: "fr",
+  uiLanguageCode: "en",
   goal: "Friends",
   lesson: "Meeting People",
   showPronunciation: true,
@@ -46,6 +50,7 @@ const withPron = buildRemiSystemPrompt({
   text: "Bonjour",
 });
 assert.ok(withPron.includes("Pronunciation mode ON"));
+assert.ok(withPron.includes("Target language code: fr"));
 
 console.log("remi_prompt.test.js: all tests passed", {
   promptChars: prompt.length,

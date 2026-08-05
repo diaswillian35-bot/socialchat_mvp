@@ -427,6 +427,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'profileComplete': true,
         'updatedAt': now,
       };
+      // Sincroniza avatar em `users` (cards da região leem daqui).
+      if (photoUrl.trim().isNotEmpty) {
+        userPayload['photoUrl'] = photoUrl.trim();
+        userPayload['profilePhotoUrl'] = photoUrl.trim();
+      }
 
       // compatibilidade com partes antigas do app
       userPayload['nativeLanguage'] = languages;

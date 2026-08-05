@@ -121,7 +121,11 @@ class InternationalChatService {
   }
 
   /// Localiza conversa existente (pairKey, id determinístico ou legado).
-  /// Em falha de consulta lança [ConversationLookupException] — não cria DM.
+  ///
+  /// O get do documento determinístico é a fonte da verdade: falha nele
+  /// impede criar DM. Consultas legadas são best-effort — se falharem
+  /// (índice ausente, rules, etc.) retornamos `null` e
+  /// [getOrCreateConversation] cria/reusa o id determinístico sem duplicar.
   static Future<String?> findExistingConversationId(
     String myUid,
     String otherUid, {
@@ -131,7 +135,7 @@ class InternationalChatService {
     final key = pairKey(myUid, otherUid);
     final conversations = db.collection('conversations');
 
-    // 1. Doc determinístico.
+    // 1. Doc determinístico (ordenado por UID).
     try {
       final direct = await conversations.doc(key).get();
       if (direct.exists) return direct.id;
@@ -140,45 +144,32 @@ class InternationalChatService {
           'user_search_conversation_lookup_error');
     }
 
-    // 2. Legado com campo pairKey.
+    // 2. Legado com campo pairKey (best-effort).
     try {
       final byPairKey =
           await conversations.where('pairKey', isEqualTo: key).limit(5).get();
       if (byPairKey.docs.isNotEmpty) return byPairKey.docs.first.id;
     } catch (_) {
-      throw ConversationLookupException(
-          'user_search_conversation_lookup_error');
+      // Não bloquear abertura de DM por falha de índice/consulta legada.
     }
 
-    // 3. Legado sem pairKey: paginar TODAS as conversas do usuário.
+    // 3. Legado sem pairKey: amostra limitada SEM orderBy (evita rejeição
+    //    de query / índice inexistente em participants + __name__).
+    //    Best-effort — falha aqui NÃO impede criação do doc determinístico.
     try {
-      DocumentSnapshot<Map<String, dynamic>>? last;
-      // Limite de segurança: 50 páginas × 100 = 5000 conversas.
-      for (var page = 0; page < 50; page++) {
-        Query<Map<String, dynamic>> q = conversations
-            .where('participants', arrayContains: myUid)
-            .orderBy(FieldPath.documentId)
-            .limit(_legacyPageSize);
-        if (last != null) {
-          q = q.startAfterDocument(last);
-        }
-        final snap = await q.get();
-        if (snap.docs.isEmpty) break;
-
-        for (final doc in snap.docs) {
-          final parts = (doc.data()['participants'] as List?)
-                  ?.map((e) => e.toString())
-                  .toList() ??
-              const <String>[];
-          if (parts.contains(otherUid)) return doc.id;
-        }
-
-        last = snap.docs.last;
-        if (snap.docs.length < _legacyPageSize) break;
+      final snap = await conversations
+          .where('participants', arrayContains: myUid)
+          .limit(_legacyPageSize)
+          .get();
+      for (final doc in snap.docs) {
+        final parts = (doc.data()['participants'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const <String>[];
+        if (parts.contains(otherUid)) return doc.id;
       }
     } catch (_) {
-      throw ConversationLookupException(
-          'user_search_conversation_lookup_error');
+      // Best-effort: seguir para criação idempotente.
     }
 
     return null;

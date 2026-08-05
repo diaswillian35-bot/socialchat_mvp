@@ -3,20 +3,40 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:uuid/uuid.dart';
+import '../data/remi_lessons_data.dart';
 import '../l10n/app_texts.dart';
+import '../services/remi_language_contract.dart';
+import '../services/remi_session_prefs.dart';
 import 'remi_intro_page.dart';
+import 'remi_languages_page.dart';
 
 class RemiChatPage extends StatefulWidget {
-  final String language;
+  /// Código estável do idioma-alvo: `en` | `pt` | `es` | `fr`.
+  final String languageCode;
   final String goal;
   final String lesson;
 
   const RemiChatPage({
     super.key,
-   required this.language,
+    required this.languageCode,
     required this.goal,
     required this.lesson,
   });
+
+  /// Compat com callers legados que ainda passam o label.
+  factory RemiChatPage.legacy({
+    Key? key,
+    required String language,
+    required String goal,
+    required String lesson,
+  }) {
+    return RemiChatPage(
+      key: key,
+      languageCode: RemiLanguageContract.normalize(language),
+      goal: goal,
+      lesson: lesson,
+    );
+  }
 
 
   @override
@@ -148,18 +168,9 @@ Future<void> _speak(String text) async {
 
   await _tts.stop();
 
- final code = Localizations.localeOf(context).languageCode.toLowerCase();
-
-if (code == 'pt') {
-  await _tts.setLanguage('pt-BR');
-} else if (code == 'es') {
-  await _tts.setLanguage('es-ES');
-} else if (code == 'fr') {
-  await _tts.setLanguage('fr-FR');
-} else {
-  await _tts.setLanguage('en-US');
-}
-
+  // Voz do idioma ESTUDADO (não da UI).
+  final target = RemiLanguageContract.normalize(widget.languageCode);
+  await _tts.setLanguage(RemiLanguageContract.ttsLocale(target));
 
   await _tts.setSpeechRate(0.65);
   await _tts.setPitch(1.0);
@@ -186,16 +197,24 @@ await _tts.speak(speakText);
 
 @override
 void initState() {
-    super.initState();
+  super.initState();
+
+  final uid = _auth.currentUser?.uid;
+  if (uid != null) {
+    RemiSessionPrefs.instance.saveSelection(
+      uid: uid,
+      languageCode: RemiLanguageContract.normalize(widget.languageCode),
+      goal: widget.goal,
+      lesson: widget.lesson,
+    );
+  }
 
   _messages = [
     _RemiMessage(
-     text:
-    '${AppTexts.t('remi_hello')}\n${AppTexts.t('remi_today_practice')} ${widget.lesson.toLowerCase()}.',
-
+      text:
+          '${AppTexts.t('remi_hello')}\n${AppTexts.t('remi_today_practice')} ${widget.lesson.toLowerCase()}.',
       isUser: false,
     ),
-
     _RemiMessage(
       text: _lessonExample(),
       isUser: false,
@@ -215,6 +234,19 @@ void _openRemiSettings() {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.translate_rounded, color: _remdyBlue),
+              title: const Text('Change language'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RemiLanguagesPage(),
+                  ),
+                );
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.slideshow_rounded, color: _remdyBlue),
               title: Text(AppTexts.t('remi_settings_replay_intro')),
@@ -237,40 +269,17 @@ void _openRemiSettings() {
 }
 
 String _lessonExample() {
-  switch (widget.lesson.toLowerCase()) {
-    case 'coffee shop':
-      return 'Can I get a medium coffee?';
-
-    case 'introductions':
-      return 'Hi! My name is Alex. Nice to meet you.';
-
-    case 'meeting people':
-      return 'Where are you from?';
-
-    case 'asking questions':
-      return 'How long have you been in Canada?';
-
-    case 'daily conversations':
-      return 'How was your day today?';
-
-    default:
+  final code = RemiLanguageContract.normalize(widget.languageCode);
+  final phrases =
+      remiCatalogFor(code)[widget.goal]?[widget.lesson] ?? const <String>[];
+  if (phrases.isNotEmpty) return phrases.first;
   return AppTexts.t('remi_practice_together');
-
-  }
 }
-String _appLanguageName() {
-  final code = Localizations.localeOf(context).languageCode.toLowerCase();
 
-  switch (code) {
-    case 'pt':
-      return 'Portuguese';
-    case 'es':
-      return 'Spanish';
-    case 'fr':
-      return 'French';
-    default:
-      return 'English';
-  }
+String _uiLanguageCode() {
+  return RemiLanguageContract.uiCodeFromLocale(
+    Localizations.localeOf(context).languageCode,
+  );
 }
 
 Future<void> _sendMessage() async {
@@ -320,10 +329,14 @@ Future<void> _sendMessage() async {
 
     final callable = _functions.httpsCallable('askRemi');
 
+    final targetCode = RemiLanguageContract.normalize(widget.languageCode);
     final result = await callable.call({
       'requestId': requestId,
       'text': text,
-      'language': _clipMeta(widget.language, 80),
+      // Contrato novo: código estável. `language` permanece para compat.
+      'languageCode': targetCode,
+      'language': RemiLanguageContract.englishName(targetCode),
+      'uiLanguageCode': _uiLanguageCode(),
       'goal': _clipMeta(widget.goal, 120),
       'lesson': _clipMeta(widget.lesson, 120),
       'history': history,

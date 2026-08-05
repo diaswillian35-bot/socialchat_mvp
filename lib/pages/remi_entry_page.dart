@@ -1,13 +1,18 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../data/remi_lessons_data.dart';
+import '../services/remi_intro_service.dart';
+import '../services/remi_language_contract.dart';
+import '../services/remi_session_prefs.dart';
 import 'remi_chat_page.dart';
 import 'remi_intro_page.dart';
-import '../services/remi_intro_service.dart';
+import 'remi_languages_page.dart';
 
-/// Gate de entrada da Remi: apresentação 1× por conta, sem flash/spinner longo.
+/// Gate de entrada da Remi: apresentação 1× por conta.
 ///
-/// Atalho da Home (já visto): abre o chat padrão (sem regressão).
-/// Primeira vez: [RemiIntroPage] → fluxo Languages.
+/// Depois da intro: restaura a última lição se existir e for válida;
+/// caso contrário abre o seletor de idiomas (pt/en/es/fr).
 class RemiEntryPage extends StatefulWidget {
   const RemiEntryPage({super.key});
 
@@ -30,20 +35,40 @@ class _RemiEntryPageState extends State<RemiEntryPage> {
     final showIntro = await RemiIntroService.instance.shouldShowIntro();
     if (!mounted) return;
 
-    setState(() {
-      _body = showIntro
-          ? const RemiIntroPage()
-          : const RemiChatPage(
-              language: 'English',
-              goal: 'Daily Life',
-              lesson: 'Small Talk',
-            );
-    });
+    if (showIntro) {
+      setState(() => _body = const RemiIntroPage());
+      return;
+    }
+
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final saved = uid.isEmpty
+        ? null
+        : await RemiSessionPrefs.instance.loadSelection(uid);
+
+    if (!mounted) return;
+
+    if (saved != null) {
+      final code = RemiLanguageContract.normalize(saved.languageCode);
+      final catalog = remiCatalogFor(code);
+      final lessons = catalog[saved.goal];
+      if (lessons != null && lessons.containsKey(saved.lesson)) {
+        setState(() {
+          _body = RemiChatPage(
+            languageCode: code,
+            goal: saved.goal,
+            lesson: saved.lesson,
+          );
+        });
+        return;
+      }
+    }
+    // saved invalid → languages picker below
+
+    setState(() => _body = const RemiLanguagesPage());
   }
 
   @override
   Widget build(BuildContext context) {
-    // Fundo igual ao da Remi enquanto decide — sem spinner / tela branca.
     return _body ??
         const Scaffold(
           backgroundColor: RemiEntryPage._bg,

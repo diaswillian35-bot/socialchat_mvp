@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+
+import '../services/remi_language_contract.dart';
 import 'remi_goals_page.dart';
+
 class RemiLanguagesPage extends StatelessWidget {
   const RemiLanguagesPage({super.key});
 
@@ -11,12 +14,16 @@ class RemiLanguagesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final languages = [
-      _RemiLanguage(flag: '🇺🇸', title: 'English', subtitle: 'Practice English'),
-      _RemiLanguage(flag: '🇫🇷', title: 'Français', subtitle: 'Pratiquer le français'),
-      _RemiLanguage(flag: '🇪🇸', title: 'Español', subtitle: 'Practicar español'),
-      _RemiLanguage(flag: '🇧🇷', title: 'Português', subtitle: 'Praticar português'),
-    ];
+    final languages = RemiLanguageContract.supportedCodes
+        .map(
+          (code) => _RemiLanguage(
+            code: code,
+            flag: RemiLanguageContract.flag(code),
+            title: RemiLanguageContract.displayName(code),
+            subtitle: RemiLanguageContract.practiceSubtitle(code),
+          ),
+        )
+        .toList();
 
     return Scaffold(
       backgroundColor: _bg,
@@ -57,23 +64,21 @@ class RemiLanguagesPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-
           ...languages.map((item) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: InkWell(
                 borderRadius: BorderRadius.circular(18),
-             onTap: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => RemiGoalsPage(
-        language: item.title,
-      ),
-    ),
-  );
-},
-
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RemiGoalsPage(
+                        languageCode: item.code,
+                      ),
+                    ),
+                  );
+                },
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -83,10 +88,7 @@ class RemiLanguagesPage extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Text(
-                        item.flag,
-                        style: const TextStyle(fontSize: 30),
-                      ),
+                      Text(item.flag, style: const TextStyle(fontSize: 30)),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(
@@ -129,11 +131,13 @@ class RemiLanguagesPage extends StatelessWidget {
 }
 
 class _RemiLanguage {
+  final String code;
   final String flag;
   final String title;
   final String subtitle;
 
   const _RemiLanguage({
+    required this.code,
     required this.flag,
     required this.title,
     required this.subtitle,

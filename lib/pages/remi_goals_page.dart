@@ -1,13 +1,15 @@
-
 import 'package:flutter/material.dart';
+
+import '../data/remi_lessons_data.dart';
+import '../services/remi_language_contract.dart';
 import 'remi_lessons_page.dart';
 
 class RemiGoalsPage extends StatelessWidget {
-  final String language;
+  final String languageCode;
 
   const RemiGoalsPage({
     super.key,
-    required this.language,
+    required this.languageCode,
   });
 
   static const Color _bg = Color(0xFFF8FAFC);
@@ -15,15 +17,22 @@ class RemiGoalsPage extends StatelessWidget {
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
 
+  static const _goalIcons = <String, String>{
+    'Travel': '✈️',
+    'Daily Life': '☕',
+    'Work': '💼',
+    'Friends': '🧑‍🤝‍🧑',
+    'Events': '🎉',
+  };
+
   @override
   Widget build(BuildContext context) {
-    final goals = [
-      _Goal(icon: '✈️', title: 'Travel'),
-      _Goal(icon: '☕', title: 'Daily Life'),
-      _Goal(icon: '💼', title: 'Work'),
-      _Goal(icon: '🧑‍🤝‍🧑', title: 'Friends'),
-      _Goal(icon: '🎉', title: 'Events'),
-    ];
+    final code = RemiLanguageContract.normalize(languageCode);
+    final catalog = remiCatalogFor(code);
+    final goals = remiGoalIds
+        .where(catalog.containsKey)
+        .map((id) => _Goal(icon: _goalIcons[id] ?? '📚', title: id))
+        .toList();
 
     return Scaffold(
       backgroundColor: _bg,
@@ -33,7 +42,7 @@ class RemiGoalsPage extends StatelessWidget {
         surfaceTintColor: _bg,
         iconTheme: const IconThemeData(color: _text),
         title: Text(
-          language,
+          RemiLanguageContract.displayName(code),
           style: const TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
@@ -63,24 +72,22 @@ class RemiGoalsPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-
           ...goals.map((goal) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: InkWell(
                 borderRadius: BorderRadius.circular(18),
-           onTap: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => RemiLessonsPage(
-        language: language,
-        goal: goal.title,
-      ),
-    ),
-  );
-},
-
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RemiLessonsPage(
+                        languageCode: code,
+                        goal: goal.title,
+                      ),
+                    ),
+                  );
+                },
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -90,12 +97,8 @@ class RemiGoalsPage extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Text(
-                        goal.icon,
-                        style: const TextStyle(fontSize: 30),
-                      ),
+                      Text(goal.icon, style: const TextStyle(fontSize: 30)),
                       const SizedBox(width: 14),
-
                       Expanded(
                         child: Text(
                           goal.title,
@@ -106,7 +109,6 @@ class RemiGoalsPage extends StatelessWidget {
                           ),
                         ),
                       ),
-
                       const Icon(
                         Icons.chevron_right_rounded,
                         color: Color(0xFF313A5F),

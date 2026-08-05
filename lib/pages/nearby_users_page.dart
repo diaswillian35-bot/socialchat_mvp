@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
+import '../services/user_avatar_resolver.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
 
@@ -26,6 +28,9 @@ class NearbyUsersPage extends StatelessWidget {
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _primary = Color(0xFF313A5F);
 
+  /// Serializa taps concorrentes (double-tap) no mesmo UID.
+  static final Set<String> _openingUids = <String>{};
+
   static Future<void> openChat(
     BuildContext context, {
     required String otherUid,
@@ -33,12 +38,14 @@ class NearbyUsersPage extends StatelessWidget {
   }) async {
     final myUid = FirebaseAuth.instance.currentUser?.uid;
     if (myUid == null || myUid.isEmpty) return;
-    if (otherUid.trim().isEmpty || otherUid == myUid) return;
+    final target = otherUid.trim();
+    if (target.isEmpty || target == myUid) return;
+    if (!_openingUids.add(target)) return;
 
     try {
       final myData = await InternationalChatService.fetchActiveUserData(myUid);
       final otherData =
-          await InternationalChatService.fetchActiveUserData(otherUid);
+          await InternationalChatService.fetchActiveUserData(target);
 
       if (myData == null || otherData == null) {
         if (context.mounted) {
@@ -51,6 +58,16 @@ class NearbyUsersPage extends StatelessWidget {
         return;
       }
 
+      final blocked = await BlockService.isEitherBlocked(target);
+      if (blocked) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppTexts.t('chat_unavailable_blocked'))),
+          );
+        }
+        return;
+      }
+
       final canSend = InternationalChatService.canSendMessage(
         senderData: myData,
         recipientData: otherData,
@@ -58,7 +75,7 @@ class NearbyUsersPage extends StatelessWidget {
 
       if (!canSend) {
         final exists =
-            await InternationalChatService.conversationExists(myUid, otherUid);
+            await InternationalChatService.conversationExists(myUid, target);
         if (!exists) {
           if (context.mounted) {
             await InternationalPremiumDialog.showStart(context);
@@ -68,7 +85,7 @@ class NearbyUsersPage extends StatelessWidget {
       }
 
       final convoId = await InternationalChatService.getOrCreateConversation(
-          myUid, otherUid);
+          myUid, target);
       if (!context.mounted) return;
 
       await Navigator.push(
@@ -76,7 +93,7 @@ class NearbyUsersPage extends StatelessWidget {
         MaterialPageRoute(
           builder: (_) => ChatPage(
             conversationId: convoId,
-            otherUid: otherUid,
+            otherUid: target,
             otherName: otherName,
           ),
         ),
@@ -93,6 +110,8 @@ class NearbyUsersPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${AppTexts.t('error')}: $e')),
       );
+    } finally {
+      _openingUids.remove(target);
     }
   }
 
@@ -288,7 +307,7 @@ class NearbyUsersPage extends StatelessWidget {
               final doc = docs[index];
               final data = doc.data();
               final name = (data['name'] ?? t.get('user')).toString();
-              final photoUrl = (data['photoUrl'] ?? '').toString().trim();
+              final photoUrl = UserAvatarResolver.resolve(data);
               final city = (data['cityName'] ?? data['city'] ?? '').toString();
               final createdAt = data['createdAt'] is Timestamp
                   ? data['createdAt'] as Timestamp
@@ -296,8 +315,7 @@ class NearbyUsersPage extends StatelessWidget {
               final updatedAt = data['updatedAt'] is Timestamp
                   ? data['updatedAt'] as Timestamp
                   : null;
-              final initial =
-                  name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+              final initial = UserAvatarResolver.initialFor(name);
 
               return Material(
                 color: Colors.white,
@@ -328,6 +346,9 @@ class NearbyUsersPage extends StatelessWidget {
                               backgroundColor: const Color(0xFFE8ECF5),
                               backgroundImage: photoUrl.isNotEmpty
                                   ? NetworkImage(photoUrl)
+                                  : null,
+                              onBackgroundImageError: photoUrl.isNotEmpty
+                                  ? (_, __) {}
                                   : null,
                               child: photoUrl.isEmpty
                                   ? Text(

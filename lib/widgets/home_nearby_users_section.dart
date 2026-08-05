@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../pages/nearby_users_page.dart';
 import '../services/international_chat_service.dart';
+import '../services/user_avatar_resolver.dart';
 import 'home_section_header.dart';
 
 /// Novos usuários perto de você — somente vitrine; chat segue regras existentes.
@@ -212,15 +213,14 @@ class HomeNearbyUsersSection extends StatelessWidget {
                   final doc = docs[index];
                   final data = doc.data();
                   final name = (data['name'] ?? t.get('user')).toString();
-                  final photoUrl = (data['photoUrl'] ?? '').toString().trim();
+                  final photoUrl = UserAvatarResolver.resolve(data);
                   final createdAt = data['createdAt'] is Timestamp
                       ? data['createdAt'] as Timestamp
                       : null;
                   final updatedAt = data['updatedAt'] is Timestamp
                       ? data['updatedAt'] as Timestamp
                       : null;
-                  final initial =
-                      name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+                  final initial = UserAvatarResolver.initialFor(name);
 
                   return InkWell(
                     onTap: () {
@@ -243,6 +243,9 @@ class HomeNearbyUsersSection extends StatelessWidget {
                                 backgroundColor: const Color(0xFFE8ECF5),
                                 backgroundImage: photoUrl.isNotEmpty
                                     ? NetworkImage(photoUrl)
+                                    : null,
+                                onBackgroundImageError: photoUrl.isNotEmpty
+                                    ? (_, __) {}
                                     : null,
                                 child: photoUrl.isEmpty
                                     ? Text(

@@ -138,6 +138,7 @@ const {
   validateRequestId: remiValidateRequestId,
   sanitizeHistory: remiSanitizeHistory,
   sanitizeLanguage: remiSanitizeLanguage,
+  sanitizeLanguageCode: remiSanitizeLanguageCode,
   sanitizeGoal: remiSanitizeGoal,
   sanitizeLesson: remiSanitizeLesson,
   formatHistoryForPrompt: remiFormatHistoryForPrompt,
@@ -744,10 +745,18 @@ exports.askRemi = onCall(
       const text = remiValidateMessageText(request.data?.text);
       const historyItems = remiSanitizeHistory(request.data?.history);
       const history = remiFormatHistoryForPrompt(historyItems);
-      const language = remiSanitizeLanguage(request.data?.language);
+      // Prefer languageCode; fallback to legacy `language` label.
+      const languageCode = remiSanitizeLanguageCode(
+        request.data?.languageCode || request.data?.language,
+      );
+      const uiLanguageCode = remiSanitizeLanguageCode(
+        request.data?.uiLanguageCode || request.data?.nativeLanguage || "en",
+      );
+      const language = remiSanitizeLanguage(languageCode);
       const goal = remiSanitizeGoal(request.data?.goal);
       const lesson = remiSanitizeLesson(request.data?.lesson);
       const showPronunciation = request.data?.showPronunciation === true;
+      const memoryPath = `users/${uid}/remi/memory_${languageCode}`;
 
       // Idempotência: retry com mesmo requestId devolve resultado sem Gemini/quota.
       const earlyHit = await getIdempotentResult(db, uid, requestId);
@@ -790,11 +799,11 @@ exports.askRemi = onCall(
         return { reply: begin.reply };
       }
 
-      // Uma única leitura de memória.
+      // Uma única leitura de memória (isolada por idioma-alvo).
       let memory = null;
       let memoryText = "";
       try {
-        const memoryDoc = await db.doc(`users/${uid}/remi/memory`).get();
+        const memoryDoc = await db.doc(memoryPath).get();
         if (memoryDoc.exists) {
           memory = memoryDoc.data() || {};
           memoryText = remiBuildMemoryPromptText(memory, historyItems);
@@ -818,6 +827,8 @@ exports.askRemi = onCall(
       const prompt = buildRemiSystemPrompt({
         memoryText,
         language,
+        languageCode,
+        uiLanguageCode,
         goal,
         lesson,
         showPronunciation,
@@ -967,9 +978,10 @@ exports.askRemi = onCall(
           ],
         });
 
-        await db.doc(`users/${uid}/remi/memory`).set(
+        await db.doc(memoryPath).set(
           {
             learningLanguage: language,
+            languageCode,
             lastLesson: lesson,
             lastGoal: goal,
             lastUserMessage: text,
@@ -4351,6 +4363,25 @@ exports.createEventComment = onCall(
  * Custo: lê event + likes/{uid} (+ user); writes só se estado mudar
  * (no máx. 1 like doc + 1 likesCount). No-op = 0 writes.
  */
+
+/**
+ * Exportação de dados pessoais de participantes/curtidas/compartilhamentos.
+ * Sempre negada — minimização de dados (compatível com objetivos da LGPD).
+ * Deploy necessário para vigorar no backend remoto.
+ */
+exports.exportEventParticipants = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+    throw new HttpsError(
+      "permission-denied",
+      "Personal data export for event participants, likers, or sharers is not allowed.",
+    );
+  },
+);
+
 exports.toggleEventLike = onCall(
   { region: "us-central1" },
   async (request) => {

@@ -10,6 +10,8 @@ const REMI_MAX_OUTPUT_TOKENS = 300;
 function buildRemiSystemPrompt({
   memoryText,
   language,
+  languageCode,
+  uiLanguageCode,
   goal,
   lesson,
   showPronunciation,
@@ -28,10 +30,12 @@ CONTEXT:
 - Lesson: ${lesson || "open chat"}
 
 LANGUAGE:
-- Detect the language of the user's message.
-- If they write in ${language}, reply in ${language}.
-- If they write in another language (en, pt-BR, pt-PT, es, fr, or others), answer naturally in that language, then gently guide back to ${language} when useful.
-- Use the user's native/app language only when it helps beginners.
+- Target language code: ${languageCode || "en"} (${language}).
+- UI / explanation language code: ${uiLanguageCode || "en"}.
+- Conduct the practice conversation primarily in ${language}.
+- Short explanations or translations may use the UI language when the learner is a beginner.
+- Do not silently switch the practice language to English unless the target is English.
+- If the user writes in another language, acknowledge briefly, then guide back to ${language}.
 
 STYLE:
 - Warm, casual, human, practical — not a strict teacher.

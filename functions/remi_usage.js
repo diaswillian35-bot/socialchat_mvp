@@ -157,8 +157,61 @@ function sanitizeMetaField(raw, maxLen, fallback) {
   return text;
 }
 
+const REMI_LANGUAGE_CODES = Object.freeze({
+  en: "English",
+  pt: "Portuguese",
+  es: "Spanish",
+  fr: "French",
+});
+
+/** Normaliza código (`en`) ou label legado (`English`/`Português`) → código. */
+function normalizeLanguageCode(raw, fallback = "en") {
+  const value = (raw ?? "").toString().trim().toLowerCase();
+  if (!value) return fallback;
+  if (REMI_LANGUAGE_CODES[value]) return value;
+  const map = {
+    english: "en",
+    "en-us": "en",
+    portuguese: "pt",
+    português: "pt",
+    portugues: "pt",
+    "pt-br": "pt",
+    "pt-pt": "pt",
+    spanish: "es",
+    español: "es",
+    espanol: "es",
+    french: "fr",
+    français: "fr",
+    francais: "fr",
+  };
+  if (Object.prototype.hasOwnProperty.call(map, value)) {
+    return map[value];
+  }
+  return fallback;
+}
+
+function languageDisplayName(code) {
+  return REMI_LANGUAGE_CODES[normalizeLanguageCode(code)] || "English";
+}
+
 function sanitizeLanguage(raw) {
-  return sanitizeMetaField(raw, REMI_LIMITS.MAX_LANGUAGE, "English");
+  // Aceita código ou label conhecido → nome em inglês para o prompt.
+  // Strings livres desconhecidas ainda são cortadas (compat / caps).
+  const text = (raw ?? "").toString().trim();
+  if (!text) return "English";
+  const lowered = text.toLowerCase();
+  if (REMI_LANGUAGE_CODES[lowered]) {
+    return REMI_LANGUAGE_CODES[lowered];
+  }
+  const known = normalizeLanguageCode(text, "");
+  if (known && REMI_LANGUAGE_CODES[known]) {
+    return REMI_LANGUAGE_CODES[known];
+  }
+  return sanitizeMetaField(text, REMI_LIMITS.MAX_LANGUAGE, "English");
+}
+
+function sanitizeLanguageCode(raw) {
+  return normalizeLanguageCode(raw, "en");
 }
 
 function sanitizeGoal(raw) {
@@ -646,6 +699,10 @@ function remiSafeLog(event, fields) {
 }
 
 module.exports = {
+  REMI_LANGUAGE_CODES,
+  normalizeLanguageCode,
+  languageDisplayName,
+  sanitizeLanguageCode,
   REMI_LIMITS,
   REMI_PLAN_LIMITS,
   maskUid,

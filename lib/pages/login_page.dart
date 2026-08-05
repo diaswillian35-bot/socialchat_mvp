@@ -218,12 +218,13 @@ String _generateInviteCode(String name, String uid) {
     'uid': user.uid,
     'email': email,
     'name': displayName,
+    // Manter ambos: cards leem photoUrl; Functions usam profilePhotoUrl.
+    'photoUrl': profilePhotoUrl,
     'profilePhotoUrl': profilePhotoUrl,
-   'inviteCode': _generateInviteCode(
-  displayName,
-  user.uid,
-),
-
+    'inviteCode': _generateInviteCode(
+      displayName,
+      user.uid,
+    ),
     'countryCode': '',
     'homeCountryCode': '',
     'countryLocked': false,
@@ -231,7 +232,7 @@ String _generateInviteCode(String name, String uid) {
     'createdAt': FieldValue.serverTimestamp(),
     'updatedAt': FieldValue.serverTimestamp(),
     'lastSeenAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+  }, SetOptions(merge: true));
   return;
 }
 
@@ -251,6 +252,9 @@ String _generateInviteCode(String name, String uid) {
     if (displayName.isNotEmpty) patch['name'] = displayName;
     if (profilePhotoUrl.isNotEmpty) {
       patch['profilePhotoUrl'] = profilePhotoUrl;
+      if ((d['photoUrl'] ?? '').toString().trim().isEmpty) {
+        patch['photoUrl'] = profilePhotoUrl;
+      }
     }
 
 

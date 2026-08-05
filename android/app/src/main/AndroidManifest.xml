@@ -10,6 +10,24 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!--
+      Hardware features implied by the permissions above are OPTIONAL for Remdy.
+      Without explicit required="false", Google Play treats them as required and
+      filters out devices without camera / mic / GPS (tablets, some Chromebooks, etc.).
+      Proven mapping (Android docs — permissions → features):
+        CAMERA              → android.hardware.camera
+        RECORD_AUDIO        → android.hardware.microphone
+        ACCESS_FINE_LOCATION   → android.hardware.location + location.gps
+        ACCESS_COARSE_LOCATION → android.hardware.location + location.network
+      App usage is optional (gallery/camera send, voice notes, geo scopes) — not
+      required for cold start, login, Home, chat text, or Events browse.
+    -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
+
     <application
         android:label="Remdy"
         android:name="${applicationName}"
