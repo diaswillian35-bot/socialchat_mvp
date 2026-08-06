@@ -403,6 +403,8 @@ service cloud.firestore {
         && request.resource.data.participants is list
         && request.resource.data.participants.size() == 2
         && request.resource.data.participants[0] != request.resource.data.participants[1]
+        // replyQuota é somente Admin SDK (sendDmMessage). Cliente nunca cria.
+        && !('replyQuota' in request.resource.data)
         && (
           !isInternationalParticipants(request.resource.data.participants)
           || canCreateInternationalConversation(request.resource.data.participants)
@@ -411,6 +413,8 @@ service cloud.firestore {
       allow update: if signedIn()
         && uid() in resource.data.participants
         && request.resource.data.participants == resource.data.participants
+        // Impede criar/editar/remover replyQuota (mapa inteiro ou campos).
+        && !('replyQuota' in request.resource.data.diff(resource.data).affectedKeys())
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly([
               'lastMessage',
@@ -1003,6 +1007,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /forwardIdempotency/{id} {
+      allow read, write: if false;
+    }
+    // Franquia Free DM (sendDmMessage) — somente Admin SDK.
+    match /dmSendIdempotency/{id} {
       allow read, write: if false;
     }
 

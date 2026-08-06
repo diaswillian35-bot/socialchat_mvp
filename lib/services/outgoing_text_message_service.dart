@@ -5,11 +5,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'block_service.dart';
+import 'dm_reply_quota.dart';
 import 'group_ban_service.dart';
 import 'group_discovery_logic.dart';
 import 'international_chat_service.dart';
 import 'link_preview_service.dart';
 import 'premium_access_service.dart';
+import 'send_dm_message_service.dart';
 
 enum OutgoingTextSendTarget { conversation, group }
 
@@ -111,10 +113,19 @@ class OutgoingTextMessageService {
     }
 
     final otherSnap = await _db.collection('users').doc(otherUid).get();
-    if (!InternationalChatService.canSendMessage(
+    final otherData = otherSnap.data() ?? {};
+    final canClient = InternationalChatService.canSendMessage(
       senderData: myData,
-      recipientData: otherSnap.data() ?? {},
-    )) {
+      recipientData: otherData,
+    );
+    final needsQuota = DmSendPath.requiresCallable(
+      senderIsPremium: InternationalChatService.isPremiumActive(myData),
+      isInternational: InternationalChatService.isInternational(
+        InternationalChatService.readHomeCountryCode(myData),
+        InternationalChatService.readHomeCountryCode(otherData),
+      ),
+    );
+    if (!canClient && !needsQuota) {
       return OutgoingTextSendResult.fail('share_in_no_permission');
     }
 
@@ -145,6 +156,28 @@ class OutgoingTextMessageService {
     }
 
     try {
+      if (needsQuota) {
+        final result = await SendDmMessageService().send(
+          conversationId: conversationId,
+          otherUid: otherUid,
+          text: text,
+          requestId: pendingId,
+          messageId: pendingId,
+        );
+        if (!result.ok) {
+          return OutgoingTextSendResult.fail(
+            result.isQuotaExceeded ? 'dm_quota_title' : 'share_in_no_permission',
+          );
+        }
+        unawaited(
+          LinkPreviewService.requestPreviewForMessage(
+            text: text,
+            messagePath: 'conversations/$conversationId/messages/$pendingId',
+          ),
+        );
+        return OutgoingTextSendResult.success(pendingId);
+      }
+
       final clientNow = Timestamp.fromDate(DateTime.now());
       await msgs.doc(pendingId).set({
         'type': 'text',

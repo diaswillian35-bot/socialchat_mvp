@@ -2,7 +2,7 @@
   "name": "functions",
   "description": "Cloud Functions for Firebase",
   "scripts": {
-    "test": "node --test group_open_join_logic.test.js group_places_logic.test.js remi_usage.test.js user_search.test.js event_interactions_helpers.test.js share_extension_logic.test.js forward_message_logic.test.js",
+    "test": "node --test group_open_join_logic.test.js group_places_logic.test.js remi_usage.test.js user_search.test.js event_interactions_helpers.test.js share_extension_logic.test.js forward_message_logic.test.js dm_reply_quota.test.js",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",

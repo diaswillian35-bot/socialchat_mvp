@@ -37,7 +37,8 @@ class InternationalChatService {
     return myCountryCode != otherCountryCode;
   }
 
-  /// Permite envio quando: mesmo país OU remetente Premium.
+  /// Permite envio direto no Firestore quando: mesmo país OU remetente Premium.
+  /// Free internacional deve usar Callable [sendDmMessage] (franquia 300).
   static bool canSendMessage({
     required Map<String, dynamic> senderData,
     required Map<String, dynamic> recipientData,

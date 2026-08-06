@@ -73,6 +73,9 @@ exports.deleteMyAccount = deleteMyAccount;
 const { forwardMessage } = require("./forward_message");
 exports.forwardMessage = forwardMessage;
 
+const { sendDmMessage } = require("./send_dm_message");
+exports.sendDmMessage = sendDmMessage;
+
 const {
   issueShareExtensionSession,
   revokeShareExtensionSessions,

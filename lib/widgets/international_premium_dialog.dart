@@ -6,7 +6,7 @@ import '../l10n/app_texts.dart';
 import '../pages/invite_page.dart';
 import '../pages/premium_page.dart';
 
-enum InternationalPremiumDialogMode { start, reply }
+enum InternationalPremiumDialogMode { start, reply, quotaExhausted }
 
 class InternationalPremiumDialog {
   InternationalPremiumDialog._();
@@ -25,25 +25,47 @@ class InternationalPremiumDialog {
     );
   }
 
+  static Future<void> showQuotaExhausted(
+    BuildContext context, {
+    required String otherFirstName,
+  }) {
+    return show(
+      context,
+      mode: InternationalPremiumDialogMode.quotaExhausted,
+      otherFirstName: otherFirstName,
+    );
+  }
+
   static Future<void> show(
     BuildContext context, {
     required InternationalPremiumDialogMode mode,
+    String otherFirstName = '',
   }) async {
     final t = AppTexts.current;
     final isStart = mode == InternationalPremiumDialogMode.start;
+    final isQuota = mode == InternationalPremiumDialogMode.quotaExhausted;
+
+    final fallbackName = t.get('dm_quota_person_fallback');
+    final name = otherFirstName.trim().isEmpty ? fallbackName : otherFirstName.trim();
 
     final title = t.get(
-      isStart ? 'user_search_intl_title' : 'intl_chat_reply_title',
+      isQuota
+          ? 'dm_quota_title'
+          : (isStart ? 'user_search_intl_title' : 'intl_chat_reply_title'),
     );
-    final message = t.get(
-      isStart ? 'user_search_premium_required' : 'intl_chat_reply_message',
-    );
+    final message = isQuota
+        ? t.get('dm_quota_message').replaceAll('{nome}', name).replaceAll('{name}', name)
+        : t.get(
+            isStart ? 'user_search_premium_required' : 'intl_chat_reply_message',
+          );
     final subscribeLabel = t.get(
-      isStart ? 'user_search_view_premium' : 'intl_chat_subscribe_premium',
+      isQuota || !isStart
+          ? 'intl_chat_subscribe_premium'
+          : 'user_search_view_premium',
     );
     final inviteLabel = t.get('intl_chat_invite_friends');
     final notNowLabel = t.get(
-      isStart ? 'user_search_cancel' : 'intl_chat_not_now',
+      isStart && !isQuota ? 'user_search_cancel' : 'intl_chat_not_now',
     );
 
     await showModalBottomSheet<void>(
@@ -126,6 +148,7 @@ class InternationalPremiumDialog {
                     ),
                   ),
                 ),
+                if (!isQuota) ...[
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
@@ -150,6 +173,7 @@ class InternationalPremiumDialog {
                     ),
                   ),
                 ),
+                ],
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,

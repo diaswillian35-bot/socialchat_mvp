@@ -19,8 +19,10 @@ import 'package:socialchat_mvp/widget/audio_bubble.dart';
 import '../l10n/app_texts.dart';
 import '../pages/forward_message_page.dart';
 import '../services/forward_message_service.dart';
+import '../services/dm_reply_quota.dart';
 import '../services/international_chat_service.dart';
 import '../services/premium_access_service.dart';
+import '../services/send_dm_message_service.dart';
 import '../services/voice_service.dart';
 import '../services/app_notification_state.dart';
 import '../utils/chat_message_list_stability.dart';
@@ -148,6 +150,63 @@ class _ChatPageState extends State<ChatPage> {
   DateTime? _premiumUntil;
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _premiumSub;
+
+  /// Último replyQuota confirmado pela Callable (otimista até o snapshot do conv).
+  DmReplyQuota? _quotaFromCallable;
+  int _draftCodePoints = 0;
+
+  bool get _usesReplyQuota =>
+      DmSendPath.requiresCallable(
+        senderIsPremium: _isPremium,
+        isInternational: _isWorldChat,
+      );
+
+  DmReplyQuota _effectiveReplyQuotaFrom(Map<String, dynamic>? convData) {
+    if (!_usesReplyQuota) {
+      return const DmReplyQuota(
+        used: 0,
+        limit: DmReplyQuota.defaultLimit,
+        freeUid: '',
+        enabled: false,
+      );
+    }
+    final parsed = DmReplyQuota.fromMap(
+      convData?['replyQuota'] is Map
+          ? Map<String, dynamic>.from(convData!['replyQuota'] as Map)
+          : null,
+      expectFreeUid: myUid,
+    );
+    if (_quotaFromCallable != null &&
+        _quotaFromCallable!.used >= parsed.used) {
+      return _quotaFromCallable!;
+    }
+    if (parsed.enabled && (parsed.freeUid.isEmpty || parsed.freeUid == myUid)) {
+      return parsed.enabled
+          ? parsed
+          : DmReplyQuota(
+              used: parsed.used,
+              limit: DmReplyQuota.defaultLimit,
+              freeUid: myUid,
+              enabled: true,
+            );
+    }
+    return DmReplyQuota(
+      used: 0,
+      limit: DmReplyQuota.defaultLimit,
+      freeUid: myUid,
+      enabled: true,
+    );
+  }
+
+  /// Compat: getters usados em _ensureCanSendMessage antes do StreamBuilder.
+  DmReplyQuota get _effectiveReplyQuota =>
+      _quotaFromCallable ??
+      DmReplyQuota(
+        used: 0,
+        limit: DmReplyQuota.defaultLimit,
+        freeUid: myUid,
+        enabled: _usesReplyQuota,
+      );
 
   // ===== Escopo (país vs mundo) =====
   bool _isWorldChat = false;
@@ -652,6 +711,16 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _applyTimerRules() {
+    // Franquia replyQuota substitui o timer/paywall legado nesta conversa.
+    if (_usesReplyQuota) {
+      _limitReached = false;
+      _usageTimer?.cancel();
+      _usageTimer = null;
+      _remainingVN.value = 0;
+      if (mounted) setState(() {});
+      return;
+    }
+
     if (!_isWorldChat) {
       _limitReached = false;
       _usageTimer?.cancel();
@@ -787,6 +856,7 @@ class _ChatPageState extends State<ChatPage> {
 
   void _onTextChanged() {
     final hasText = _textC.text.trim().isNotEmpty;
+    _draftCodePoints = DmReplyQuota.countCodePoints(_textC.text);
 
     _setTyping(hasText);
 
@@ -798,6 +868,23 @@ class _ChatPageState extends State<ChatPage> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  // replyQuota: StreamBuilder(convDoc) no composer — sem listener adicional.
+  String _otherFirstName() {
+    final raw = widget.otherName.trim();
+    if (raw.isEmpty) {
+      return AppTexts.current.get('dm_quota_person_fallback');
+    }
+    return raw.split(RegExp(r'\s+')).first;
+  }
+
+  Future<void> _showQuotaExhaustedDialog() async {
+    if (!mounted) return;
+    await InternationalPremiumDialog.showQuotaExhausted(
+      context,
+      otherFirstName: _otherFirstName(),
+    );
   }
 
   String _presenceLabel(
@@ -847,15 +934,44 @@ class _ChatPageState extends State<ChatPage> {
   Future<bool> _ensureCanSendMessage({required bool showReplyModal}) async {
     final mySnap = await myUserDoc.get();
     final otherSnap = await otherUserDoc.get();
+    final senderData = mySnap.data() ?? {};
+    final recipientData = otherSnap.data() ?? {};
     final canSend = InternationalChatService.canSendMessage(
-      senderData: mySnap.data() ?? {},
-      recipientData: otherSnap.data() ?? {},
+      senderData: senderData,
+      recipientData: recipientData,
     );
     if (canSend) return true;
+
+    // Free internacional: franquia 300 via Callable (não bloqueio total).
+    final international = InternationalChatService.isInternational(
+      InternationalChatService.readHomeCountryCode(senderData),
+      InternationalChatService.readHomeCountryCode(recipientData),
+    );
+    if (international) {
+      final q = _effectiveReplyQuota;
+      if (q.exhausted) {
+        if (showReplyModal && mounted) {
+          await _showQuotaExhaustedDialog();
+        }
+        return false;
+      }
+      return true;
+    }
+
     if (showReplyModal && mounted) {
       await InternationalPremiumDialog.showReply(context);
     }
     return false;
+  }
+
+  Future<bool> _ensureCanSendMedia() async {
+    if (_usesReplyQuota) {
+      if (mounted) {
+        await _showQuotaExhaustedDialog();
+      }
+      return false;
+    }
+    return _ensureCanSendMessage(showReplyModal: true);
   }
 
   /// Atualiza resumo/unread sem reescrever `participants`/`pairKey`
@@ -937,11 +1053,11 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
-      if (!await _ensureCanSendMessage(showReplyModal: true)) {
+      if (!await _ensureCanSendMedia()) {
         return;
       }
 
-      if (_isWorldChat && _limitReached && !_isPremium) {
+      if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
         Navigator.push(
           context,
@@ -969,6 +1085,16 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
+      if (_usesReplyQuota) {
+        final q = _effectiveReplyQuota;
+        final cost = DmReplyQuota.countCodePoints(text);
+        if (cost > q.remaining) {
+          if (mounted) setState(() {});
+          await _showQuotaExhaustedDialog();
+          return;
+        }
+      }
+
       _sending = true;
       _lastSentAt = now;
       pendingId = _makePendingId();
@@ -985,6 +1111,49 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     try {
+      if (_usesReplyQuota) {
+        final result = await SendDmMessageService().send(
+          conversationId: widget.conversationId,
+          otherUid: widget.otherUid,
+          text: text,
+          requestId: pendingId,
+          messageId: pendingId,
+          replyToMessageId: reply.replyToMessageId,
+          replyToText: reply.replyToText,
+          replyToType: reply.replyToType,
+          replyToIsMe: reply.replyToIsMe,
+        );
+        if (!result.ok) {
+          if (result.quota != null && mounted) {
+            setState(() => _quotaFromCallable = result.quota!);
+          }
+          if (result.isQuotaExceeded) {
+            _markPendingTextFailed(pendingId);
+            await _showQuotaExhaustedDialog();
+            return;
+          }
+          _markPendingTextFailed(pendingId);
+          _notifySendFailed();
+          return;
+        }
+        if (result.quota != null && mounted) {
+          setState(() => _quotaFromCallable = result.quota!);
+        }
+        _patchPendingText(pendingId, sending: false);
+        unawaited(
+          LinkPreviewService.requestPreviewForMessage(
+            text: text,
+            messagePath:
+                'conversations/${widget.conversationId}/messages/$pendingId',
+          ),
+        );
+        // Unread/lastMessage: onPrivateMessageCreated no servidor.
+        if (_scrollC.hasClients) {
+          _scrollC.jumpTo(0);
+        }
+        return;
+      }
+
       final clientNow = Timestamp.fromDate(DateTime.now());
       final msgData = <String, dynamic>{
         'type': 'text',
@@ -1208,7 +1377,7 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
-      if (_isWorldChat && _limitReached && !_isPremium) {
+      if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
         Navigator.push(
           context,
@@ -1447,11 +1616,11 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
-      if (!await _ensureCanSendMessage(showReplyModal: true)) {
+      if (!await _ensureCanSendMedia()) {
         return;
       }
 
-      if (_isWorldChat && _limitReached && !_isPremium) {
+      if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
         Navigator.push(
           context,
@@ -1564,6 +1733,10 @@ class _ChatPageState extends State<ChatPage> {
 
   void _openPlusMenu() {
     final t = AppTexts.current;
+    if (_usesReplyQuota) {
+      _showQuotaExhaustedDialog();
+      return;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -2384,248 +2557,305 @@ class _ChatPageState extends State<ChatPage> {
                               },
                             ),
                     ),
-                    if (_isWorldChat && !_isPremium)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Text(
-                          t.get('chat_world_is_premium'),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: _muted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    SafeArea(
-                      top: false,
-                      minimum: EdgeInsets.zero,
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                        decoration: BoxDecoration(
-                          color: _card,
-                          border: Border(top: BorderSide(color: _border)),
-                        ),
-                        child: Column(
+                    StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      stream: convDoc.snapshots(),
+                      builder: (context, convSnap) {
+                        final quota =
+                            _effectiveReplyQuotaFrom(convSnap.data?.data());
+                        final draftOver = _usesReplyQuota &&
+                            quota.draftExceeds(_textC.text);
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (_replyToMessageId != null)
-                              Container(
-                                width: double.infinity,
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF3F4F6),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border(
-                                    left: BorderSide(
-                                      color: _replyToIsMe ? _remdyBlue : _muted,
-                                      width: 4,
+                      if (_usesReplyQuota)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Text(
+                            t.get('dm_quota_hint'),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _muted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      else if (_isWorldChat && !_isPremium)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Text(
+                            t.get('chat_world_is_premium'),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _muted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      SafeArea(
+                        top: false,
+                        minimum: EdgeInsets.zero,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          decoration: BoxDecoration(
+                            color: _card,
+                            border: Border(top: BorderSide(color: _border)),
+                          ),
+                          child: Column(
+                            children: [
+                              if (_replyToMessageId != null)
+                                Container(
+                                  width: double.infinity,
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3F4F6),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: _replyToIsMe ? _remdyBlue : _muted,
+                                        width: 4,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _replyToIsMe
-                                                ? t.get('chat_you')
-                                                : t.get('chat_reply'),
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700,
-                                              color: _text,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _replyToIsMe
+                                                  ? t.get('chat_you')
+                                                  : t.get('chat_reply'),
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: _text,
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          if (_replyToType == 'image' &&
-                                              _replyToImageUrl.isNotEmpty)
-                                            Row(
-                                              children: [
-                                                ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(6),
-                                                  child: Image.network(
-                                                    _replyToImageUrl,
-                                                    width: 42,
-                                                    height: 42,
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder:
-                                                        (_, __, ___) =>
-                                                            Container(
+                                            const SizedBox(height: 2),
+                                            if (_replyToType == 'image' &&
+                                                _replyToImageUrl.isNotEmpty)
+                                              Row(
+                                                children: [
+                                                  ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(6),
+                                                    child: Image.network(
+                                                      _replyToImageUrl,
                                                       width: 42,
                                                       height: 42,
-                                                      color: const Color(
-                                                          0xFFE5E7EB),
-                                                      alignment:
-                                                          Alignment.center,
-                                                      child: const Icon(
-                                                          Icons.image,
-                                                          size: 18),
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder:
+                                                          (_, __, ___) =>
+                                                              Container(
+                                                        width: 42,
+                                                        height: 42,
+                                                        color: const Color(
+                                                            0xFFE5E7EB),
+                                                        alignment:
+                                                            Alignment.center,
+                                                        child: const Icon(
+                                                            Icons.image,
+                                                            size: 18),
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    t.get('chat_photo_label'),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      fontSize: 13,
-                                                      color: _muted,
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      t.get('chat_photo_label'),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                        color: _muted,
+                                                      ),
                                                     ),
                                                   ),
+                                                ],
+                                              )
+                                            else
+                                              Text(
+                                                _replyToType == 'audio'
+                                                    ? t.get('chat_audio_label')
+                                                    : _replyToType == 'image'
+                                                        ? t.get(
+                                                            'chat_photo_label')
+                                                        : _replyToText,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: _muted,
                                                 ),
-                                              ],
-                                            )
-                                          else
-                                            Text(
-                                              _replyToType == 'audio'
-                                                  ? t.get('chat_audio_label')
-                                                  : _replyToType == 'image'
-                                                      ? t.get(
-                                                          'chat_photo_label')
-                                                      : _replyToText,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                color: _muted,
                                               ),
-                                            ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    IconButton(
-                                      onPressed: _cancelReply,
-                                      icon: const Icon(Icons.close, size: 18),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF1F5F9),
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(color: _border),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 14),
-                                    child: TextField(
-                                      controller: _textC,
-                                      enabled: !isBlocked,
-                                      textInputAction: TextInputAction.send,
-                                      onSubmitted: (_) async {
-                                        if (isBlocked) return;
-                                        await _setTyping(false);
-                                        await _send();
-                                      },
-                                      decoration: InputDecoration(
-                                        hintText: isBlocked
-                                            ? t.get('chat_cannot_send_blocked')
-                                            : t.get('chat_type_message'),
-                                        border: InputBorder.none,
+                                      IconButton(
+                                        onPressed: _cancelReply,
+                                        icon: const Icon(Icons.close, size: 18),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Opacity(
-                                  opacity: locked ? 0.45 : 1.0,
-                                  child: InkWell(
-                                    onTap: isBlocked ? null : _openPlusMenu,
-                                    borderRadius: BorderRadius.circular(999),
+                              Row(
+                                children: [
+                                  Expanded(
                                     child: Container(
-                                      width: 40,
-                                      height: 40,
                                       decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius:
-                                            BorderRadius.circular(999),
-                                        border: Border.all(color: _border),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Color(0x08000000),
-                                            blurRadius: 8,
-                                            offset: Offset(0, 4),
-                                          ),
-                                        ],
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(
+                                          color: draftOver
+                                              ? const Color(0xFFDC2626)
+                                              : _border,
+                                        ),
                                       ),
-                                      child: const Icon(
-                                        Icons.add_rounded,
-                                        color: _remdyBlue,
-                                        size: 20,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                _textC.text.trim().isEmpty
-                                    ? Opacity(
-                                        opacity: locked ? 0.45 : 1.0,
-                                        child: IgnorePointer(
-                                          ignoring: isBlocked,
-                                          child: RecordingButton(
-                                            onRecordStart: () async {
-                                              await _setRecording(true);
-                                            },
-                                            onRecordStop: () async {
-                                              await _setRecording(false);
-                                            },
-                                            onRecorded: (path) async {
-                                              await _setRecording(false);
-
-                                              if (path == null) return;
-
-                                              await _sendAudio(path);
-                                            },
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14),
+                                      child: TextField(
+                                        controller: _textC,
+                                        enabled: !isBlocked,
+                                        textInputAction: TextInputAction.send,
+                                        onSubmitted: (_) async {
+                                          if (isBlocked) return;
+                                          await _setTyping(false);
+                                          await _send();
+                                        },
+                                        decoration: InputDecoration(
+                                          hintText: isBlocked
+                                              ? t.get('chat_cannot_send_blocked')
+                                              : t.get('chat_type_message'),
+                                          border: InputBorder.none,
+                                          suffixIcon: _usesReplyQuota
+                                              ? Padding(
+                                                  padding: const EdgeInsets.only(
+                                                      right: 4),
+                                                  child: Center(
+                                                    widthFactor: 1,
+                                                    child: Text(
+                                                      '${quota.used + (_textC.text.isEmpty ? 0 : _draftCodePoints)}/${quota.limit}',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color: draftOver
+                                                            ? const Color(
+                                                                0xFFDC2626)
+                                                            : _muted,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                )
+                                              : null,
+                                          suffixIconConstraints:
+                                              const BoxConstraints(
+                                            minWidth: 0,
+                                            minHeight: 0,
                                           ),
                                         ),
-                                      )
-                                    : Opacity(
-                                        opacity: isBlocked ? 0.45 : 1.0,
-                                        child: InkWell(
-                                          onTap: isBlocked ? null : _send,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Opacity(
+                                    opacity: locked ? 0.45 : 1.0,
+                                    child: InkWell(
+                                      onTap: isBlocked ? null : _openPlusMenu,
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
                                           borderRadius:
                                               BorderRadius.circular(999),
-                                          child: Container(
-                                            width: 40,
-                                            height: 40,
-                                            decoration: BoxDecoration(
-                                              gradient: const LinearGradient(
-                                                colors: [_remdyBlue, _logoBlue],
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                              boxShadow: const [
-                                                BoxShadow(
-                                                  color: Color(0x14000000),
-                                                  blurRadius: 10,
-                                                  offset: Offset(0, 5),
-                                                ),
-                                              ],
+                                          border: Border.all(color: _border),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: Color(0x08000000),
+                                              blurRadius: 8,
+                                              offset: Offset(0, 4),
                                             ),
-                                            child: const Icon(
-                                              Icons.send_rounded,
-                                              color: Colors.white,
-                                              size: 18,
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.add_rounded,
+                                          color: _remdyBlue,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _textC.text.trim().isEmpty
+                                      ? Opacity(
+                                          opacity: locked ? 0.45 : 1.0,
+                                          child: IgnorePointer(
+                                            ignoring: isBlocked,
+                                            child: RecordingButton(
+                                              onRecordStart: () async {
+                                                await _setRecording(true);
+                                              },
+                                              onRecordStop: () async {
+                                                await _setRecording(false);
+                                              },
+                                              onRecorded: (path) async {
+                                                await _setRecording(false);
+
+                                                if (path == null) return;
+
+                                                await _sendAudio(path);
+                                              },
+                                            ),
+                                          ),
+                                        )
+                                      : Opacity(
+                                          opacity: isBlocked ? 0.45 : 1.0,
+                                          child: InkWell(
+                                            onTap: isBlocked ? null : _send,
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                            child: Container(
+                                              width: 40,
+                                              height: 40,
+                                              decoration: BoxDecoration(
+                                                gradient: const LinearGradient(
+                                                  colors: [_remdyBlue, _logoBlue],
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x14000000),
+                                                    blurRadius: 10,
+                                                    offset: Offset(0, 5),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.send_rounded,
+                                                color: Colors.white,
+                                                size: 18,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                              ],
-                            ),
-                          ],
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 );

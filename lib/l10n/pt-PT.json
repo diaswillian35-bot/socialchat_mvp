@@ -1205,5 +1205,9 @@
   "events_empty_subdivision_region": "Nenhum evento nesta região.",
   "events_need_country": "Defina o seu país no perfil para explorar eventos nacionais.",
   "events_need_location": "Complete a sua localização para organizar eventos da sua cidade, arredores e país.",
-  "events_update_location": "Atualizar localização"
+  "events_update_location": "Atualizar localização",
+  "dm_quota_title": "Continue esta conversa",
+  "dm_quota_message": "Atingiu o limite desta conversa. Subscreva o Premium para continuar a conversar com {nome}.",
+  "dm_quota_hint": "Respostas Free usam uma franquia de 300 caracteres nesta conversa. Apenas texto.",
+  "dm_quota_person_fallback": "esta pessoa",
 }
