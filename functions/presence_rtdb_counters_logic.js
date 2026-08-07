@@ -1,11 +1,41 @@
 /** Lógica pura — contadores atômicos, mirror, admin, paginação. */
 
+/** Alinhado a PresenceRtdbConfig.connectionStaleAfter (3 min). */
+const CONNECTION_STALE_MS = 3 * 60 * 1000;
+
 function normalizeCountryCode(raw) {
   return String(raw || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, "")
     .slice(0, 16);
+}
+
+/**
+ * Remove conexões com timestamp velho (ms ServerValue).
+ * Retorna { removed, remaining } — remaining só com timestamps frescos.
+ */
+function pruneStaleConnectionsMap(connections, nowMs = Date.now(), staleMs = CONNECTION_STALE_MS) {
+  const src =
+    connections && typeof connections === "object" ? connections : {};
+  const updates = {};
+  const remaining = {};
+  let removed = 0;
+  for (const [id, ts] of Object.entries(src)) {
+    if (typeof ts === "number" && Number.isFinite(ts)) {
+      if (nowMs - ts > staleMs) {
+        updates[id] = null;
+        removed += 1;
+        continue;
+      }
+      remaining[id] = ts;
+      continue;
+    }
+    // Legado sem timestamp numérico: tratar como morto (não renovável).
+    updates[id] = null;
+    removed += 1;
+  }
+  return { updates, remaining, removed, freshCount: Object.keys(remaining).length };
 }
 
 function counterDeltaFromCounts({ wasOnline, isOnline }) {
@@ -351,6 +381,8 @@ function assertNoSecondDelta(patch) {
 
 module.exports = {
   normalizeCountryCode,
+  CONNECTION_STALE_MS,
+  pruneStaleConnectionsMap,
   counterDeltaFromCounts,
   clientWritePlan,
   computeAtomicPresencePatch,

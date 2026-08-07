@@ -133,11 +133,12 @@ void main() {
     });
 
     test('dois aparelhos = uma pessoa no count de UIDs', () {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
       final n = PresenceRtdbLogic.countOnlineUids(
         presenceByUid: {
           'u1': {
-            'c_old': 1,
-            'c_new': 2,
+            'c_old': nowMs - 1000,
+            'c_new': nowMs,
           },
         },
       );

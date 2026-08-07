@@ -5,28 +5,58 @@ import 'presence_rtdb_config.dart';
 class PresenceRtdbLogic {
   PresenceRtdbLogic._();
 
-  static bool isOnlineFromConnections(dynamic connections) {
-    if (connections == null) return false;
-    if (connections is! Map) return false;
-    if (connections.isEmpty) return false;
+  /// Online se existe ≥1 conexão com timestamp fresco.
+  /// Números = `ServerValue.timestamp` (ms). Bool/Map legado só contam se
+  /// [allowLegacyWithoutTimestamp] (default false — evita fantasma eterno).
+  static bool isOnlineFromConnections(
+    dynamic connections, {
+    DateTime? now,
+    Duration? staleAfter,
+    bool allowLegacyWithoutTimestamp = false,
+  }) {
+    return countFreshConnections(
+          connections,
+          now: now,
+          staleAfter: staleAfter,
+          allowLegacyWithoutTimestamp: allowLegacyWithoutTimestamp,
+        ) >
+        0;
+  }
+
+  static int countFreshConnections(
+    dynamic connections, {
+    DateTime? now,
+    Duration? staleAfter,
+    bool allowLegacyWithoutTimestamp = false,
+  }) {
+    if (connections == null || connections is! Map || connections.isEmpty) {
+      return 0;
+    }
+    final clock = now ?? DateTime.now();
+    final maxAge = staleAfter ?? PresenceRtdbConfig.connectionStaleAfter;
+    var n = 0;
     for (final entry in connections.entries) {
       final v = entry.value;
       if (v == null) continue;
-      if (v is bool && v) return true;
-      if (v is num) return true;
-      if (v is Map) return true;
-      return true;
+      if (v is num) {
+        final ts = DateTime.fromMillisecondsSinceEpoch(v.toInt());
+        final age = clock.difference(ts);
+        if (age.isNegative || age <= maxAge) n++;
+        continue;
+      }
+      if (allowLegacyWithoutTimestamp) {
+        if (v is bool && v) n++;
+        if (v is Map) n++;
+      }
     }
-    return false;
+    return n;
   }
 
   static int countConnections(dynamic connections) {
-    if (connections == null || connections is! Map) return 0;
-    var n = 0;
-    for (final e in connections.entries) {
-      if (e.value != null) n++;
-    }
-    return n;
+    return countFreshConnections(
+      connections,
+      allowLegacyWithoutTimestamp: true,
+    );
   }
 
   /// Transição zero↔uma conexão por UID (evita dupla contagem multi-aparelho).

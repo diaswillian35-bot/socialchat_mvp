@@ -38,7 +38,9 @@ class PresenceService with WidgetsBindingObserver {
       );
 
   Timer? _deferredOfflineTimer;
+  Timer? _heartbeatTimer;
   StreamSubscription<DatabaseEvent>? _connectedSub;
+  Future<void> _opChain = Future<void>.value();
   bool _started = false;
   bool _foreground = true;
   bool _observerRegistered = false;
@@ -114,7 +116,8 @@ class PresenceService with WidgetsBindingObserver {
       if (!_connectionActive || _connectionRef == null) {
         await _goOnline(forceNew: false);
       } else {
-        await _ensureOnDisconnect();
+        await _ensureOnDisconnect(refreshTimestamp: true);
+        _startHeartbeat();
       }
       return;
     }
@@ -125,6 +128,30 @@ class PresenceService with WidgetsBindingObserver {
     _uid = user.uid;
     _listenConnected();
     await _goOnline(forceNew: false);
+  }
+
+  /// Serializa goOnline/goOffline/clear para não criar connectionIds em paralelo.
+  Future<T> _serialized<T>(Future<T> Function() fn) {
+    final run = _opChain.then((_) => fn());
+    _opChain = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    if (!_connectionActive || _connectionRef == null) return;
+    _heartbeatTimer = Timer.periodic(
+      PresenceRtdbConfig.connectionHeartbeatInterval,
+      (_) {
+        if (!_started || !_foreground || !_connectionActive) return;
+        unawaited(_ensureOnDisconnect(refreshTimestamp: true));
+      },
+    );
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
   }
 
   void _listenConnected() {
@@ -202,6 +229,7 @@ class PresenceService with WidgetsBindingObserver {
 
   Future<void> stop() async {
     _cancelDeferredOffline();
+    _stopHeartbeat();
     await _connectedSub?.cancel();
     _connectedSub = null;
     final uid = _uid;
@@ -216,60 +244,69 @@ class PresenceService with WidgetsBindingObserver {
   }
 
   /// [forceNew] só quando a conexão foi perdida / nunca existiu.
-  Future<void> _goOnline({required bool forceNew}) async {
-    if (!_started) return;
-    final uid = _uid;
-    if (uid == null) return;
+  Future<void> _goOnline({required bool forceNew}) {
+    return _serialized(() async {
+      if (!_started) return;
+      final uid = _uid;
+      if (uid == null) return;
 
-    _foreground = true;
+      _foreground = true;
 
-    final action = PresenceLifecycle.decideGoOnline(
-      connectionActive: _connectionActive,
-      hasConnectionRef: _connectionRef != null,
-      forceNew: forceNew,
-    );
+      final action = PresenceLifecycle.decideGoOnline(
+        connectionActive: _connectionActive,
+        hasConnectionRef: _connectionRef != null,
+        forceNew: forceNew,
+      );
 
-    if (action == PresenceGoOnlineAction.keepExisting) {
-      _log('online keep existing');
-      await _ensureOnDisconnect();
-      return;
-    }
+      if (action == PresenceGoOnlineAction.keepExisting) {
+        _log('online keep existing');
+        await _ensureOnDisconnect(refreshTimestamp: true);
+        _startHeartbeat();
+        return;
+      }
 
-    _log('online create connection');
+      _log('online create connection');
 
-    if (_connectionRef != null) {
-      await _clearRtdbConnection(writeFirestoreLastSeen: false);
-    }
+      if (_connectionRef != null) {
+        await _clearRtdbConnection(writeFirestoreLastSeen: false);
+      }
 
-    final connectionId = generateConnectionId();
-    _connectionId = connectionId;
-    final connRef = _rtdb.ref('presence/$uid/connections/$connectionId');
+      final connectionId = generateConnectionId();
+      _connectionId = connectionId;
+      final connRef = _rtdb.ref('presence/$uid/connections/$connectionId');
 
-    try {
-      await connRef.onDisconnect().remove();
-      await connRef.set(ServerValue.timestamp);
-      _connectionRef = connRef;
-      _connectionActive = true;
-      await _touchFirestoreLastSeen(uid: uid, force: false);
-    } catch (e) {
-      _log('_goOnline', e);
-      _connectionRef = null;
-      _connectionActive = false;
-      _connectionId = null;
-    }
+      try {
+        await connRef.onDisconnect().remove();
+        await connRef.set(ServerValue.timestamp);
+        _connectionRef = connRef;
+        _connectionActive = true;
+        _startHeartbeat();
+        await _touchFirestoreLastSeen(uid: uid, force: false);
+      } catch (e) {
+        _log('_goOnline', e);
+        _stopHeartbeat();
+        _connectionRef = null;
+        _connectionActive = false;
+        _connectionId = null;
+      }
+    });
   }
 
-  Future<void> _goOffline({required String reason}) async {
-    if (!_started && _uid == null) return;
-    _log('offline ($reason)');
-    _foreground = false;
-    await _clearRtdbConnection(writeFirestoreLastSeen: true);
+  Future<void> _goOffline({required String reason}) {
+    return _serialized(() async {
+      if (!_started && _uid == null) return;
+      _log('offline ($reason)');
+      _foreground = false;
+      _stopHeartbeat();
+      await _clearRtdbConnection(writeFirestoreLastSeen: true);
+    });
   }
 
   Future<void> _clearRtdbConnection({required bool writeFirestoreLastSeen}) async {
     final uid = _uid;
     final connRef = _connectionRef;
     final clearedId = _connectionId;
+    _stopHeartbeat();
     _connectionRef = null;
     _connectionId = null;
     _connectionActive = false;
@@ -330,7 +367,8 @@ class PresenceService with WidgetsBindingObserver {
         );
         if (action == PresenceResumeAction.keepAlive) {
           // inactive→resumed, câmera, permissão: sem novo connectionId.
-          unawaited(_ensureOnDisconnect());
+          unawaited(_ensureOnDisconnect(refreshTimestamp: true));
+          _startHeartbeat();
         } else {
           unawaited(_goOnline(forceNew: false));
         }

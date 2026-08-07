@@ -50,6 +50,36 @@ void main() {
     });
   });
 
+  
+  group('PresenceRtdbLogic connection freshness', () {
+    test('stale timestamp is offline; fresh is online', () {
+      final now = DateTime.fromMillisecondsSinceEpoch(1000000000000);
+      final fresh = now.subtract(const Duration(seconds: 30)).millisecondsSinceEpoch;
+      final stale = now.subtract(const Duration(minutes: 10)).millisecondsSinceEpoch;
+      expect(
+        PresenceRtdbLogic.isOnlineFromConnections(
+          {'c1': fresh},
+          now: now,
+        ),
+        isTrue,
+      );
+      expect(
+        PresenceRtdbLogic.isOnlineFromConnections(
+          {'c1': stale},
+          now: now,
+        ),
+        isFalse,
+      );
+      expect(
+        PresenceRtdbLogic.countFreshConnections(
+          {'a': fresh, 'b': stale},
+          now: now,
+        ),
+        1,
+      );
+    });
+  });
+
   group('PresenceRtdbLogic.worldMinusCountry', () {
     test('waits until both sides arrive (no flash of raw world)', () {
       expect(

@@ -14,4 +14,13 @@ class PresenceRtdbConfig {
   /// Intervalo mínimo entre writes de `lastSeenAt` no Firestore (transições
   /// importantes podem gravar antes; heartbeats NÃO usam Firestore).
   static const Duration firestoreLastSeenMinInterval = Duration(minutes: 15);
+
+  /// Renova o timestamp da conexão RTDB enquanto o app está em foreground.
+  /// Sem isso, nós órfãos (onDisconnect falho) nunca envelhecem de forma
+  /// distinguível de uma sessão ativa longa.
+  static const Duration connectionHeartbeatInterval = Duration(seconds: 45);
+
+  /// Conexão com timestamp mais velho que isto é tratada como morta (cliente
+  /// e Cloud Function). Deve ser > 2× [connectionHeartbeatInterval].
+  static const Duration connectionStaleAfter = Duration(minutes: 3);
 }

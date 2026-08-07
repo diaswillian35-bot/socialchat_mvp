@@ -219,7 +219,10 @@ void main() {
       final src = File('lib/services/presence_service.dart').readAsStringSync();
       expect(src.contains('.limit(20)'), isFalse);
       expect(src.contains('onDisconnect'), isTrue);
-      expect(src.contains('Timer.periodic'), isFalse);
+      // Heartbeat RTDB (Timer.periodic) é permitido; proibido é poll de sessions.
+      expect(src.contains("collection('sessions')"), isFalse);
+      expect(src.contains('_startHeartbeat'), isTrue);
+      expect(src.contains('connectionHeartbeatInterval'), isTrue);
     });
   });
 }

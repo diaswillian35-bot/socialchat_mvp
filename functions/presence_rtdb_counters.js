@@ -15,6 +15,7 @@ const {
   parseReconcileCallArgs,
   evaluatePresenceReconcileAdmin,
   advanceReconcileCheckpoint,
+  pruneStaleConnectionsMap,
 } = require("./presence_rtdb_counters_logic");
 
 let assertAppCheckIfEnforced = () => {};
@@ -35,6 +36,16 @@ function countConnections(val) {
   return Object.keys(val).length;
 }
 
+async function pruneStaleConnectionsForUid(rtdb, uid) {
+  const ref = rtdb.ref(`presence/${uid}/connections`);
+  const snap = await ref.get();
+  const pruned = pruneStaleConnectionsMap(snap.val());
+  if (pruned.removed > 0) {
+    await ref.update(pruned.updates);
+  }
+  return pruned.freshCount;
+}
+
 async function readOfficialCountry(firestore, uid) {
   const snap = await firestore.collection("users").doc(uid).get();
   const data = snap.data() || {};
@@ -44,8 +55,8 @@ async function readOfficialCountry(firestore, uid) {
 }
 
 async function readConnectionCount(rtdb, uid) {
-  const snap = await rtdb.ref(`presence/${uid}/connections`).get();
-  return countConnections(snap.val());
+  // TTL: remove fantasmas antes de contar (onDisconnect falho / multi-create).
+  return pruneStaleConnectionsForUid(rtdb, uid);
 }
 
 async function assertPresenceReconcileAdmin(request) {
