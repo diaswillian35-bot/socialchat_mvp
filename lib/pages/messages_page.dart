@@ -2,9 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'chat_page.dart';
 import '../l10n/app_texts.dart';
-import '../services/online_status.dart';
+import '../widget/online_dot.dart';
+import 'chat_page.dart';
 import 'user_search_page.dart';
 
 class MessagesPage extends StatefulWidget {
@@ -470,57 +470,7 @@ class _AvatarOnline extends StatelessWidget {
       return Stack(clipBehavior: Clip.none, children: [avatar]);
     }
 
-    final db = FirebaseFirestore.instance;
-    final pubStream = db.collection('publicUsers').doc(uid).snapshots();
-
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: pubStream,
-      builder: (context, snap) {
-        final now = DateTime.now();
-        Map<String, dynamic> data = {};
-        if (snap.hasData && (snap.data?.exists ?? false)) {
-          data = snap.data?.data() ?? {};
-        }
-
-        if (data.isEmpty) {
-          return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: db.collection('users').doc(uid).snapshots(),
-            builder: (context, s2) {
-              final Map<String, dynamic> d2 =
-                  (s2.hasData && (s2.data?.exists ?? false))
-                      ? (s2.data?.data() ?? <String, dynamic>{})
-                      : <String, dynamic>{};
-
-              return _stack(avatar, OnlineStatus.isOnline(d2, now));
-            },
-          );
-        }
-
-        return _stack(avatar, OnlineStatus.isOnline(data, now));
-      },
-    );
-  }
-
-  Widget _stack(Widget avatar, bool isOnline) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        avatar,
-        Positioned(
-          right: 2,
-          bottom: 2,
-          child: Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color:
-                  isOnline ? const Color(0xFF22C55E) : const Color(0xFFCBD5E1),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-          ),
-        ),
-      ],
-    );
+    // Fonte canônica: RTDB presence/{uid}/connections (não Firestore isOnline).
+    return AvatarWithOnlineDot(avatar: avatar, uid: uid, dotSize: 12);
   }
 }

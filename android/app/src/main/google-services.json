@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "384686982032",
+    "firebase_url": "https://socialchatmvp-default-rtdb.firebaseio.com",
     "project_id": "socialchatmvp",
     "storage_bucket": "socialchatmvp.firebasestorage.app"
   },
@@ -31,10 +32,10 @@
               "client_type": 3
             },
             {
-              "client_id": "384686982032-pevcnfea1dbk4p5o2lngoa56darfgjip.apps.googleusercontent.com",
+              "client_id": "384686982032-4sp1uq2le53s01ff5rc607lrdr3h2sq1.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.adminTalksy"
+                "bundle_id": "com.example.remdyEventsWeb"
               }
             }
           ]
@@ -75,10 +76,78 @@
               "client_type": 3
             },
             {
-              "client_id": "384686982032-pevcnfea1dbk4p5o2lngoa56darfgjip.apps.googleusercontent.com",
+              "client_id": "384686982032-4sp1uq2le53s01ff5rc607lrdr3h2sq1.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.adminTalksy"
+                "bundle_id": "com.example.remdyEventsWeb"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:384686982032:android:1bc018915f16701dbf2915",
+        "android_client_info": {
+          "package_name": "com.remdy.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "384686982032-6519jdv63vqaqc7mnoomv78bh0mmapc4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.remdy.app",
+            "certificate_hash": "7ebe8b31740f8708c6c948bb8360d7a627680aff"
+          }
+        },
+        {
+          "client_id": "384686982032-fgrjkuvigbludmvp88e67khr1fa7rur6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.remdy.app",
+            "certificate_hash": "678aacd8ba9bf162f64623fc9823e23883be0ff9"
+          }
+        },
+        {
+          "client_id": "384686982032-s60n7ej467ks5isffa1fpdm30umhigmb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.remdy.app",
+            "certificate_hash": "fdf08986d283d4605ccd49530119a4e4a63c4417"
+          }
+        },
+        {
+          "client_id": "384686982032-scl1e38rs7vf03npq1jllgdhmehc6m72.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.remdy.app",
+            "certificate_hash": "3a27a52cfddf5afe65a8d47dc279706e83852415"
+          }
+        },
+        {
+          "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTXJmemWYLDrdpgjADv9dP5dK9DpHpFzo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "384686982032-4sp1uq2le53s01ff5rc607lrdr3h2sq1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.remdyEventsWeb"
               }
             }
           ]

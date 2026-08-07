@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_texts.dart';
 import '../services/remi_language_contract.dart';
 import 'remi_goals_page.dart';
 
@@ -32,9 +33,9 @@ class RemiLanguagesPage extends StatelessWidget {
         elevation: 0,
         surfaceTintColor: _bg,
         iconTheme: const IconThemeData(color: _text),
-        title: const Text(
-          'Choose language',
-          style: TextStyle(
+        title: Text(
+          AppTexts.t('remi_choose_language_title'),
+          style: const TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
           ),
@@ -44,9 +45,9 @@ class RemiLanguagesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          const Text(
-            'What language do you want to practice?',
-            style: TextStyle(
+          Text(
+            AppTexts.t('remi_choose_language_headline'),
+            style: const TextStyle(
               color: _text,
               fontSize: 22,
               fontWeight: FontWeight.w900,
@@ -54,9 +55,9 @@ class RemiLanguagesPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Choose one language and Remi will guide you with useful real-life phrases.',
-            style: TextStyle(
+          Text(
+            AppTexts.t('remi_choose_language_subtitle'),
+            style: const TextStyle(
               color: _muted,
               fontSize: 14,
               fontWeight: FontWeight.w600,

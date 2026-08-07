@@ -236,7 +236,7 @@ void _openRemiSettings() {
           children: [
             ListTile(
               leading: const Icon(Icons.translate_rounded, color: _remdyBlue),
-              title: const Text('Change language'),
+              title: Text(AppTexts.t('remi_settings_change_language')),
               onTap: () {
                 Navigator.pop(ctx);
                 Navigator.push(

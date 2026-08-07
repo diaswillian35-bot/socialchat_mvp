@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
 import '../models/event_presentation.dart';
@@ -411,9 +412,19 @@ class _EventDetailPageState extends State<EventDetailPage> {
         languageCode: lang,
       );
     } catch (e, st) {
-      if (kDebugMode) debugPrint('shareEvent: $e\n$st');
-      if (!mounted) return;
-      _snack('events_share_error');
+      // Último recurso: link HTTPS puro (serviço já tenta fallback interno).
+      debugPrint('shareEvent root cause: $e\n$st');
+      try {
+        final link = 'https://remdy.app/e/${event.id}';
+        await Share.share(
+          '${event.title}\n${AppTexts.t('events_share_text')}\n$link',
+          subject: event.title,
+        );
+      } catch (e2, st2) {
+        debugPrint('shareEvent link fallback failed: $e2\n$st2');
+        if (!mounted) return;
+        _snack('events_share_error');
+      }
     } finally {
       if (mounted) setState(() => _shareBusy = false);
     }

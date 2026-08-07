@@ -119,6 +119,14 @@
           }
         },
         {
+          "client_id": "384686982032-scl1e38rs7vf03npq1jllgdhmehc6m72.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.remdy.app",
+            "certificate_hash": "3a27a52cfddf5afe65a8d47dc279706e83852415"
+          }
+        },
+        {
           "client_id": "384686982032-a3nggbuqp9csopa7hjlsch00c60q09um.apps.googleusercontent.com",
           "client_type": 3
         }

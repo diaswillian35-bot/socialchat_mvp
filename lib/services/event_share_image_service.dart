@@ -29,29 +29,36 @@ class EventShareImageService {
         '${AppTexts.t('events_share_text')}\n'
         '$link';
 
-    final bytes = await generateSocialPng(
-      event: event,
-      languageCode: languageCode,
-    );
+    // Imagem é best-effort: falha de PNG/FileProvider NÃO pode bloquear o link.
+    try {
+      final bytes = await generateSocialPng(
+        event: event,
+        languageCode: languageCode,
+      );
 
-    final dir = await getTemporaryDirectory();
-    final file = File(
-      '${dir.path}/remdy_event_${event.id}_${DateTime.now().millisecondsSinceEpoch}.png',
-    );
-    await file.writeAsBytes(bytes, flush: true);
+      final dir = await getTemporaryDirectory();
+      final file = File(
+        '${dir.path}/remdy_event_${event.id}_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
 
-    await Share.shareXFiles(
-      [XFile(file.path, mimeType: 'image/png', name: '${event.title}.png')],
-      text: text,
-      subject: event.title,
-    );
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png', name: '${event.title}.png')],
+        text: text,
+        subject: event.title,
+      );
 
-    // Limpeza best-effort — não bloqueia UX.
-    Future<void>.delayed(const Duration(minutes: 10), () async {
-      try {
-        if (await file.exists()) await file.delete();
-      } catch (_) {}
-    });
+      Future<void>.delayed(const Duration(minutes: 10), () async {
+        try {
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+      });
+      return;
+    } catch (e, st) {
+      debugPrint('EventShareImageService: image share failed: $e\n$st');
+    }
+
+    await Share.share(text, subject: event.title);
   }
 
   static Future<Uint8List> generateSocialPng({

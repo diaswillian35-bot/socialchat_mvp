@@ -119,7 +119,30 @@ class PresenceRtdbLogic {
       final n = value.toInt();
       return n < 0 ? 0 : n;
     }
+    // Resiliência: se o nó for mapa `{count: N}` (formato legado/errado).
+    if (value is Map) {
+      final raw = value['count'] ?? value['n'] ?? value['value'];
+      if (raw is num) {
+        final n = raw.toInt();
+        return n < 0 ? 0 : n;
+      }
+    }
+    if (value is String) {
+      final n = int.tryParse(value.trim());
+      if (n != null) return n < 0 ? 0 : n;
+    }
     return 0;
+  }
+
+  /// Home “mundo” = total mundial − país do usuário (duas linhas sem overlap).
+  /// Retorna null enquanto qualquer lado ainda não chegou (evita flash errado).
+  static int? worldMinusCountry({
+    required int? world,
+    required int? country,
+  }) {
+    if (world == null || country == null) return null;
+    final v = world - country;
+    return v < 0 ? 0 : v;
   }
 
   static bool legacyFirestoreOnline(Map<String, dynamic>? data, DateTime now) {

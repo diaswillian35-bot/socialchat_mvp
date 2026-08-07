@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../data/remi_lessons_data.dart';
+import '../l10n/app_texts.dart';
 import '../services/remi_language_contract.dart';
+import '../services/remi_ui_labels.dart';
 import 'remi_lessons_page.dart';
 
 class RemiGoalsPage extends StatelessWidget {
@@ -31,7 +33,13 @@ class RemiGoalsPage extends StatelessWidget {
     final catalog = remiCatalogFor(code);
     final goals = remiGoalIds
         .where(catalog.containsKey)
-        .map((id) => _Goal(icon: _goalIcons[id] ?? '📚', title: id))
+        .map(
+          (id) => _Goal(
+            id: id,
+            icon: _goalIcons[id] ?? '📚',
+            title: RemiUiLabels.goalTitle(id),
+          ),
+        )
         .toList();
 
     return Scaffold(
@@ -53,18 +61,18 @@ class RemiGoalsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          const Text(
-            'What do you want to practice?',
-            style: TextStyle(
+          Text(
+            AppTexts.t('remi_choose_goal_headline'),
+            style: const TextStyle(
               color: _text,
               fontSize: 24,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Choose your learning goal and Remi will guide you.',
-            style: TextStyle(
+          Text(
+            AppTexts.t('remi_choose_goal_subtitle'),
+            style: const TextStyle(
               color: _muted,
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -83,7 +91,7 @@ class RemiGoalsPage extends StatelessWidget {
                     MaterialPageRoute(
                       builder: (_) => RemiLessonsPage(
                         languageCode: code,
-                        goal: goal.title,
+                        goal: goal.id,
                       ),
                     ),
                   );
@@ -126,10 +134,12 @@ class RemiGoalsPage extends StatelessWidget {
 }
 
 class _Goal {
+  final String id;
   final String icon;
   final String title;
 
   const _Goal({
+    required this.id,
     required this.icon,
     required this.title,
   });

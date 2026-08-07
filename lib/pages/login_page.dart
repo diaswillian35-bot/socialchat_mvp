@@ -428,53 +428,65 @@ return;
     if (_loading) return;
     setState(() => _loading = true);
 
-
     try {
       await _clearStaleSession();
 
-
       final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return;
-
+      if (googleUser == null) {
+        // Cancelamento explícito do usuário — sem toast de erro.
+        return;
+      }
 
       final googleAuth = await googleUser.authentication;
-
+      if ((googleAuth.idToken ?? '').isEmpty &&
+          (googleAuth.accessToken ?? '').isEmpty) {
+        _toast(
+          'Google Sign-In sem token. Verifique SHA-1 do App Signing no Firebase '
+          '(Play Console → App signing).',
+        );
+        return;
+      }
 
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-
       final cred = await FirebaseAuth.instance.signInWithCredential(credential);
       final user = cred.user;
-
 
       if (user == null) {
         _toast('Erro: usuário do Google veio vazio.');
         return;
       }
 
-
       final isNewUser = cred.additionalUserInfo?.isNewUser == true;
 
-
       await _ensureUserDoc(user, isNewUser: isNewUser);
-
 
       if (user.email != null && user.email!.trim().isNotEmpty) {
         _emailC.text = user.email!.trim();
       }
 
-
-     await _saveRemembered();
-await _goToApp();
-return;
-
+      await _saveRemembered();
+      await _goToApp();
+      return;
     } on FirebaseAuthException catch (e) {
-      _toast(e.message ?? 'Erro no Google.');
+      _toast(e.message ?? 'Erro no Google (${e.code}).');
     } catch (e) {
-      _toast('Erro no Google: $e');
+      final msg = e.toString();
+      // ApiException:10 / DEVELOPER_ERROR = SHA/package OAuth mismatch (comum na Play).
+      if (msg.contains('ApiException: 10') ||
+          msg.contains('DEVELOPER_ERROR') ||
+          msg.contains('sign_in_failed')) {
+        _toast(
+          'Google Sign-In falhou (config OAuth/SHA). '
+          'No Firebase, registre o SHA-1 do certificado App Signing da Play '
+          'para com.remdy.app.',
+        );
+      } else {
+        _toast('Erro no Google: $e');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

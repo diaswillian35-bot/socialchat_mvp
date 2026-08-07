@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter/foundation.dart';
 
 import 'presence_rtdb_config.dart';
 import 'presence_rtdb_logic.dart';
@@ -113,12 +112,35 @@ class PresenceWatch {
   static Stream<int> watchWorldOnlineCount({String? excludeCountryCode}) {
     final exclude = excludeCountryCode?.trim().toLowerCase() ?? '';
     if (exclude.isEmpty) {
-      return _db.ref('presenceCounters/world').onValue.map((event) {
-        return PresenceRtdbLogic.parseCounter(event.snapshot.value);
-      }).transform(_intFallback());
+      // Broadcast: Home pode remontar StreamBuilders sem
+      // "Stream has already been listened to".
+      late StreamController<int> controller;
+      StreamSubscription<DatabaseEvent>? sub;
+      controller = StreamController<int>.broadcast(
+        onListen: () {
+          sub ??= _db.ref('presenceCounters/world').onValue.listen(
+            (event) {
+              if (!controller.isClosed) {
+                controller.add(
+                  PresenceRtdbLogic.parseCounter(event.snapshot.value),
+                );
+              }
+            },
+            onError: (_, __) {
+              if (!controller.isClosed) controller.add(0);
+            },
+          );
+        },
+        onCancel: () {
+          sub?.cancel();
+          sub = null;
+        },
+      );
+      return controller.stream;
     }
 
     // Dois contadores pequenos: world − país (sem baixar árvore).
+    // Só emite quando AMBOS chegaram — senão o mundo flasha o total bruto.
     late StreamController<int> controller;
     int? world;
     int? country;
@@ -126,10 +148,12 @@ class PresenceWatch {
     StreamSubscription<DatabaseEvent>? subC;
 
     void emit() {
-      if (world == null) return;
-      final c = country ?? 0;
-      final v = world! - c;
-      if (!controller.isClosed) controller.add(v < 0 ? 0 : v);
+      final v = PresenceRtdbLogic.worldMinusCountry(
+        world: world,
+        country: country,
+      );
+      if (v == null || controller.isClosed) return;
+      controller.add(v);
     }
 
     controller = StreamController<int>.broadcast(
@@ -159,15 +183,5 @@ class PresenceWatch {
     );
 
     return controller.stream;
-  }
-
-  static StreamTransformer<int, int> _intFallback() {
-    return StreamTransformer<int, int>.fromHandlers(
-      handleData: (value, sink) => sink.add(value),
-      handleError: (error, stack, sink) {
-        if (kDebugMode) debugPrint('PresenceWatch: $error');
-        sink.add(0);
-      },
-    );
   }
 }

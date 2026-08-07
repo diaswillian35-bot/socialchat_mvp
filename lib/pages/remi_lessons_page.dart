@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../data/remi_lessons_data.dart';
+import '../l10n/app_texts.dart';
 import '../services/remi_language_contract.dart';
+import '../services/remi_ui_labels.dart';
 import 'remi_chat_page.dart';
 
 class RemiLessonsPage extends StatelessWidget {
@@ -22,9 +24,11 @@ class RemiLessonsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final code = RemiLanguageContract.normalize(languageCode);
-    final lessonsMap = remiCatalogFor(code)[goal] ?? const <String, List<String>>{};
+    final lessonsMap =
+        remiCatalogFor(code)[goal] ?? const <String, List<String>>{};
     final lessons = lessonsMap.keys.toList();
     final displayLang = RemiLanguageContract.displayName(code);
+    final displayGoal = RemiUiLabels.goalTitle(goal);
 
     return Scaffold(
       backgroundColor: _bg,
@@ -34,7 +38,7 @@ class RemiLessonsPage extends StatelessWidget {
         surfaceTintColor: _bg,
         iconTheme: const IconThemeData(color: _text),
         title: Text(
-          '$displayLang • $goal',
+          '$displayLang • $displayGoal',
           style: const TextStyle(
             color: _text,
             fontWeight: FontWeight.w900,
@@ -45,18 +49,18 @@ class RemiLessonsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          const Text(
-            'Choose a lesson',
-            style: TextStyle(
+          Text(
+            AppTexts.t('remi_choose_lesson_headline'),
+            style: const TextStyle(
               color: _text,
               fontSize: 24,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Practice useful phrases with Remi.',
-            style: TextStyle(
+          Text(
+            AppTexts.t('remi_choose_lesson_subtitle'),
+            style: const TextStyle(
               color: _muted,
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -72,9 +76,9 @@ class RemiLessonsPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: _border),
               ),
-              child: const Text(
-                'No lessons available for this language yet. Please choose another language.',
-                style: TextStyle(
+              child: Text(
+                AppTexts.t('remi_no_lessons'),
+                style: const TextStyle(
                   color: _muted,
                   fontWeight: FontWeight.w600,
                   height: 1.4,
@@ -123,7 +127,7 @@ class RemiLessonsPage extends StatelessWidget {
                         const SizedBox(width: 14),
                         Expanded(
                           child: Text(
-                            lesson,
+                            RemiUiLabels.lessonTitle(lesson),
                             style: const TextStyle(
                               color: _text,
                               fontSize: 16,
