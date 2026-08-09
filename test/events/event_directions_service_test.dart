@@ -54,5 +54,15 @@ void main() {
         'Parque, Campo Mourão',
       );
     });
+
+    test('keeps accents and spaces for encoding', () {
+      final q = EventDirectionsService.query(
+        place: '',
+        address: 'Praça da Sé',
+        city: 'São Paulo',
+      );
+      expect(q, 'Praça da Sé, São Paulo');
+      expect(Uri.encodeComponent(q).contains('%'), isTrue);
+    });
   });
 }

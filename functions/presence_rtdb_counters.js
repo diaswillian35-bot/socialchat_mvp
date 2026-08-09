@@ -43,7 +43,47 @@ async function pruneStaleConnectionsForUid(rtdb, uid) {
   if (pruned.removed > 0) {
     await ref.update(pruned.updates);
   }
-  return pruned.freshCount;
+  return pruned;
+}
+
+/**
+ * Varredura RTDB de fantasmas idle (sem novo write do cliente).
+ * Depois sincroniza contadores só para UIDs que perderam conexões.
+ */
+async function pruneIdleGhostConnections(
+  rtdb,
+  firestore,
+  { maxUids = 400, nowMs = Date.now() } = {}
+) {
+  const snap = await rtdb.ref("presence").get();
+  if (!snap.exists()) {
+    return { scanned: 0, touchedUids: 0, removed: 0, synced: 0 };
+  }
+  const all = Object.keys(snap.val() || {});
+  const uids = all.slice(0, Math.max(1, maxUids));
+  let removed = 0;
+  let touchedUids = 0;
+  let synced = 0;
+  for (const uid of uids) {
+    // Re-lê o nó atual (evita snapshot stale do get inicial).
+    const pruned = await pruneStaleConnectionsForUid(rtdb, uid);
+    if (pruned.removed <= 0) continue;
+    removed += pruned.removed;
+    touchedUids += 1;
+    try {
+      await syncPresenceAtomic(firestore, rtdb, uid, { maxAttempts: 3 });
+      synced += 1;
+    } catch (err) {
+      console.warn("idle prune sync failed", uid, err.message || err);
+    }
+  }
+  return {
+    scanned: uids.length,
+    totalPresenceUids: all.length,
+    touchedUids,
+    removed,
+    synced,
+  };
 }
 
 async function readOfficialCountry(firestore, uid) {
@@ -56,7 +96,8 @@ async function readOfficialCountry(firestore, uid) {
 
 async function readConnectionCount(rtdb, uid) {
   // TTL: remove fantasmas antes de contar (onDisconnect falho / multi-create).
-  return pruneStaleConnectionsForUid(rtdb, uid);
+  const pruned = await pruneStaleConnectionsForUid(rtdb, uid);
+  return pruned.freshCount;
 }
 
 async function assertPresenceReconcileAdmin(request) {
@@ -473,6 +514,16 @@ async function runScheduledReconcile(firestore, rtdb, {
   now = Date.now(),
   deadlineMs = now + SCHEDULE_DEADLINE_MS,
 } = {}) {
+  // Sempre: limpa timestamps velhos mesmo sem write novo do cliente.
+  let idlePrune = null;
+  try {
+    idlePrune = await pruneIdleGhostConnections(rtdb, firestore, {
+      nowMs: now,
+    });
+  } catch (err) {
+    console.warn("idle prune failed", err.message || err);
+  }
+
   const cpRef = firestore.doc(CHECKPOINT_DOC);
   const cpSnap = await cpRef.get();
   let cp = cpSnap.exists
@@ -505,6 +556,7 @@ async function runScheduledReconcile(firestore, rtdb, {
           fixed,
           cursor,
           pagesDone,
+          idlePrune,
         };
       }
 
@@ -561,13 +613,21 @@ async function runScheduledReconcile(firestore, rtdb, {
         fixed,
         cursor: cp.cursor,
         pagesDone,
+        idlePrune,
       };
     }
   }
 
   // Só rebuild depois de sync completo (sem estados sujos pendentes de páginas)
   if (Date.now() >= deadlineMs) {
-    return { incomplete: true, phase: "rebuild", scanned, fixed, pagesDone };
+    return {
+      incomplete: true,
+      phase: "rebuild",
+      scanned,
+      fixed,
+      pagesDone,
+      idlePrune,
+    };
   }
 
   const rebuilt = await rebuildAbsoluteCounters(firestore, rtdb);
@@ -580,6 +640,7 @@ async function runScheduledReconcile(firestore, rtdb, {
       lastCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
       incomplete: false,
       lastWorld: rebuilt.world,
+      lastIdlePrune: idlePrune || null,
     },
     { merge: true }
   );
@@ -591,12 +652,14 @@ async function runScheduledReconcile(firestore, rtdb, {
     fixed,
     pagesDone,
     rebuilt,
+    idlePrune,
   };
 }
 
 const reconcilePresenceCounters = onSchedule(
   {
-    schedule: "every 24 hours",
+    // Fantasmas idle precisam de varredura frequente (TTL 3 min + folga).
+    schedule: "every 5 minutes",
     region: "us-central1",
     timeoutSeconds: 540,
   },
@@ -656,6 +719,8 @@ module.exports = {
   syncPresenceAtomic,
   runAtomicFirestoreSync,
   countConnections,
+  pruneStaleConnectionsForUid,
+  pruneIdleGhostConnections,
   reconcilePresenceCountersPage,
   rebuildAbsoluteCounters,
   runScheduledReconcile,

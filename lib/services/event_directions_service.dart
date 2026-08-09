@@ -25,8 +25,9 @@ class EventDirectionsService {
     String address = '',
     String city = '',
   }) async {
+    final isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
     if (validCoords(lat, lng)) {
-      final isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
       final uri = isIos
           ? Uri.parse(
               'https://maps.apple.com/?daddr=${lat!.toStringAsFixed(6)},${lng!.toStringAsFixed(6)}',
@@ -42,9 +43,14 @@ class EventDirectionsService {
     final q = query(place: place, address: address, city: city);
     if (q.isEmpty) return false;
 
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(q)}',
-    );
+    // iPhone: Apple Maps (texto); Android: Google Maps search.
+    final uri = isIos
+        ? Uri.parse(
+            'https://maps.apple.com/?daddr=${Uri.encodeComponent(q)}',
+          )
+        : Uri.parse(
+            'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(q)}',
+          );
     if (!await canLaunchUrl(uri)) return false;
     return launchUrl(uri, mode: LaunchMode.externalApplication);
   }

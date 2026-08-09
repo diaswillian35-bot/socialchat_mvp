@@ -225,6 +225,16 @@ class _EventDetailPageState extends State<EventDetailPage> {
     String address = '',
     String city = '',
   }) async {
+    if (!EventDirectionsService.hasValidDestination(
+      lat: lat,
+      lng: lng,
+      place: place,
+      address: address,
+      city: city,
+    )) {
+      if (mounted) _snack('events_directions_unavailable');
+      return;
+    }
     final ok = await EventDirectionsService.open(
       lat: lat,
       lng: lng,

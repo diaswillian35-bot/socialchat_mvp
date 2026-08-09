@@ -108,6 +108,16 @@ void main() {
       expect(src.contains('OnlineStatus.isOnline'), isFalse);
     });
 
+    test('language_users and group dot use RTDB hub, not Firestore isOnline', () {
+      final region = File('lib/pages/language_users_page.dart').readAsStringSync();
+      expect(region.contains('OnlineDot(uid:'), isTrue);
+      expect(region.contains("OnlineStatus.isOnline"), isFalse);
+      final group = File('lib/widget/group_online_dot.dart').readAsStringSync();
+      expect(group.contains('PresenceWatch.watchOnlineCount'), isTrue);
+      expect(group.contains("collection('users')"), isFalse);
+      expect(group.contains("d['isOnline']"), isFalse);
+    });
+
     test('event share has link fallback when image fails', () {
       final src =
           File('lib/services/event_share_image_service.dart').readAsStringSync();

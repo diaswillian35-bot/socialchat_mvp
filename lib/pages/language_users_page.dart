@@ -10,6 +10,7 @@ import '../widget/remdy_app.dart';
 import '../services/international_chat_service.dart';
 import '../services/presence_online_set.dart';
 import '../services/presence_rtdb_config.dart';
+import '../widget/online_dot.dart';
 import '../widgets/international_premium_dialog.dart';
 
 
@@ -227,7 +228,6 @@ class LanguageUsersPage extends StatelessWidget {
                     doc: d,
                     flag: flag,
                     fallbackCountry: languageName,
-                    isOnline: true,
                     onProfile: () {
                       Navigator.push(
                         context,
@@ -258,7 +258,6 @@ class LanguageUsersPage extends StatelessWidget {
                     doc: d,
                     flag: flag,
                     fallbackCountry: languageName,
-                    isOnline: false,
                     onProfile: () {
                       Navigator.push(
                         context,
@@ -331,7 +330,6 @@ class _SectionTitle extends StatelessWidget {
 
 class _UserCard extends StatelessWidget {
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
-  final bool isOnline;
   final String flag;
   final String fallbackCountry;
   final VoidCallback onProfile;
@@ -340,7 +338,6 @@ class _UserCard extends StatelessWidget {
 
   const _UserCard({
     required this.doc,
-    required this.isOnline,
     required this.flag,
     required this.fallbackCountry,
     required this.onProfile,
@@ -406,7 +403,9 @@ class _UserCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        _StatusDot(online: isOnline),
+                        // Fonte canônica RTDB (mesmo hub do chat) — não o bool
+                        // estático da seção, que pode ficar defasado.
+                        OnlineDot(uid: doc.id, size: 10, showBorder: false),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -474,25 +473,6 @@ class _UserCard extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-
-class _StatusDot extends StatelessWidget {
-  final bool online;
-  const _StatusDot({required this.online});
-
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 16,
-      height: 16,
-      decoration: BoxDecoration(
-        color: online ? Colors.green : const Color(0xFF9CA3AF),
-        shape: BoxShape.circle,
       ),
     );
   }
