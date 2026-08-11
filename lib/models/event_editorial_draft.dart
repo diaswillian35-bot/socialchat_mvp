@@ -1,3 +1,4 @@
+import '../services/event_address_parts.dart';
 import '../utils/event_timezone.dart';
 
 /// Item de programação canônico (create/update editorial).
@@ -163,6 +164,13 @@ class EventEditorialDraft {
     this.countryName = '',
     this.placeName = '',
     this.address = '',
+    this.street = '',
+    this.streetNumber = '',
+    this.noStreetNumber = false,
+    this.addressComplement = '',
+    this.district = '',
+    this.postalCode = '',
+    this.publicAddress = '',
     this.placeDisplay = '',
     this.placeId = '',
     this.lat,
@@ -216,6 +224,13 @@ class EventEditorialDraft {
   final String countryName;
   final String placeName;
   final String address;
+  final String street;
+  final String streetNumber;
+  final bool noStreetNumber;
+  final String addressComplement;
+  final String district;
+  final String postalCode;
+  final String publicAddress;
   final String placeDisplay;
   final String placeId;
   final double? lat;
@@ -273,6 +288,13 @@ class EventEditorialDraft {
     String? countryName,
     String? placeName,
     String? address,
+    String? street,
+    String? streetNumber,
+    bool? noStreetNumber,
+    String? addressComplement,
+    String? district,
+    String? postalCode,
+    String? publicAddress,
     String? placeDisplay,
     String? placeId,
     double? lat,
@@ -326,6 +348,13 @@ class EventEditorialDraft {
       countryName: countryName ?? this.countryName,
       placeName: placeName ?? this.placeName,
       address: address ?? this.address,
+      street: street ?? this.street,
+      streetNumber: streetNumber ?? this.streetNumber,
+      noStreetNumber: noStreetNumber ?? this.noStreetNumber,
+      addressComplement: addressComplement ?? this.addressComplement,
+      district: district ?? this.district,
+      postalCode: postalCode ?? this.postalCode,
+      publicAddress: publicAddress ?? this.publicAddress,
       placeDisplay: placeDisplay ?? this.placeDisplay,
       placeId: placeId ?? this.placeId,
       lat: clearLatLng ? null : (lat ?? this.lat),
@@ -375,6 +404,34 @@ class EventEditorialDraft {
     return this;
   }
 
+  /// Partes estruturadas usadas na validação e composição do endereço público.
+  EventAddressParts get addressParts => EventAddressParts(
+        street: street,
+        streetNumber: streetNumber,
+        noStreetNumber: noStreetNumber,
+        addressComplement: addressComplement,
+        district: district,
+        city: city,
+        stateName: stateName,
+        postalCode: postalCode,
+        countryCode: countryCode,
+        countryName: countryName,
+        legacyAddress: address,
+      );
+
+  /// Atualiza `publicAddress`, `placeDisplay` e o blob legado `address`.
+  EventEditorialDraft withComposedPublicAddress() {
+    final composed = addressParts.composePublicAddress();
+    final display = placeDisplay.trim().isNotEmpty
+        ? placeDisplay.trim()
+        : (composed.isNotEmpty ? composed : placeName.trim());
+    return copyWith(
+      publicAddress: composed,
+      address: composed.isNotEmpty ? composed : address,
+      placeDisplay: display,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'title': title,
@@ -395,6 +452,13 @@ class EventEditorialDraft {
       'countryName': countryName,
       'placeName': placeName,
       'address': address,
+      'street': street,
+      'streetNumber': streetNumber,
+      'noStreetNumber': noStreetNumber,
+      'addressComplement': addressComplement,
+      'district': district,
+      'postalCode': postalCode,
+      'publicAddress': publicAddress,
       'placeDisplay': placeDisplay,
       'placeId': placeId,
       'lat': lat,
@@ -539,12 +603,29 @@ class EventEditorialDraft {
       stateName: (json['stateName'] ?? '').toString(),
       countryCode: (json['countryCode'] ?? '').toString(),
       countryName: (json['countryName'] ?? '').toString(),
-      placeName: (json['placeName'] ?? '').toString(),
-      address: (json['address'] ?? '').toString(),
+      placeName: (json['placeName'] ?? json['venueName'] ?? '').toString(),
+      address: (json['address'] ?? json['fullAddress'] ?? '').toString(),
+      street: (json['street'] ?? json['route'] ?? '').toString(),
+      streetNumber: (json['streetNumber'] ?? json['street_number'] ?? '').toString(),
+      noStreetNumber: json['noStreetNumber'] == true ||
+          json['noStreetNumber'] == 'true' ||
+          json['noStreetNumber'] == 1,
+      addressComplement: (json['addressComplement'] ??
+              json['complement'] ??
+              json['subpremise'] ??
+              '')
+          .toString(),
+      district: (json['district'] ??
+              json['neighborhood'] ??
+              json['bairro'] ??
+              '')
+          .toString(),
+      postalCode: (json['postalCode'] ?? json['zipCode'] ?? '').toString(),
+      publicAddress: (json['publicAddress'] ?? '').toString(),
       placeDisplay: (json['placeDisplay'] ?? '').toString(),
       placeId: (json['placeId'] ?? '').toString(),
-      lat: asDouble(json['lat']),
-      lng: asDouble(json['lng']),
+      lat: asDouble(json['lat'] ?? json['latitude']),
+      lng: asDouble(json['lng'] ?? json['longitude']),
       regionKey: (json['regionKey'] ?? '').toString(),
       scope: (json['scope'] ?? 'city').toString(),
       ticketType: ticketType,
@@ -666,6 +747,8 @@ class EventEditorialDraft {
         if (countryCode.trim().isEmpty) {
           return 'event_wizard_country_required';
         }
+        final streetErr = addressParts.validationErrorKey();
+        if (streetErr != null) return streetErr;
         try {
           final startUtc = startAtUtc();
           final endUtc = endAtUtc();
@@ -794,6 +877,10 @@ class EventEditorialDraft {
         cityKey.trim().isNotEmpty ? cityKey.trim() : cityTrim.toLowerCase();
     final ticket = ticketType.trim().toLowerCase();
     final free = ticket == 'free' || (ticket.isEmpty && isFree);
+    final composed = withComposedPublicAddress();
+    final composedAddress = composed.publicAddress.trim().isNotEmpty
+        ? composed.publicAddress.trim()
+        : address.trim();
 
     final map = <String, dynamic>{
       'title': title.trim(),
@@ -809,9 +896,17 @@ class EventEditorialDraft {
       'cityKey': cityKeyOut,
       'stateName': stateName.trim(),
       'placeName': placeName.trim(),
-      'address': address.trim(),
-      'placeDisplay':
-          placeDisplay.trim().isNotEmpty ? placeDisplay.trim() : placeName.trim(),
+      'address': composedAddress,
+      'street': street.trim(),
+      'streetNumber': noStreetNumber ? '' : streetNumber.trim(),
+      'noStreetNumber': noStreetNumber,
+      'addressComplement': addressComplement.trim(),
+      'district': district.trim(),
+      'postalCode': postalCode.trim(),
+      'publicAddress': composedAddress,
+      'placeDisplay': placeDisplay.trim().isNotEmpty
+          ? placeDisplay.trim()
+          : (composedAddress.isNotEmpty ? composedAddress : placeName.trim()),
       'countryCode': countryCode.trim().toLowerCase(),
       'regionKey': regionKey.trim().isNotEmpty
           ? regionKey.trim()
@@ -859,6 +954,12 @@ class EventEditorialDraft {
             'shortDescription',
             'stateName',
             'address',
+            'street',
+            'streetNumber',
+            'addressComplement',
+            'district',
+            'postalCode',
+            'publicAddress',
             'placeDisplay',
             'placeId',
             'regionKey',

@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../l10n/app_texts.dart';
 import '../../models/event_editorial_draft.dart';
+import '../../services/event_address_parts.dart';
 import '../../utils/event_timezone.dart';
 import '../keyboard_dismiss.dart';
 
@@ -69,6 +70,11 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
   final _contactC = TextEditingController();
   final _websiteC = TextEditingController();
   final _notesC = TextEditingController();
+  final _streetC = TextEditingController();
+  final _streetNumberC = TextEditingController();
+  final _complementC = TextEditingController();
+  final _districtC = TextEditingController();
+  final _postalC = TextEditingController();
 
   static const _stepKeys = [
     'event_wizard_step_info',
@@ -107,6 +113,11 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     _contactC.text = _draft.publicContact;
     _websiteC.text = _draft.websiteUrl;
     _notesC.text = _draft.publicNotes;
+    _streetC.text = _draft.street;
+    _streetNumberC.text = _draft.streetNumber;
+    _complementC.text = _draft.addressComplement;
+    _districtC.text = _draft.district;
+    _postalC.text = _draft.postalCode;
   }
 
   @override
@@ -129,6 +140,11 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     _contactC.dispose();
     _websiteC.dispose();
     _notesC.dispose();
+    _streetC.dispose();
+    _streetNumberC.dispose();
+    _complementC.dispose();
+    _districtC.dispose();
+    _postalC.dispose();
     super.dispose();
   }
 
@@ -162,7 +178,12 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
       publicContact: _contactC.text,
       websiteUrl: _websiteC.text,
       publicNotes: _notesC.text,
-    );
+      street: _streetC.text,
+      streetNumber: _streetNumberC.text,
+      addressComplement: _complementC.text,
+      district: _districtC.text,
+      postalCode: _postalC.text,
+    ).withComposedPublicAddress();
   }
 
   Future<bool> _confirmDiscard() async {
@@ -491,23 +512,72 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     }).where((e) => e.display.isNotEmpty).toList();
   }
 
-  Future<void> _loadPlaceLatLng(String placeId) async {
+  Future<void> _loadPlaceDetails(String placeId) async {
     if (placeId.isEmpty) return;
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/details/json'
       '?place_id=${Uri.encodeComponent(placeId)}'
-      '&fields=geometry'
+      '&fields=geometry,address_component,formatted_address,name'
       '&key=$_googlePlacesApiKey',
     );
     final res = await http.get(url);
     if (res.statusCode != 200) return;
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final location = data['result']?['geometry']?['location'];
-    if (location == null) return;
-    _setDraft(_draft.copyWith(
-      lat: (location['lat'] as num?)?.toDouble(),
-      lng: (location['lng'] as num?)?.toDouble(),
-    ));
+    final result = data['result'] as Map<String, dynamic>? ?? {};
+    final location = result['geometry']?['location'];
+    final components = result['address_components'] as List<dynamic>? ?? [];
+    final formatted =
+        (result['formatted_address'] ?? _draft.address).toString();
+    final parts = EventAddressParts.fromPlacesComponents(
+      components,
+      legacyAddress: formatted,
+      cityFallback: _draft.city,
+      stateFallback: _draft.stateName,
+      countryCodeFallback: _draft.countryCode,
+      countryNameFallback: _draft.countryName,
+      postalFallback: _draft.postalCode,
+    );
+    // Places sem street_number: não marcar "sem número" automaticamente
+    // se o organizador ainda puder completar — só pré-preenche.
+    final noNumber = parts.street.isNotEmpty && parts.streetNumber.isEmpty
+        ? _draft.noStreetNumber
+        : false;
+    final next = _draft.copyWith(
+      street: parts.street.isNotEmpty ? parts.street : _draft.street,
+      streetNumber: parts.streetNumber,
+      noStreetNumber: noNumber,
+      addressComplement: parts.addressComplement.isNotEmpty
+          ? parts.addressComplement
+          : _draft.addressComplement,
+      district:
+          parts.district.isNotEmpty ? parts.district : _draft.district,
+      postalCode: parts.postalCode.isNotEmpty
+          ? parts.postalCode
+          : _draft.postalCode,
+      city: parts.city.isNotEmpty ? parts.city : _draft.city,
+      stateName:
+          parts.stateName.isNotEmpty ? parts.stateName : _draft.stateName,
+      countryCode: parts.countryCode.isNotEmpty
+          ? parts.countryCode
+          : _draft.countryCode,
+      countryName: parts.countryName.isNotEmpty
+          ? parts.countryName
+          : _draft.countryName,
+      address: formatted,
+      publicAddress: formatted,
+      lat: location == null
+          ? _draft.lat
+          : (location['lat'] as num?)?.toDouble(),
+      lng: location == null
+          ? _draft.lng
+          : (location['lng'] as num?)?.toDouble(),
+    ).withComposedPublicAddress();
+    _streetC.text = next.street;
+    _streetNumberC.text = next.streetNumber;
+    _complementC.text = next.addressComplement;
+    _districtC.text = next.district;
+    _postalC.text = next.postalCode;
+    _setDraft(next);
   }
 
   Future<_CitySuggestion?> _openCitySearch() async {
@@ -1068,9 +1138,116 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
               placeDisplay: place.display,
               placeId: place.placeId,
             ));
-            await _loadPlaceLatLng(place.placeId);
+            await _loadPlaceDetails(place.placeId);
           },
         ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _streetC,
+          decoration: _dec(t('event_wizard_street')),
+          onChanged: (v) {
+            _dirty = true;
+            _setDraft(_draft.copyWith(street: v).withComposedPublicAddress());
+          },
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _streetNumberC,
+                enabled: !_draft.noStreetNumber,
+                decoration: _dec(t('event_wizard_street_number')),
+                onChanged: (v) {
+                  _dirty = true;
+                  _setDraft(
+                    _draft
+                        .copyWith(streetNumber: v, noStreetNumber: false)
+                        .withComposedPublicAddress(),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: _draft.noStreetNumber,
+                title: Text(
+                  t('event_wizard_no_street_number'),
+                  style: const TextStyle(fontSize: 13, color: _text),
+                ),
+                controlAffinity: ListTileControlAffinity.leading,
+                onChanged: (v) {
+                  final on = v == true;
+                  if (on) {
+                    _streetNumberC.clear();
+                  }
+                  _setDraft(
+                    _draft
+                        .copyWith(
+                          noStreetNumber: on,
+                          streetNumber: on ? '' : _streetNumberC.text,
+                        )
+                        .withComposedPublicAddress(),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _complementC,
+          decoration: _dec(t('event_wizard_address_complement')),
+          onChanged: (v) {
+            _dirty = true;
+            _setDraft(
+              _draft
+                  .copyWith(addressComplement: v)
+                  .withComposedPublicAddress(),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _districtC,
+          decoration: _dec(t('event_wizard_district')),
+          onChanged: (v) {
+            _dirty = true;
+            _setDraft(
+              _draft.copyWith(district: v).withComposedPublicAddress(),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _postalC,
+          decoration: _dec(t('event_wizard_postal_code')),
+          onChanged: (v) {
+            _dirty = true;
+            _setDraft(
+              _draft.copyWith(postalCode: v).withComposedPublicAddress(),
+            );
+          },
+        ),
+        if (_draft.publicAddress.trim().isNotEmpty ||
+            _draft.address.trim().isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            t('event_wizard_public_address_preview'),
+            style: const TextStyle(fontWeight: FontWeight.w700, color: _muted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _draft.publicAddress.trim().isNotEmpty
+                ? _draft.publicAddress
+                : _draft.address,
+            style: const TextStyle(color: _text),
+          ),
+        ],
       ],
     );
   }
@@ -1552,6 +1729,26 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         row(t('create_event_city'),
             '${_draft.city} ${_draft.stateName}'.trim()),
         row(t('create_event_place'), _draft.placeName),
+        if (_draft.street.trim().isNotEmpty)
+          row(t('event_wizard_street'), _draft.street),
+        if (!_draft.noStreetNumber && _draft.streetNumber.trim().isNotEmpty)
+          row(t('event_wizard_street_number'), _draft.streetNumber),
+        if (_draft.noStreetNumber)
+          row(t('event_wizard_street_number'), t('event_wizard_no_street_number')),
+        if (_draft.addressComplement.trim().isNotEmpty)
+          row(t('event_wizard_address_complement'), _draft.addressComplement),
+        if (_draft.district.trim().isNotEmpty)
+          row(t('event_wizard_district'), _draft.district),
+        if (_draft.postalCode.trim().isNotEmpty)
+          row(t('event_wizard_postal_code'), _draft.postalCode),
+        if (_draft.publicAddress.trim().isNotEmpty ||
+            _draft.address.trim().isNotEmpty)
+          row(
+            t('event_wizard_public_address_preview'),
+            _draft.publicAddress.trim().isNotEmpty
+                ? _draft.publicAddress
+                : _draft.address,
+          ),
         row(t('events_timezone_label'), _draft.eventTimeZone),
         row(
           t('create_event_pick_date'),

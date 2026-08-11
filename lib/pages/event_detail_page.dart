@@ -218,29 +218,27 @@ class _EventDetailPageState extends State<EventDetailPage> {
     return '${two(d.day)}/${two(d.month)}/${d.year} • ${two(d.hour)}:${two(d.minute)}';
   }
 
-  Future<void> _openDirections({
-    double? lat,
-    double? lng,
-    String place = '',
-    String address = '',
-    String city = '',
-  }) async {
+  Future<void> _openDirections(EventPresentation event) async {
     if (!EventDirectionsService.hasValidDestination(
-      lat: lat,
-      lng: lng,
-      place: place,
-      address: address,
-      city: city,
+      lat: event.lat,
+      lng: event.lng,
+      place: event.placeName,
+      address: event.address,
+      city: event.city,
+      state: event.stateName,
+      country: event.countryCode,
     )) {
       if (mounted) _snack('events_directions_unavailable');
       return;
     }
     final ok = await EventDirectionsService.open(
-      lat: lat,
-      lng: lng,
-      place: place,
-      address: address,
-      city: city,
+      lat: event.lat,
+      lng: event.lng,
+      place: event.placeName,
+      address: event.address,
+      city: event.city,
+      state: event.stateName,
+      country: event.countryCode,
     );
     if (!ok && mounted) {
       _snack('events_directions_unavailable');
@@ -875,31 +873,25 @@ class _EventDetailPageState extends State<EventDetailPage> {
       });
     }
 
-    final title =
-        (data['title'] ?? data['eventTitle'] ?? data['name'] ?? AppTexts.t('events_default_category'))
-            .toString();
-    final category = (data['category'] ?? data['type'] ?? '').toString();
-    final city = (data['city'] ?? '').toString();
-    final state = (data['stateName'] ?? '').toString();
-    final place = (data['placeName'] ??
-            data['placeDisplay'] ??
-            data['address'] ??
-            '')
-        .toString();
-    final cc = (data['countryCode'] ?? '').toString();
-    final startAt = data['startAt'] as Timestamp?;
-    final desc = (data['description'] ??
-            data['desc'] ??
-            data['about'] ??
-            data['sobre'] ??
-            '')
-        .toString();
-    final createdBy = (data['createdBy'] ?? '').toString();
+    // Cover/gallery/localização via EventPresentation (mesmo contrato de Maps).
+    final event = EventPresentation.fromMap(widget.eventId, data);
+    final title = event.title;
+    final category = event.category;
+    final city = event.city;
+    final state = event.stateName;
+    final place = event.placeName.isNotEmpty
+        ? event.placeName
+        : (event.address.isNotEmpty ? event.address : '');
+    final cc = event.countryCode;
+    final startAt = event.startAt == null
+        ? null
+        : Timestamp.fromDate(event.startAt!);
+    final desc = event.description;
+    final createdBy = event.createdBy;
     final isEventOwner = _uid == createdBy;
-    final attendees =
-        data['attendeesCount'] is int ? data['attendeesCount'] as int : 0;
-    final status = (data['status'] ?? '').toString().toLowerCase();
-    final cancelled = status == 'cancelled' || status == 'canceled';
+    final attendees = event.attendeesCount;
+    final status = event.status;
+    final cancelled = event.isCancelled;
     final ended = status == 'ended' ||
         status == 'finished' ||
         status == 'closed' ||
@@ -909,8 +901,6 @@ class _EventDetailPageState extends State<EventDetailPage> {
         EventLikesService.asInt(data['likesCount']);
     final liked = _optimisticEventLiked ?? _eventLiked ?? false;
 
-    // Cover/gallery via EventPresentation (hero); Galeria usa helper isolado.
-    final event = EventPresentation.fromMap(widget.eventId, data);
     final galleryUrls = EventGalleryUrls.resolve(data);
     final lang = Localizations.localeOf(context).languageCode;
     final priceText = event.displayPrice();
@@ -1070,13 +1060,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => _openDirections(
-              lat: event.lat,
-              lng: event.lng,
-              place: place,
-              address: event.address,
-              city: city,
-            ),
+                  onPressed: () => _openDirections(event),
                   icon: const Icon(Icons.map_rounded),
                   label: Text(
                     AppTexts.t('event_detail_directions'),
@@ -1739,13 +1723,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: () => _openDirections(
-              lat: event.lat,
-              lng: event.lng,
-              place: place,
-              address: event.address,
-              city: city,
-            ),
+          onPressed: () => _openDirections(event),
           icon: const Icon(Icons.map_rounded),
           label: Text(
             AppTexts.t('event_detail_directions'),

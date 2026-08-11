@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'event_location_resolver.dart';
+
 /// Abre mapas com coordenadas do evento ou endereço público.
 /// Nunca usa localização residencial do organizador.
 class EventDirectionsService {
@@ -12,11 +14,23 @@ class EventDirectionsService {
     String place = '',
     String address = '',
     String city = '',
+    String state = '',
+    String country = '',
   }) {
-    if (validCoords(lat, lng)) return true;
-    final q = query(place: place, address: address, city: city);
+    if (EventLocationResolver.validCoords(lat, lng)) return true;
+    final q = query(
+      place: place,
+      address: address,
+      city: city,
+      state: state,
+      country: country,
+    );
     return q.isNotEmpty;
   }
+
+  /// Atalho a partir do destino já resolvido pelo [EventLocationResolver].
+  static bool hasValidResolvedDestination(EventPublicDestination dest) =>
+      dest.hasValidDestination;
 
   static Future<bool> open({
     double? lat,
@@ -24,57 +38,81 @@ class EventDirectionsService {
     String place = '',
     String address = '',
     String city = '',
+    String state = '',
+    String country = '',
   }) async {
     final isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
-    if (validCoords(lat, lng)) {
-      final uri = isIos
-          ? Uri.parse(
-              'https://maps.apple.com/?daddr=${lat!.toStringAsFixed(6)},${lng!.toStringAsFixed(6)}',
-            )
-          : Uri.parse(
-              'https://www.google.com/maps/dir/?api=1&destination=${lat!.toStringAsFixed(6)},${lng!.toStringAsFixed(6)}',
-            );
-      if (await canLaunchUrl(uri)) {
-        return launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+    if (EventLocationResolver.validCoords(lat, lng)) {
+      final uris = <Uri>[
+        if (isIos)
+          Uri.parse(
+            'https://maps.apple.com/?daddr=${lat!.toStringAsFixed(6)},${lng!.toStringAsFixed(6)}',
+          )
+        else ...[
+          Uri.parse(
+            'https://www.google.com/maps/dir/?api=1&destination=${lat!.toStringAsFixed(6)},${lng!.toStringAsFixed(6)}',
+          ),
+          Uri.parse('geo:$lat,$lng?q=$lat,$lng'),
+        ],
+      ];
+      if (await _launchFirst(uris)) return true;
     }
 
-    final q = query(place: place, address: address, city: city);
+    final q = query(
+      place: place,
+      address: address,
+      city: city,
+      state: state,
+      country: country,
+    );
     if (q.isEmpty) return false;
 
-    // iPhone: Apple Maps (texto); Android: Google Maps search.
-    final uri = isIos
-        ? Uri.parse(
-            'https://maps.apple.com/?daddr=${Uri.encodeComponent(q)}',
-          )
-        : Uri.parse(
-            'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(q)}',
-          );
-    if (!await canLaunchUrl(uri)) return false;
-    return launchUrl(uri, mode: LaunchMode.externalApplication);
+    final encoded = Uri.encodeComponent(q);
+    final uris = <Uri>[
+      if (isIos)
+        Uri.parse('https://maps.apple.com/?daddr=$encoded')
+      else ...[
+        Uri.parse(
+          'https://www.google.com/maps/search/?api=1&query=$encoded',
+        ),
+        Uri.parse('geo:0,0?q=$encoded'),
+      ],
+    ];
+    return _launchFirst(uris);
+  }
+
+  static Future<bool> openResolved(EventPublicDestination dest) {
+    return open(
+      lat: dest.lat,
+      lng: dest.lng,
+      place: dest.placeName,
+      address: dest.address,
+      city: dest.city,
+      state: dest.stateName,
+      country: dest.countryName.isNotEmpty
+          ? dest.countryName
+          : dest.countryCode,
+    );
   }
 
   /// Coordenadas públicas confiáveis do evento (não residência do organizador).
-  static bool validCoords(double? lat, double? lng) {
-    if (lat == null || lng == null) return false;
-    if (!lat.isFinite || !lng.isFinite) return false;
-    if (lat < -90 || lat > 90) return false;
-    if (lng < -180 || lng > 180) return false;
-    // (0,0) costuma ser placeholder inválido.
-    if (lat.abs() < 0.000001 && lng.abs() < 0.000001) return false;
-    return true;
-  }
+  static bool validCoords(double? lat, double? lng) =>
+      EventLocationResolver.validCoords(lat, lng);
 
   static String query({
     required String place,
     required String address,
     required String city,
+    String state = '',
+    String country = '',
   }) {
     final parts = <String>[
       place.trim(),
       address.trim(),
       city.trim(),
+      state.trim(),
+      country.trim(),
     ].where((e) => e.isNotEmpty).toList();
     // Dedup consecutivos.
     final out = <String>[];
@@ -84,5 +122,19 @@ class EventDirectionsService {
       }
     }
     return out.join(', ');
+  }
+
+  /// Não depende de [canLaunchUrl] como gate duro: no Android 11+ isso falha
+  /// sem `<queries>` para https/geo mesmo com Maps instalado.
+  static Future<bool> _launchFirst(List<Uri> uris) async {
+    for (final uri in uris) {
+      try {
+        final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (ok) return true;
+      } catch (_) {
+        // tenta o próximo fallback
+      }
+    }
+    return false;
   }
 }

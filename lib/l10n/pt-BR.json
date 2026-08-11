@@ -1428,5 +1428,14 @@
   "lesson_directions": "Direções",
   "lesson_shopping": "Compras",
   "lesson_making_friends": "Fazendo amigos",
-  "lesson_social_events": "Eventos sociais"
+  "lesson_social_events": "Eventos sociais",
+  "event_wizard_street": "Rua / avenida",
+  "event_wizard_street_number": "Número",
+  "event_wizard_no_street_number": "Sem número",
+  "event_wizard_address_complement": "Complemento (opcional)",
+  "event_wizard_district": "Bairro",
+  "event_wizard_postal_code": "CEP",
+  "event_wizard_public_address_preview": "Endereço público",
+  "event_wizard_street_number_required": "Informe o número ou marque “Sem número”.",
+  "event_wizard_street_number_invalid": "Número inválido. Use formatos como 125, 125A ou 10-123."
 }

@@ -64,5 +64,30 @@ void main() {
       expect(q, 'Praça da Sé, São Paulo');
       expect(Uri.encodeComponent(q).contains('%'), isTrue);
     });
+
+    test('includes state and country when provided', () {
+      expect(
+        EventDirectionsService.query(
+          place: 'Pier',
+          address: '',
+          city: 'Navegantes',
+          state: 'SC',
+          country: 'Brasil',
+        ),
+        'Pier, Navegantes, SC, Brasil',
+      );
+    });
+  });
+
+  group('EventDirectionsService + legacy fields', () {
+    test('hasValidDestination with place+city only', () {
+      expect(
+        EventDirectionsService.hasValidDestination(
+          place: 'Orla',
+          city: 'Navegantes',
+        ),
+        isTrue,
+      );
+    });
   });
 }

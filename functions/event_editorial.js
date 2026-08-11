@@ -36,6 +36,13 @@ const EDITORIAL_FIELD_KEYS = [
   "stateName",
   "placeName",
   "address",
+  "street",
+  "streetNumber",
+  "noStreetNumber",
+  "addressComplement",
+  "district",
+  "postalCode",
+  "publicAddress",
   "placeDisplay",
   "lat",
   "lng",
@@ -452,6 +459,62 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
     required: false,
     max: 400,
   });
+  const street = asTrimmedString(dataIn.street, "street", {
+    required: false,
+    max: 200,
+  });
+  let streetNumber = asTrimmedString(dataIn.streetNumber, "streetNumber", {
+    required: false,
+    max: 20,
+  });
+  let noStreetNumber = false;
+  if (dataIn.noStreetNumber !== undefined) {
+    if (typeof dataIn.noStreetNumber !== "boolean") {
+      throw new HttpsError("invalid-argument", "Invalid noStreetNumber.");
+    }
+    noStreetNumber = dataIn.noStreetNumber === true;
+  }
+  if (streetNumber) {
+    if (/[<>\n]/.test(streetNumber)) {
+      throw new HttpsError("invalid-argument", "Invalid streetNumber.");
+    }
+    if (!/^[0-9A-Za-zÀ-ÿ][0-9A-Za-zÀ-ÿ.\-\/ ]{0,19}$/.test(streetNumber)) {
+      throw new HttpsError("invalid-argument", "Invalid streetNumber.");
+    }
+  }
+  if (
+    street &&
+    !noStreetNumber &&
+    !streetNumber &&
+    (dataIn.street !== undefined ||
+      dataIn.streetNumber !== undefined ||
+      dataIn.noStreetNumber !== undefined)
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "streetNumber required when street is set.",
+    );
+  }
+  if (noStreetNumber) {
+    streetNumber = "";
+  }
+  const addressComplement = asTrimmedString(
+    dataIn.addressComplement,
+    "addressComplement",
+    { required: false, max: 120 },
+  );
+  const district = asTrimmedString(dataIn.district, "district", {
+    required: false,
+    max: 120,
+  });
+  const postalCode = asTrimmedString(dataIn.postalCode, "postalCode", {
+    required: false,
+    max: 32,
+  });
+  const publicAddress = asTrimmedString(dataIn.publicAddress, "publicAddress", {
+    required: false,
+    max: 400,
+  });
   const placeDisplay = asTrimmedString(dataIn.placeDisplay, "placeDisplay", {
     required: false,
     max: 400,
@@ -607,6 +670,13 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
     stateName,
     placeName,
     address,
+    street,
+    streetNumber,
+    noStreetNumber,
+    addressComplement,
+    district,
+    postalCode,
+    publicAddress,
     placeDisplay,
     countryCode,
     regionKey,
@@ -686,6 +756,27 @@ function buildEventEditorialPatch(dataIn, editorial, timestampFromMillis) {
   });
   setIf("address", () => {
     patch.address = editorial.address;
+  });
+  setIf("street", () => {
+    patch.street = editorial.street || "";
+  });
+  setIf("streetNumber", () => {
+    patch.streetNumber = editorial.streetNumber || "";
+  });
+  setIf("noStreetNumber", () => {
+    patch.noStreetNumber = editorial.noStreetNumber === true;
+  });
+  setIf("addressComplement", () => {
+    patch.addressComplement = editorial.addressComplement || "";
+  });
+  setIf("district", () => {
+    patch.district = editorial.district || "";
+  });
+  setIf("postalCode", () => {
+    patch.postalCode = editorial.postalCode || "";
+  });
+  setIf("publicAddress", () => {
+    patch.publicAddress = editorial.publicAddress || "";
   });
   setIf("placeDisplay", () => {
     patch.placeDisplay = editorial.placeDisplay;
@@ -799,6 +890,13 @@ function buildCreateEditorialFields(editorial) {
     stateName: editorial.stateName,
     placeName: editorial.placeName,
     address: editorial.address,
+    street: editorial.street || "",
+    streetNumber: editorial.streetNumber || "",
+    noStreetNumber: editorial.noStreetNumber === true,
+    addressComplement: editorial.addressComplement || "",
+    district: editorial.district || "",
+    postalCode: editorial.postalCode || "",
+    publicAddress: editorial.publicAddress || editorial.address || "",
     placeDisplay: editorial.placeDisplay,
     lat: editorial.lat === undefined ? null : editorial.lat,
     lng: editorial.lng === undefined ? null : editorial.lng,

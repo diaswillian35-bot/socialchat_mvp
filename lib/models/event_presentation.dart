@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/event_location_resolver.dart';
 import '../services/iso_country_names.dart';
 
 /// View-model de evento para lista/detalhe/share (sem escrita no Firestore).
@@ -193,11 +194,6 @@ class EventPresentation {
       return null;
     }
 
-    double? asDouble(dynamic v) {
-      if (v is num && v.isFinite) return v.toDouble();
-      return null;
-    }
-
     int asInt(dynamic v) {
       if (v is int) return v;
       if (v is num) return v.toInt();
@@ -234,6 +230,9 @@ class EventPresentation {
         price.toLowerCase() == 'gratuito' ||
         price.toLowerCase() == 'gratis';
 
+    // Localização pública: mesmo contrato do portal/landing (legado incluso).
+    final loc = EventLocationResolver.fromEventMap(data);
+
     return EventPresentation(
       id: id,
       title: (data['title'] ??
@@ -248,15 +247,13 @@ class EventPresentation {
       category: (data['category'] ?? data['type'] ?? '').toString().trim(),
       startAt: asDate(data['startAt']),
       endAt: asDate(data['endAt']),
-      city: (data['city'] ?? '').toString().trim(),
-      stateName: (data['stateName'] ?? '').toString().trim(),
-      countryCode: (data['countryCode'] ?? '').toString().trim().toLowerCase(),
-      placeName: (data['placeName'] ?? data['placeDisplay'] ?? '')
-          .toString()
-          .trim(),
-      address: (data['address'] ?? '').toString().trim(),
-      lat: asDouble(data['lat']),
-      lng: asDouble(data['lng']),
+      city: loc.city,
+      stateName: loc.stateName,
+      countryCode: loc.countryCode,
+      placeName: loc.placeName,
+      address: loc.address,
+      lat: loc.lat,
+      lng: loc.lng,
       description: (data['description'] ??
               data['desc'] ??
               data['about'] ??
