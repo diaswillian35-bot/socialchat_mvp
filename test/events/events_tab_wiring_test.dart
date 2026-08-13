@@ -19,6 +19,9 @@ void main() {
     expect(src.contains('const EventsPage()'), isTrue);
     expect(src.contains('EventsDiscoverPage'), isFalse);
     expect(src.contains("import 'events_discover_page.dart';"), isFalse);
+    expect(src.contains('MainShell.eventsTabIndex'), isTrue);
+    expect(src.contains('onOpenEventsTab:'), isTrue);
+    expect(RegExp(r'EventsPage\(').allMatches(src).length, 1);
   });
 
   test('EventsPage abre detalhe atual (import EventDetailPage)', () {

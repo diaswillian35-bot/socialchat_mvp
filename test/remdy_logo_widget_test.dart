@@ -16,7 +16,6 @@ void main() {
             leading: const Icon(Icons.menu_rounded),
             title: const RemdyLogo(),
             actions: [
-              TextButton(onPressed: () {}, child: const Text('Remi')),
               const Padding(
                 padding: EdgeInsets.only(right: 14),
                 child: CircleAvatar(radius: 18),

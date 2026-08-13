@@ -25,14 +25,14 @@ void main() {
       expect(shell.contains('IndexedStack('), isTrue);
     });
 
-    test('Home Ver todos navega para lista de eventos', () {
+    test('Home Ver todos seleciona a aba Eventos do shell', () {
       final home = readHomeDiscover();
       expect(home.contains('EventDetailPage('), isTrue);
-      // Aceita Discover (local) ou EventsPage clássica (HEAD).
+      expect(home.contains('onOpenEventsTab'), isTrue);
+      expect(home.contains('EventsDiscoverPage'), isFalse);
       expect(
-        home.contains('EventsDiscoverPage()') ||
-            home.contains('EventsPage()'),
-        isTrue,
+        home.contains("MaterialPageRoute(builder: (_) => const EventsDiscoverPage())"),
+        isFalse,
       );
     });
 

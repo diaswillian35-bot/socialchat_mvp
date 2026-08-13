@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../pages/system_inbox_page.dart';
-import 'remi_entry_page.dart';
 
 import 'language_users_page.dart' as lusers;
 import 'profile_page.dart';
@@ -34,7 +33,10 @@ import '../services/share_extension_session_service.dart';
 import '../widgets/remdy_logo.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.onOpenEventsTab});
+
+  /// Seleciona a aba Eventos do [MainShell] (IndexedStack). Não empurra rota.
+  final VoidCallback? onOpenEventsTab;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -563,62 +565,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             title: const RemdyLogo(),
             iconTheme: const IconThemeData(color: _muted),
             actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(999),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const RemiEntryPage(),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 7,
+              Semantics(
+                button: true,
+                label: t.get('profile'),
+                child: GestureDetector(
+                  onTap: _openProfile,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 14),
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage:
+                          photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                      child: photoUrl.isEmpty
+                          ? const Icon(Icons.person, size: 18, color: _muted)
+                          : null,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: _border),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.forum_rounded,
-                          size: 17,
-                          color: _remdyBlue,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Remi',
-                          style: TextStyle(
-                            color: _remdyBlue,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: _openProfile,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 14),
-                  child: CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Colors.grey.shade200,
-                    backgroundImage:
-                        photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-                    child: photoUrl.isEmpty
-                        ? const Icon(Icons.person, size: 18, color: _muted)
-                        : null,
                   ),
                 ),
               ),
@@ -902,6 +864,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               HomeDiscoverSection(
                 countryCode: homeCode,
                 city: userCity.isEmpty ? null : userCity,
+                onOpenEventsTab: widget.onOpenEventsTab,
               ),
               const SizedBox(height: 16),
               HomeNearbyUsersSection(

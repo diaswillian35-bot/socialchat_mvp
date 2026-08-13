@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
 import '../pages/event_detail_page.dart';
-import '../pages/events_discover_page.dart';
 import 'home_section_header.dart';
 
 /// Carrossel de eventos na Home.
@@ -18,11 +17,15 @@ class HomeDiscoverSection extends StatefulWidget {
     required this.countryCode,
     this.city,
     this.limit = 20,
+    this.onOpenEventsTab,
   });
 
   final String countryCode;
   final String? city;
   final int limit;
+
+  /// Abre a aba Eventos já montada no [MainShell]. Não usa Navigator.push.
+  final VoidCallback? onOpenEventsTab;
 
   @override
   State<HomeDiscoverSection> createState() => _HomeDiscoverSectionState();
@@ -337,12 +340,7 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
         HomeSectionHeader(
           title: t.get('home_discover'),
           seeAllLabel: t.get('home_see_all'),
-          onSeeAll: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const EventsDiscoverPage()),
-            );
-          },
+          onSeeAll: widget.onOpenEventsTab,
         ),
         const SizedBox(height: 8),
         if (_docs.length <= 3)

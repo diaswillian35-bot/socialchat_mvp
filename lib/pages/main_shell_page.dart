@@ -23,6 +23,9 @@ class MainShell extends StatefulWidget {
   const MainShell({super.key, this.initialIndex = 0});
   final int initialIndex;
 
+  static const int homeTabIndex = 0;
+  static const int eventsTabIndex = 3;
+
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -165,6 +168,24 @@ void initState() {
     AppBadgeService.setBadge(messages + groups);
   }
 
+  /// Troca a aba do [IndexedStack] — o mesmo caminho do menu inferior.
+  Future<void> _selectTab(int i) async {
+    dismissAppKeyboard();
+    if (!mounted) return;
+    if (i < 0 || i > 3) return;
+    setState(() => _index = i);
+
+    if (i != MainShell.eventsTabIndex) return;
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'lastEventsSeenAt': FieldValue.serverTimestamp(),
+      'hasNewEvents': false,
+    }, SetOptions(merge: true));
+  }
+
     Stream<int> _unreadGroupsStream() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return Stream.value(0);
@@ -214,7 +235,7 @@ Stream<int> _activeEventsStream() {
 
 
     final pages = <Widget>[
-      const HomePage(),
+      HomePage(onOpenEventsTab: () => _selectTab(MainShell.eventsTabIndex)),
       const MessagesPage(),
       GroupsListPage(key: _groupsListKey),
       const EventsPage(),
@@ -254,8 +275,7 @@ Stream<int> _activeEventsStream() {
                     dismissAppKeyboard();
                     break;
                   case AndroidBackDecision.goHomeTab:
-                    dismissAppKeyboard();
-                    setState(() => _index = AndroidBackNavigation.homeTabIndex);
+                    _selectTab(AndroidBackNavigation.homeTabIndex);
                     break;
                   case AndroidBackDecision.showExitHint:
                     _lastExitPromptAt = DateTime.now();
@@ -306,24 +326,7 @@ Stream<int> _activeEventsStream() {
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: const Color(0xFFF1F5F9),
         currentIndex: _index,
-        onTap: (i) async {
-  dismissAppKeyboard();
-  setState(() => _index = i);
-
-  if (i == 3) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-
-    if (uid != null) {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .set({
-        'lastEventsSeenAt': FieldValue.serverTimestamp(),
-        'hasNewEvents': false,
-      }, SetOptions(merge: true));
-    }
-  }
-},
+        onTap: _selectTab,
 
 
         type: BottomNavigationBarType.fixed,
