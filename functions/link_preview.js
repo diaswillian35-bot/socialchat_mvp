@@ -402,6 +402,9 @@ function createFetchLinkPreviewHandler({ getFirestore, getDnsLookup, fetchImpl, 
   const fetchFn = fetchImpl || performHttpsRequest;
 
   return async function fetchLinkPreviewHandler(request) {
+    await require("./social_age_guard").assertVerifiedAdult(request, {
+      getFirestore, HttpsError: HttpsErrorCtor,
+    });
     if (!request || !request.auth || !request.auth.uid) {
       throw new HttpsErrorCtor("unauthenticated", "Login required.");
     }

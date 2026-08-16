@@ -412,6 +412,9 @@ async function forwardToDestination(uid, myData, dest, content) {
 }
 
 const forwardMessage = onCall({ region: "us-central1" }, async (request) => {
+  await require("./social_age_guard").assertVerifiedAdult(request, {
+    getFirestore: db, HttpsError,
+  });
   const uid = requireAuth(request);
   await bumpRate(uid);
   const myData = await loadActiveUser(uid);

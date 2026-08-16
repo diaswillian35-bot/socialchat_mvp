@@ -10,6 +10,14 @@ const crypto = require("crypto");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const {
+  assertVerifiedAdult,
+  assertVerifiedAdultUid,
+} = require("./social_age_guard");
+const ageGuardDeps = {
+  getFirestore: () => admin.firestore(),
+  HttpsError,
+};
+const {
   SESSION_TTL_MS,
   IDEMPOTENCY_TTL_MS,
   MAX_SESSIONS_PER_UID,
@@ -181,6 +189,7 @@ async function pruneOldSessions(uid) {
 const issueShareExtensionSession = onCall(
   { region: "us-central1" },
   async (request) => {
+    await assertVerifiedAdult(request, ageGuardDeps);
     assertAppCheckSoft(request);
     const uid = requireAuth(request);
     await bumpRate(
@@ -281,6 +290,7 @@ const listShareDestinations = onCall(
       throw new HttpsError("permission-denied", "Missing scope.");
     }
     const uid = session.data.uid;
+    await assertVerifiedAdultUid(uid, ageGuardDeps);
     await bumpRate(`list_${uid}`, RATE.listPerUid.max, RATE.listPerUid.windowMs);
     const myData = await assertUserActive(uid);
 
@@ -406,6 +416,7 @@ const sendShareMessage = onCall(
       throw new HttpsError("permission-denied", "Missing scope.");
     }
     const uid = session.data.uid;
+    await assertVerifiedAdultUid(uid, ageGuardDeps);
     // Sender ALWAYS from session — ignore any client-provided sender fields.
     await bumpRate(`send_${uid}`, RATE.sendPerUid.max, RATE.sendPerUid.windowMs);
     await bumpRate(

@@ -47,11 +47,13 @@ async function seedUsersSameCountry() {
       uid: "a1",
       homeCountryCode: "br",
       isPremium: false,
+      ageVerificationStatus: "verified",
     });
     await db.doc("users/b1").set({
       uid: "b1",
       homeCountryCode: "br",
       isPremium: false,
+      ageVerificationStatus: "verified",
     });
   });
 }
@@ -63,12 +65,14 @@ async function seedIntlPremiumFree() {
       uid: "free1",
       homeCountryCode: "br",
       isPremium: false,
+      ageVerificationStatus: "verified",
     });
     await db.doc("users/prem1").set({
       uid: "prem1",
       homeCountryCode: "us",
       isPremium: true,
       premiumUntil: new Date(Date.now() + 86400000),
+      ageVerificationStatus: "verified",
     });
   });
 }
@@ -251,7 +255,9 @@ describe("conversations rules regression (hasOnly + replyQuota)", () => {
   it("rejects non-participant read of conversation", async () => {
     await seedUsersSameCountry();
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().doc("users/x1").set({ uid: "x1" });
+      await ctx.firestore().doc("users/x1").set({
+        uid: "x1", ageVerificationStatus: "verified",
+      });
       await ctx.firestore().doc("conversations/c1").set({
         participants: ["a1", "b1"],
         pairKey: "a1_b1",

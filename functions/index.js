@@ -67,6 +67,17 @@ const {
 
 admin.initializeApp();
 
+const { verifiedAdultOnCall } = require("./social_age_guard");
+const socialOnCall = (options, handler) => verifiedAdultOnCall(
+  onCall,
+  options,
+  handler,
+  { getFirestore: () => admin.firestore(), HttpsError },
+);
+
+const { confirmAdultAge } = require("./age_verification");
+exports.confirmAdultAge = confirmAdultAge;
+
 const { deleteMyAccount } = require("./delete_my_account");
 exports.deleteMyAccount = deleteMyAccount;
 
@@ -121,7 +132,7 @@ exports.syncRevenueCatEntitlement = syncRevenueCatEntitlement;
 
 const { createSearchUsersHandler } = require("./user_search");
 // Busca segura de usuários: filtragem server-side, retorna só campos públicos.
-exports.searchUsers = onCall(
+exports.searchUsers = socialOnCall(
   { region: "us-central1" },
   createSearchUsersHandler({
     getFirestore: () => admin.firestore(),
@@ -169,6 +180,7 @@ const ANDROID_CHANNEL_ID = "high_importance_channel";
 
 function pushAllowed(userData, kind) {
   if (!userData || userData.notifEnabled === false) return false;
+  if (userData.ageVerificationStatus !== "verified") return false;
   if (kind === "chat" && userData.notifChat === false) return false;
   if (kind === "group" && userData.notifGroups === false) return false;
   if (kind === "event" && userData.notifEvents === false) return false;
@@ -689,7 +701,7 @@ exports.onPrivateMessageCreated = onDocumentCreated(
   },
 );
 
-exports.askRemi = onCall(
+exports.askRemi = socialOnCall(
   {
     secrets: [GEMINI_API_KEY],
     region: "us-central1",
@@ -1380,7 +1392,7 @@ function normalizeGroupJoinPolicy(raw) {
  * O cliente não atualiza /groups/{groupId}; a transação Admin SDK preserva a
  * lista original exatamente e altera somente members/membersCount/updatedAt.
  */
-exports.joinOpenGroup = onCall({ region: "us-central1" }, async (request) => {
+exports.joinOpenGroup = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -1469,7 +1481,7 @@ exports.joinOpenGroup = onCall({ region: "us-central1" }, async (request) => {
  * Entrada segura em grupo inviteOnly via código.
  * Cliente NÃO pode self-join inviteOnly nas Rules — só esta Function (Admin SDK).
  */
-exports.joinGroupByInviteCode = onCall(
+exports.joinGroupByInviteCode = socialOnCall(
   {
     region: "us-central1",
   },
@@ -1623,7 +1635,7 @@ function isGroupOwnerOrAdminData(data, uid) {
 /**
  * Banir membro do grupo (owner/admin). Admin SDK — cliente não escreve bannedUsers.
  */
-exports.banGroupMember = onCall({ region: "us-central1" }, async (request) => {
+exports.banGroupMember = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -1772,7 +1784,7 @@ exports.banGroupMember = onCall({ region: "us-central1" }, async (request) => {
 /**
  * Desbanir membro — não readiciona em members.
  */
-exports.unbanGroupMember = onCall(
+exports.unbanGroupMember = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -1877,7 +1889,7 @@ exports.unbanGroupMember = onCall(
 /**
  * Promover membro a admin — somente owner.
  */
-exports.promoteGroupAdmin = onCall(
+exports.promoteGroupAdmin = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -1985,7 +1997,7 @@ exports.promoteGroupAdmin = onCall(
 /**
  * Rebaixar admin para membro — somente owner.
  */
-exports.demoteGroupAdmin = onCall(
+exports.demoteGroupAdmin = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -2089,7 +2101,7 @@ exports.demoteGroupAdmin = onCall(
  * Owner: pode remover membro ou admin.
  * Admin: só membro comum.
  */
-exports.removeGroupMember = onCall(
+exports.removeGroupMember = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -2206,7 +2218,7 @@ exports.removeGroupMember = onCall(
  * Transferir ownership do grupo — somente owner atual.
  * newOwnerUid deve ser membro (e preferencialmente admin).
  */
-exports.transferGroupOwnership = onCall(
+exports.transferGroupOwnership = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -2302,7 +2314,7 @@ exports.transferGroupOwnership = onCall(
 /**
  * Saída voluntária — membro/admin (não owner).
  */
-exports.leaveGroup = onCall({ region: "us-central1" }, async (request) => {
+exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -2404,7 +2416,7 @@ exports.leaveGroup = onCall({ region: "us-central1" }, async (request) => {
 /**
  * Exclusão lógica do grupo — somente owner.
  */
-exports.deleteGroup = onCall({ region: "us-central1" }, async (request) => {
+exports.deleteGroup = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -2530,7 +2542,7 @@ const GROUP_SETTINGS_FORBIDDEN = new Set([
 /**
  * Edição segura de configurações do grupo (allowlist).
  */
-exports.updateGroupSettings = onCall(
+exports.updateGroupSettings = socialOnCall(
   { region: "us-central1", secrets: [GOOGLE_PLACES_API_KEY] },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -2907,7 +2919,7 @@ function generateGroupInviteCode() {
  * Convenção: owner também fica em admins (compatível com create_group_page).
  * Cidade/região: placeId → Places Details (server) → coords/geohash/raio.
  */
-exports.createGroup = onCall(
+exports.createGroup = socialOnCall(
   { region: "us-central1", secrets: [GOOGLE_PLACES_API_KEY] },
   async (request) => {
   if (!request.auth || !request.auth.uid) {
@@ -3251,7 +3263,7 @@ async function notifyJoinRequestDecision({
 /**
  * Aprovar pedido de entrada (approval) — Admin SDK.
  */
-exports.approveGroupJoinRequest = onCall(
+exports.approveGroupJoinRequest = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -3453,7 +3465,7 @@ exports.approveGroupJoinRequest = onCall(
 /**
  * Rejeitar pedido de entrada — Admin SDK. Não altera members.
  */
-exports.rejectGroupJoinRequest = onCall(
+exports.rejectGroupJoinRequest = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -3612,7 +3624,7 @@ exports.rejectGroupJoinRequest = onCall(
 /**
  * Zera unread do próprio usuário e atualiza reads/{uid}.
  */
-exports.markGroupAsRead = onCall({ region: "us-central1" }, async (request) => {
+exports.markGroupAsRead = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -3724,7 +3736,7 @@ function eventStartAtHasPassed(data) {
 /**
  * Participar de evento — Admin SDK (contadores consistentes).
  */
-exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
+exports.joinEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -3888,7 +3900,7 @@ exports.joinEvent = onCall({ region: "us-central1" }, async (request) => {
 /**
  * Sair de evento — Admin SDK.
  */
-exports.leaveEvent = onCall({ region: "us-central1" }, async (request) => {
+exports.leaveEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -4024,7 +4036,7 @@ function resolveRootCommentId(parent) {
 /**
  * Criar comentário/resposta em evento.
  */
-exports.createEventComment = onCall(
+exports.createEventComment = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -4372,7 +4384,7 @@ exports.createEventComment = onCall(
  * Sempre negada — minimização de dados (compatível com objetivos da LGPD).
  * Deploy necessário para vigorar no backend remoto.
  */
-exports.exportEventParticipants = onCall(
+exports.exportEventParticipants = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -4385,7 +4397,7 @@ exports.exportEventParticipants = onCall(
   },
 );
 
-exports.toggleEventLike = onCall(
+exports.toggleEventLike = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -4506,7 +4518,7 @@ exports.toggleEventLike = onCall(
 /**
  * Curtir/descurtir comentário de evento.
  */
-exports.toggleEventCommentLike = onCall(
+exports.toggleEventCommentLike = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -4609,7 +4621,7 @@ exports.toggleEventCommentLike = onCall(
 /**
  * Exclusão lógica de comentário de evento.
  */
-exports.deleteEventComment = onCall(
+exports.deleteEventComment = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -4716,7 +4728,7 @@ exports.deleteEventComment = onCall(
 /**
  * Criar evento — ownership e aprovação só no backend.
  */
-exports.createEvent = onCall({ region: "us-central1" }, async (request) => {
+exports.createEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -4830,7 +4842,7 @@ exports.createEvent = onCall({ region: "us-central1" }, async (request) => {
  * Abortar evento pending incompleto (falha de upload/finalize no app).
  * Soft-delete para o Admin não listar documento parcial.
  */
-exports.abortIncompleteEvent = onCall(
+exports.abortIncompleteEvent = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -4919,7 +4931,7 @@ exports.abortIncompleteEvent = onCall(
  * Atualizar campos editoriais do evento — aprovação/ownership só no backend.
  */
 
-exports.updateEvent = onCall({ region: "us-central1" }, async (request) => {
+exports.updateEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -5346,7 +5358,7 @@ exports.rejectEventPendingChanges = onCall(
 /**
  * Registrar visualização única de evento (viewsCount).
  */
-exports.registerEventView = onCall(
+exports.registerEventView = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
@@ -5517,7 +5529,7 @@ exports.registerEventView = onCall(
 /**
  * Cancelar evento — somente organizador (createdBy/ownerUid/organizerId).
  */
-exports.cancelEvent = onCall({ region: "us-central1" }, async (request) => {
+exports.cancelEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -5626,7 +5638,7 @@ function eventHasFinancialRetention(data) {
   return false;
 }
 
-exports.archiveEvent = onCall({ region: "us-central1" }, async (request) => {
+exports.archiveEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
   const uid = request.auth.uid;
   const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
@@ -5654,7 +5666,7 @@ exports.archiveEvent = onCall({ region: "us-central1" }, async (request) => {
   return { success: true, ...result };
 });
 
-exports.restoreEvent = onCall({ region: "us-central1" }, async (request) => {
+exports.restoreEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
   const uid = request.auth.uid;
   const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
@@ -5684,7 +5696,7 @@ exports.restoreEvent = onCall({ region: "us-central1" }, async (request) => {
   return { success: true, ...result };
 });
 
-exports.duplicateEvent = onCall({ region: "us-central1" }, async (request) => {
+exports.duplicateEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
   const uid = request.auth.uid;
   const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
@@ -5745,7 +5757,7 @@ exports.duplicateEvent = onCall({ region: "us-central1" }, async (request) => {
   return { success: true, eventId: newRef.id, needsSchedule: true };
 });
 
-exports.deleteEventPermanently = onCall({ region: "us-central1" }, async (request) => {
+exports.deleteEventPermanently = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
   const uid = request.auth.uid;
   const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });

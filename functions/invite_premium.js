@@ -116,6 +116,9 @@ function buildInviteRewardPatch(inviterData, now = new Date()) {
  * Inviter reivindica recompensas pendentes com base no invitesCount real.
  */
 async function claimInvitePremiumRewardHandler(request) {
+  await require("./social_age_guard").assertVerifiedAdult(request, {
+    getFirestore: () => admin.firestore(), HttpsError,
+  });
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }
@@ -186,6 +189,9 @@ async function claimInvitePremiumRewardHandler(request) {
  * convidante e concede recompensa de marco se houver (mesma transaction).
  */
 async function applyInviteCodeHandler(request) {
+  await require("./social_age_guard").assertVerifiedAdult(request, {
+    getFirestore: () => admin.firestore(), HttpsError,
+  });
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Login required.");
   }

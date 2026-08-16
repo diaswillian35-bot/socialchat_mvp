@@ -99,11 +99,13 @@ const RUN_EMULATOR =
           uid: "free1",
           homeCountryCode: "br",
           isPremium: false,
+          ageVerificationStatus: "verified",
         });
         await db.doc("users/prem1").set({
           uid: "prem1",
           homeCountryCode: "us",
           isPremium: true,
+          ageVerificationStatus: "verified",
         });
         const payload = {
           participants: ["free1", "prem1"],
@@ -130,10 +132,12 @@ const RUN_EMULATOR =
         await ctx.firestore().doc("users/free1").set({
           uid: "free1",
           homeCountryCode: "br",
+          ageVerificationStatus: "verified",
         });
         await ctx.firestore().doc("users/peer1").set({
           uid: "peer1",
           homeCountryCode: "br",
+          ageVerificationStatus: "verified",
         });
       });
       const db = authed("free1");
