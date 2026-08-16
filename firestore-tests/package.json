@@ -9,7 +9,7 @@
     "test:event-likes": "mocha --timeout 20000 event_likes_rules.test.js",
     "test:conversations": "mocha --timeout 30000 conversations_rules.test.js dm_reply_quota_rules.test.js",
     "test:quota-tx": "mocha --timeout 60000 dm_reply_quota_tx_emulator.test.js",
-    "test:rules-all": "mocha --timeout 30000 age_verification_rules.test.js users_home_country_rules.test.js presence_sessions_rules.test.js presence_counters_firestore_rules.test.js link_preview_rules.test.js group_open_join_rules.test.js event_likes_rules.test.js group_pending_requests_rules.test.js forward_idempotency_rules.test.js conversations_rules.test.js dm_reply_quota_rules.test.js",
+    "test:rules-all": "mocha --timeout 30000 age_verification_rules.test.js users_home_country_rules.test.js presence_sessions_rules.test.js presence_counters_firestore_rules.test.js link_preview_rules.test.js group_open_join_rules.test.js event_likes_rules.test.js group_pending_requests_rules.test.js forward_idempotency_rules.test.js conversations_rules.test.js dm_reply_quota_rules.test.js reports_rules.test.js",
     "test:all": "npm run test:unit && npm test && npm run test:rtdb"
   },
   "devDependencies": {

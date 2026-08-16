@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/presence_watch.dart';
+import '../services/report_category.dart';
 
 class PublicProfilePage extends StatelessWidget {
   final String userUid;
@@ -90,15 +91,20 @@ class PublicProfilePage extends StatelessWidget {
   }
   // ====== REPORT (perfil público) ======
 
-  Future<void> _sendReport(BuildContext context, String reason) async {
+  Future<void> _sendReport(
+    BuildContext context,
+    ReportCategory category,
+  ) async {
     try {
       final myUid = FirebaseAuth.instance.currentUser?.uid;
       if (myUid == null) return;
+      final t = AppTexts.current;
 
       await FirebaseFirestore.instance.collection('reports').add({
         'fromUid': myUid,
         'reportedUid': userUid,
-        'reason': reason,
+        'reason': t.get(category.labelKey),
+        ...reportClassification(category),
         'status': 'open',
         'contextType': 'profile',
         'source': 'public_profile',
@@ -107,7 +113,13 @@ class PublicProfilePage extends StatelessWidget {
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report enviado. Obrigado!')),
+        SnackBar(
+          content: Text(
+            category.isChildSafety
+                ? t.get('report_child_safety_authorities_notice')
+                : t.get('report_sent'),
+          ),
+        ),
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -200,328 +212,335 @@ class PublicProfilePage extends StatelessWidget {
             final gallery = _galleryFrom(data);
             const bool hasLastSeen = true;
 
-        return Scaffold(
-          backgroundColor: _bg,
-          appBar: AppBar(
-            backgroundColor: _bg,
-            elevation: 0,
-            title: null,
-            centerTitle: false,
-          ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-            children: [
-              // ===== Card principal (estilo referência) =====
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _card,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: _border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 18,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 26, // 52 / 2
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          backgroundImage: photoUrl.isNotEmpty
-                              ? NetworkImage(photoUrl)
-                              : null,
-                          child: photoUrl.isEmpty
-                              ? const Icon(Icons.person,
-                                  color: Color(0xFF6B7280))
-                              : null,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                name.isEmpty ? t.get('user') : name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: _text,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-
-                              // Status + País (bem parecido com a referência)
-                              Row(
-                                children: [
-                                  if (hasLastSeen) ...[
-                                    Container(
-                                      width: 10,
-                                      height: 10,
-                                      decoration: BoxDecoration(
-                                        color: isOnline
-                                            ? Colors.green
-                                            : const Color(0xFF9CA3AF),
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      isOnline
-                                          ? AppTexts.current
-                                              .get('status_online')
-                                          : AppTexts.current
-                                              .get('status_offline'),
-                                      style: const TextStyle(
-                                        color: _muted,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                  ],
-                                  if (country.isNotEmpty) ...[
-                                    const Icon(Icons.place_rounded,
-                                        size: 16, color: _muted),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        country,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: _muted,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ),
+            return Scaffold(
+              backgroundColor: _bg,
+              appBar: AppBar(
+                backgroundColor: _bg,
+                elevation: 0,
+                title: null,
+                centerTitle: false,
+              ),
+              body: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                children: [
+                  // ===== Card principal (estilo referência) =====
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: _border),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 18,
+                          offset: const Offset(0, 10),
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 14),
-
-                    // Botões grandes (estilo referência)
-                    // Botões grandes (estilo referência)
-                    Row(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _openReportSheet(context, name),
-                            icon: const Icon(Icons.flag),
-                            label: const Text(
-                              'Reportar',
-                              style: TextStyle(fontWeight: FontWeight.w900),
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 26, // 52 / 2
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              backgroundImage: photoUrl.isNotEmpty
+                                  ? NetworkImage(photoUrl)
+                                  : null,
+                              child: photoUrl.isEmpty
+                                  ? const Icon(Icons.person,
+                                      color: Color(0xFF6B7280))
+                                  : null,
                             ),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              side: BorderSide(color: Colors.grey.shade300),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              backgroundColor: Colors.white,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: (!isMe)
-                              ? StreamBuilder<bool>(
-                                  stream: BlockService.isBlockedStream(userUid),
-                                  initialData: false,
-                                  builder: (context, blockSnap) {
-                                    final isBlockedNow =
-                                        blockSnap.data ?? false;
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name.isEmpty ? t.get('user') : name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                      color: _text,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
 
-                                    return ElevatedButton.icon(
-                                      onPressed: () =>
-                                          _toggleBlock(context, isBlockedNow),
-                                      icon: Icon(
-                                        isBlockedNow
-                                            ? Icons.lock_open_rounded
-                                            : Icons.block_rounded,
-                                      ),
-                                      label: Text(
-                                        isBlockedNow
-                                            ? 'Desbloquear'
-                                            : 'Bloquear',
-                                        style: const TextStyle(
+                                  // Status + País (bem parecido com a referência)
+                                  Row(
+                                    children: [
+                                      if (hasLastSeen) ...[
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            color: isOnline
+                                                ? Colors.green
+                                                : const Color(0xFF9CA3AF),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          isOnline
+                                              ? AppTexts.current
+                                                  .get('status_online')
+                                              : AppTexts.current
+                                                  .get('status_offline'),
+                                          style: const TextStyle(
+                                            color: _muted,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                      ],
+                                      if (country.isNotEmpty) ...[
+                                        const Icon(Icons.place_rounded,
+                                            size: 16, color: _muted),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            country,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: _muted,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // Botões grandes (estilo referência)
+                        // Botões grandes (estilo referência)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () =>
+                                    _openReportSheet(context, name),
+                                icon: const Icon(Icons.flag),
+                                label: const Text(
+                                  'Reportar',
+                                  style: TextStyle(fontWeight: FontWeight.w900),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  side: BorderSide(color: Colors.grey.shade300),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  backgroundColor: Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: (!isMe)
+                                  ? StreamBuilder<bool>(
+                                      stream:
+                                          BlockService.isBlockedStream(userUid),
+                                      initialData: false,
+                                      builder: (context, blockSnap) {
+                                        final isBlockedNow =
+                                            blockSnap.data ?? false;
+
+                                        return ElevatedButton.icon(
+                                          onPressed: () => _toggleBlock(
+                                              context, isBlockedNow),
+                                          icon: Icon(
+                                            isBlockedNow
+                                                ? Icons.lock_open_rounded
+                                                : Icons.block_rounded,
+                                          ),
+                                          label: Text(
+                                            isBlockedNow
+                                                ? 'Desbloquear'
+                                                : 'Bloquear',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w900),
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 14),
+                                            backgroundColor: _primary,
+                                            foregroundColor: Colors.white,
+                                            elevation: 0,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    )
+                                  : ElevatedButton.icon(
+                                      onPressed: null,
+                                      icon: const Icon(
+                                          Icons.check_circle_outline),
+                                      label: const Text(
+                                        'Você',
+                                        style: TextStyle(
                                             fontWeight: FontWeight.w900),
                                       ),
                                       style: ElevatedButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(
                                             vertical: 14),
-                                        backgroundColor: _primary,
-                                        foregroundColor: Colors.white,
+                                        backgroundColor:
+                                            _primary.withOpacity(0.25),
+                                        foregroundColor: _primary,
                                         elevation: 0,
                                         shape: RoundedRectangleBorder(
                                           borderRadius:
                                               BorderRadius.circular(16),
                                         ),
                                       ),
-                                    );
-                                  },
-                                )
-                              : ElevatedButton.icon(
-                                  onPressed: null,
-                                  icon: const Icon(Icons.check_circle_outline),
-                                  label: const Text(
-                                    'Você',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.w900),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 14),
-                                    backgroundColor: _primary.withOpacity(0.25),
-                                    foregroundColor: _primary,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
                                     ),
-                                  ),
-                                ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
 
-              const SizedBox(height: 14),
+                  const SizedBox(height: 14),
 
-              // ===== Idiomas (card clean) =====
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _card,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: _border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Idiomas',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w900, color: _text)),
-                    const SizedBox(height: 10),
-                    _InfoRow(
-                      icon: Icons.record_voice_over_rounded,
-                      title: 'Nativo',
-                      value: nativeLang.isEmpty ? '-' : nativeLang,
+                  // ===== Idiomas (card clean) =====
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _border),
                     ),
-                    const SizedBox(height: 8),
-                    _InfoRow(
-                      icon: Icons.school_rounded,
-                      title: 'Aprendendo',
-                      value: learningLang.isEmpty ? '-' : learningLang,
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ===== Sobre (card clean) =====
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _card,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: _border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Sobre',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w900, color: _text)),
-                    const SizedBox(height: 10),
-                    Text(
-                      about.isEmpty ? '-' : about,
-                      style: const TextStyle(
-                        color: _text,
-                        height: 1.3,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ===== Fotos (galeria) =====
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _card,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: _border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Fotos',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w900, color: _text)),
-                    const SizedBox(height: 10),
-                    if (gallery.isEmpty)
-                      Text('-', style: TextStyle(color: Colors.grey.shade700))
-                    else
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: gallery.length > 9 ? 9 : gallery.length,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Idiomas',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w900, color: _text)),
+                        const SizedBox(height: 10),
+                        _InfoRow(
+                          icon: Icons.record_voice_over_rounded,
+                          title: 'Nativo',
+                          value: nativeLang.isEmpty ? '-' : nativeLang,
                         ),
-                        itemBuilder: (context, i) {
-                          final url = gallery[i];
-                          return GestureDetector(
-                            onTap: () => _openPhoto(context, gallery, i),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                color: Colors.grey.shade200,
-                                child: Image.network(
-                                  url,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.broken_image,
-                                      color: Colors.black38),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Toque para abrir.',
-                      style:
-                          TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                        const SizedBox(height: 8),
+                        _InfoRow(
+                          icon: Icons.school_rounded,
+                          title: 'Aprendendo',
+                          value: learningLang.isEmpty ? '-' : learningLang,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ===== Sobre (card clean) =====
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Sobre',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w900, color: _text)),
+                        const SizedBox(height: 10),
+                        Text(
+                          about.isEmpty ? '-' : about,
+                          style: const TextStyle(
+                            color: _text,
+                            height: 1.3,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ===== Fotos (galeria) =====
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Fotos',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w900, color: _text)),
+                        const SizedBox(height: 10),
+                        if (gallery.isEmpty)
+                          Text('-',
+                              style: TextStyle(color: Colors.grey.shade700))
+                        else
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: gallery.length > 9 ? 9 : gallery.length,
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                            ),
+                            itemBuilder: (context, i) {
+                              final url = gallery[i];
+                              return GestureDetector(
+                                onTap: () => _openPhoto(context, gallery, i),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    color: Colors.grey.shade200,
+                                    child: Image.network(
+                                      url,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Icon(
+                                          Icons.broken_image,
+                                          color: Colors.black38),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Toque para abrir.',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        );
+            );
           },
         );
       },
@@ -529,6 +548,7 @@ class PublicProfilePage extends StatelessWidget {
   }
 
   void _openReportSheet(BuildContext context, String name) {
+    final t = AppTexts.current;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -543,38 +563,47 @@ class PublicProfilePage extends StatelessWidget {
               title: Text('Reportar $name'),
             ),
             ListTile(
-              title: const Text('Conteúdo impróprio'),
+              title: Text(t.get(ReportCategory.childSafety.labelKey)),
+              leading:
+                  const Icon(Icons.priority_high, color: Color(0xFFB91C1C)),
               onTap: () {
                 Navigator.pop(context);
-                _sendReport(context, 'Conteúdo impróprio');
+                _sendReport(context, ReportCategory.childSafety);
               },
             ),
             ListTile(
-              title: const Text('Spam'),
+              title: Text(t.get(ReportCategory.inappropriate.labelKey)),
               onTap: () {
                 Navigator.pop(context);
-                _sendReport(context, 'Spam');
+                _sendReport(context, ReportCategory.inappropriate);
               },
             ),
             ListTile(
-              title: const Text('Assédio'),
+              title: Text(t.get(ReportCategory.spam.labelKey)),
               onTap: () {
                 Navigator.pop(context);
-                _sendReport(context, 'Assédio');
+                _sendReport(context, ReportCategory.spam);
               },
             ),
             ListTile(
-              title: const Text('Perfil falso'),
+              title: Text(t.get(ReportCategory.harassment.labelKey)),
               onTap: () {
                 Navigator.pop(context);
-                _sendReport(context, 'Perfil falso');
+                _sendReport(context, ReportCategory.harassment);
               },
             ),
             ListTile(
-              title: const Text('Outro'),
+              title: Text(t.get(ReportCategory.fakeProfile.labelKey)),
               onTap: () {
                 Navigator.pop(context);
-                _sendReport(context, 'Outro');
+                _sendReport(context, ReportCategory.fakeProfile);
+              },
+            ),
+            ListTile(
+              title: Text(t.get(ReportCategory.other.labelKey)),
+              onTap: () {
+                Navigator.pop(context);
+                _sendReport(context, ReportCategory.other);
               },
             ),
           ],

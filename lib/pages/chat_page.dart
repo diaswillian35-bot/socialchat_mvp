@@ -23,6 +23,7 @@ import '../services/dm_reply_quota.dart';
 import '../services/international_chat_service.dart';
 import '../services/premium_access_service.dart';
 import '../services/send_dm_message_service.dart';
+import '../services/report_category.dart';
 import '../services/voice_service.dart';
 import '../services/app_notification_state.dart';
 import '../utils/chat_message_list_stability.dart';
@@ -155,8 +156,7 @@ class _ChatPageState extends State<ChatPage> {
   DmReplyQuota? _quotaFromCallable;
   int _draftCodePoints = 0;
 
-  bool get _usesReplyQuota =>
-      DmSendPath.requiresCallable(
+  bool get _usesReplyQuota => DmSendPath.requiresCallable(
         senderIsPremium: _isPremium,
         isInternational: _isWorldChat,
       );
@@ -176,8 +176,7 @@ class _ChatPageState extends State<ChatPage> {
           : null,
       expectFreeUid: myUid,
     );
-    if (_quotaFromCallable != null &&
-        _quotaFromCallable!.used >= parsed.used) {
+    if (_quotaFromCallable != null && _quotaFromCallable!.used >= parsed.used) {
       return _quotaFromCallable!;
     }
     if (parsed.enabled && (parsed.freeUid.isEmpty || parsed.freeUid == myUid)) {
@@ -367,7 +366,7 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       setState(() {
         _pendingAudios
           ..clear()
@@ -646,7 +645,7 @@ class _ChatPageState extends State<ChatPage> {
 
       final active = PremiumAccessService.isPremiumActiveFromData(data);
 
-      if (!mounted) return;
+      if (!context.mounted) return;
       setState(() {
         _isPremium = active;
         _isMaster = master;
@@ -1259,6 +1258,15 @@ class _ChatPageState extends State<ChatPage> {
                 onTap: () {
                   Navigator.pop(context);
                   _openForward(messageId: messageId, data: data);
+                },
+              ),
+            if (!isMe)
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: Text(t.get('report_message')),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openPrivateMessageReportSheet(messageId);
                 },
               ),
             ListTile(
@@ -1903,26 +1911,38 @@ class _ChatPageState extends State<ChatPage> {
     return a.year != b.year || a.month != b.month || a.day != b.day;
   }
 
-  Future<void> _sendChatReport(BuildContext context, String reason) async {
+  Future<void> _sendChatReport(
+    BuildContext context,
+    ReportCategory category, {
+    String? messageId,
+  }) async {
     final t = AppTexts.current;
     try {
       await FirebaseFirestore.instance.collection('reports').add({
         'fromUid': myUid,
         'reportedUid': widget.otherUid,
-        'reason': reason,
+        'reason': t.get(category.labelKey),
+        ...reportClassification(category),
         'status': 'open',
-        'contextType': 'dm',
+        'contextType': messageId == null ? 'dm' : 'dm_message',
         'conversationId': widget.conversationId,
+        if (messageId != null) 'messageId': messageId,
         'source': 'chat_page',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(t.get('report_sent'))),
+        SnackBar(
+          content: Text(
+            category.isChildSafety
+                ? t.get('report_child_safety_authorities_notice')
+                : t.get('report_sent'),
+          ),
+        ),
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${t.get('error_prefix')} $e')),
       );
@@ -1945,40 +1965,84 @@ class _ChatPageState extends State<ChatPage> {
               title: Text('${t.get('report_user')} ${widget.otherName}'),
             ),
             ListTile(
+              leading:
+                  const Icon(Icons.priority_high, color: Color(0xFFB91C1C)),
+              title: Text(t.get(ReportCategory.childSafety.labelKey)),
+              onTap: () {
+                Navigator.pop(context);
+                _sendChatReport(context, ReportCategory.childSafety);
+              },
+            ),
+            ListTile(
               title: Text(t.get('report_reason_inappropriate')),
               onTap: () {
                 Navigator.pop(context);
-                _sendChatReport(context, t.get('report_reason_inappropriate'));
+                _sendChatReport(context, ReportCategory.inappropriate);
               },
             ),
             ListTile(
               title: Text(t.get('report_reason_spam')),
               onTap: () {
                 Navigator.pop(context);
-                _sendChatReport(context, t.get('report_reason_spam'));
+                _sendChatReport(context, ReportCategory.spam);
               },
             ),
             ListTile(
               title: Text(t.get('report_reason_harassment')),
               onTap: () {
                 Navigator.pop(context);
-                _sendChatReport(context, t.get('report_reason_harassment'));
+                _sendChatReport(context, ReportCategory.harassment);
               },
             ),
             ListTile(
               title: Text(t.get('report_reason_threat')),
               onTap: () {
                 Navigator.pop(context);
-                _sendChatReport(context, t.get('report_reason_threat'));
+                _sendChatReport(context, ReportCategory.threat);
               },
             ),
             ListTile(
               title: Text(t.get('report_reason_other')),
               onTap: () {
                 Navigator.pop(context);
+                _sendChatReport(context, ReportCategory.other);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openPrivateMessageReportSheet(String messageId) {
+    final t = AppTexts.current;
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading:
+                  const Icon(Icons.priority_high, color: Color(0xFFB91C1C)),
+              title: Text(t.get(ReportCategory.childSafety.labelKey)),
+              onTap: () {
+                Navigator.pop(context);
                 _sendChatReport(
                   context,
-                  t.get('report_reason_other'),
+                  ReportCategory.childSafety,
+                  messageId: messageId,
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined),
+              title: Text(t.get(ReportCategory.inappropriate.labelKey)),
+              onTap: () {
+                Navigator.pop(context);
+                _sendChatReport(
+                  context,
+                  ReportCategory.inappropriate,
+                  messageId: messageId,
                 );
               },
             ),
@@ -2531,7 +2595,8 @@ class _ChatPageState extends State<ChatPage> {
                                           onLongPress: () {
                                             _openMessageActions(
                                               messageId: messageId,
-                                              data: Map<String, dynamic>.from(d),
+                                              data:
+                                                  Map<String, dynamic>.from(d),
                                               isMe: isMe,
                                             );
                                           },
@@ -2545,7 +2610,8 @@ class _ChatPageState extends State<ChatPage> {
                                             replyToIsMe: replyToIsMe,
                                             replyToImageUrl: replyToImageUrl,
                                             forwarded: d['forwarded'] == true,
-                                            linkPreview: LinkPreviewData.fromMap(
+                                            linkPreview:
+                                                LinkPreviewData.fromMap(
                                               d['linkPreview'],
                                             ),
                                           ),
@@ -2562,112 +2628,149 @@ class _ChatPageState extends State<ChatPage> {
                       builder: (context, convSnap) {
                         final quota =
                             _effectiveReplyQuotaFrom(convSnap.data?.data());
-                        final draftOver = _usesReplyQuota &&
-                            quota.draftExceeds(_textC.text);
+                        final draftOver =
+                            _usesReplyQuota && quota.draftExceeds(_textC.text);
                         return Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                      if (_usesReplyQuota)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Text(
-                            t.get('dm_quota_hint'),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: _muted,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        )
-                      else if (_isWorldChat && !_isPremium)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Text(
-                            t.get('chat_world_is_premium'),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: _muted,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      SafeArea(
-                        top: false,
-                        minimum: EdgeInsets.zero,
-                        child: Container(
-                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                          decoration: BoxDecoration(
-                            color: _card,
-                            border: Border(top: BorderSide(color: _border)),
-                          ),
-                          child: Column(
-                            children: [
-                              if (_replyToMessageId != null)
-                                Container(
-                                  width: double.infinity,
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF3F4F6),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: _replyToIsMe ? _remdyBlue : _muted,
-                                        width: 4,
-                                      ),
-                                    ),
+                            if (_usesReplyQuota)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                child: Text(
+                                  t.get('dm_quota_hint'),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: _muted,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              _replyToIsMe
-                                                  ? t.get('chat_you')
-                                                  : t.get('chat_reply'),
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w700,
-                                                color: _text,
-                                              ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              )
+                            else if (_isWorldChat && !_isPremium)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                child: Text(
+                                  t.get('chat_world_is_premium'),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: _muted,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            SafeArea(
+                              top: false,
+                              minimum: EdgeInsets.zero,
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                decoration: BoxDecoration(
+                                  color: _card,
+                                  border:
+                                      Border(top: BorderSide(color: _border)),
+                                ),
+                                child: Column(
+                                  children: [
+                                    if (_replyToMessageId != null)
+                                      Container(
+                                        width: double.infinity,
+                                        margin:
+                                            const EdgeInsets.only(bottom: 8),
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF3F4F6),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          border: Border(
+                                            left: BorderSide(
+                                              color: _replyToIsMe
+                                                  ? _remdyBlue
+                                                  : _muted,
+                                              width: 4,
                                             ),
-                                            const SizedBox(height: 2),
-                                            if (_replyToType == 'image' &&
-                                                _replyToImageUrl.isNotEmpty)
-                                              Row(
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 children: [
-                                                  ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(6),
-                                                    child: Image.network(
-                                                      _replyToImageUrl,
-                                                      width: 42,
-                                                      height: 42,
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder:
-                                                          (_, __, ___) =>
-                                                              Container(
-                                                        width: 42,
-                                                        height: 42,
-                                                        color: const Color(
-                                                            0xFFE5E7EB),
-                                                        alignment:
-                                                            Alignment.center,
-                                                        child: const Icon(
-                                                            Icons.image,
-                                                            size: 18),
-                                                      ),
+                                                  Text(
+                                                    _replyToIsMe
+                                                        ? t.get('chat_you')
+                                                        : t.get('chat_reply'),
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color: _text,
                                                     ),
                                                   ),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: Text(
-                                                      t.get('chat_photo_label'),
+                                                  const SizedBox(height: 2),
+                                                  if (_replyToType == 'image' &&
+                                                      _replyToImageUrl
+                                                          .isNotEmpty)
+                                                    Row(
+                                                      children: [
+                                                        ClipRRect(
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(6),
+                                                          child: Image.network(
+                                                            _replyToImageUrl,
+                                                            width: 42,
+                                                            height: 42,
+                                                            fit: BoxFit.cover,
+                                                            errorBuilder:
+                                                                (_, __, ___) =>
+                                                                    Container(
+                                                              width: 42,
+                                                              height: 42,
+                                                              color: const Color(
+                                                                  0xFFE5E7EB),
+                                                              alignment:
+                                                                  Alignment
+                                                                      .center,
+                                                              child: const Icon(
+                                                                  Icons.image,
+                                                                  size: 18),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                            width: 8),
+                                                        Expanded(
+                                                          child: Text(
+                                                            t.get(
+                                                                'chat_photo_label'),
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style:
+                                                                const TextStyle(
+                                                              fontSize: 13,
+                                                              color: _muted,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    )
+                                                  else
+                                                    Text(
+                                                      _replyToType == 'audio'
+                                                          ? t.get(
+                                                              'chat_audio_label')
+                                                          : _replyToType ==
+                                                                  'image'
+                                                              ? t.get(
+                                                                  'chat_photo_label')
+                                                              : _replyToText,
                                                       maxLines: 1,
                                                       overflow:
                                                           TextOverflow.ellipsis,
@@ -2676,183 +2779,186 @@ class _ChatPageState extends State<ChatPage> {
                                                         color: _muted,
                                                       ),
                                                     ),
-                                                  ),
                                                 ],
-                                              )
-                                            else
-                                              Text(
-                                                _replyToType == 'audio'
-                                                    ? t.get('chat_audio_label')
-                                                    : _replyToType == 'image'
-                                                        ? t.get(
-                                                            'chat_photo_label')
-                                                        : _replyToText,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  color: _muted,
+                                              ),
+                                            ),
+                                            IconButton(
+                                              onPressed: _cancelReply,
+                                              icon: const Icon(Icons.close,
+                                                  size: 18),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF1F5F9),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                              border: Border.all(
+                                                color: draftOver
+                                                    ? const Color(0xFFDC2626)
+                                                    : _border,
+                                              ),
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 14),
+                                            child: TextField(
+                                              controller: _textC,
+                                              enabled: !isBlocked,
+                                              textInputAction:
+                                                  TextInputAction.send,
+                                              onSubmitted: (_) async {
+                                                if (isBlocked) return;
+                                                await _setTyping(false);
+                                                await _send();
+                                              },
+                                              decoration: InputDecoration(
+                                                hintText: isBlocked
+                                                    ? t.get(
+                                                        'chat_cannot_send_blocked')
+                                                    : t.get(
+                                                        'chat_type_message'),
+                                                border: InputBorder.none,
+                                                suffixIcon: _usesReplyQuota
+                                                    ? Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .only(right: 4),
+                                                        child: Center(
+                                                          widthFactor: 1,
+                                                          child: Text(
+                                                            '${quota.used + (_textC.text.isEmpty ? 0 : _draftCodePoints)}/${quota.limit}',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                              color: draftOver
+                                                                  ? const Color(
+                                                                      0xFFDC2626)
+                                                                  : _muted,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : null,
+                                                suffixIconConstraints:
+                                                    const BoxConstraints(
+                                                  minWidth: 0,
+                                                  minHeight: 0,
                                                 ),
                                               ),
-                                          ],
-                                        ),
-                                      ),
-                                      IconButton(
-                                        onPressed: _cancelReply,
-                                        icon: const Icon(Icons.close, size: 18),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(999),
-                                        border: Border.all(
-                                          color: draftOver
-                                              ? const Color(0xFFDC2626)
-                                              : _border,
-                                        ),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 14),
-                                      child: TextField(
-                                        controller: _textC,
-                                        enabled: !isBlocked,
-                                        textInputAction: TextInputAction.send,
-                                        onSubmitted: (_) async {
-                                          if (isBlocked) return;
-                                          await _setTyping(false);
-                                          await _send();
-                                        },
-                                        decoration: InputDecoration(
-                                          hintText: isBlocked
-                                              ? t.get('chat_cannot_send_blocked')
-                                              : t.get('chat_type_message'),
-                                          border: InputBorder.none,
-                                          suffixIcon: _usesReplyQuota
-                                              ? Padding(
-                                                  padding: const EdgeInsets.only(
-                                                      right: 4),
-                                                  child: Center(
-                                                    widthFactor: 1,
-                                                    child: Text(
-                                                      '${quota.used + (_textC.text.isEmpty ? 0 : _draftCodePoints)}/${quota.limit}',
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        color: draftOver
-                                                            ? const Color(
-                                                                0xFFDC2626)
-                                                            : _muted,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                )
-                                              : null,
-                                          suffixIconConstraints:
-                                              const BoxConstraints(
-                                            minWidth: 0,
-                                            minHeight: 0,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Opacity(
-                                    opacity: locked ? 0.45 : 1.0,
-                                    child: InkWell(
-                                      onTap: isBlocked ? null : _openPlusMenu,
-                                      borderRadius: BorderRadius.circular(999),
-                                      child: Container(
-                                        width: 40,
-                                        height: 40,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                          border: Border.all(color: _border),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                              color: Color(0x08000000),
-                                              blurRadius: 8,
-                                              offset: Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(
-                                          Icons.add_rounded,
-                                          color: _remdyBlue,
-                                          size: 20,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _textC.text.trim().isEmpty
-                                      ? Opacity(
+                                        const SizedBox(width: 8),
+                                        Opacity(
                                           opacity: locked ? 0.45 : 1.0,
-                                          child: IgnorePointer(
-                                            ignoring: isBlocked,
-                                            child: RecordingButton(
-                                              onRecordStart: () async {
-                                                await _setRecording(true);
-                                              },
-                                              onRecordStop: () async {
-                                                await _setRecording(false);
-                                              },
-                                              onRecorded: (path) async {
-                                                await _setRecording(false);
-
-                                                if (path == null) return;
-
-                                                await _sendAudio(path);
-                                              },
-                                            ),
-                                          ),
-                                        )
-                                      : Opacity(
-                                          opacity: isBlocked ? 0.45 : 1.0,
                                           child: InkWell(
-                                            onTap: isBlocked ? null : _send,
+                                            onTap: isBlocked
+                                                ? null
+                                                : _openPlusMenu,
                                             borderRadius:
                                                 BorderRadius.circular(999),
                                             child: Container(
                                               width: 40,
                                               height: 40,
                                               decoration: BoxDecoration(
-                                                gradient: const LinearGradient(
-                                                  colors: [_remdyBlue, _logoBlue],
-                                                ),
+                                                color: Colors.white,
                                                 borderRadius:
                                                     BorderRadius.circular(999),
+                                                border:
+                                                    Border.all(color: _border),
                                                 boxShadow: const [
                                                   BoxShadow(
-                                                    color: Color(0x14000000),
-                                                    blurRadius: 10,
-                                                    offset: Offset(0, 5),
+                                                    color: Color(0x08000000),
+                                                    blurRadius: 8,
+                                                    offset: Offset(0, 4),
                                                   ),
                                                 ],
                                               ),
                                               child: const Icon(
-                                                Icons.send_rounded,
-                                                color: Colors.white,
-                                                size: 18,
+                                                Icons.add_rounded,
+                                                color: _remdyBlue,
+                                                size: 20,
                                               ),
                                             ),
                                           ),
                                         ),
-                                ],
+                                        const SizedBox(width: 8),
+                                        _textC.text.trim().isEmpty
+                                            ? Opacity(
+                                                opacity: locked ? 0.45 : 1.0,
+                                                child: IgnorePointer(
+                                                  ignoring: isBlocked,
+                                                  child: RecordingButton(
+                                                    onRecordStart: () async {
+                                                      await _setRecording(true);
+                                                    },
+                                                    onRecordStop: () async {
+                                                      await _setRecording(
+                                                          false);
+                                                    },
+                                                    onRecorded: (path) async {
+                                                      await _setRecording(
+                                                          false);
+
+                                                      if (path == null) return;
+
+                                                      await _sendAudio(path);
+                                                    },
+                                                  ),
+                                                ),
+                                              )
+                                            : Opacity(
+                                                opacity: isBlocked ? 0.45 : 1.0,
+                                                child: InkWell(
+                                                  onTap:
+                                                      isBlocked ? null : _send,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          999),
+                                                  child: Container(
+                                                    width: 40,
+                                                    height: 40,
+                                                    decoration: BoxDecoration(
+                                                      gradient:
+                                                          const LinearGradient(
+                                                        colors: [
+                                                          _remdyBlue,
+                                                          _logoBlue
+                                                        ],
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              999),
+                                                      boxShadow: const [
+                                                        BoxShadow(
+                                                          color:
+                                                              Color(0x14000000),
+                                                          blurRadius: 10,
+                                                          offset: Offset(0, 5),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    child: const Icon(
+                                                      Icons.send_rounded,
+                                                      color: Colors.white,
+                                                      size: 18,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
+                            ),
                           ],
                         );
                       },
@@ -3561,9 +3667,7 @@ class _Bubble extends StatelessWidget {
     final bg = isMe ? _remdyBlue : Colors.white;
     final fg = isMe ? Colors.white : _text;
     final textStyle = TextStyle(
-      color: isDeleted
-          ? (isMe ? Colors.white70 : const Color(0xFF6B7280))
-          : fg,
+      color: isDeleted ? (isMe ? Colors.white70 : const Color(0xFF6B7280)) : fg,
       fontWeight: FontWeight.w600,
       fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal,
       fontSize: isDeleted ? 12.5 : 14,
@@ -3727,8 +3831,7 @@ class _Bubble extends StatelessWidget {
                         ),
                         linkStyle: TextStyle(
                           fontSize: 13,
-                          color:
-                              isMe ? Colors.white : const Color(0xFF1D4ED8),
+                          color: isMe ? Colors.white : const Color(0xFF1D4ED8),
                           decoration: TextDecoration.underline,
                           fontWeight: FontWeight.w700,
                         ),

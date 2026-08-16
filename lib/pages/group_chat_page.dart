@@ -22,6 +22,7 @@ import '../services/online_status.dart';
 import '../services/presence_rtdb_config.dart';
 import '../services/presence_rtdb_logic.dart';
 import '../services/presence_watch.dart';
+import '../services/report_category.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'group_info_page.dart';
@@ -704,6 +705,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   Future<void> _reportMessage({
     required String messageId,
     required String reportedUid,
+    required ReportCategory category,
   }) async {
     final myUid = uid;
     if (myUid == null) return;
@@ -716,11 +718,58 @@ class _GroupChatPageState extends State<GroupChatPage> {
       'reportedUid': reportedUid,
       'reporterUid': myUid,
       'fromUid': myUid,
+      'reason': AppTexts.current.get(category.labelKey),
+      ...reportClassification(category),
       'status': 'open',
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-    _toast(AppTexts.current.get('group_message_reported_success'));
+    _toast(AppTexts.current.get(
+      category.isChildSafety
+          ? 'report_child_safety_authorities_notice'
+          : 'group_message_reported_success',
+    ));
+  }
+
+  void _openGroupMessageReportSheet({
+    required String messageId,
+    required String reportedUid,
+  }) {
+    final t = AppTexts.current;
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading:
+                  const Icon(Icons.priority_high, color: Color(0xFFB91C1C)),
+              title: Text(t.get(ReportCategory.childSafety.labelKey)),
+              onTap: () {
+                Navigator.pop(context);
+                _reportMessage(
+                  messageId: messageId,
+                  reportedUid: reportedUid,
+                  category: ReportCategory.childSafety,
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined),
+              title: Text(t.get(ReportCategory.inappropriate.labelKey)),
+              onTap: () {
+                Navigator.pop(context);
+                _reportMessage(
+                  messageId: messageId,
+                  reportedUid: reportedUid,
+                  category: ReportCategory.inappropriate,
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _cancelReply() {
@@ -1514,9 +1563,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final t = AppTexts.current;
     if (_loadingRole) return;
     final canDelete = isMyMessage || _isAdmin;
+    final canReport = !isMyMessage;
     final forwardable = canForwardMessageData(data);
 
-    if (!canDelete && !forwardable) return;
+    if (!canDelete && !forwardable && !canReport) return;
 
     showModalBottomSheet(
       context: context,
@@ -1532,13 +1582,13 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   _openForward(messageId: messageId, data: data);
                 },
               ),
-            if (canDelete)
+            if (canReport)
               ListTile(
                 leading: const Icon(Icons.flag_outlined),
                 title: Text(t.get('report_message')),
-                onTap: () async {
+                onTap: () {
                   Navigator.pop(context);
-                  await _reportMessage(
+                  _openGroupMessageReportSheet(
                     messageId: messageId,
                     reportedUid: senderId,
                   );
@@ -1605,7 +1655,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  Future<void> _sendGroupReport(String reason) async {
+  Future<void> _sendGroupReport(ReportCategory category) async {
     final myUid = uid;
     if (myUid == null) return;
 
@@ -1613,17 +1663,23 @@ class _GroupChatPageState extends State<GroupChatPage> {
       await FirebaseFirestore.instance.collection('reports').add({
         'fromUid': myUid,
         'reportedUid': '',
-        'reason': reason,
+        'reason': AppTexts.current.get(category.labelKey),
+        ...reportClassification(category),
         'status': 'open',
         'contextType': 'group',
         'groupId': widget.groupId,
-        'groupName': widget.groupName,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppTexts.current.get('report_sent'))),
+        SnackBar(
+          content: Text(AppTexts.current.get(
+            category.isChildSafety
+                ? 'report_child_safety_authorities_notice'
+                : 'report_sent',
+          )),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -1645,24 +1701,35 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   '${AppTexts.current.get('report_group')} ${widget.groupName}'),
             ),
             ListTile(
+              leading:
+                  const Icon(Icons.priority_high, color: Color(0xFFB91C1C)),
+              title: Text(AppTexts.current.get(
+                ReportCategory.childSafety.labelKey,
+              )),
+              onTap: () {
+                Navigator.pop(context);
+                _sendGroupReport(ReportCategory.childSafety);
+              },
+            ),
+            ListTile(
               title: Text(AppTexts.current.get('report_reason_spam')),
               onTap: () {
                 Navigator.pop(context);
-                _sendGroupReport('Spam');
+                _sendGroupReport(ReportCategory.spam);
               },
             ),
             ListTile(
               title: Text(AppTexts.current.get('report_reason_inappropriate')),
               onTap: () {
                 Navigator.pop(context);
-                _sendGroupReport('Conteúdo impróprio');
+                _sendGroupReport(ReportCategory.inappropriate);
               },
             ),
             ListTile(
               title: Text(AppTexts.current.get('report_reason_harassment')),
               onTap: () {
                 Navigator.pop(context);
-                _sendGroupReport('Assédio');
+                _sendGroupReport(ReportCategory.harassment);
               },
             ),
           ],
@@ -2157,67 +2224,70 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   isBanned: _isBanned,
                 )
                     ? StreamBuilder<int>(
-                  stream: _groupOnlineCountStream(),
-                  initialData: 0,
-                  builder: (context, onlineSnap) {
-                    final watchedOnline = onlineSnap.data ?? 0;
-                    final display = _groupOnlineDisplay(watchedOnline);
-                    final onlineCount = display.count;
-                    final onlineLabel = _formatGroupOnlineLabel(display);
+                        stream: _groupOnlineCountStream(),
+                        initialData: 0,
+                        builder: (context, onlineSnap) {
+                          final watchedOnline = onlineSnap.data ?? 0;
+                          final display = _groupOnlineDisplay(watchedOnline);
+                          final onlineCount = display.count;
+                          final onlineLabel = _formatGroupOnlineLabel(display);
 
-                    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: _presenceRef.snapshots(),
-                      builder: (context, snap) {
-                        final docs = snap.data?.docs ?? [];
-                        final typingLabel = _presenceLabel(docs);
+                          return StreamBuilder<
+                              QuerySnapshot<Map<String, dynamic>>>(
+                            stream: _presenceRef.snapshots(),
+                            builder: (context, snap) {
+                              final docs = snap.data?.docs ?? [];
+                              final typingLabel = _presenceLabel(docs);
 
-                        if (onlineCount <= 0 && typingLabel.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
+                              if (onlineCount <= 0 && typingLabel.isEmpty) {
+                                return const SizedBox.shrink();
+                              }
 
-                        return Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (onlineCount > 0)
-                                Row(
+                              return Container(
+                                width: double.infinity,
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 6, 16, 2),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(
-                                      Icons.circle,
-                                      size: 8,
-                                      color: Colors.green,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      onlineLabel,
-                                      style: const TextStyle(
-                                        color: _muted,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
+                                    if (onlineCount > 0)
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.circle,
+                                            size: 8,
+                                            color: Colors.green,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            onlineLabel,
+                                            style: const TextStyle(
+                                              color: _muted,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
+                                    if (typingLabel.isNotEmpty) ...[
+                                      if (onlineCount > 0)
+                                        const SizedBox(height: 2),
+                                      Text(
+                                        typingLabel,
+                                        style: const TextStyle(
+                                          color: _muted,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
-                              if (typingLabel.isNotEmpty) ...[
-                                if (onlineCount > 0) const SizedBox(height: 2),
-                                Text(
-                                  typingLabel,
-                                  style: const TextStyle(
-                                    color: _muted,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                )
+                              );
+                            },
+                          );
+                        },
+                      )
                     : const SizedBox.shrink(),
                 Expanded(
                   child: GroupJoinUiLogic.shouldListenToMemberStreams(
@@ -2297,322 +2367,337 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                     return text.contains(_searchText);
                                   }).toList();
 
-                      final serverIds = allDocs.map((d) => d.id).toSet();
-                      _syncPendingWithServerIds(serverIds);
+                            final serverIds = allDocs.map((d) => d.id).toSet();
+                            _syncPendingWithServerIds(serverIds);
 
-                      final visiblePendingImages = _pendingImages
-                          .where(
-                            (e) => ChatMessageListStability.shouldShowPending(
-                              pendingId: e.localId,
-                              serverIds: serverIds,
-                            ),
-                          )
-                          .toList();
-                      final visiblePendingAudios = _pendingAudios
-                          .where(
-                            (e) => ChatMessageListStability.shouldShowPending(
-                              pendingId: e.localId,
-                              serverIds: serverIds,
-                            ),
-                          )
-                          .toList();
-                      final visiblePendingTexts = _pendingTexts
-                          .where(
-                            (e) => ChatMessageListStability.shouldShowPending(
-                              pendingId: e.localId,
-                              serverIds: serverIds,
-                            ),
-                          )
-                          .toList();
+                            final visiblePendingImages = _pendingImages
+                                .where(
+                                  (e) => ChatMessageListStability
+                                      .shouldShowPending(
+                                    pendingId: e.localId,
+                                    serverIds: serverIds,
+                                  ),
+                                )
+                                .toList();
+                            final visiblePendingAudios = _pendingAudios
+                                .where(
+                                  (e) => ChatMessageListStability
+                                      .shouldShowPending(
+                                    pendingId: e.localId,
+                                    serverIds: serverIds,
+                                  ),
+                                )
+                                .toList();
+                            final visiblePendingTexts = _pendingTexts
+                                .where(
+                                  (e) => ChatMessageListStability
+                                      .shouldShowPending(
+                                    pendingId: e.localId,
+                                    serverIds: serverIds,
+                                  ),
+                                )
+                                .toList();
 
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _preloadUsersFromDocs(docs);
-                        _maybeAutoScroll(
-                          docs.length +
-                              visiblePendingAudios.length +
-                              visiblePendingImages.length +
-                              visiblePendingTexts.length,
-                        );
-                      });
-
-                      final totalCount = docs.length +
-                          visiblePendingAudios.length +
-                          visiblePendingImages.length +
-                          visiblePendingTexts.length;
-
-                      if (totalCount == 0) {
-                        return Center(
-                          child: Text(
-                            _searchText.isNotEmpty
-                                ? t.get('group_no_search_results')
-                                : t.get('group_no_messages_yet'),
-                            style: const TextStyle(
-                              color: _muted,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        controller: _scrollC,
-                        reverse: true,
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                        itemCount: totalCount,
-                        itemBuilder: (context, i) {
-                          if (i < visiblePendingImages.length) {
-                            final pending = visiblePendingImages[i];
-                            final isMe = pending.senderId == uid;
-
-                            return KeyedSubtree(
-                              key: ValueKey(
-                                ChatMessageListStability.bubbleKey(
-                                  pending.localId,
-                                ),
-                              ),
-                              child: _ImageSendingBubble(
-                                isMe: isMe,
-                                timeText:
-                                    _formatTimeFromDate(pending.createdAt),
-                                localPath: pending.localPath,
-                                failed: pending.failed,
-                                onRetry: pending.failed && !pending.sending
-                                    ? () => _retryPendingImage(pending.localId)
-                                    : null,
-                              ),
-                            );
-                          }
-
-                          final afterPendingImages =
-                              i - visiblePendingImages.length;
-
-                          if (afterPendingImages <
-                              visiblePendingAudios.length) {
-                            final pending =
-                                visiblePendingAudios[afterPendingImages];
-                            final isMe = pending.senderId == uid;
-
-                            return KeyedSubtree(
-                              key: ValueKey(
-                                ChatMessageListStability.bubbleKey(
-                                  pending.localId,
-                                ),
-                              ),
-                              child: _AudioSendingBubble(
-                                isMe: isMe,
-                                timeText:
-                                    _formatTimeFromDate(pending.createdAt),
-                                failed: pending.failed,
-                                onRetry: pending.failed && !pending.sending
-                                    ? () => _retryPendingAudio(pending.localId)
-                                    : null,
-                              ),
-                            );
-                          }
-
-                          final afterPendingMedia =
-                              afterPendingImages - visiblePendingAudios.length;
-
-                          if (afterPendingMedia < visiblePendingTexts.length) {
-                            final pending =
-                                visiblePendingTexts[afterPendingMedia];
-                            final isMe = pending.senderId == uid;
-
-                            return KeyedSubtree(
-                              key: ValueKey(
-                                ChatMessageListStability.bubbleKey(
-                                  pending.localId,
-                                ),
-                              ),
-                              child: _TextSendingBubble(
-                                isMe: isMe,
-                                text: pending.text,
-                                timeText:
-                                    _formatTimeFromDate(pending.createdAt),
-                                failed: pending.failed,
-                                onRetry: pending.failed && !pending.sending
-                                    ? () => _retryPendingText(pending.localId)
-                                    : null,
-                              ),
-                            );
-                          }
-
-                          final realIndex =
-                              afterPendingMedia - visiblePendingTexts.length;
-                          final doc = docs[realIndex];
-                          final d = doc.data();
-                          final bubbleKey = ValueKey(
-                            ChatMessageListStability.bubbleKey(doc.id),
-                          );
-
-                          final senderId =
-                              (d['senderId'] ?? '').toString().trim();
-                          final isMe = (uid != null && senderId == uid);
-
-                          final type = (d['type'] ?? 'text').toString().trim();
-                          final deleted = d['deleted'] == true;
-
-                          final deletedFor = (d['deletedFor'] ?? []) as List;
-                          final hiddenForMe =
-                              uid != null && deletedFor.contains(uid);
-
-                          if (hiddenForMe) {
-                            return const SizedBox.shrink();
-                          }
-
-                          final deletedText =
-                              (d['deletedText'] ?? '').toString().trim();
-                          final createdAt = d['createdAt'] as Timestamp?;
-                          final clientCreatedAt =
-                              d['clientCreatedAt'] as Timestamp?;
-                          final timeTs = createdAt ?? clientCreatedAt;
-
-                          Widget bubbleWidget;
-
-                          final replyToText =
-                              (d['replyToText'] ?? '').toString();
-                          final replyToType =
-                              (d['replyToType'] ?? 'text').toString();
-                          final replyToIsMe = d['replyToIsMe'] == true;
-                          final replyToImageUrl =
-                              (d['replyToImageUrl'] ?? '').toString();
-
-                          if (deleted) {
-                            final text = deletedText.isNotEmpty
-                                ? deletedText
-                                : t.get('group_message_deleted_by_admin');
-
-                            bubbleWidget = _Bubble(
-                              text: text,
-                              isMe: isMe,
-                              isDeleted: true,
-                              timeText: _formatTime(timeTs),
-                              replyToText: replyToText,
-                              replyToType: replyToType,
-                              replyToIsMe: replyToIsMe,
-                              replyToImageUrl: replyToImageUrl,
-                            );
-                          } else if (type == 'audio') {
-                            final url = (d['audioUrl'] ?? '').toString();
-                            final raw = d['durationMs'] ?? 0;
-                            final durationMs = raw is int
-                                ? raw
-                                : (raw is num ? raw.toInt() : 0);
-
-                            if (_previewMode) {
-                              bubbleWidget = _PreviewAudioBubble(
-                                isMe: isMe,
-                                durationMs: durationMs,
-                                timeText: _formatTime(timeTs),
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _preloadUsersFromDocs(docs);
+                              _maybeAutoScroll(
+                                docs.length +
+                                    visiblePendingAudios.length +
+                                    visiblePendingImages.length +
+                                    visiblePendingTexts.length,
                               );
-                            } else {
-                              bubbleWidget = AudioBubble(
-                                key: ValueKey(doc.id),
-                                messageId: doc.id,
-                                audioUrl: url,
-                                isMe: isMe,
-                                durationMs: durationMs,
-                                timeText: _formatTime(timeTs),
-                                forwarded: d['forwarded'] == true,
+                            });
+
+                            final totalCount = docs.length +
+                                visiblePendingAudios.length +
+                                visiblePendingImages.length +
+                                visiblePendingTexts.length;
+
+                            if (totalCount == 0) {
+                              return Center(
+                                child: Text(
+                                  _searchText.isNotEmpty
+                                      ? t.get('group_no_search_results')
+                                      : t.get('group_no_messages_yet'),
+                                  style: const TextStyle(
+                                    color: _muted,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               );
                             }
-                          } else if (type == 'image') {
-                            final imageUrl = (d['imageUrl'] ?? '').toString();
 
-                            bubbleWidget = _ImageBubble(
-                              imageUrl: imageUrl,
-                              isMe: isMe,
-                              timeText: _formatTime(timeTs),
-                              forwarded: d['forwarded'] == true,
-                            );
-                          } else {
-                            final text = (d['text'] ?? '').toString();
-                            bubbleWidget = _Bubble(
-                              text: text,
-                              isMe: isMe,
-                              isDeleted: false,
-                              timeText: _formatTime(timeTs),
-                              replyToText: replyToText,
-                              replyToType: replyToType,
-                              replyToIsMe: replyToIsMe,
-                              replyToImageUrl: replyToImageUrl,
-                              forwarded: d['forwarded'] == true,
-                              linkPreview:
-                                  LinkPreviewData.fromMap(d['linkPreview']),
-                            );
-                          }
+                            return ListView.builder(
+                              controller: _scrollC,
+                              reverse: true,
+                              padding:
+                                  const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                              itemCount: totalCount,
+                              itemBuilder: (context, i) {
+                                if (i < visiblePendingImages.length) {
+                                  final pending = visiblePendingImages[i];
+                                  final isMe = pending.senderId == uid;
 
-                          final userData =
-                              senderId.isNotEmpty ? _userCache[senderId] : null;
+                                  return KeyedSubtree(
+                                    key: ValueKey(
+                                      ChatMessageListStability.bubbleKey(
+                                        pending.localId,
+                                      ),
+                                    ),
+                                    child: _ImageSendingBubble(
+                                      isMe: isMe,
+                                      timeText: _formatTimeFromDate(
+                                          pending.createdAt),
+                                      localPath: pending.localPath,
+                                      failed: pending.failed,
+                                      onRetry:
+                                          pending.failed && !pending.sending
+                                              ? () => _retryPendingImage(
+                                                  pending.localId)
+                                              : null,
+                                    ),
+                                  );
+                                }
 
-                          final bubble = senderId.isEmpty
-                              ? bubbleWidget
-                              : MessageRow(
-                                  senderUid: senderId,
-                                  isMe: isMe,
-                                  bubble: bubbleWidget,
-                                  userData: userData,
+                                final afterPendingImages =
+                                    i - visiblePendingImages.length;
+
+                                if (afterPendingImages <
+                                    visiblePendingAudios.length) {
+                                  final pending =
+                                      visiblePendingAudios[afterPendingImages];
+                                  final isMe = pending.senderId == uid;
+
+                                  return KeyedSubtree(
+                                    key: ValueKey(
+                                      ChatMessageListStability.bubbleKey(
+                                        pending.localId,
+                                      ),
+                                    ),
+                                    child: _AudioSendingBubble(
+                                      isMe: isMe,
+                                      timeText: _formatTimeFromDate(
+                                          pending.createdAt),
+                                      failed: pending.failed,
+                                      onRetry:
+                                          pending.failed && !pending.sending
+                                              ? () => _retryPendingAudio(
+                                                  pending.localId)
+                                              : null,
+                                    ),
+                                  );
+                                }
+
+                                final afterPendingMedia = afterPendingImages -
+                                    visiblePendingAudios.length;
+
+                                if (afterPendingMedia <
+                                    visiblePendingTexts.length) {
+                                  final pending =
+                                      visiblePendingTexts[afterPendingMedia];
+                                  final isMe = pending.senderId == uid;
+
+                                  return KeyedSubtree(
+                                    key: ValueKey(
+                                      ChatMessageListStability.bubbleKey(
+                                        pending.localId,
+                                      ),
+                                    ),
+                                    child: _TextSendingBubble(
+                                      isMe: isMe,
+                                      text: pending.text,
+                                      timeText: _formatTimeFromDate(
+                                          pending.createdAt),
+                                      failed: pending.failed,
+                                      onRetry: pending.failed &&
+                                              !pending.sending
+                                          ? () =>
+                                              _retryPendingText(pending.localId)
+                                          : null,
+                                    ),
+                                  );
+                                }
+
+                                final realIndex = afterPendingMedia -
+                                    visiblePendingTexts.length;
+                                final doc = docs[realIndex];
+                                final d = doc.data();
+                                final bubbleKey = ValueKey(
+                                  ChatMessageListStability.bubbleKey(doc.id),
                                 );
 
-                          return Column(
-                            key: bubbleKey,
-                            children: [
-                              if (_shouldShowDateHeader(docs, realIndex))
-                                _DateHeader(
-                                  label: _formatDayLabel(timeTs),
-                                ),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () {
-                                  if (!_searchMode) return;
+                                final senderId =
+                                    (d['senderId'] ?? '').toString().trim();
+                                final isMe = (uid != null && senderId == uid);
 
-                                  final msg = {
-                                    ...d,
-                                    'id': doc.id,
-                                  };
+                                final type =
+                                    (d['type'] ?? 'text').toString().trim();
+                                final deleted = d['deleted'] == true;
 
-                                  _handleReplyFromMessage(msg, type);
+                                final deletedFor =
+                                    (d['deletedFor'] ?? []) as List;
+                                final hiddenForMe =
+                                    uid != null && deletedFor.contains(uid);
 
-                                  setState(() {
-                                    _searchMode = false;
-                                    _searchText = '';
-                                    _searchController.clear();
-                                  });
-                                },
-                                onHorizontalDragUpdate: (details) {
-                                  _dragDx += details.delta.dx;
-                                },
-                                onHorizontalDragEnd: (_) {
-                                  if (_dragDx > 35) {
-                                    final msg = {
-                                      ...d,
-                                      'id': doc.id,
-                                    };
-                                    _handleReplyFromMessage(msg, type);
-                                  }
-                                  _dragDx = 0;
-                                },
-                                onHorizontalDragCancel: () {
-                                  _dragDx = 0;
-                                },
-                                onLongPress: () async {
-                                  if (_searchMode) return;
+                                if (hiddenForMe) {
+                                  return const SizedBox.shrink();
+                                }
 
-                                  await _openActions(
-                                    messageId: doc.id,
-                                    isMyMessage: isMe,
-                                    senderId: senderId,
-                                    data: Map<String, dynamic>.from(d),
+                                final deletedText =
+                                    (d['deletedText'] ?? '').toString().trim();
+                                final createdAt = d['createdAt'] as Timestamp?;
+                                final clientCreatedAt =
+                                    d['clientCreatedAt'] as Timestamp?;
+                                final timeTs = createdAt ?? clientCreatedAt;
+
+                                Widget bubbleWidget;
+
+                                final replyToText =
+                                    (d['replyToText'] ?? '').toString();
+                                final replyToType =
+                                    (d['replyToType'] ?? 'text').toString();
+                                final replyToIsMe = d['replyToIsMe'] == true;
+                                final replyToImageUrl =
+                                    (d['replyToImageUrl'] ?? '').toString();
+
+                                if (deleted) {
+                                  final text = deletedText.isNotEmpty
+                                      ? deletedText
+                                      : t.get('group_message_deleted_by_admin');
+
+                                  bubbleWidget = _Bubble(
+                                    text: text,
+                                    isMe: isMe,
+                                    isDeleted: true,
+                                    timeText: _formatTime(timeTs),
+                                    replyToText: replyToText,
+                                    replyToType: replyToType,
+                                    replyToIsMe: replyToIsMe,
+                                    replyToImageUrl: replyToImageUrl,
                                   );
-                                },
-                                child: bubble,
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                    },
-                  )
+                                } else if (type == 'audio') {
+                                  final url = (d['audioUrl'] ?? '').toString();
+                                  final raw = d['durationMs'] ?? 0;
+                                  final durationMs = raw is int
+                                      ? raw
+                                      : (raw is num ? raw.toInt() : 0);
+
+                                  if (_previewMode) {
+                                    bubbleWidget = _PreviewAudioBubble(
+                                      isMe: isMe,
+                                      durationMs: durationMs,
+                                      timeText: _formatTime(timeTs),
+                                    );
+                                  } else {
+                                    bubbleWidget = AudioBubble(
+                                      key: ValueKey(doc.id),
+                                      messageId: doc.id,
+                                      audioUrl: url,
+                                      isMe: isMe,
+                                      durationMs: durationMs,
+                                      timeText: _formatTime(timeTs),
+                                      forwarded: d['forwarded'] == true,
+                                    );
+                                  }
+                                } else if (type == 'image') {
+                                  final imageUrl =
+                                      (d['imageUrl'] ?? '').toString();
+
+                                  bubbleWidget = _ImageBubble(
+                                    imageUrl: imageUrl,
+                                    isMe: isMe,
+                                    timeText: _formatTime(timeTs),
+                                    forwarded: d['forwarded'] == true,
+                                  );
+                                } else {
+                                  final text = (d['text'] ?? '').toString();
+                                  bubbleWidget = _Bubble(
+                                    text: text,
+                                    isMe: isMe,
+                                    isDeleted: false,
+                                    timeText: _formatTime(timeTs),
+                                    replyToText: replyToText,
+                                    replyToType: replyToType,
+                                    replyToIsMe: replyToIsMe,
+                                    replyToImageUrl: replyToImageUrl,
+                                    forwarded: d['forwarded'] == true,
+                                    linkPreview: LinkPreviewData.fromMap(
+                                        d['linkPreview']),
+                                  );
+                                }
+
+                                final userData = senderId.isNotEmpty
+                                    ? _userCache[senderId]
+                                    : null;
+
+                                final bubble = senderId.isEmpty
+                                    ? bubbleWidget
+                                    : MessageRow(
+                                        senderUid: senderId,
+                                        isMe: isMe,
+                                        bubble: bubbleWidget,
+                                        userData: userData,
+                                      );
+
+                                return Column(
+                                  key: bubbleKey,
+                                  children: [
+                                    if (_shouldShowDateHeader(docs, realIndex))
+                                      _DateHeader(
+                                        label: _formatDayLabel(timeTs),
+                                      ),
+                                    GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () {
+                                        if (!_searchMode) return;
+
+                                        final msg = {
+                                          ...d,
+                                          'id': doc.id,
+                                        };
+
+                                        _handleReplyFromMessage(msg, type);
+
+                                        setState(() {
+                                          _searchMode = false;
+                                          _searchText = '';
+                                          _searchController.clear();
+                                        });
+                                      },
+                                      onHorizontalDragUpdate: (details) {
+                                        _dragDx += details.delta.dx;
+                                      },
+                                      onHorizontalDragEnd: (_) {
+                                        if (_dragDx > 35) {
+                                          final msg = {
+                                            ...d,
+                                            'id': doc.id,
+                                          };
+                                          _handleReplyFromMessage(msg, type);
+                                        }
+                                        _dragDx = 0;
+                                      },
+                                      onHorizontalDragCancel: () {
+                                        _dragDx = 0;
+                                      },
+                                      onLongPress: () async {
+                                        if (_searchMode) return;
+
+                                        await _openActions(
+                                          messageId: doc.id,
+                                          isMyMessage: isMe,
+                                          senderId: senderId,
+                                          data: Map<String, dynamic>.from(d),
+                                        );
+                                      },
+                                      child: bubble,
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        )
                       : _buildPreviewMessagesPlaceholder(),
                 ),
                 _previewMode
