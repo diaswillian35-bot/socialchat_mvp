@@ -15,6 +15,7 @@ import 'services/app_orientation.dart';
 import 'services/firebase_bootstrap.dart';
 import 'services/group_join_service.dart';
 import 'services/locale_controller.dart';
+import 'services/photo_picker_config.dart';
 import 'services/push_service.dart';
 import 'services/remdy_link_router.dart';
 import 'services/safe_remdy_navigation.dart';
@@ -37,6 +38,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  configurePhotoPicker();
 
   await ensureFirebaseInitialized();
 
