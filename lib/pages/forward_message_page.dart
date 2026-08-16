@@ -100,7 +100,8 @@ class _ForwardMessagePageState extends State<ForwardMessagePage>
   Future<void>? _pendingSearch;
   void _scheduleUserSearch() {
     final q = _searchC.text.trim();
-    _pendingSearch = Future.delayed(const Duration(milliseconds: 400), () async {
+    _pendingSearch =
+        Future.delayed(const Duration(milliseconds: 400), () async {
       if (!mounted || _searchC.text.trim() != q) return;
       if (_pendingSearch == null) return;
       if (q.length < 2) {
@@ -236,7 +237,8 @@ class _ForwardMessagePageState extends State<ForwardMessagePage>
         if (!seen.add(doc.id)) continue;
         final data = doc.data();
         if (GroupDiscoveryLogic.isDeletedOrInactive(data)) continue;
-        if (!GroupDiscoveryLogic.isParticipating(data: data, uid: uid)) continue;
+        if (!GroupDiscoveryLogic.isParticipating(data: data, uid: uid))
+          continue;
         final banned =
             await GroupBanService.isUserBanned(groupId: doc.id, uid: uid);
         final myCountry = InternationalChatService.readHomeCountryCode(myData);
@@ -295,9 +297,8 @@ class _ForwardMessagePageState extends State<ForwardMessagePage>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                t
-                    .get('forward_limit')
-                    .replaceAll('{max}', '${ForwardMessageService.maxDestinations}'),
+                t.get('forward_limit').replaceAll(
+                    '{max}', '${ForwardMessageService.maxDestinations}'),
               ),
             ),
           );
@@ -345,7 +346,8 @@ class _ForwardMessagePageState extends State<ForwardMessagePage>
         ? t
             .get('forward_partial')
             .replaceAll('{ok}', '${result.successCount}')
-            .replaceAll('{total}', '${result.successCount + result.failureCount}')
+            .replaceAll(
+                '{total}', '${result.successCount + result.failureCount}')
         : t.get('forward_success');
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -512,7 +514,9 @@ class _ForwardMessagePageState extends State<ForwardMessagePage>
           title: Text(
             item.title,
             style: TextStyle(
-              color: item.canSend ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+              color: item.canSend
+                  ? const Color(0xFF111827)
+                  : const Color(0xFF9CA3AF),
               fontWeight: FontWeight.w600,
             ),
           ),

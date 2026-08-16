@@ -1,6 +1,5 @@
 import 'dart:async';
 
-
 import 'package:app_links/app_links.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -19,6 +18,7 @@ import 'services/locale_controller.dart';
 import 'services/push_service.dart';
 import 'services/remdy_link_router.dart';
 import 'services/safe_remdy_navigation.dart';
+import 'services/age_access_service.dart';
 import 'pages/event_deep_link_page.dart';
 import 'pages/portal_qr_login_approve_page.dart';
 import 'services/event_deep_link_service.dart';
@@ -29,13 +29,11 @@ import 'widgets/keyboard_dismiss.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'utils/event_timezone.dart';
 
-
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Separate isolate: own Firebase registry; still must be idempotent.
   await ensureFirebaseInitialized();
 }
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,40 +49,31 @@ Future<void> main() async {
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   await PushService.init();
 
-
   await LocaleController.instance.load();
 
-final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale;
+  final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale;
 
-await AppTexts.load(deviceLocale);
-
-
-
+  await AppTexts.load(deviceLocale);
 
   runApp(const MyApp());
 }
 
-
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
-
 
   @override
   State<MyApp> createState() => _MyAppState();
 }
 
-
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _openingGroupInvite = false;
-String _lastGroupInviteCode = '';
+  String _lastGroupInviteCode = '';
 
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _linkSub;
 
-
   Uri? _pendingUri;
   bool _didTryProcessPending = false;
-
 
   @override
   void initState() {
@@ -115,15 +104,12 @@ String _lastGroupInviteCode = '';
     }
   }
 
-
   Future<void> _setupDeepLinks() async {
     print('DEBUG main: entrou _setupDeepLinks');
-
 
     try {
       final initialUri = await _appLinks.getInitialLink();
       print('DEBUG main: initialUri = $initialUri');
-
 
       if (initialUri != null) {
         _pendingUri = initialUri;
@@ -132,7 +118,6 @@ String _lastGroupInviteCode = '';
     } catch (e) {
       print('DEBUG main: erro getInitialLink = $e');
     }
-
 
     _linkSub = _appLinks.uriLinkStream.listen(
       (uri) {
@@ -146,15 +131,12 @@ String _lastGroupInviteCode = '';
     );
   }
 
-
   void _tryProcessPendingLink() {
     if (_didTryProcessPending && _pendingUri == null) return;
-
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final uri = _pendingUri;
       final nav = PushService.navKey.currentState;
-
 
       if (uri == null || nav == null) {
         Future.delayed(
@@ -164,25 +146,20 @@ String _lastGroupInviteCode = '';
         return;
       }
 
-
       _didTryProcessPending = true;
       _pendingUri = null;
       _handleIncomingLink(uri);
     });
   }
 
-
   Future<void> _saveInviteRef(String ref) async {
     print('DEBUG main: entrou _saveInviteRef com ref = $ref');
-
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('pending_invite_ref', ref);
 
-
     final saved = prefs.getString('pending_invite_ref') ?? '';
     print('DEBUG main: pending_invite_ref salvo = $saved');
-
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -201,13 +178,15 @@ String _lastGroupInviteCode = '';
     }
   }
 
-
   Future<void> _openGroupInviteByCode(String rawCode) async {
     final code = GroupJoinService.normalizeInviteCode(rawCode);
     if (code.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('pending_group_code', code);
+
+    // O convite permanece pendente e só será processado pelo AuthGate após 18+.
+    if (!await AgeAccessService.currentUserIsVerified()) return;
 
     if (_openingGroupInvite && _lastGroupInviteCode == code) {
       return;
@@ -235,124 +214,114 @@ String _lastGroupInviteCode = '';
   }
 
   Future<void> _handleIncomingLink(Uri uri) async {
-  print('DEBUG main: _handleIncomingLink uri = $uri');
+    print('DEBUG main: _handleIncomingLink uri = $uri');
 
+    final nav = PushService.navKey.currentState;
+    if (nav == null) return;
 
-  final nav = PushService.navKey.currentState;
-  if (nav == null) return;
+    final segments = uri.pathSegments;
+    print('DEBUG main: segments = $segments');
+    print('DEBUG main: query ref = ${uri.queryParameters['ref']}');
 
-
-  final segments = uri.pathSegments;
-  print('DEBUG main: segments = $segments');
-  print('DEBUG main: query ref = ${uri.queryParameters['ref']}');
-
-
-  // 🔹 GRUPO: /g/CODIGO
-  if (segments.length >= 2 && segments.first.toLowerCase() == 'g') {
-    final code = segments[1].trim();
-    if (code.isEmpty) return;
-    await _openGroupInviteByCode(code);
-    return;
-  }
-
-  // 🔹 GRUPO (legado): /group?code=CODIGO
-  if (segments.isNotEmpty && segments.first.toLowerCase() == 'group') {
-    final code = uri.queryParameters['code']?.trim() ?? '';
-    if (code.isNotEmpty) {
+    // 🔹 GRUPO: /g/CODIGO
+    if (segments.length >= 2 && segments.first.toLowerCase() == 'g') {
+      final code = segments[1].trim();
+      if (code.isEmpty) return;
       await _openGroupInviteByCode(code);
-    }
-    return;
-  }
-
-if (segments.length >= 2 &&
-    (segments.first.toLowerCase() == 'e' ||
-        segments.first.toLowerCase() == 'events' ||
-        segments.first.toLowerCase() == 'event')) {
-  final eventId = segments[1].trim();
-
-  if (eventId.isNotEmpty) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      await EventDeepLinkService.savePendingEventId(eventId);
       return;
     }
 
-    final ctx = PushService.navKey.currentContext;
-    if (ctx != null) {
-      await EventDeepLinkService.openEventById(
-        ctx,
-        eventId: eventId,
-      );
-    } else {
-      nav.push(
-        MaterialPageRoute(
-          builder: (_) => EventDeepLinkPage(eventId: eventId),
-        ),
-      );
+    // 🔹 GRUPO (legado): /group?code=CODIGO
+    if (segments.isNotEmpty && segments.first.toLowerCase() == 'group') {
+      final code = uri.queryParameters['code']?.trim() ?? '';
+      if (code.isNotEmpty) {
+        await _openGroupInviteByCode(code);
+      }
+      return;
     }
-  }
 
-  return;
-}
+    if (segments.length >= 2 &&
+        (segments.first.toLowerCase() == 'e' ||
+            segments.first.toLowerCase() == 'events' ||
+            segments.first.toLowerCase() == 'event')) {
+      final eventId = segments[1].trim();
 
-if (segments.length >= 2 &&
-    segments.first.toLowerCase() == 'portal-login') {
-  final sessionId = segments[1].trim();
+      if (eventId.isNotEmpty) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          await EventDeepLinkService.savePendingEventId(eventId);
+          return;
+        }
 
-  if (sessionId.isNotEmpty) {
-    nav.push(
-      MaterialPageRoute(
-        builder: (_) => PortalQrLoginApprovePage(sessionId: sessionId),
-      ),
-    );
-  }
+        final ctx = PushService.navKey.currentContext;
+        if (ctx != null) {
+          await EventDeepLinkService.openEventById(
+            ctx,
+            eventId: eventId,
+          );
+        } else {
+          nav.push(
+            MaterialPageRoute(
+              builder: (_) => EventDeepLinkPage(eventId: eventId),
+            ),
+          );
+        }
+      }
 
-  return;
-}
+      return;
+    }
 
+    if (segments.length >= 2 &&
+        segments.first.toLowerCase() == 'portal-login') {
+      final sessionId = segments[1].trim();
 
-  // 🔹 CONVITE GERAL: /invite?ref=CODE  (também aceita ?code= para grupo)
-  if (segments.isNotEmpty && segments.first.toLowerCase() == 'invite') {
-    final ref = uri.queryParameters['ref']?.trim() ?? '';
-    print('DEBUG main: ref capturado = $ref');
-    final groupCode = uri.queryParameters['code'] ?? '';
+      if (sessionId.isNotEmpty) {
+        nav.push(
+          MaterialPageRoute(
+            builder: (_) => PortalQrLoginApprovePage(sessionId: sessionId),
+          ),
+        );
+      }
 
-if (groupCode.trim().isNotEmpty) {
-  await _openGroupInviteByCode(groupCode);
-}
+      return;
+    }
 
-    if (ref.isEmpty) return;
+    // 🔹 CONVITE GERAL: /invite?ref=CODE  (também aceita ?code= para grupo)
+    if (segments.isNotEmpty && segments.first.toLowerCase() == 'invite') {
+      final ref = uri.queryParameters['ref']?.trim() ?? '';
+      print('DEBUG main: ref capturado = $ref');
+      final groupCode = uri.queryParameters['code'] ?? '';
 
+      if (groupCode.trim().isNotEmpty) {
+        await _openGroupInviteByCode(groupCode);
+      }
 
-    // copia pro clipboard (opcional)
-    Clipboard.setData(ClipboardData(text: ref));
+      if (ref.isEmpty) return;
 
+      // copia pro clipboard (opcional)
+      Clipboard.setData(ClipboardData(text: ref));
 
-    // 🔥 AGORA COM AWAIT (ESSENCIAL)
-    await _saveInviteRef(ref);
+      // 🔥 AGORA COM AWAIT (ESSENCIAL)
+      await _saveInviteRef(ref);
 
+      // 🔍 verifica se salvou mesmo
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('pending_invite_ref') ?? '';
 
-    // 🔍 verifica se salvou mesmo
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('pending_invite_ref') ?? '';
+      print('DEBUG main: confirm saved = $saved');
 
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(nav.context).showSnackBar(
+          SnackBar(
+            content: Text('Convite salvo: $saved'),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(12),
+          ),
+        );
+      });
 
-    print('DEBUG main: confirm saved = $saved');
-
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ScaffoldMessenger.of(nav.context).showSnackBar(
-        SnackBar(
-          content: Text('Convite salvo: $saved'),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(12),
-        ),
-      );
-    });
-
-
-    return;
-  }
+      return;
+    }
   }
 
   @override
@@ -360,9 +329,8 @@ if (groupCode.trim().isNotEmpty) {
     return ListenableBuilder(
       listenable: LocaleController.instance,
       builder: (context, _) {
-       return MaterialApp(
-  key: ValueKey(LocaleController.instance.locale.toString()),
-
+        return MaterialApp(
+          key: ValueKey(LocaleController.instance.locale.toString()),
           debugShowCheckedModeBanner: false,
           navigatorKey: PushService.navKey,
           locale: LocaleController.instance.locale,

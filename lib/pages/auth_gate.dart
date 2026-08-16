@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 
 import 'login_page.dart';
 import 'splash_page.dart';
@@ -15,7 +15,8 @@ import '../services/invite_premium_service.dart';
 import '../services/share_in_service.dart';
 import '../services/share_extension_session_service.dart';
 import 'group_chat_page.dart';
-
+import 'age_verification_page.dart';
+import '../services/age_verification.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -58,8 +59,7 @@ class AuthGate extends StatelessWidget {
             .replaceAll('{ref}', ref)
             .replaceAll('{days}', '$days');
       } else if (result['applied'] == true) {
-        snackMessage =
-            t.get('invite_applied').replaceAll('{ref}', ref);
+        snackMessage = t.get('invite_applied').replaceAll('{ref}', ref);
       } else {
         return;
       }
@@ -80,84 +80,83 @@ class AuthGate extends StatelessWidget {
     }
   }
 
+  Future<void> _applyPendingGroupIfAny(User user) async {
+    if (_applyingPendingGroup) return;
+    _applyingPendingGroup = true;
 
-Future<void> _applyPendingGroupIfAny(User user) async {
-  if (_applyingPendingGroup) return;
-  _applyingPendingGroup = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawCode = prefs.getString('pending_group_code') ?? '';
+      final code = GroupJoinService.normalizeInviteCode(rawCode);
 
-  try {
-  final prefs = await SharedPreferences.getInstance();
-  final rawCode = prefs.getString('pending_group_code') ?? '';
-  final code = GroupJoinService.normalizeInviteCode(rawCode);
+      print('DEBUG group: pending code = $code');
 
-  print('DEBUG group: pending code = $code');
+      if (code.isEmpty) {
+        if (rawCode.isNotEmpty) {
+          await prefs.remove('pending_group_code');
+        }
+        return;
+      }
 
-  if (code.isEmpty) {
-    if (rawCode.isNotEmpty) {
-      await prefs.remove('pending_group_code');
-    }
-    return;
-  }
-
-  final result = await GroupJoinService.joinByInviteCode(
-    inviteCode: code,
-    uid: user.uid,
-  );
-
-  // Limpa após processamento concluído ou erro definitivo.
-  await prefs.remove('pending_group_code');
-
-  final ctx = PushService.navKey.currentContext;
-  if (ctx == null) return;
-
-  String message;
-  try {
-    final t = AppTexts.current;
-    if (result.outcome == GroupJoinOutcome.error) {
-      message =
-          '${t.get(result.messageKey)} ${result.errorDetail ?? ''}'.trim();
-    } else if (result.outcome == GroupJoinOutcome.pendingCreated) {
-      message = t.get('group_request_pending_toast');
-    } else {
-      message = t.get(result.messageKey);
-    }
-  } catch (_) {
-    message = result.messageKey;
-  }
-
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    ScaffoldMessenger.of(ctx).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-
-    if (result.didEnterChat &&
-        result.groupId != null &&
-        result.groupId!.isNotEmpty) {
-      final groupName = (result.groupName ?? '').trim().isEmpty
-          ? 'Grupo'
-          : result.groupName!.trim();
-
-      Navigator.push(
-        ctx,
-        MaterialPageRoute(
-          builder: (_) => GroupChatPage(
-            groupId: result.groupId!,
-            groupName: groupName,
-          ),
-        ),
+      final result = await GroupJoinService.joinByInviteCode(
+        inviteCode: code,
+        uid: user.uid,
       );
-    }
-  });
 
-  print('DEBUG group: pending outcome = ${result.outcome}');
-  } finally {
-    _applyingPendingGroup = false;
+      // Limpa após processamento concluído ou erro definitivo.
+      await prefs.remove('pending_group_code');
+
+      final ctx = PushService.navKey.currentContext;
+      if (ctx == null) return;
+
+      String message;
+      try {
+        final t = AppTexts.current;
+        if (result.outcome == GroupJoinOutcome.error) {
+          message =
+              '${t.get(result.messageKey)} ${result.errorDetail ?? ''}'.trim();
+        } else if (result.outcome == GroupJoinOutcome.pendingCreated) {
+          message = t.get('group_request_pending_toast');
+        } else {
+          message = t.get(result.messageKey);
+        }
+      } catch (_) {
+        message = result.messageKey;
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+
+        if (result.didEnterChat &&
+            result.groupId != null &&
+            result.groupId!.isNotEmpty) {
+          final groupName = (result.groupName ?? '').trim().isEmpty
+              ? 'Grupo'
+              : result.groupName!.trim();
+
+          Navigator.push(
+            ctx,
+            MaterialPageRoute(
+              builder: (_) => GroupChatPage(
+                groupId: result.groupId!,
+                groupName: groupName,
+              ),
+            ),
+          );
+        }
+      });
+
+      print('DEBUG group: pending outcome = ${result.outcome}');
+    } finally {
+      _applyingPendingGroup = false;
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -168,30 +167,39 @@ Future<void> _applyPendingGroupIfAny(User user) async {
           return const SplashPage();
         }
 
+        final user = snap.data;
+        if (user == null) return const LoginPage();
 
-     final user = snap.data;
-if (user == null) return const LoginPage();
+        final isEmailPasswordLogin = user.providerData.any(
+          (p) => p.providerId == 'password',
+        );
 
-final isEmailPasswordLogin = user.providerData.any(
-  (p) => p.providerId == 'password',
-);
-
-if (isEmailPasswordLogin && !user.emailVerified) {
-  return const EmailVerificationPage();
-}
-
-WidgetsBinding.instance.addPostFrameCallback((_) {
-  _applyPendingInviteIfAny(user);
-  _applyPendingGroupIfAny(user);
-  EventDeepLinkService.applyPendingIfAny();
-  // Auth + primeiro frame: processa fila prefs e poll do App Group.
-  ShareInService.applyPendingIfAny();
-  ShareInService.pollNativePending();
-  ShareExtensionSessionService.ensureSession();
-});
-
-return const MainShell();
-
+        if (isEmailPasswordLogin && !user.emailVerified) {
+          return const EmailVerificationPage();
+        }
+        return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get(),
+          builder: (context, userSnap) {
+            if (userSnap.connectionState != ConnectionState.done) {
+              return const SplashPage();
+            }
+            if (!AgeVerification.isVerified(userSnap.data?.data())) {
+              return const AgeVerificationPage();
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _applyPendingInviteIfAny(user);
+              _applyPendingGroupIfAny(user);
+              EventDeepLinkService.applyPendingIfAny();
+              ShareInService.applyPendingIfAny();
+              ShareInService.pollNativePending();
+              ShareExtensionSessionService.ensureSession();
+            });
+            return const MainShell();
+          },
+        );
       },
     );
   }

@@ -7,20 +7,18 @@ import 'main_shell_page.dart'; // contém MainShell (mantido)
 import 'login_page.dart';
 import 'edit_profile_page.dart';
 import 'auth_gate.dart';
-
+import 'age_verification_page.dart';
+import '../services/age_verification.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
-
 
   @override
   State<SplashPage> createState() => _SplashPageState();
 }
 
-
 class _SplashPageState extends State<SplashPage> {
   bool _navigated = false;
-
 
   @override
   void initState() {
@@ -28,37 +26,31 @@ class _SplashPageState extends State<SplashPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _go());
   }
 
-
   Future<void> _go() async {
     if (_navigated) return;
-
 
     try {
       await Future.delayed(const Duration(milliseconds: 1200));
 
-
       final user = FirebaseAuth.instance.currentUser;
-
 
       // 1) Sem login => LoginPage
       if (user == null) {
-        
         _replace(const LoginPage());
         return;
       }
-await user.reload();
-final freshUser = FirebaseAuth.instance.currentUser;
+      await user.reload();
+      final freshUser = FirebaseAuth.instance.currentUser;
 
-if (freshUser == null) {
-  _replace(const LoginPage());
-  return;
-}
+      if (freshUser == null) {
+        _replace(const LoginPage());
+        return;
+      }
 
-if (!freshUser.emailVerified) {
-  _replace(const EmailVerificationPage());
-  return;
-}
-
+      if (!freshUser.emailVerified) {
+        _replace(const EmailVerificationPage());
+        return;
+      }
 
       // 2) Com login => checa perfil no Firestore
       final doc = await FirebaseFirestore.instance
@@ -66,33 +58,30 @@ if (!freshUser.emailVerified) {
           .doc(user.uid)
           .get();
 
-
       final data = doc.data() ?? {};
 
+      if (!AgeVerification.isVerified(data)) {
+        _replace(const AgeVerificationPage());
+        return;
+      }
 
       // Se ainda não travou país / não definiu homeCountryCode
-      final home = (data['homeCountryCode'] ?? '')
-          .toString()
-          .trim()
-          .toLowerCase();
+      final home =
+          (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
       final locked = (data['countryLocked'] == true);
-
 
       if (!doc.exists || home.isEmpty || !locked) {
         _replace(const EditProfilePage());
         return;
       }
 
-
       final profileComplete = (data['profileComplete'] == true);
-
 
       // Se não completou perfil => EditProfilePage
       if (!profileComplete) {
         _replace(const EditProfilePage());
         return;
       }
-
 
       // 3) Tudo ok => segue fluxo atual
       _replace(const AuthGate());
@@ -101,18 +90,15 @@ if (!freshUser.emailVerified) {
     }
   }
 
-
   void _replace(Widget page) {
     if (!mounted || _navigated) return;
     _navigated = true;
-
 
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => page),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {

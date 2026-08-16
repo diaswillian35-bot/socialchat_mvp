@@ -891,7 +891,7 @@
   "terms_remi_item_5": "O Remi é oferecido para apoio conversacional e educacional dentro do Remdy",
   "terms_remi_item_6": "O Remdy pode limitar, alterar ou descontinuar o Remi a qualquer momento",
   "terms_age_title": "Idade mínima",
-  "terms_age_text": "Você deve ter pelo menos 13 anos para usar o Remdy. Se for menor de idade no local onde mora, só poderá usar o aplicativo com autorização do responsável legal quando a lei local exigir. Alguns recursos podem exigir idade superior conforme a legislação aplicável.",
+  "terms_age_text": "A Remdy é destinada exclusivamente a pessoas com 18 anos completos ou mais. Você precisa ter completado 18 anos para criar ou utilizar uma conta.",
   "terms_rules_item_6": "Enviar spam, links maliciosos ou propaganda não solicitada",
   "terms_rules_item_7": "Divulgar dados pessoais de terceiros sem permissão",
   "terms_rules_item_8": "Publicar conteúdo ilegal ou que viole direitos de terceiros",
@@ -1047,7 +1047,7 @@
   "privacy_rights_7": "Contatar o suporte em support@remdy.app",
   "privacy_rights_laws": "A exclusão da conta pode ser iniciada dentro do aplicativo. Os direitos podem variar por país, inclusive sob leis como LGPD, GDPR e regras locais. Esta política não cria direitos além dos previstos em lei.",
   "privacy_section_children_title": "Crianças e adolescentes",
-  "privacy_children_text": "O Remdy não é direcionado a crianças abaixo da idade mínima. Dados de menores não devem ser fornecidos sem base legal ou autorização exigida. Responsáveis podem contatar o Remdy se acreditarem que um menor usou o serviço indevidamente.",
+  "privacy_children_text": "A Remdy é destinada exclusivamente a maiores de 18 anos. Armazenamos de forma privada a data de nascimento para confirmar a elegibilidade. Ela não aparece publicamente e correções exigem suporte seguro.",
   "privacy_section_transfer_title": "Transferência internacional",
   "privacy_transfer_text": "Como o Remdy usa infraestrutura global de provedores, os dados podem ser processados em países diferentes do seu país de residência. Medidas contratuais e técnicas aplicáveis são adotadas quando exigidas.",
   "privacy_section_security_title": "Segurança",
@@ -1437,5 +1437,6 @@
   "event_wizard_postal_code": "CEP",
   "event_wizard_public_address_preview": "Endereço público",
   "event_wizard_street_number_required": "Informe o número ou marque “Sem número”.",
-  "event_wizard_street_number_invalid": "Número inválido. Use formatos como 125, 125A ou 10-123."
+  "event_wizard_street_number_invalid": "Número inválido. Use formatos como 125, 125A ou 10-123.",
+  "age_verification_title": "Verificação de idade", "age_18_plus_notice": "A Remdy é destinada somente a maiores de 18 anos", "age_privacy_reason": "Solicitamos sua data de nascimento apenas para confirmar a elegibilidade. Ela fica privada e nunca aparece no perfil público.", "age_birth_date": "Data de nascimento", "age_select_date": "Selecione sua data de nascimento", "age_accept_terms": "Aceito os Termos de Uso e a Política de Privacidade", "age_date_required": "Informe sua data de nascimento.", "age_date_invalid": "Informe uma data de nascimento válida.", "age_underage_blocked": "Sentimos muito, mas a Remdy está disponível somente para pessoas com 18 anos completos ou mais.", "age_terms_required": "Aceite os Termos de Uso e a Política de Privacidade para continuar.", "age_confirmation_error": "Não foi possível confirmar sua idade. Tente novamente.", "continue": "Continuar"
 }

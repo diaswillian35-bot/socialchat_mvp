@@ -32,7 +32,8 @@ class ForwardMessageService {
         'destinations': destinations.map((d) => d.toMap()).toList(),
       });
       final data = Map<String, dynamic>.from(result.data as Map);
-      final rawResults = (data['results'] is List) ? data['results'] as List : [];
+      final rawResults =
+          (data['results'] is List) ? data['results'] as List : [];
       final items = rawResults.map((e) {
         final m = Map<String, dynamic>.from(e as Map);
         return ForwardDestinationResult(
@@ -98,7 +99,7 @@ class ForwardDestination {
   const ForwardDestination.dm({
     this.conversationId,
     this.otherUid,
-  }) : kind = 'dm',
+  })  : kind = 'dm',
         groupId = null;
 
   const ForwardDestination.group({required this.groupId})

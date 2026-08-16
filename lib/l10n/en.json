@@ -890,7 +890,7 @@
   "terms_remi_item_5": "Remi is provided for educational and conversational support within Remdy",
   "terms_remi_item_6": "Remdy may limit, change, or discontinue Remi at any time",
   "terms_age_title": "Minimum age",
-  "terms_age_text": "You must be at least 13 years old to use Remdy. If you are under the age of majority where you live, you may use the app only with permission from a parent or legal guardian when required by local law. Some features may require a higher age under applicable law.",
+  "terms_age_text": "Remdy is exclusively for people aged 18 or older. You must have reached your 18th birthday to create or use an account.",
   "terms_rules_item_6": "Send spam, malicious links, or unsolicited advertising",
   "terms_rules_item_7": "Disclose personal data of others without permission",
   "terms_rules_item_8": "Post illegal content or content that infringes third-party rights",
@@ -1046,7 +1046,7 @@
   "privacy_rights_7": "Contact support at support@remdy.app",
   "privacy_rights_laws": "Account deletion can be started inside the app. Rights may vary by country, including under laws such as LGPD, GDPR, and other local rules. This policy does not create rights beyond what the law provides.",
   "privacy_section_children_title": "Children and teens",
-  "privacy_children_text": "Remdy is not directed to children below the minimum age. Data from minors should not be provided without a legal basis or required authorization. Guardians may contact Remdy if they believe a minor used the service improperly.",
+  "privacy_children_text": "Remdy is exclusively for adults aged 18 or older. We privately retain your date of birth to confirm eligibility. It is not shown publicly and corrections require secure support.",
   "privacy_section_transfer_title": "International transfers",
   "privacy_transfer_text": "Because Remdy uses global infrastructure providers, data may be processed in countries other than your country of residence. Applicable contractual and technical measures are used where required.",
   "privacy_section_security_title": "Security",
@@ -1436,5 +1436,6 @@
   "event_wizard_postal_code": "Postal code",
   "event_wizard_public_address_preview": "Public address",
   "event_wizard_street_number_required": "Enter the number or select “No number”.",
-  "event_wizard_street_number_invalid": "Invalid number. Use formats like 125, 125A, or 10-123."
+  "event_wizard_street_number_invalid": "Invalid number. Use formats like 125, 125A, or 10-123.",
+  "age_verification_title": "Age verification", "age_18_plus_notice": "Remdy is only for people aged 18 or older", "age_privacy_reason": "We request your date of birth only to confirm eligibility. It stays private and is never shown on your public profile.", "age_birth_date": "Date of birth", "age_select_date": "Select your date of birth", "age_accept_terms": "I accept the Terms of Use and Privacy Policy", "age_date_required": "Enter your date of birth.", "age_date_invalid": "Enter a valid date of birth.", "age_underage_blocked": "Sorry, Remdy is only available to people who are at least 18 years old.", "age_terms_required": "Accept the Terms of Use and Privacy Policy to continue.", "age_confirmation_error": "We couldn't confirm your age. Please try again.", "logout": "Log out", "continue": "Continue"
 }

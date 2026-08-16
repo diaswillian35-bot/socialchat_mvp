@@ -35,7 +35,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   );
 
   final _nameC = TextEditingController();
-  final _ageC = TextEditingController();
   final _languagesC = TextEditingController();
   final _aboutC = TextEditingController();
   final _countrySearchC = TextEditingController();
@@ -107,7 +106,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       final data = snap.data() ?? {};
 
       _nameC.text = (data['name'] ?? '').toString();
-      _ageC.text = (data['age'] ?? '').toString();
 
       // ✅ substitui nativeLanguage/studying por languages
       final languages =
@@ -357,12 +355,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       final languages = _languagesC.text.trim();
       final about = _aboutC.text.trim();
 
-      final ageText = _ageC.text.trim();
-      int? age;
-      if (ageText.isNotEmpty) {
-        age = int.tryParse(ageText);
-      }
-
       final authUser = FirebaseAuth.instance.currentUser;
       final email = authUser?.email ?? '';
       final photoUrl = authUser?.photoURL ?? '';
@@ -407,7 +399,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       final userPayload = <String, dynamic>{
         'uid': uid,
         'name': name,
-        'age': age,
         'languages': languages,
         'about': about,
         'country': countryName,
@@ -461,6 +452,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'email': email,
         'photoUrl': photoUrl,
         'profileComplete': true,
+        // Remove campos públicos legados; a data canônica existe apenas em users.
+        'age': FieldValue.delete(),
+        'dateOfBirth': FieldValue.delete(),
         'updatedAt': now,
         ...PublicUserSearchFields.build(
           name: name,
@@ -497,7 +491,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   void dispose() {
     _nameC.dispose();
-    _ageC.dispose();
     _languagesC.dispose();
     _aboutC.dispose();
     _countrySearchC.dispose();
@@ -972,26 +965,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       if (v == null || v.trim().isEmpty)
                         return t.get('enter_full_name');
                       if (v.trim().length < 2) return t.get('name_too_short');
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _ageC,
-                    keyboardType: TextInputType.number,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) =>
-                        FocusManager.instance.primaryFocus?.unfocus(),
-                    decoration: _deco(t.get('age')),
-                    validator: (v) {
-                      final t = (v ?? '').trim();
-                      if (t.isEmpty) return null;
-                      final n = int.tryParse(t);
-                      if (n == null)
-                        return AppTexts.current.get('enter_number');
-                      if (n < 13) return AppTexts.current.get('minimum_age_13');
-                      if (n > 99) return AppTexts.current.get('invalid_age');
-
                       return null;
                     },
                   ),

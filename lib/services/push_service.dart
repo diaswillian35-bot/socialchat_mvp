@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'age_access_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
@@ -372,6 +373,10 @@ class PushService {
     if (kDebugMode) {
       debugPrint('PUSH OPEN: $data');
     }
+
+    // Notification taps may arrive before/above AuthGate. Never construct a
+    // social route until the private server-issued status is verified.
+    if (!await AgeAccessService.currentUserIsVerified()) return;
 
     final type = (data['type'] ?? '').toString().trim();
     final nav = navKey.currentState;

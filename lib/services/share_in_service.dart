@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'age_access_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -326,6 +327,10 @@ class ShareInService {
   static Future<bool> openShareUi(ShareInPayload payload) async {
     if (_openingUi) return false;
     if (_currentUser() == null) {
+      await persistPending(payload);
+      return false;
+    }
+    if (!await AgeAccessService.currentUserIsVerified()) {
       await persistPending(payload);
       return false;
     }

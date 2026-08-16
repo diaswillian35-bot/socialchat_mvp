@@ -2,8 +2,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
+    function authenticated() {
       return request.auth != null;
+    }
+
+    // Áreas sociais exigem confirmação 18+ emitida exclusivamente por Function.
+    // O próprio users/{uid} continua legível para a tela de verificação.
+    function signedIn() {
+      return authenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+          .data.get('ageVerificationStatus', '') == 'verified';
     }
 
     function uid() {
@@ -38,7 +47,7 @@ service cloud.firestore {
     }
 
     function isPortalAdmin() {
-      return signedIn()
+      return authenticated()
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
@@ -128,7 +137,13 @@ service cloud.firestore {
         'invitedByCode',
         'role',
         'roles',
-        'permissions'
+        'permissions',
+        'dateOfBirth',
+        'ageVerificationStatus',
+        'agePolicyVersion',
+        'ageTermsAcceptedAt',
+        'ageVerifiedAt',
+        'ageVerificationCheckedAt'
       ];
     }
 
@@ -152,7 +167,15 @@ service cloud.firestore {
 
     function isUserCreatePremiumSafe() {
       let d = request.resource.data;
-      return (!('premiumUntil' in d))
+      return (!d.keys().hasAny([
+          'dateOfBirth',
+          'ageVerificationStatus',
+          'agePolicyVersion',
+          'ageTermsAcceptedAt',
+          'ageVerifiedAt',
+          'ageVerificationCheckedAt'
+        ]))
+        && (!('premiumUntil' in d))
         && (!('premiumType' in d) || d.premiumType == null || d.premiumType == '')
         && (!('premiumSource' in d) || d.premiumSource == null || d.premiumSource == '')
         && (!('premiumExpiresAt' in d))
@@ -233,10 +256,10 @@ service cloud.firestore {
     // USERS
     // =========================
     match /users/{userId} {
-      allow read: if signedIn();
+      allow read: if (authenticated() && uid() == userId) || signedIn();
 
       // Create: defaults ok; não permitir auto-concessão Premium/convite.
-      allow create: if signedIn()
+      allow create: if authenticated()
         && uid() == userId
         && isUserCreatePremiumSafe();
 
@@ -288,9 +311,12 @@ service cloud.firestore {
       allow read: if signedIn();
       // Cliente pode criar/atualizar perfil público, mas NÃO pode forçar
       // isOnline:false no agregado (offline do agregado = Cloud Function / TTL).
-      allow create: if signedIn() && uid() == userId;
+      allow create: if signedIn()
+        && uid() == userId
+        && !request.resource.data.keys().hasAny(['dateOfBirth', 'age']);
       allow update: if signedIn()
         && uid() == userId
+        && !request.resource.data.keys().hasAny(['dateOfBirth', 'age'])
         && (
           !('isOnline' in request.resource.data.diff(resource.data).affectedKeys())
           || request.resource.data.isOnline == true

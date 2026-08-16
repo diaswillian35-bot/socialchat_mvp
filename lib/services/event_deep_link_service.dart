@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/app_texts.dart';
 import '../pages/event_detail_page.dart';
 import 'push_service.dart';
+import 'age_access_service.dart';
 
 /// Deep links de eventos: `https://remdy.app/e/{eventId}`
 /// (também aceita `/events/{eventId}`).
@@ -18,9 +19,7 @@ class EventDeepLinkService {
 
   static String? parseEventId(Uri uri) {
     final host = uri.host.toLowerCase();
-    if (host.isNotEmpty &&
-        host != 'remdy.app' &&
-        host != 'www.remdy.app') {
+    if (host.isNotEmpty && host != 'remdy.app' && host != 'www.remdy.app') {
       return null;
     }
 
@@ -78,6 +77,10 @@ class EventDeepLinkService {
 
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
+      await savePendingEventId(id);
+      return false;
+    }
+    if (!await AgeAccessService.currentUserIsVerified()) {
       await savePendingEventId(id);
       return false;
     }
@@ -168,8 +171,7 @@ class EventDeepLinkService {
     if (eventId == null || eventId.isEmpty) return;
 
     Future<void> tryOpen() async {
-      final ctx =
-          PushService.navKey.currentContext ?? fallbackContext;
+      final ctx = PushService.navKey.currentContext ?? fallbackContext;
       if (ctx == null || !ctx.mounted) {
         await savePendingEventId(eventId);
         return;

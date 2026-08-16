@@ -37,7 +37,8 @@ void main() {
     expect(map['text'], contains('example.com'));
   });
 
-  test('navigator indisponível: openShareUi retorna false e mantém fila', () async {
+  test('navigator indisponível: openShareUi retorna false e mantém fila',
+      () async {
     final p = payload(id: 'nav-miss');
     final opened = await ShareInService.openShareUi(p);
     expect(opened, isFalse);
@@ -45,15 +46,18 @@ void main() {
     expect(prefs.getString(ShareInService.pendingPrefsKey), isNotNull);
   });
 
-  test('usuário autenticando: sem user → pendingLogin e fila preservada', () async {
+  test('usuário autenticando: sem user → pendingLogin e fila preservada',
+      () async {
     // Sem Firebase user no test binding → currentUser null.
-    final outcome = await ShareInService.ingestPayload(payload(id: 'auth-wait'));
+    final outcome =
+        await ShareInService.ingestPayload(payload(id: 'auth-wait'));
     expect(outcome, ShareInIngestOutcome.pendingLogin);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString(ShareInService.pendingPrefsKey), isNotNull);
   });
 
-  test('consumo único: openedIntentIds impede reabrir mesmo fingerprint', () async {
+  test('consumo único: openedIntentIds impede reabrir mesmo fingerprint',
+      () async {
     ShareInService.resetForTest();
     // Simula intent já aberta.
     final p = payload(id: 'once-1');

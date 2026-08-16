@@ -17,6 +17,7 @@ class ShareExtensionSessionService {
   static const bool enabledForLaunch = false;
 
   static const MethodChannel _keychain = MethodChannel('remdy/share_session');
+
   /// Server TTL is 7d; renew when remaining < 50%. Throttle burst calls.
   static const Duration _minIssueGap = Duration(minutes: 5);
   static const int _sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
