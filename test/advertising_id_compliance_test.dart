@@ -89,7 +89,7 @@ void main() {
     expect(privacy, isNot(contains('ID de publicidade')));
   });
 
-  test('application version is 1.0.3+13', () {
-    expect(source('pubspec.yaml'), contains('version: 1.0.3+13'));
+  test('application version is 1.0.3+14', () {
+    expect(source('pubspec.yaml'), contains('version: 1.0.3+14'));
   });
 }

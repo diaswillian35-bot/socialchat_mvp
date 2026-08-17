@@ -229,6 +229,7 @@ String _formatPrice(String currency, double price) {
       );
     } catch (e) {
       if (!mounted) return;
+      if (PurchaseService.isUserCancellation(e)) return;
       _snack('${t.get('purchase_error')}: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -258,6 +259,7 @@ String _formatPrice(String currency, double price) {
       );
     } catch (e) {
       if (!mounted) return;
+      if (PurchaseService.isUserCancellation(e)) return;
       _snack('${t.get('restore_error')}: $e');
     } finally {
       if (mounted) setState(() => _loading = false);

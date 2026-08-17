@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 /// Compras via RevenueCat. Premium no Firestore vem do webhook/sync server-side.
@@ -51,6 +52,13 @@ class PurchaseService {
     _configured = true;
   }
 
+  /// Compra ou restore cancelado pelo usuário — não é falha técnica.
+  static bool isUserCancellation(Object error) {
+    if (error is! PlatformException) return false;
+    return PurchasesErrorHelper.getErrorCode(error) ==
+        PurchasesErrorCode.purchaseCancelledError;
+  }
+
   /// Desvincula o usuário do SDK no logout (não apaga compras nas lojas).
   Future<void> logOut() async {
     if (!_configured) return;
@@ -79,7 +87,10 @@ class PurchaseService {
       throw Exception('Nenhum pacote disponível no Offering.');
     }
 
-    return Purchases.purchasePackage(pkg);
+    final result = await Purchases.purchase(
+      PurchaseParams.package(pkg),
+    );
+    return result.customerInfo;
   }
 
   Future<CustomerInfo> restore() async {
