@@ -75,6 +75,34 @@ void main() {
       expect(r.payload!.primaryLink!.isRemdyInternal, isTrue);
     });
 
+    test('youtube:// vira HTTPS', () {
+      final r = ShareInParser.parseText(
+        'youtube://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      );
+      expect(r.isOk, isTrue);
+      expect(r.payload!.text, contains('https://www.youtube.com/watch?v='));
+    });
+
+    test('maps:// e geo: viram HTTPS do Apple Maps', () {
+      final maps = ShareInParser.parseText(
+        'maps://maps.apple.com/?ll=40.7,-74.0',
+      );
+      expect(maps.isOk, isTrue);
+      expect(maps.payload!.text, contains('https://maps.apple.com/?ll='));
+
+      final geo = ShareInParser.parseText('geo:-23.55,-46.63');
+      expect(geo.isOk, isTrue);
+      expect(geo.payload!.text, contains('https://maps.apple.com/?ll=-23.55,-46.63'));
+    });
+
+    test('Safari HTTPS e texto puro continuam válidos', () {
+      expect(
+        ShareInParser.parseText('https://remdy.app/e/abc').isOk,
+        isTrue,
+      );
+      expect(ShareInParser.parseText('Olá do Safari').isOk, isTrue);
+    });
+
     test('vazio inválido', () {
       final r = ShareInParser.parseText('   ');
       expect(r.isOk, isFalse);

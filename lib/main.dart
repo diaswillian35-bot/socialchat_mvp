@@ -26,6 +26,8 @@ import 'services/event_deep_link_service.dart';
 import 'services/invite_premium_service.dart';
 import 'services/share_in_service.dart';
 import 'services/share_extension_session_service.dart';
+import 'services/share_extension_destinations_service.dart';
+import 'services/share_extension_incoming_service.dart';
 import 'widgets/keyboard_dismiss.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'utils/event_timezone.dart';
@@ -87,6 +89,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _setupDeepLinks();
     // Share-in nativo (Android ACTION_SEND / iOS Share Extension).
     ShareInService.start();
+    ShareExtensionSessionService.start();
   }
 
   @override
@@ -104,6 +107,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       ShareInService.onAppResumed();
       ShareExtensionSessionService.ensureSession();
+      ShareExtensionDestinationsService.publish();
+      ShareExtensionIncomingService.consumePendingJobs();
     }
   }
 

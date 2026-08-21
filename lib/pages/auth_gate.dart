@@ -14,6 +14,7 @@ import '../services/event_deep_link_service.dart';
 import '../services/invite_premium_service.dart';
 import '../services/share_in_service.dart';
 import '../services/share_extension_session_service.dart';
+import '../services/share_extension_incoming_service.dart';
 import 'group_chat_page.dart';
 import 'age_verification_page.dart';
 import '../services/age_verification.dart';
@@ -196,6 +197,7 @@ class AuthGate extends StatelessWidget {
               ShareInService.applyPendingIfAny();
               ShareInService.pollNativePending();
               ShareExtensionSessionService.ensureSession();
+              ShareExtensionIncomingService.consumePendingJobs();
             });
             return const MainShell();
           },

@@ -99,7 +99,7 @@ class ShareInParser {
       return ShareInParseResult.error('share_in_unsupported_type');
     }
 
-    final cleaned = sanitizeSharedText(input);
+    final cleaned = sanitizeSharedText(rewriteShareSchemes(input));
     if (cleaned.isEmpty) {
       return ShareInParseResult.error('share_in_invalid');
     }
@@ -154,6 +154,24 @@ class ShareInParser {
     s = s.replaceAll(RegExp(r'\n{3,}'), '\n\n');
     s = s.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
     return s.trim();
+  }
+
+  /// YouTube / Mapas / geo: → HTTPS público, alinhado à Share Extension.
+  static String rewriteShareSchemes(String input) {
+    var s = input;
+    s = s.replaceAllMapped(
+      RegExp(r'\byoutube://', caseSensitive: false),
+      (_) => 'https://',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'\bmaps://', caseSensitive: false),
+      (_) => 'https://',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'\bgeo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)', caseSensitive: false),
+      (m) => 'https://maps.apple.com/?ll=${m.group(1)},${m.group(2)}',
+    );
+    return s;
   }
 
   static String fingerprintFor({

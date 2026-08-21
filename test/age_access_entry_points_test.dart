@@ -22,6 +22,7 @@ void main() {
       'lib/services/push_service.dart',
       'lib/services/event_deep_link_service.dart',
       'lib/services/share_in_service.dart',
+      'lib/services/share_extension_incoming_service.dart',
       'lib/main.dart',
     ]) {
       expect(source(path), contains('AgeAccessService.currentUserIsVerified()'),
