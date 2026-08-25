@@ -9,6 +9,7 @@ import 'edit_profile_page.dart';
 import 'auth_gate.dart';
 import 'age_verification_page.dart';
 import '../services/age_verification.dart';
+import '../services/google_sign_in_service.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -47,7 +48,7 @@ class _SplashPageState extends State<SplashPage> {
         return;
       }
 
-      if (!freshUser.emailVerified) {
+      if (authRequiresEmailVerification(freshUser)) {
         _replace(const EmailVerificationPage());
         return;
       }

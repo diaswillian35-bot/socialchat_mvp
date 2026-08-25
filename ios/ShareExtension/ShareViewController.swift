@@ -1,15 +1,17 @@
 import UIKit
 import UniformTypeIdentifiers
+import ImageIO
+import MobileCoreServices
 
 /// Share Extension — visual oficial Remdy (sempre claro).
 /// Stay open until Cancel or confirmed send success. Never auto-dismiss on error.
 @objc(ShareViewController)
 final class ShareViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate {
   /// Hard caps for extension memory budget (~jetsam around tens of MB).
-  private let maxImages = 5
+  private let maxImages = 3
   private let maxVisibleDestinations = 30
-  private let jpegMaxDimension: CGFloat = 1280
-  private let jpegQuality: CGFloat = 0.65
+  private let jpegMaxDimension: CGFloat = 960
+  private let jpegQuality: CGFloat = 0.55
 
   private var shareText = ""
   private var imageJPEGs: [Data] = []
@@ -18,11 +20,15 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
   private var dms: [ShareCallableClient.Destination] = []
   private var groups: [ShareCallableClient.Destination] = []
   private var sendingId: String?
+  /// Selected destination — tap selects only; send starts on Enviar.
+  private var selectedDestination: ShareCallableClient.Destination?
   private var searchWorkItem: DispatchWorkItem?
   private var segment = 0
   private var didBootstrap = false
   private var didFinish = false
+  private var payloadReady = false
   private var bootstrapTask: Task<Void, Never>?
+  private var sendTask: Task<Void, Never>?
   private var tableHeightConstraint: NSLayoutConstraint?
 
   private enum ScreenState {
@@ -47,6 +53,8 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
   private let table = UITableView(frame: .zero, style: .plain)
   private let emptyLabel = UILabel()
   private let statusLabel = UILabel()
+  private let hintLabel = UILabel()
+  private let sendButton = UIButton(type: .system)
   private let retryButton = UIButton(type: .system)
   private let cancelButton = UIButton(type: .system)
   private let spinner = UIActivityIndicatorView(style: .medium)
@@ -57,6 +65,7 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
 
   deinit {
     bootstrapTask?.cancel()
+    sendTask?.cancel()
     ShareDiag.log("deinit")
   }
 
@@ -65,7 +74,7 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     overrideUserInterfaceStyle = .light
     view.backgroundColor = ShareTheme.canvas
     // Non-zero width avoids sheet layout glitches on some iOS versions.
-    preferredContentSize = CGSize(width: 320, height: 580)
+    preferredContentSize = CGSize(width: 320, height: 640)
     isModalInPresentation = true
     buildUI()
     localizeChrome()
@@ -105,6 +114,9 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     searchBar.placeholder = L("share_search")
     cancelButton.setTitle(L("share_cancel"), for: .normal)
     retryButton.setTitle(L("share_retry"), for: .normal)
+    sendButton.setTitle(L("share_send"), for: .normal)
+    hintLabel.text = L("share_select_hint")
+    updateSendButton()
   }
 
   private func buildUI() {
@@ -207,6 +219,21 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     statusLabel.numberOfLines = 0
     statusLabel.textAlignment = .center
 
+    hintLabel.font = .systemFont(ofSize: 13, weight: .medium)
+    hintLabel.textColor = ShareTheme.muted
+    hintLabel.numberOfLines = 0
+    hintLabel.textAlignment = .center
+
+    sendButton.backgroundColor = ShareTheme.blue
+    sendButton.setTitleColor(.white, for: .normal)
+    sendButton.setTitleColor(UIColor.white.withAlphaComponent(0.55), for: .disabled)
+    sendButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .bold)
+    sendButton.layer.cornerRadius = ShareTheme.corner
+    sendButton.contentEdgeInsets = UIEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+    sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
+    sendButton.isEnabled = false
+    sendButton.accessibilityIdentifier = "share_send_button"
+
     retryButton.backgroundColor = ShareTheme.blue
     retryButton.setTitleColor(.white, for: .normal)
     retryButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .bold)
@@ -222,7 +249,7 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     spinner.color = ShareTheme.blue
     spinner.hidesWhenStopped = true
 
-    [logoView, titleLabel, previewCard, searchBar, segmentControl, table, emptyLabel, spinner, statusLabel, retryButton, cancelButton]
+    [logoView, titleLabel, previewCard, searchBar, segmentControl, table, emptyLabel, hintLabel, spinner, statusLabel, sendButton, retryButton, cancelButton]
       .forEach { root.addArrangedSubview($0) }
   }
 
@@ -286,14 +313,18 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
   }
 
   private func jpegFromProvider(_ provider: NSItemProvider) async -> Data? {
-    if let image = try? await provider.loadItem(forTypeIdentifier: UTType.image.identifier) as? UIImage {
-      return ShareIncomingStore.jpegData(from: image, maxDimension: jpegMaxDimension, quality: jpegQuality)
-    }
+    // Prefer URL / Data + ImageIO. Avoid loading full-res UIImage first.
     if let url = try? await provider.loadItem(forTypeIdentifier: UTType.image.identifier) as? URL {
       return jpegFromFileURL(url)
     }
-    if let data = try? await provider.loadItem(forTypeIdentifier: UTType.image.identifier) as? Data,
-       let image = UIImage(data: data) {
+    if let data = try? await provider.loadItem(forTypeIdentifier: UTType.image.identifier) as? Data {
+      if let down = downsampledJPEG(fromData: data) { return down }
+      if data.count < 1_500_000, let image = UIImage(data: data) {
+        return ShareIncomingStore.jpegData(from: image, maxDimension: jpegMaxDimension, quality: jpegQuality)
+      }
+      return nil
+    }
+    if let image = try? await provider.loadItem(forTypeIdentifier: UTType.image.identifier) as? UIImage {
       return ShareIncomingStore.jpegData(from: image, maxDimension: jpegMaxDimension, quality: jpegQuality)
     }
     return nil
@@ -304,31 +335,71 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     defer {
       if accessed { url.stopAccessingSecurityScopedResource() }
     }
-    guard let image = UIImage(contentsOfFile: url.path) ?? (try? Data(contentsOf: url)).flatMap(UIImage.init(data:)) else {
-      return nil
-    }
+    if let down = downsampledJPEG(fromFileURL: url) { return down }
+    // Fallback only for tiny files.
+    guard let data = try? Data(contentsOf: url), data.count < 2_000_000,
+          let image = UIImage(data: data) else { return nil }
     return ShareIncomingStore.jpegData(from: image, maxDimension: jpegMaxDimension, quality: jpegQuality)
+  }
+
+  /// Decode at target size via ImageIO — avoids full-res UIImage jetsam.
+  private func downsampledJPEG(fromFileURL url: URL) -> Data? {
+    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    let opts: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: Int(jpegMaxDimension),
+      kCGImageSourceShouldCacheImmediately: false,
+      kCGImageSourceShouldCache: false,
+    ]
+    guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+    let image = UIImage(cgImage: cg)
+    return image.jpegData(compressionQuality: jpegQuality)
+  }
+
+  private func downsampledJPEG(fromData data: Data) -> Data? {
+    guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+    let opts: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: Int(jpegMaxDimension),
+      kCGImageSourceShouldCacheImmediately: false,
+      kCGImageSourceShouldCache: false,
+    ]
+    guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+    return UIImage(cgImage: cg).jpegData(compressionQuality: jpegQuality)
   }
 
   private func bootstrap() async {
     ShareDiag.log("bootstrap_start")
-    applyState(.loading, status: L("share_loading"))
+    // 1) Cancel stays visible; destinations from cache first — avoid jetsam before UI ready.
+    await MainActor.run {
+      self.applyState(.loading, status: self.L("share_loading"))
+      self.cancelButton.isEnabled = true
+      _ = self.applyCachedDestinations()
+    }
+
+    // 2) Lightweight payload (downsampled) — never auto-send / never completeRequest here.
     let extracted = await extractSharePayload()
-    if Task.isCancelled { return }
+    if Task.isCancelled {
+      ShareDiag.log("bootstrap_cancelled")
+      return
+    }
     shareText = extracted.text
     imageJPEGs = extracted.images
     previewImage = extracted.thumb
     let approxKB = imageJPEGs.reduce(0) { $0 + $1.count } / 1024
+    payloadReady = true
     ShareDiag.log("payload", [
       "textLen": "\(shareText.count)",
       "images": "\(imageJPEGs.count)",
       "jpegKB": "\(approxKB)",
     ])
     await MainActor.run {
-      previewLabel.text = previewText()
-      if let thumb = previewImage {
-        previewThumb.image = thumb
-        previewThumb.isHidden = false
+      self.previewLabel.text = self.previewText()
+      if let thumb = self.previewImage {
+        self.previewThumb.image = thumb
+        self.previewThumb.isHidden = false
       }
     }
 
@@ -338,7 +409,12 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
       return
     }
 
-    await loadDestinations()
+    // 3) Refresh destinations if still loading / only cache.
+    if state != .ready {
+      await loadDestinations()
+    } else {
+      ShareDiag.log("destinations_already_ready")
+    }
   }
 
   private func loadDestinations() async {
@@ -437,12 +513,16 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
       self.searchBar.isHidden = !browsing
       self.segmentControl.isHidden = !browsing
       self.table.isHidden = !browsing
+      self.hintLabel.isHidden = next != .ready || self.selectedDestination != nil
+      self.sendButton.isHidden = !(next == .ready || next == .sending)
       self.retryButton.isHidden = !(next == .failed || next == .offline)
       if next == .needLogin {
         self.searchBar.isHidden = true
         self.segmentControl.isHidden = true
         self.table.isHidden = true
         self.emptyLabel.isHidden = true
+        self.hintLabel.isHidden = true
+        self.sendButton.isHidden = true
       }
       if next == .loading || next == .sending {
         self.spinner.startAnimating()
@@ -450,9 +530,13 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
         self.spinner.stopAnimating()
       }
       if next != .ready { self.emptyLabel.isHidden = true }
-      self.table.isUserInteractionEnabled = next == .ready
-      self.searchBar.isUserInteractionEnabled = next == .ready
-      self.cancelButton.isEnabled = next != .sending
+      // During send: lock destination changes; Cancel stays available only before send.
+      let canBrowse = next == .ready
+      self.table.isUserInteractionEnabled = canBrowse
+      self.searchBar.isUserInteractionEnabled = canBrowse
+      self.segmentControl.isEnabled = canBrowse
+      self.cancelButton.isEnabled = next != .sending && next != .sent
+      self.updateSendButton()
     }
     if Thread.isMainThread {
       work()
@@ -461,9 +545,37 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     }
   }
 
+  private func updateSendButton() {
+    let sending = state == .sending
+    let canSend = state == .ready
+      && selectedDestination != nil
+      && selectedDestination?.allowed == true
+      && payloadReady
+      && hasSendableContent
+      && sendingId == nil
+      && !didFinish
+    if sending {
+      sendButton.setTitle(L("share_sending"), for: .normal)
+      sendButton.isEnabled = false
+      sendButton.alpha = 0.75
+    } else {
+      sendButton.setTitle(L("share_send"), for: .normal)
+      sendButton.isEnabled = canSend
+      sendButton.alpha = canSend ? 1 : 0.45
+    }
+  }
+
   @objc private func segmentChanged() {
     segment = segmentControl.selectedSegmentIndex
+    // Keep selection if still visible in the other tab; otherwise clear.
+    if let selected = selectedDestination {
+      let stillVisible = currentRows().contains { $0.destinationId == selected.destinationId }
+      if !stillVisible {
+        // Selection may be on the other segment — keep it; just reload.
+      }
+    }
     reloadTable()
+    updateSendButton()
   }
 
   func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
@@ -508,21 +620,50 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     } else if !row.allowed {
       members = L("share_no_permission")
     }
-    cell.configure(row, sending: sendingId == row.destinationId, membersLabel: members)
+    cell.configure(
+      row,
+      sending: sendingId == row.destinationId,
+      selected: selectedDestination?.destinationId == row.destinationId,
+      membersLabel: members
+    )
     return cell
   }
 
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-    tableView.deselectRow(at: indexPath, animated: true)
+    // Selection only — never auto-send on tap / cache / bootstrap.
+    guard payloadReady, sendingId == nil, !didFinish, state == .ready else {
+      tableView.deselectRow(at: indexPath, animated: true)
+      return
+    }
     let rows = currentRows()
     guard indexPath.row < rows.count else { return }
     let row = rows[indexPath.row]
-    guard row.allowed, sendingId == nil, state == .ready, !didFinish else { return }
-    send(to: row)
+    guard row.allowed else {
+      tableView.deselectRow(at: indexPath, animated: true)
+      return
+    }
+    selectedDestination = row
+    ShareDiag.log("destination_selected", [
+      "kind": row.type,
+      "idLen": "\(row.destinationId.count)",
+    ])
+    reloadTable()
+    updateSendButton()
+    hintLabel.isHidden = true
+    statusLabel.text = ""
+  }
+
+  @objc private func sendTapped() {
+    guard sendingId == nil, !didFinish, state == .ready else { return }
+    guard let dest = selectedDestination, dest.allowed else { return }
+    guard payloadReady, hasSendableContent else { return }
+    send(to: dest)
   }
 
   private func send(to dest: ShareCallableClient.Destination) {
+    guard sendingId == nil, !didFinish else { return }
     sendingId = dest.destinationId
+    selectedDestination = dest
     applyState(.sending, status: L("share_sending"))
     table.reloadData()
     let text = shareText
@@ -533,7 +674,8 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
       "images": "\(images.count)",
       "textLen": "\(text.count)",
     ])
-    Task { [weak self] in
+    sendTask?.cancel()
+    sendTask = Task { [weak self] in
       guard let self else { return }
       do {
         var textQueued = text.isEmpty
@@ -609,6 +751,18 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
 
   @objc private func retryTapped() {
     ShareDiag.log("retry")
+    // After a send failure, keep selection and retry the same destination once.
+    if let dest = selectedDestination,
+       dest.allowed,
+       payloadReady,
+       hasSendableContent,
+       sendingId == nil,
+       !didFinish,
+       state == .failed || state == .offline {
+      applyState(.ready, status: "")
+      send(to: dest)
+      return
+    }
     Task { await loadDestinations() }
   }
 
@@ -616,6 +770,9 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     guard sendingId == nil, !didFinish else { return }
     didFinish = true
     bootstrapTask?.cancel()
+    sendTask?.cancel()
+    selectedDestination = nil
+    // Cancel before send: no message, no pending share job, no file upload.
     ShareDiag.log("cancelRequest")
     extensionContext?.cancelRequest(withError: NSError(domain: "ShareExtension", code: 0))
   }

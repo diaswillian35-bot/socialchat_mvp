@@ -2,7 +2,7 @@ name: socialchat_mvp
 description: "A new Flutter project."
 publish_to: "none"
 
-version: 1.0.3+14
+version: 1.0.4+16
 
 environment:
   sdk: ">=2.17.0 <4.0.0"
@@ -10,9 +10,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  geolocator: ^12.0.0
-
-  
 
   flutter_localizations:
     sdk: flutter

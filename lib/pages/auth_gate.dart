@@ -18,6 +18,7 @@ import '../services/share_extension_incoming_service.dart';
 import 'group_chat_page.dart';
 import 'age_verification_page.dart';
 import '../services/age_verification.dart';
+import '../services/google_sign_in_service.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -171,11 +172,7 @@ class AuthGate extends StatelessWidget {
         final user = snap.data;
         if (user == null) return const LoginPage();
 
-        final isEmailPasswordLogin = user.providerData.any(
-          (p) => p.providerId == 'password',
-        );
-
-        if (isEmailPasswordLogin && !user.emailVerified) {
+        if (authRequiresEmailVerification(user)) {
           return const EmailVerificationPage();
         }
         return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(

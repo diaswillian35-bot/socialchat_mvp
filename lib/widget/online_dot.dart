@@ -23,7 +23,7 @@ class OnlineDot extends StatelessWidget {
 
     return StreamBuilder<bool>(
       stream: PresenceWatch.watchIsOnline(uid),
-      initialData: false,
+      // Avoid forcing a false flash before the first RTDB/hub event.
       builder: (context, snap) => _dot(snap.data == true),
     );
   }

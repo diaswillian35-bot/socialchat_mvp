@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/conversation_unread.dart';
 import '../widget/online_dot.dart';
 import 'chat_page.dart';
 import 'user_search_page.dart';
@@ -234,20 +235,8 @@ class _MessagesPageState extends State<MessagesPage> {
 
               final lastMessage = (data['lastMessage'] ?? '').toString();
 
-              final unreadMap = (data['unread'] is Map)
-                  ? Map<String, dynamic>.from(data['unread'])
-                  : <String, dynamic>{};
-
-              final myUnread =
-                  (unreadMap[myUid] is int) ? unreadMap[myUid] as int : 0;
-
-              final myUnread2 = (myUnread == 0 && data['unreadCount'] is Map)
-                  ? ((data['unreadCount'][myUid] is int)
-                      ? data['unreadCount'][myUid] as int
-                      : 0)
-                  : 0;
-
-              final unreadFinal = myUnread > 0 ? myUnread : myUnread2;
+              final unreadFinal =
+                  ConversationUnread.resolveMyUnread(data, myUid);
 
               if (otherUid.isEmpty) {
                 return _ConversationTile(

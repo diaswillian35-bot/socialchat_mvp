@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'international_country_codes.dart';
 import 'premium_access_service.dart';
 
 /// Erro ao consultar conversas existentes — não criar DM sem confirmação.
@@ -17,12 +18,29 @@ class InternationalChatService {
 
   static const int _legacyPageSize = 100;
 
-  static String readHomeCountryCode(Map<String, dynamic> data) {
-    final home =
-        (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
-    if (home.isNotEmpty) return home;
+  /// Resolve ISO alpha-2 canônico (modo seguro: "" se inválido/ausente).
+  static String resolveCountryCode(Map<String, dynamic> data) {
+    return InternationalCountryCodes.resolve(data);
+  }
 
-    return (data['countryCode'] ?? '').toString().trim().toLowerCase();
+  /// Retrocompat — alias de [resolveCountryCode].
+  static String readHomeCountryCode(Map<String, dynamic> data) {
+    return resolveCountryCode(data);
+  }
+
+  static bool isCountryKnown(Map<String, dynamic> data) {
+    return resolveCountryCode(data).isNotEmpty;
+  }
+
+  static DmCountryRelation dmCountryRelation(
+    Map<String, dynamic> senderData,
+    Map<String, dynamic> recipientData,
+  ) {
+    final a = resolveCountryCode(senderData);
+    final b = resolveCountryCode(recipientData);
+    if (a.isEmpty || b.isEmpty) return DmCountryRelation.unknown;
+    if (a == b) return DmCountryRelation.same;
+    return DmCountryRelation.international;
   }
 
   static bool isPremiumActive(
@@ -37,18 +55,19 @@ class InternationalChatService {
     return myCountryCode != otherCountryCode;
   }
 
-  /// Permite envio direto no Firestore quando: mesmo país OU remetente Premium.
-  /// Free internacional deve usar Callable [sendDmMessage] (franquia 300).
+  static bool isSameCountryCodes(String a, String b) {
+    return a.isNotEmpty && b.isNotEmpty && a == b;
+  }
+
+  /// Premium/Master ou mesmo país com ambos códigos conhecidos.
   static bool canSendMessage({
     required Map<String, dynamic> senderData,
     required Map<String, dynamic> recipientData,
     DateTime? now,
   }) {
     if (isPremiumActive(senderData, now: now)) return true;
-
-    final myCountry = readHomeCountryCode(senderData);
-    final otherCountry = readHomeCountryCode(recipientData);
-    return !isInternational(myCountry, otherCountry);
+    return dmCountryRelation(senderData, recipientData) ==
+        DmCountryRelation.same;
   }
 
   /// Free precisa de Premium para iniciar chat internacional (sem conversa).
@@ -121,12 +140,6 @@ class InternationalChatService {
     return null;
   }
 
-  /// Localiza conversa existente (pairKey, id determinístico ou legado).
-  ///
-  /// O get do documento determinístico é a fonte da verdade: falha nele
-  /// impede criar DM. Consultas legadas são best-effort — se falharem
-  /// (índice ausente, rules, etc.) retornamos `null` e
-  /// [getOrCreateConversation] cria/reusa o id determinístico sem duplicar.
   static Future<String?> findExistingConversationId(
     String myUid,
     String otherUid, {
@@ -136,7 +149,6 @@ class InternationalChatService {
     final key = pairKey(myUid, otherUid);
     final conversations = db.collection('conversations');
 
-    // 1. Doc determinístico (ordenado por UID).
     try {
       final direct = await conversations.doc(key).get();
       if (direct.exists) return direct.id;
@@ -145,18 +157,12 @@ class InternationalChatService {
           'user_search_conversation_lookup_error');
     }
 
-    // 2. Legado com campo pairKey (best-effort).
     try {
       final byPairKey =
           await conversations.where('pairKey', isEqualTo: key).limit(5).get();
       if (byPairKey.docs.isNotEmpty) return byPairKey.docs.first.id;
-    } catch (_) {
-      // Não bloquear abertura de DM por falha de índice/consulta legada.
-    }
+    } catch (_) {}
 
-    // 3. Legado sem pairKey: amostra limitada SEM orderBy (evita rejeição
-    //    de query / índice inexistente em participants + __name__).
-    //    Best-effort — falha aqui NÃO impede criação do doc determinístico.
     try {
       final snap = await conversations
           .where('participants', arrayContains: myUid)
@@ -169,9 +175,7 @@ class InternationalChatService {
             const <String>[];
         if (parts.contains(otherUid)) return doc.id;
       }
-    } catch (_) {
-      // Best-effort: seguir para criação idempotente.
-    }
+    } catch (_) {}
 
     return null;
   }
@@ -189,8 +193,6 @@ class InternationalChatService {
     return id != null;
   }
 
-  /// Cria no máximo uma DM. Valida existência completa antes de criar.
-  /// Transação idempotente: não sobrescreve conversa existente.
   static Future<String> getOrCreateConversation(
     String myUid,
     String otherUid, {

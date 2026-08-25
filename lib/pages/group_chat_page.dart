@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../widgets/chat_composer_text.dart';
+import '../widgets/chat_keyboard_inset.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import '../l10n/app_texts.dart';
@@ -15,6 +17,8 @@ import '../services/group_ban_service.dart';
 import '../services/group_join_service.dart';
 import '../services/group_join_ui_logic.dart';
 import '../services/group_read_service.dart';
+import '../services/chat_read_guard.dart';
+import '../services/message_delivery_status.dart';
 import '../services/premium_access_service.dart';
 import '../utils/chat_message_list_stability.dart';
 import '../services/app_notification_state.dart';
@@ -29,7 +33,9 @@ import 'group_info_page.dart';
 import '../widget/audio_bubble.dart';
 import '../widget/recording_button.dart';
 import '../widgets/message_text_with_links.dart';
+import '../widgets/message_status_footer.dart';
 import '../widgets/link_preview_card.dart';
+import '../services/message_link_utils.dart';
 import '../services/link_preview_service.dart';
 import '../widgets/international_premium_dialog.dart';
 
@@ -47,7 +53,8 @@ class GroupChatPage extends StatefulWidget {
   State<GroupChatPage> createState() => _GroupChatPageState();
 }
 
-class _GroupChatPageState extends State<GroupChatPage> {
+class _GroupChatPageState extends State<GroupChatPage>
+    with WidgetsBindingObserver {
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
@@ -112,6 +119,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
   bool _joining = false;
   bool _handledGroupUnavailable = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _groupWatchSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _readsSub;
+  final Map<String, DateTime> _readAtByUid = {};
+  final Map<String, DeliveryStage> _groupStageLatch = {};
+  final Map<String, int> _groupReadByLatch = {};
 
   Map<String, dynamic>? _groupData;
 
@@ -311,9 +322,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _textC.addListener(_onTextChanged);
+    _scrollC.addListener(_onScrollMaybeMarkGroupRead);
     AppNotificationState.instance.enterGroupChat(widget.groupId);
     _bootstrap();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Resume alone must not clear; only retry a pending clear while viewing.
+    if (state == AppLifecycleState.resumed &&
+        _pendingMarkGroupAsRead &&
+        _mayClearGroupUnread()) {
+      _scheduleMarkGroupAsRead();
+    }
   }
 
   @override
@@ -333,18 +356,156 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     AppNotificationState.instance.leaveGroupChat(widget.groupId);
+    _markReadDebounce?.cancel();
     _groupWatchSub?.cancel();
+    _readsSub?.cancel();
     _typingDebounce?.cancel();
     _setTyping(false);
     _setRecording(false);
     _textC.removeListener(_onTextChanged);
+    _scrollC.removeListener(_onScrollMaybeMarkGroupRead);
     _textC.dispose();
     _searchController.dispose();
     _scrollC.dispose();
     FocusManager.instance.primaryFocus?.unfocus();
 
     super.dispose();
+  }
+
+  void _ensureReadsListen() {
+    if (!_isMember || uid == null) return;
+    if (_readsSub != null) return;
+    _readsSub = _groupRef.collection('reads').snapshots().listen((snap) {
+      final next = <String, DateTime>{};
+      for (final doc in snap.docs) {
+        final raw = doc.data()['lastReadAt'];
+        DateTime? at;
+        if (raw is Timestamp) {
+          at = raw.toDate();
+        } else if (raw is DateTime) {
+          at = raw;
+        }
+        if (at != null) next[doc.id] = at;
+      }
+      if (!mounted) return;
+      setState(() {
+        _readAtByUid
+          ..clear()
+          ..addAll(next);
+      });
+    });
+  }
+
+  String? _groupStatusForMessage({
+    required bool isMe,
+    required bool deleted,
+    required String messageId,
+    required bool isLocalPending,
+    required Timestamp? createdAt,
+  }) {
+    if (uid == null || !isMe || deleted) return null;
+    final texts = AppTexts.current;
+    final members = _groupMemberIds().difference(_groupBannedIds())
+      ..remove(uid);
+    final rawCount = MessageDeliveryStatus.groupReadByCount(
+      messageCreatedAt: createdAt?.toDate(),
+      otherMemberIds: members,
+      readAtByUid: _readAtByUid,
+    );
+    final count = MessageDeliveryStatus.latchReadByCount(
+      _groupReadByLatch[messageId],
+      rawCount,
+    );
+    _groupReadByLatch[messageId] = count;
+    final computed = MessageDeliveryStatus.groupStage(
+      isMe: isMe,
+      deleted: deleted,
+      isLocalPending: isLocalPending,
+      readByCount: count,
+    );
+    final latched = MessageDeliveryStatus.latchStage(
+      _groupStageLatch[messageId],
+      computed,
+    );
+    _groupStageLatch[messageId] = latched;
+    return MessageDeliveryStatus.labelFor(
+      isMe: isMe,
+      deleted: deleted,
+      stage: latched,
+      sendingLabel: texts.get('chat_status_sending'),
+      sentLabel: texts.get('chat_status_sent'),
+      readLabel: texts.get('chat_status_read'),
+      readByLabel: (n) =>
+          texts.get('chat_status_read_by').replaceAll('{count}', '$n'),
+      readByCount: count,
+    );
+  }
+
+  Timer? _markReadDebounce;
+  bool _markReadInFlight = false;
+  bool _pendingMarkGroupAsRead = false;
+
+  bool _isViewingLatestGroupMessages() {
+    if (!_scrollC.hasClients) return true;
+    return _scrollC.offset <= 48;
+  }
+
+  bool _mayClearGroupUnread() {
+    return ChatReadGuard.mayClearUnread(
+      mounted: mounted,
+      lifecycle: WidgetsBinding.instance.lifecycleState,
+      routeIsCurrent: ModalRoute.of(context)?.isCurrent ?? false,
+      viewingLatestMessages: _isViewingLatestGroupMessages(),
+    );
+  }
+
+  void _scheduleMarkGroupAsRead() {
+    if (!_isMember || uid == null || _handledGroupUnavailable) return;
+    if (!_mayClearGroupUnread()) {
+      _pendingMarkGroupAsRead = true;
+      return;
+    }
+    _markReadDebounce?.cancel();
+    _markReadDebounce = Timer(const Duration(milliseconds: 400), () async {
+      if (_markReadInFlight || !mounted) {
+        _pendingMarkGroupAsRead = true;
+        return;
+      }
+      if (!_mayClearGroupUnread()) {
+        _pendingMarkGroupAsRead = true;
+        return;
+      }
+      _markReadInFlight = true;
+      try {
+        await _markGroupAsRead();
+        _pendingMarkGroupAsRead = false;
+      } finally {
+        _markReadInFlight = false;
+        if (_pendingMarkGroupAsRead && mounted && _mayClearGroupUnread()) {
+          _pendingMarkGroupAsRead = false;
+          _scheduleMarkGroupAsRead();
+        }
+      }
+    });
+  }
+
+  void _onScrollMaybeMarkGroupRead() {
+    if (!_pendingMarkGroupAsRead) return;
+    if (!_mayClearGroupUnread()) return;
+    _scheduleMarkGroupAsRead();
+  }
+
+  void _maybeMarkReadFromUnread(Map<String, dynamic>? data) {
+    if (data == null || uid == null) return;
+    final unreadRaw = data['unread'];
+    var myUnread = 0;
+    if (unreadRaw is Map) {
+      final v = unreadRaw[uid];
+      myUnread = v is int ? v : (v is num ? v.toInt() : 0);
+    }
+    if (myUnread > 0) _scheduleMarkGroupAsRead();
   }
 
   void _watchGroupDoc() {
@@ -356,6 +517,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
       if (data == null) return;
 
       _groupData = data;
+      _maybeMarkReadFromUnread(data);
       final myUid = uid;
       final deleted = data['deleted'] == true;
 
@@ -542,6 +704,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
           _didInitialRead = true;
           _isBanned = false;
         });
+        _ensureReadsListen();
         if (result?.outcome == GroupJoinOutcome.joined &&
             decision.messageKey != null) {
           _toast(t.get(decision.messageKey!));
@@ -668,8 +831,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
     if (_isMember && !_didInitialRead) {
       _didInitialRead = true;
-      await _markGroupAsRead();
+      _scheduleMarkGroupAsRead();
     }
+    if (_isMember) _ensureReadsListen();
 
     if (!mounted) return;
     setState(() => _booting = false);
@@ -999,9 +1163,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final myUid = uid;
     if (myUid == null || !_canSend) return;
 
-    final hasText = _textC.text.trim().isNotEmpty;
+    final hasText = ChatComposerText.hasSendableText(_textC.text);
 
-    setState(() {});
+    // Não rebuilda balões/status a cada tecla.
     _setTyping(hasText);
 
     _typingDebounce?.cancel();
@@ -2137,7 +2301,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
             : (_groupData?['name'] ?? widget.groupName).toString().trim();
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      // Manual composer lift via [ChatComposerAboveKeyboard] — nested
+      // MainShell + route must not fight over viewInsets.
+      resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -2217,7 +2383,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
       ),
       body: _booting
           ? const SizedBox.shrink()
-          : Column(
+          : ChatKeyboardScope(
+              child: Column(
               children: [
                 GroupJoinUiLogic.shouldListenToMemberStreams(
                   isMember: _isMember,
@@ -2549,6 +2716,13 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                 final clientCreatedAt =
                                     d['clientCreatedAt'] as Timestamp?;
                                 final timeTs = createdAt ?? clientCreatedAt;
+                                final statusText = _groupStatusForMessage(
+                                  isMe: isMe,
+                                  deleted: deleted,
+                                  messageId: doc.id,
+                                  isLocalPending: false,
+                                  createdAt: createdAt ?? clientCreatedAt,
+                                );
 
                                 Widget bubbleWidget;
 
@@ -2570,6 +2744,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                     isMe: isMe,
                                     isDeleted: true,
                                     timeText: _formatTime(timeTs),
+                                    statusText: null,
                                     replyToText: replyToText,
                                     replyToType: replyToType,
                                     replyToIsMe: replyToIsMe,
@@ -2596,6 +2771,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                       isMe: isMe,
                                       durationMs: durationMs,
                                       timeText: _formatTime(timeTs),
+                                      statusText: statusText,
                                       forwarded: d['forwarded'] == true,
                                     );
                                   }
@@ -2607,6 +2783,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                     imageUrl: imageUrl,
                                     isMe: isMe,
                                     timeText: _formatTime(timeTs),
+                                    statusText: statusText,
                                     forwarded: d['forwarded'] == true,
                                   );
                                 } else {
@@ -2616,6 +2793,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                     isMe: isMe,
                                     isDeleted: false,
                                     timeText: _formatTime(timeTs),
+                                    statusText: statusText,
                                     replyToText: replyToText,
                                     replyToType: replyToType,
                                     replyToIsMe: replyToIsMe,
@@ -2623,6 +2801,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                     forwarded: d['forwarded'] == true,
                                     linkPreview: LinkPreviewData.fromMap(
                                         d['linkPreview']),
+                                    linkPreviewStatus:
+                                        (d['linkPreviewStatus'] ?? '').toString(),
                                   );
                                 }
 
@@ -2702,7 +2882,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 ),
                 _previewMode
                     ? _buildPreviewBottomBar()
-                    : SafeArea(
+                    : ListenableBuilder(
+                        listenable: _textC,
+                        builder: (context, _) {
+                          return ChatComposerAboveKeyboard(
+                            child: SafeArea(
                         top: false,
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
@@ -2824,19 +3008,24 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                       decoration: BoxDecoration(
                                         color: Colors.grey.shade100,
                                         borderRadius:
-                                            BorderRadius.circular(999),
+                                            BorderRadius.circular(22),
                                         border: Border.all(
                                           color: Colors.grey.shade300,
                                         ),
                                       ),
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 14,
+                                        vertical: 4,
                                       ),
                                       child: TextField(
                                         controller: _textC,
                                         enabled: uid != null && _canSend,
-                                        textInputAction: TextInputAction.send,
-                                        onSubmitted: (_) => _send(),
+                                        minLines: 1,
+                                        maxLines: 5,
+                                        keyboardType:
+                                            TextInputType.multiline,
+                                        textInputAction:
+                                            TextInputAction.newline,
                                         decoration: InputDecoration(
                                           hintText: uid == null
                                               ? t.get('group_login_to_chat')
@@ -2880,7 +3069,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  _textC.text.trim().isEmpty
+                                  ChatComposerText.hasSendableText(_textC.text) == false
                                       ? Opacity(
                                           opacity: (uid == null || !_canSend)
                                               ? 0.5
@@ -2929,7 +3118,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
                           ),
                         ),
                       ),
+                      );
+                        },
+                      ),
               ],
+            ),
             ),
     );
   }
@@ -3378,12 +3571,14 @@ class _ImageBubble extends StatelessWidget {
   final String imageUrl;
   final bool isMe;
   final String timeText;
+  final String? statusText;
   final bool forwarded;
 
   const _ImageBubble({
     required this.imageUrl,
     required this.isMe,
     required this.timeText,
+    this.statusText,
     this.forwarded = false,
   });
 
@@ -3447,14 +3642,10 @@ class _ImageBubble extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                timeText,
-                style: TextStyle(
-                  color: isMe ? Colors.white70 : const Color(0xFF6B7280),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
+              MessageStatusFooter(
+                timeText: timeText,
+                statusText: statusText,
+                isMe: isMe,
               ),
             ],
           ),
@@ -3528,11 +3719,13 @@ class _Bubble extends StatelessWidget {
   final bool isMe;
   final bool isDeleted;
   final String timeText;
+  final String? statusText;
   final String replyToText;
   final String replyToType;
   final bool replyToIsMe;
   final String replyToImageUrl;
   final LinkPreviewData? linkPreview;
+  final String linkPreviewStatus;
   final bool forwarded;
 
   const _Bubble({
@@ -3540,11 +3733,13 @@ class _Bubble extends StatelessWidget {
     required this.isMe,
     required this.isDeleted,
     required this.timeText,
+    this.statusText,
     required this.replyToText,
     required this.replyToType,
     required this.replyToIsMe,
     required this.replyToImageUrl,
     this.linkPreview,
+    this.linkPreviewStatus = '',
     this.forwarded = false,
   });
 
@@ -3653,12 +3848,20 @@ class _Bubble extends StatelessWidget {
                 color: isMe ? Colors.white : const Color(0xFF1D4ED8),
               ),
             ),
-            if (!isDeleted && linkPreview != null)
-              LinkPreviewCard(data: linkPreview!, isMe: isMe),
-            if (timeText.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(timeText, style: timeStyle),
-            ],
+            LinkPreviewInBubble(
+              isMe: isMe,
+              isDeleted: isDeleted,
+              messageText: text,
+              linkPreviewStatus: linkPreviewStatus,
+              linkPreview: linkPreview,
+            ),
+            if (timeText.isNotEmpty ||
+                (statusText != null && statusText!.isNotEmpty))
+              MessageStatusFooter(
+                timeText: timeText,
+                statusText: isDeleted ? null : statusText,
+                isMe: isMe,
+              ),
           ],
         ),
       ),

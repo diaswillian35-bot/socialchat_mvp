@@ -22,6 +22,11 @@ class AppTexts {
   }
 
 
+  /// Inject a catalog without [rootBundle] (widget/unit tests).
+  static void loadFromMap(Map<String, dynamic> map, [Locale locale = const Locale('en')]) {
+    _current = AppTexts._(locale, Map<String, dynamic>.from(map));
+  }
+
   static Future<void> load(Locale locale) async {
   final lang = locale.languageCode.toLowerCase();
   final country = (locale.countryCode ?? '').toUpperCase();

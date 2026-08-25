@@ -120,10 +120,8 @@ class OutgoingTextMessageService {
     );
     final needsQuota = DmSendPath.requiresCallable(
       senderIsPremium: InternationalChatService.isPremiumActive(myData),
-      isInternational: InternationalChatService.isInternational(
-        InternationalChatService.readHomeCountryCode(myData),
-        InternationalChatService.readHomeCountryCode(otherData),
-      ),
+      senderData: myData,
+      recipientData: otherData,
     );
     if (!canClient && !needsQuota) {
       return OutgoingTextSendResult.fail('share_in_no_permission');

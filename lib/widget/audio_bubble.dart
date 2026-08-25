@@ -12,6 +12,7 @@ class AudioBubble extends StatefulWidget {
   final int durationMs;
   final String messageId;
   final String timeText;
+  final String? statusText;
   final bool forwarded;
 
   const AudioBubble({
@@ -21,6 +22,7 @@ class AudioBubble extends StatefulWidget {
     required this.messageId,
     this.durationMs = 0,
     this.timeText = '',
+    this.statusText,
     this.forwarded = false,
   });
 
@@ -321,9 +323,14 @@ class _AudioBubbleState extends State<AudioBubble> {
                           ),
                           const Spacer(),
                           Text(
-                            widget.timeText.isEmpty
-                                ? right
-                                : '$right • ${widget.timeText}',
+                            () {
+                              final base = widget.timeText.isEmpty
+                                  ? right
+                                  : '$right • ${widget.timeText}';
+                              final st = widget.statusText;
+                              if (st == null || st.isEmpty) return base;
+                              return '$base · $st';
+                            }(),
                             style: TextStyle(
                               color: fg.withValues(alpha: 0.85),
                               fontSize: 12,

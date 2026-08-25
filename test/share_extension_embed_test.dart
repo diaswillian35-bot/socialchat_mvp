@@ -72,12 +72,14 @@ void main() {
     expect(src, contains('OutgoingImageMessageService'));
   });
 
-  test('extension UI stays light Remdy and sends on tap', () {
+  test('extension UI stays light Remdy with explicit Send confirmation', () {
     final ui = File('ios/ShareExtension/ShareViewController.swift').readAsStringSync();
     expect(ui, contains('overrideUserInterfaceStyle = .light'));
     expect(ui, contains('ShareTheme.canvas'));
-    expect(ui, contains('send(to:'));
-    expect(ui, contains('share_need_login'));
+    expect(ui, contains('selectedDestination'));
+    expect(ui, contains('sendTapped'));
+    expect(ui, contains('share_send'));
+    expect(ui, contains('share_select_hint'));
     expect(ui, isNot(contains('extensionContext?.open')));
     expect(ui, contains('applyCachedDestinations'));
     expect(ui, contains('ShareSessionStore.load()'));
@@ -85,6 +87,13 @@ void main() {
     expect(ui, contains('heightAnchor.constraint(equalToConstant: 280)'));
     expect(ui, contains('finishSuccessfully'));
     expect(ui, contains('ShareDiag.log'));
+    // Tap selects only — must not call send(to:) inside didSelectRowAt.
+    final didSelect = RegExp(
+      r'func tableView\(_ tableView: UITableView, didSelectRowAt[\s\S]*?\n  \}',
+    ).firstMatch(ui)?.group(0);
+    expect(didSelect, isNotNull);
+    expect(didSelect!, contains('selectedDestination = row'));
+    expect(didSelect!, isNot(contains('send(to:')));
   });
 
   test('extension cells do not download remote avatars', () {

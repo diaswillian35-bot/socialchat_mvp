@@ -1,7 +1,10 @@
 /// Franquia de resposta Free em DM internacional (300 Unicode scalar values).
 ///
-/// Contagem canônica alinhada a `functions/dm_reply_quota.js`:
+/// Contagem canônica alinhada a `functions/international_dm_policy.js`:
 /// **code points** (`String.runes.length`), não UTF-16 (`length`) nem UTF-8.
+
+import 'international_chat_service.dart';
+import 'international_country_codes.dart';
 
 class DmReplyQuota {
   const DmReplyQuota({
@@ -65,11 +68,69 @@ class DmReplyQuota {
   static int countCodePoints(String text) => text.runes.length;
 
   bool draftExceeds(String draft) => countCodePoints(draft) > remaining;
+
+  /// Franquia efetiva na UI quando replyQuota ainda não existe no Firestore.
+  /// Ausência no servidor = 300 disponíveis para o Free (não zero).
+  static DmReplyQuota effectiveForConversation({
+    required bool usesReplyQuota,
+    required Map<String, dynamic>? replyQuotaRaw,
+    required String myUid,
+    DmReplyQuota? fromCallable,
+  }) {
+    if (!usesReplyQuota) {
+      return const DmReplyQuota(
+        used: 0,
+        limit: defaultLimit,
+        freeUid: '',
+        enabled: false,
+      );
+    }
+    if (fromCallable != null) {
+      return fromCallable;
+    }
+    final parsed = DmReplyQuota.fromMap(
+      replyQuotaRaw,
+      expectFreeUid: myUid,
+    );
+    if (parsed.enabled && (parsed.freeUid.isEmpty || parsed.freeUid == myUid)) {
+      return parsed;
+    }
+    return DmReplyQuota(
+      used: 0,
+      limit: defaultLimit,
+      freeUid: myUid,
+      enabled: true,
+    );
+  }
+
+  /// Modal Premium só quando franquia esgotada (used >= limit).
+  static bool shouldShowQuotaExhaustedModal({
+    required bool usesReplyQuota,
+    required DmReplyQuota quota,
+  }) {
+    if (!usesReplyQuota) return false;
+    return quota.exhausted;
+  }
 }
 
 /// Decisão de path de envio no cliente (servidor revalida).
 class DmSendPath {
+  /// Callable quando Free e relação ≠ same (internacional ou país unknown).
   static bool requiresCallable({
+    required bool senderIsPremium,
+    required Map<String, dynamic> senderData,
+    required Map<String, dynamic> recipientData,
+  }) {
+    if (senderIsPremium) return false;
+    final rel = InternationalChatService.dmCountryRelation(
+      senderData,
+      recipientData,
+    );
+    return rel != DmCountryRelation.same;
+  }
+
+  /// Retrocompat — preferir overload com senderData/recipientData.
+  static bool requiresCallableLegacy({
     required bool senderIsPremium,
     required bool isInternational,
   }) {

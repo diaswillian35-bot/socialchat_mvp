@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../pages/system_inbox_page.dart';
 
-import 'language_users_page.dart' as lusers;
+import 'country_people_page.dart';
 import 'profile_page.dart';
 import 'invite_page.dart';
 import 'login_page.dart';
@@ -25,6 +25,7 @@ import 'package:socialchat_mvp/widgets/home_discover_section.dart';
 import 'package:socialchat_mvp/widgets/home_nearby_users_section.dart';
 import '../services/online_status.dart';
 import '../services/presence_watch.dart';
+import '../services/presence_display_hub.dart';
 import '../services/premium_access_service.dart';
 import '../services/purchase_service.dart';
 import '../services/user_search_service.dart';
@@ -365,9 +366,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => lusers.LanguageUsersPage(
-          languageCode: item.code,
-          languageName: item.name,
+        builder: (_) => CountryPeoplePage(
+          countryCode: item.code,
+          countryName: item.name,
           flag: item.flag,
         ),
       ),
@@ -470,6 +471,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final inviteCode = inviteCodeRaw.isEmpty ? uid : inviteCodeRaw;
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          PresenceDisplayHub.instance.setCountryCode(homeCode);
+          PresenceDisplayHub.instance.setHomeVisible(true, countryCode: homeCode);
           _ensurePublicCountryCodeOnce(
             uid: uid,
             homeCode: homeCode,
@@ -636,9 +639,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         ),
                         StreamBuilder<int>(
                           stream: PresenceWatch.watchCountryOnlineCount(homeCode),
-                          initialData: 0,
                           builder: (context, s) {
-                            final n = s.data ?? 0;
+                            // Zero só após confirmação do backend (sem initialData falso).
+                            if (!s.hasData) {
+                              return const SizedBox(
+                                width: 10,
+                                height: 10,
+                              );
+                            }
+                            final n = s.data!;
 
                             return Row(
                               children: [
@@ -684,9 +693,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           stream: PresenceWatch.watchWorldOnlineCount(
                             excludeCountryCode: homeCode,
                           ),
-                          initialData: 0,
                           builder: (context, s) {
-                            final world = s.data ?? 0;
+                            if (!s.hasData) {
+                              return const SizedBox(
+                                width: 10,
+                                height: 10,
+                              );
+                            }
+                            final world = s.data!;
 
                             return Row(
                               children: [

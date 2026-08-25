@@ -65,14 +65,14 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAu3BS2aBpKGCXNEgSFBf4cdpgKM1vFyFI',
-    appId: '1:384686982032:ios:b54447b1941d35d6bf2915',
+    appId: '1:384686982032:ios:4862e501b472570ebf2915',
     messagingSenderId: '384686982032',
     projectId: 'socialchatmvp',
     storageBucket: 'socialchatmvp.firebasestorage.app',
     databaseURL: 'https://socialchatmvp-default-rtdb.firebaseio.com',
     androidClientId: '384686982032-pkl5vim1c1rb376nf95s89k617o2nobh.apps.googleusercontent.com',
-    iosClientId: '384686982032-t0gf100tqvf27uircjudfbe6faavak02.apps.googleusercontent.com',
-    iosBundleId: 'com.example.socialchatMvp',
+    iosClientId: '384686982032-a3qnnfdcducpqi7nivk17oh1kub214rl.apps.googleusercontent.com',
+    iosBundleId: 'com.remdy.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

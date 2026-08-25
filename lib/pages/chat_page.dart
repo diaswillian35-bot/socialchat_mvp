@@ -17,10 +17,17 @@ import 'package:socialchat_mvp/services/block_service.dart';
 import 'package:socialchat_mvp/widget/audio_bubble.dart';
 
 import '../l10n/app_texts.dart';
+import '../widgets/chat_composer_text.dart';
+import '../widgets/chat_keyboard_inset.dart';
 import '../pages/forward_message_page.dart';
 import '../services/forward_message_service.dart';
+import '../services/chat_read_guard.dart';
+import '../services/conversation_read_write.dart';
+import '../services/conversation_unread.dart';
 import '../services/dm_reply_quota.dart';
 import '../services/international_chat_service.dart';
+import '../services/international_country_codes.dart';
+import '../services/message_delivery_status.dart';
 import '../services/premium_access_service.dart';
 import '../services/send_dm_message_service.dart';
 import '../services/report_category.dart';
@@ -29,7 +36,9 @@ import '../services/app_notification_state.dart';
 import '../utils/chat_message_list_stability.dart';
 import '../widgets/international_premium_dialog.dart';
 import '../widgets/message_text_with_links.dart';
+import '../widgets/message_status_footer.dart';
 import '../widgets/link_preview_card.dart';
+import '../services/message_link_utils.dart';
 import '../services/link_preview_service.dart';
 import '../widget/online_dot.dart';
 import '../widget/recording_button.dart';
@@ -50,7 +59,7 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _textC = TextEditingController();
   final _scrollC = ScrollController();
   final ImagePicker _picker = ImagePicker();
@@ -158,59 +167,40 @@ class _ChatPageState extends State<ChatPage> {
 
   bool get _usesReplyQuota => DmSendPath.requiresCallable(
         senderIsPremium: _isPremium,
-        isInternational: _isWorldChat,
+        senderData: _scopeMyData,
+        recipientData: _scopeOtherData,
       );
 
   DmReplyQuota _effectiveReplyQuotaFrom(Map<String, dynamic>? convData) {
-    if (!_usesReplyQuota) {
-      return const DmReplyQuota(
-        used: 0,
-        limit: DmReplyQuota.defaultLimit,
-        freeUid: '',
-        enabled: false,
-      );
-    }
-    final parsed = DmReplyQuota.fromMap(
-      convData?['replyQuota'] is Map
+    final base = DmReplyQuota.effectiveForConversation(
+      usesReplyQuota: _usesReplyQuota,
+      replyQuotaRaw: convData?['replyQuota'] is Map
           ? Map<String, dynamic>.from(convData!['replyQuota'] as Map)
           : null,
-      expectFreeUid: myUid,
+      myUid: myUid,
+      fromCallable: null,
     );
-    if (_quotaFromCallable != null && _quotaFromCallable!.used >= parsed.used) {
+    if (_quotaFromCallable != null && _quotaFromCallable!.used >= base.used) {
       return _quotaFromCallable!;
     }
-    if (parsed.enabled && (parsed.freeUid.isEmpty || parsed.freeUid == myUid)) {
-      return parsed.enabled
-          ? parsed
-          : DmReplyQuota(
-              used: parsed.used,
-              limit: DmReplyQuota.defaultLimit,
-              freeUid: myUid,
-              enabled: true,
-            );
-    }
-    return DmReplyQuota(
-      used: 0,
-      limit: DmReplyQuota.defaultLimit,
-      freeUid: myUid,
-      enabled: true,
-    );
+    return base;
   }
 
   /// Compat: getters usados em _ensureCanSendMessage antes do StreamBuilder.
   DmReplyQuota get _effectiveReplyQuota =>
-      _quotaFromCallable ??
-      DmReplyQuota(
-        used: 0,
-        limit: DmReplyQuota.defaultLimit,
-        freeUid: myUid,
-        enabled: _usesReplyQuota,
+      DmReplyQuota.effectiveForConversation(
+        usesReplyQuota: _usesReplyQuota,
+        replyQuotaRaw: null,
+        myUid: myUid,
+        fromCallable: _quotaFromCallable,
       );
 
   // ===== Escopo (país vs mundo) =====
   bool _isWorldChat = false;
   String _myCountryCode = '';
   String _otherCountryCode = '';
+  Map<String, dynamic> _scopeMyData = {};
+  Map<String, dynamic> _scopeOtherData = {};
 
   // ===== Tempo trial (MUNDO) =====
   Timer? _usageTimer;
@@ -239,6 +229,25 @@ class _ChatPageState extends State<ChatPage> {
   late final Stream<bool> _blockedStream;
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _msgsSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _convSub;
+  int _myUnread = 0;
+  bool _pendingClearUnread = false;
+  int _peerUnread = 0;
+  DateTime? _peerLastReadAt;
+  /// Legacy: peer cleared unread without `presence.lastReadAt` (old builds).
+  DateTime? _legacyPeerCaughtUpAt;
+  DateTime? _convLastMessageAt;
+  final Map<String, DeliveryStage> _dmStageLatch = {};
+  Timer? _readWatermarkDebounce;
+  DateTime? _lastWatermarkWriteAt;
+  String _lastMessageSenderId = '';
+  bool _markReadInFlight = false;
+
+  DateTime? get _effectivePeerReadAt =>
+      MessageDeliveryStatus.effectivePeerReadAt(
+        presenceLastReadAt: _peerLastReadAt,
+        legacyCaughtUpAt: _legacyPeerCaughtUpAt,
+      );
 
   // =======================
   // Remdy UI (só visual)
@@ -673,30 +682,18 @@ class _ChatPageState extends State<ChatPage> {
         ...?otherSnap.data(),
       };
 
-      String readHomeCode(Map<String, dynamic> data) {
-        final home =
-            (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
-        if (home.isNotEmpty) return home;
+      _scopeMyData = Map<String, dynamic>.from(myData);
+      _scopeOtherData = Map<String, dynamic>.from(otherData);
 
-        final code =
-            (data['countryCode'] ?? '').toString().trim().toLowerCase();
-        if (code.isNotEmpty) return code;
+      _myCountryCode = InternationalChatService.resolveCountryCode(myData);
+      _otherCountryCode =
+          InternationalChatService.resolveCountryCode(otherData);
 
-        final country = (data['country'] ?? '').toString().trim().toLowerCase();
-
-        if (country == 'canada' || country == 'canadá') return 'ca';
-        if (country == 'brazil' || country == 'brasil') return 'br';
-        if (country == 'portugal') return 'pt';
-
-        return country;
-      }
-
-      _myCountryCode = readHomeCode(myData);
-      _otherCountryCode = readHomeCode(otherData);
-
-      _isWorldChat = _myCountryCode.isNotEmpty &&
-          _otherCountryCode.isNotEmpty &&
-          _myCountryCode != _otherCountryCode;
+      _isWorldChat = InternationalChatService.dmCountryRelation(
+            myData,
+            otherData,
+          ) ==
+          DmCountryRelation.international;
 
       debugPrint(
         'CHAT SCOPE => my=$_myCountryCode other=$_otherCountryCode world=$_isWorldChat',
@@ -820,41 +817,283 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
-  Future<void> _markAsRead() async {
-    try {
-      await convDoc.set({
-        'unread': {myUid: 0},
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Failed to mark conversation as read: $e');
+  bool _mayPersistReadState() {
+    final route = ModalRoute.of(context);
+    return ChatReadGuard.mayPersistRead(
+      mounted: mounted,
+      lifecycle: WidgetsBinding.instance.lifecycleState,
+      routeIsCurrent: route?.isCurrent ?? false,
+    );
+  }
+
+  bool _mayPersistReadOnExit() {
+    return ChatReadGuard.mayPersistReadOnExit(
+      mounted: mounted,
+      lifecycle: WidgetsBinding.instance.lifecycleState,
+    );
+  }
+
+  bool _isViewingLatestMessages() {
+    if (!_scrollC.hasClients) return true;
+    // Reverse list: offset 0 = newest messages visible.
+    return _scrollC.offset <= 48;
+  }
+
+  Future<void> _markAsRead({
+    bool clearUnread = false,
+    bool forceWatermark = false,
+  }) async {
+    if (!_mayPersistReadState()) return;
+
+    final mayClear = clearUnread &&
+        ChatReadGuard.mayClearUnread(
+          mounted: mounted,
+          lifecycle: WidgetsBinding.instance.lifecycleState,
+          routeIsCurrent: ModalRoute.of(context)?.isCurrent ?? false,
+          viewingLatestMessages: _isViewingLatestMessages(),
+        );
+
+    final needUnread = ChatUnreadClearCoordinator.shouldWriteUnreadZero(
+      mayClear: mayClear,
+      myUnread: _myUnread,
+    );
+
+    if (ChatUnreadClearCoordinator.shouldQueuePendingClear(
+      clearUnreadRequested: clearUnread,
+      routeAllowsRead: true,
+      mayClear: mayClear,
+      markReadInFlight: _markReadInFlight,
+      myUnread: _myUnread,
+      wroteUnreadZero: false,
+    )) {
+      _pendingClearUnread = true;
     }
+
+    if (_markReadInFlight) return;
+    if (!needUnread && !forceWatermark) return;
+
+    // Throttle watermark-only writes (open/view without new unread).
+    // Never drop a pending clear: keep the flag so snapshot/scroll can retry.
+    if (!needUnread && forceWatermark) {
+      final last = _lastWatermarkWriteAt;
+      if (last != null &&
+          DateTime.now().difference(last) < const Duration(seconds: 2)) {
+        return;
+      }
+    }
+
+    _markReadInFlight = true;
+    try {
+      // View-scoped clear — independent of _send() / reply.
+      // Patch keys must stay inside firestore.rules conversations hasOnly.
+      await ConversationReadWrite.commitClearUnread(
+        db: db,
+        conversationRef: convDoc,
+        presenceRef: _presenceRef.doc(myUid),
+        myUid: myUid,
+        clearUnread: needUnread,
+      );
+      _lastWatermarkWriteAt = DateTime.now();
+      if (needUnread) {
+        _myUnread = 0;
+        _pendingClearUnread = false;
+      }
+    } catch (e) {
+      // permission-denied here left the blue badge stuck until reply
+      // (send path zeros unread.me as a side-effect). Keep pending retry.
+      debugPrint('Failed to mark conversation as read: $e');
+      if (clearUnread && _myUnread > 0) {
+        _pendingClearUnread = true;
+      }
+    } finally {
+      _markReadInFlight = false;
+      if (ChatUnreadClearCoordinator.shouldRetryPendingClear(
+            pendingClearUnread: _pendingClearUnread,
+            myUnread: _myUnread,
+            viewingLatestMessages: _isViewingLatestMessages(),
+          ) &&
+          mounted &&
+          _mayPersistReadState()) {
+        unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+      }
+    }
+  }
+
+  void _onScrollMaybeClearUnread() {
+    if (!_pendingClearUnread || _myUnread <= 0) return;
+    if (!_mayPersistReadState()) return;
+    if (!_isViewingLatestMessages()) return;
+    unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+  }
+
+  /// Presence writes while the chat is open also advance the read watermark.
+  /// Live QA showed peers writing typing/recording without ever persisting
+  /// `lastReadAt` when markAsRead was skipped/failed.
+  Map<String, dynamic> _presencePayload({
+    required bool typing,
+    required bool recording,
+    required bool includeReadWatermark,
+  }) {
+    final data = <String, dynamic>{
+      'uid': myUid,
+      'typing': typing,
+      'recording': recording,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (includeReadWatermark) {
+      data['lastReadAt'] = FieldValue.serverTimestamp();
+    }
+    return data;
+  }
+
+  bool _shouldRefreshReadWatermarkOnPresence() {
+    if (!_mayPersistReadState()) return false;
+    final last = _lastWatermarkWriteAt;
+    if (last == null) return true;
+    return DateTime.now().difference(last) >= const Duration(seconds: 2);
   }
 
   Future<void> _setTyping(bool value) async {
     try {
-      await _presenceRef.doc(myUid).set({
-        'uid': myUid,
-        'typing': value,
-        'recording': false,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final touchRead = _shouldRefreshReadWatermarkOnPresence();
+      await _presenceRef.doc(myUid).set(
+            _presencePayload(
+              typing: value,
+              recording: false,
+              includeReadWatermark: touchRead,
+            ),
+            SetOptions(merge: true),
+          );
+      if (touchRead) {
+        _lastWatermarkWriteAt = DateTime.now();
+      }
     } catch (_) {}
   }
 
   Future<void> _setRecording(bool value) async {
     try {
-      await _presenceRef.doc(myUid).set({
-        'uid': myUid,
-        'typing': false,
-        'recording': value,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final touchRead = _shouldRefreshReadWatermarkOnPresence();
+      await _presenceRef.doc(myUid).set(
+            _presencePayload(
+              typing: false,
+              recording: value,
+              includeReadWatermark: touchRead,
+            ),
+            SetOptions(merge: true),
+          );
+      if (touchRead) {
+        _lastWatermarkWriteAt = DateTime.now();
+      }
     } catch (_) {}
   }
 
+  void _scheduleReadWatermark() {
+    if (!_mayPersistReadState()) return;
+    _readWatermarkDebounce?.cancel();
+    _readWatermarkDebounce = Timer(const Duration(milliseconds: 350), () {
+      unawaited(_markAsRead(forceWatermark: true));
+    });
+  }
+
+  void _ingestPeerLastReadFromPresence(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    DateTime? peerAt;
+    for (final d in docs) {
+      if (d.id != widget.otherUid) continue;
+      final raw = d.data()['lastReadAt'];
+      if (raw is Timestamp) {
+        peerAt = raw.toDate();
+      } else if (raw is DateTime) {
+        peerAt = raw;
+      }
+      break;
+    }
+    if (peerAt == null) return;
+    final prev = _peerLastReadAt;
+    // Watermark só avança.
+    if (prev != null && !peerAt.isAfter(prev)) return;
+    _peerLastReadAt = peerAt;
+    if (mounted) setState(() {});
+  }
+
+  void _onConversationSnapshot(DocumentSnapshot<Map<String, dynamic>> snap) {
+    final d = snap.data() ?? {};
+    final unreadRaw = d['unread'];
+    var myUnread = 0;
+    var peerUnread = 0;
+    if (unreadRaw is Map) {
+      final mine = unreadRaw[myUid];
+      final peer = unreadRaw[widget.otherUid];
+      myUnread = mine is int ? mine : (mine is num ? mine.toInt() : 0);
+      peerUnread = peer is int ? peer : (peer is num ? peer.toInt() : 0);
+    }
+    final lastSender = (d['lastMessageBy'] ?? d['lastSenderId'] ?? '')
+        .toString()
+        .trim();
+    DateTime? lastMessageAt;
+    final rawLm = d['lastMessageAt'];
+    if (rawLm is Timestamp) {
+      lastMessageAt = rawLm.toDate();
+    } else if (rawLm is DateTime) {
+      lastMessageAt = rawLm;
+    }
+    _convLastMessageAt = lastMessageAt ?? _convLastMessageAt;
+
+    final changed = myUnread != _myUnread ||
+        peerUnread != _peerUnread ||
+        lastSender != _lastMessageSenderId;
+    _myUnread = myUnread;
+    _peerUnread = peerUnread;
+    _lastMessageSenderId = lastSender;
+    if (myUnread == 0) {
+      _pendingClearUnread = false;
+    }
+    if (_mayPersistReadState()) {
+      if (myUnread > 0 || _pendingClearUnread) {
+        unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+      } else {
+        _scheduleReadWatermark();
+      }
+    }
+    if (changed && mounted) setState(() {});
+  }
+
+  String? _dmStatusForMessage({
+    required bool isMe,
+    required bool deleted,
+    required String messageId,
+    required bool isLocalPending,
+    required Timestamp? createdAt,
+    Timestamp? clientCreatedAt,
+  }) {
+    if (!isMe || deleted) return null;
+    final texts = AppTexts.current;
+    final msgAt = (createdAt ?? clientCreatedAt)?.toDate();
+    final computed = MessageDeliveryStatus.dmStage(
+      isMe: isMe,
+      deleted: deleted,
+      isLocalPending: isLocalPending,
+      messageCreatedAt: msgAt,
+      peerLastReadAt: _effectivePeerReadAt,
+    );
+    final latched = MessageDeliveryStatus.latchStage(
+      _dmStageLatch[messageId],
+      computed,
+    );
+    _dmStageLatch[messageId] = latched;
+    return MessageDeliveryStatus.labelFor(
+      isMe: isMe,
+      deleted: deleted,
+      stage: latched,
+      sendingLabel: texts.get('chat_status_sending'),
+      sentLabel: texts.get('chat_status_sent'),
+      readLabel: texts.get('chat_status_read'),
+    );
+  }
+
   void _onTextChanged() {
-    final hasText = _textC.text.trim().isNotEmpty;
+    final hasText = ChatComposerText.hasSendableText(_textC.text);
     _draftCodePoints = DmReplyQuota.countCodePoints(_textC.text);
 
     _setTyping(hasText);
@@ -864,9 +1103,8 @@ class _ChatPageState extends State<ChatPage> {
       _setTyping(false);
     });
 
-    if (mounted) {
-      setState(() {});
-    }
+    // Não rebuilda a lista de mensagens (status Enviado/Lido) a cada tecla.
+    // O composer usa ListenableBuilder/_textC onde precisa reagir ao texto.
   }
 
   // replyQuota: StreamBuilder(convDoc) no composer — sem listener adicional.
@@ -942,11 +1180,11 @@ class _ChatPageState extends State<ChatPage> {
     if (canSend) return true;
 
     // Free internacional: franquia 300 via Callable (não bloqueio total).
-    final international = InternationalChatService.isInternational(
-      InternationalChatService.readHomeCountryCode(senderData),
-      InternationalChatService.readHomeCountryCode(recipientData),
+    final rel = InternationalChatService.dmCountryRelation(
+      senderData,
+      recipientData,
     );
-    if (international) {
+    if (rel == DmCountryRelation.international) {
       final q = _effectiveReplyQuota;
       if (q.exhausted) {
         if (showReplyModal && mounted) {
@@ -966,7 +1204,15 @@ class _ChatPageState extends State<ChatPage> {
   Future<bool> _ensureCanSendMedia() async {
     if (_usesReplyQuota) {
       if (mounted) {
-        await _showQuotaExhaustedDialog();
+        final q = _effectiveReplyQuota;
+        if (DmReplyQuota.shouldShowQuotaExhaustedModal(
+          usesReplyQuota: true,
+          quota: q,
+        )) {
+          await _showQuotaExhaustedDialog();
+        } else {
+          _warn(AppTexts.current.get('dm_quota_hint'));
+        }
       }
       return false;
     }
@@ -1052,7 +1298,7 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
-      if (!await _ensureCanSendMedia()) {
+      if (!await _ensureCanSendMessage(showReplyModal: true)) {
         return;
       }
 
@@ -1380,7 +1626,7 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
-      if (!await _ensureCanSendMessage(showReplyModal: true)) {
+      if (!await _ensureCanSendMedia()) {
         await _setRecording(false);
         return;
       }
@@ -1742,7 +1988,7 @@ class _ChatPageState extends State<ChatPage> {
   void _openPlusMenu() {
     final t = AppTexts.current;
     if (_usesReplyQuota) {
-      _showQuotaExhaustedDialog();
+      _warn(t.get('dm_quota_hint'));
       return;
     }
 
@@ -1777,7 +2023,10 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     super.initState();
 
+    WidgetsBinding.instance.addObserver(this);
+
     _textC.addListener(_onTextChanged);
+    _scrollC.addListener(_onScrollMaybeClearUnread);
 
     AppNotificationState.instance.enterPrivateChat(widget.conversationId);
 
@@ -1785,12 +2034,18 @@ class _ChatPageState extends State<ChatPage> {
     _otherUserStream = otherUserDoc.snapshots();
     _blockedStream = BlockService.isEitherBlockedStream(widget.otherUid);
 
-    _msgsSub = _msgsStream.listen((_) {
-      _markAsRead();
-    });
+    _convSub = convDoc.snapshots().listen(_onConversationSnapshot);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _markAsRead();
+      // Intent: clear once unread is hydrated from the first snapshot.
+      // Do not depend on _send() — reply must never be required to clear.
+      if (!_mayPersistReadState()) return;
+      _pendingClearUnread = true;
+      if (_myUnread > 0) {
+        unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+      } else {
+        unawaited(_markAsRead(forceWatermark: true));
+      }
     });
 
     _loadChatScope().then((_) {
@@ -1800,13 +2055,31 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Resume alone never clears unread; clear only if a prior view still owes it
+    // and the user is looking at the latest messages.
+    if (state == AppLifecycleState.resumed && _mayPersistReadState()) {
+      if (_pendingClearUnread && _myUnread > 0 && _isViewingLatestMessages()) {
+        unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+      } else {
+        unawaited(_markAsRead(forceWatermark: true));
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     AppNotificationState.instance.leavePrivateChat(widget.conversationId);
 
     _msgsSub?.cancel();
     _msgsSub = null;
+    _convSub?.cancel();
+    _convSub = null;
 
-    _markAsRead();
+    if (_mayPersistReadOnExit()) {
+      unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+    }
 
     _typingDebounce?.cancel();
     _setTyping(false);
@@ -1819,6 +2092,7 @@ class _ChatPageState extends State<ChatPage> {
     _usageTimer = null;
 
     _textC.removeListener(_onTextChanged);
+    _scrollC.removeListener(_onScrollMaybeClearUnread);
     _remainingVN.dispose();
     _textC.dispose();
     _scrollC.dispose();
@@ -2057,7 +2331,9 @@ class _ChatPageState extends State<ChatPage> {
     final t = AppTexts.current;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      // Manual composer lift via [ChatComposerAboveKeyboard] — nested
+      // MainShell + route must not fight over viewInsets.
+      resizeToAvoidBottomInset: false,
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: _bg,
@@ -2209,12 +2485,19 @@ class _ChatPageState extends State<ChatPage> {
                 ),
         ],
       ),
-      body: Column(
+      body: ChatKeyboardScope(
+        child: Column(
         children: [
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: _presenceRef.snapshots(),
             builder: (context, snap) {
               final docs = snap.data?.docs ?? [];
+              if (snap.hasData) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  _ingestPeerLastReadFromPresence(docs);
+                });
+              }
               final label = _presenceLabel(docs);
 
               if (label.isEmpty) return const SizedBox.shrink();
@@ -2255,9 +2538,47 @@ class _ChatPageState extends State<ChatPage> {
                               stream: _msgsStream,
                               builder: (context, snap) {
                                 if (snap.hasError) {
+                                  final err = snap.error.toString();
+                                  final denied = err.contains('permission-denied');
                                   return Center(
-                                    child: Text(
-                                      '${t.get('chat_error_prefix')} ${snap.error}',
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            denied
+                                                ? Icons.lock_outline_rounded
+                                                : Icons.error_outline_rounded,
+                                            color: _muted,
+                                            size: 36,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            denied
+                                                ? t.get('chat_load_permission_denied')
+                                                : '${t.get('chat_error_prefix')} $err',
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              color: _text,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          if (denied) ...[
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              t.get(
+                                                'chat_load_permission_denied_hint',
+                                              ),
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                color: _muted,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
                                   );
                                 }
@@ -2416,6 +2737,14 @@ class _ChatPageState extends State<ChatPage> {
                                     final timeText = _formatTime(
                                       createdAt ?? clientCreatedAt,
                                     );
+                                    final statusText = _dmStatusForMessage(
+                                      isMe: isMe,
+                                      deleted: deleted,
+                                      messageId: messageId,
+                                      isLocalPending: false,
+                                      createdAt: createdAt,
+                                      clientCreatedAt: clientCreatedAt,
+                                    );
 
                                     if (type == 'audio') {
                                       if (deleted) {
@@ -2426,6 +2755,7 @@ class _ChatPageState extends State<ChatPage> {
                                             isMe: isMe,
                                             isDeleted: true,
                                             timeText: timeText,
+                                            statusText: null,
                                             replyToText: '',
                                             replyToType: 'text',
                                             replyToIsMe: false,
@@ -2473,6 +2803,7 @@ class _ChatPageState extends State<ChatPage> {
                                           isMe: isMe,
                                           durationMs: durationMs,
                                           timeText: timeText,
+                                          statusText: statusText,
                                           forwarded: d['forwarded'] == true,
                                         ),
                                       );
@@ -2487,6 +2818,7 @@ class _ChatPageState extends State<ChatPage> {
                                             isMe: isMe,
                                             isDeleted: true,
                                             timeText: timeText,
+                                            statusText: null,
                                             replyToText: '',
                                             replyToType: 'text',
                                             replyToIsMe: false,
@@ -2524,6 +2856,7 @@ class _ChatPageState extends State<ChatPage> {
                                           imageUrl: imageUrl,
                                           isMe: isMe,
                                           timeText: timeText,
+                                          statusText: statusText,
                                           forwarded: d['forwarded'] == true,
                                         ),
                                       );
@@ -2545,6 +2878,7 @@ class _ChatPageState extends State<ChatPage> {
                                           isMe: isMe,
                                           isDeleted: true,
                                           timeText: timeText,
+                                          statusText: null,
                                           replyToText: '',
                                           replyToType: 'text',
                                           replyToIsMe: false,
@@ -2605,6 +2939,7 @@ class _ChatPageState extends State<ChatPage> {
                                             isMe: isMe,
                                             isDeleted: false,
                                             timeText: timeText,
+                                            statusText: statusText,
                                             replyToText: replyToText,
                                             replyToType: replyToType,
                                             replyToIsMe: replyToIsMe,
@@ -2614,6 +2949,9 @@ class _ChatPageState extends State<ChatPage> {
                                                 LinkPreviewData.fromMap(
                                               d['linkPreview'],
                                             ),
+                                            linkPreviewStatus:
+                                                (d['linkPreviewStatus'] ?? '')
+                                                    .toString(),
                                           ),
                                         ),
                                       ],
@@ -2623,7 +2961,10 @@ class _ChatPageState extends State<ChatPage> {
                               },
                             ),
                     ),
-                    StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    ListenableBuilder(
+                      listenable: _textC,
+                      builder: (context, _) {
+                        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                       stream: convDoc.snapshots(),
                       builder: (context, convSnap) {
                         final quota =
@@ -2661,7 +3002,8 @@ class _ChatPageState extends State<ChatPage> {
                                   textAlign: TextAlign.center,
                                 ),
                               ),
-                            SafeArea(
+                            ChatComposerAboveKeyboard(
+                              child: SafeArea(
                               top: false,
                               minimum: EdgeInsets.zero,
                               child: Container(
@@ -2797,7 +3139,7 @@ class _ChatPageState extends State<ChatPage> {
                                             decoration: BoxDecoration(
                                               color: const Color(0xFFF1F5F9),
                                               borderRadius:
-                                                  BorderRadius.circular(999),
+                                                  BorderRadius.circular(22),
                                               border: Border.all(
                                                 color: draftOver
                                                     ? const Color(0xFFDC2626)
@@ -2805,17 +3147,16 @@ class _ChatPageState extends State<ChatPage> {
                                               ),
                                             ),
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 14),
+                                                horizontal: 14, vertical: 4),
                                             child: TextField(
                                               controller: _textC,
                                               enabled: !isBlocked,
+                                              minLines: 1,
+                                              maxLines: 5,
+                                              keyboardType:
+                                                  TextInputType.multiline,
                                               textInputAction:
-                                                  TextInputAction.send,
-                                              onSubmitted: (_) async {
-                                                if (isBlocked) return;
-                                                await _setTyping(false);
-                                                await _send();
-                                              },
+                                                  TextInputAction.newline,
                                               decoration: InputDecoration(
                                                 hintText: isBlocked
                                                     ? t.get(
@@ -2890,7 +3231,7 @@ class _ChatPageState extends State<ChatPage> {
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        _textC.text.trim().isEmpty
+                                        ChatComposerText.hasSendableText(_textC.text) == false
                                             ? Opacity(
                                                 opacity: locked ? 0.45 : 1.0,
                                                 child: IgnorePointer(
@@ -2959,8 +3300,11 @@ class _ChatPageState extends State<ChatPage> {
                                 ),
                               ),
                             ),
+                            ),
                           ],
                         );
+                      },
+                    );
                       },
                     ),
                   ],
@@ -2969,6 +3313,7 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -3483,12 +3828,14 @@ class _ImageBubble extends StatelessWidget {
   final String imageUrl;
   final bool isMe;
   final String timeText;
+  final String? statusText;
   final bool forwarded;
 
   const _ImageBubble({
     required this.imageUrl,
     required this.isMe,
     required this.timeText,
+    this.statusText,
     this.forwarded = false,
   });
 
@@ -3552,17 +3899,13 @@ class _ImageBubble extends StatelessWidget {
                   ),
                 ),
               ),
-              if (timeText.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  timeText,
-                  style: TextStyle(
-                    color: isMe ? Colors.white70 : const Color(0xFF6B7280),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
+              if (timeText.isNotEmpty ||
+                  (statusText != null && statusText!.isNotEmpty))
+                MessageStatusFooter(
+                  timeText: timeText,
+                  statusText: statusText,
+                  isMe: isMe,
                 ),
-              ],
             ],
           ),
         ),
@@ -3635,12 +3978,14 @@ class _Bubble extends StatelessWidget {
   final bool isMe;
   final bool isDeleted;
   final String timeText;
+  final String? statusText;
 
   final String replyToText;
   final String replyToType;
   final bool replyToIsMe;
   final String replyToImageUrl;
   final LinkPreviewData? linkPreview;
+  final String linkPreviewStatus;
   final bool forwarded;
 
   const _Bubble({
@@ -3649,11 +3994,13 @@ class _Bubble extends StatelessWidget {
     required this.isMe,
     required this.isDeleted,
     required this.timeText,
+    this.statusText,
     required this.replyToText,
     required this.replyToType,
     required this.replyToIsMe,
     required this.replyToImageUrl,
     this.linkPreview,
+    this.linkPreviewStatus = '',
     this.forwarded = false,
   });
 
@@ -3848,19 +4195,20 @@ class _Bubble extends StatelessWidget {
                 color: isMe ? Colors.white : const Color(0xFF1D4ED8),
               ),
             ),
-            if (!isDeleted && linkPreview != null)
-              LinkPreviewCard(data: linkPreview!, isMe: isMe),
-            if (timeText.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                timeText,
-                style: TextStyle(
-                  color: isMe ? Colors.white70 : const Color(0xFF6B7280),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
+            LinkPreviewInBubble(
+              isMe: isMe,
+              isDeleted: isDeleted,
+              messageText: text,
+              linkPreviewStatus: linkPreviewStatus,
+              linkPreview: linkPreview,
+            ),
+            if (timeText.isNotEmpty ||
+                (statusText != null && statusText!.isNotEmpty))
+              MessageStatusFooter(
+                timeText: timeText,
+                statusText: isDeleted ? null : statusText,
+                isMe: isMe,
               ),
-            ],
           ],
         ),
       ),

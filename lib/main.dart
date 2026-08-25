@@ -321,7 +321,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(nav.context).showSnackBar(
           SnackBar(
-            content: Text('Convite salvo: $saved'),
+            content: Text(
+              AppTexts.t('invite_saved').replaceAll('{code}', saved),
+            ),
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(12),
           ),

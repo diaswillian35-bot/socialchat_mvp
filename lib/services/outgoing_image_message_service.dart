@@ -9,6 +9,7 @@ import '../l10n/app_texts.dart';
 import 'block_service.dart';
 import 'group_ban_service.dart';
 import 'group_discovery_logic.dart';
+import 'dm_reply_quota.dart';
 import 'international_chat_service.dart';
 import 'outgoing_text_message_service.dart';
 import 'premium_access_service.dart';
@@ -73,12 +74,20 @@ class OutgoingImageMessageService {
       return OutgoingTextSendResult.fail('share_in_no_permission');
     }
     final otherSnap = await _db.collection('users').doc(otherUid).get();
+    final otherData = otherSnap.data() ?? {};
     final canClient = InternationalChatService.canSendMessage(
       senderData: myData,
-      recipientData: otherSnap.data() ?? {},
+      recipientData: otherData,
     );
-    if (!canClient) {
-      return OutgoingTextSendResult.fail('share_in_no_permission');
+    final underQuota = DmSendPath.requiresCallable(
+      senderIsPremium: InternationalChatService.isPremiumActive(myData),
+      senderData: myData,
+      recipientData: otherData,
+    );
+    if (underQuota || !canClient) {
+      return OutgoingTextSendResult.fail(
+        underQuota ? 'dm_quota_title' : 'share_in_no_permission',
+      );
     }
     final convSnap =
         await _db.collection('conversations').doc(conversationId).get();

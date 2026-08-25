@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import '../services/google_sign_in_service.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import '../services/locale_controller.dart';
 import '../services/age_verification.dart';
@@ -143,14 +143,10 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _clearStaleSession() async {
-    try {
-      await GoogleSignIn().signOut();
-    } catch (_) {}
+  final GoogleSignInService _googleSignInService = GoogleSignInService();
 
-    try {
-      await FirebaseAuth.instance.signOut();
-    } catch (_) {}
+  Future<void> _clearStaleSession() async {
+    await _googleSignInService.signOutSilently();
   }
 
   String _generateInviteCode(String name, String uid) {
@@ -372,39 +368,25 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _loading = true);
 
     try {
-      await _clearStaleSession();
+      final outcome = await _googleSignInService.signIn();
+      if (!mounted) return;
 
-      final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
-        // Cancelamento explícito do usuário — sem toast de erro.
+      if (outcome.isCancelled) {
+        return;
+      }
+      if (!outcome.isSuccess || outcome.userCredential == null) {
+        _toast(outcome.userMessage ?? 'Erro no Google.');
         return;
       }
 
-      final googleAuth = await googleUser.authentication;
-      if ((googleAuth.idToken ?? '').isEmpty &&
-          (googleAuth.accessToken ?? '').isEmpty) {
-        _toast(
-          'Google Sign-In sem token. Verifique SHA-1 do App Signing no Firebase '
-          '(Play Console → App signing).',
-        );
-        return;
-      }
-
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final cred = await FirebaseAuth.instance.signInWithCredential(credential);
+      final cred = outcome.userCredential!;
       final user = cred.user;
-
       if (user == null) {
         _toast('Erro: usuário do Google veio vazio.');
         return;
       }
 
       final isNewUser = cred.additionalUserInfo?.isNewUser == true;
-
       await _ensureUserDoc(user, isNewUser: isNewUser);
 
       if (user.email != null && user.email!.trim().isNotEmpty) {
@@ -414,22 +396,9 @@ class _LoginPageState extends State<LoginPage> {
       await _saveRemembered();
       await _goToApp();
       return;
-    } on FirebaseAuthException catch (e) {
-      _toast(e.message ?? 'Erro no Google (${e.code}).');
-    } catch (e) {
-      final msg = e.toString();
-      // ApiException:10 / DEVELOPER_ERROR = SHA/package OAuth mismatch (comum na Play).
-      if (msg.contains('ApiException: 10') ||
-          msg.contains('DEVELOPER_ERROR') ||
-          msg.contains('sign_in_failed')) {
-        _toast(
-          'Google Sign-In falhou (config OAuth/SHA). '
-          'No Firebase, registre o SHA-1 do certificado App Signing da Play '
-          'para com.remdy.app.',
-        );
-      } else {
-        _toast('Erro no Google: $e');
-      }
+    } catch (_) {
+      // Nunca deixar o app fechar: qualquer falha vira toast.
+      if (mounted) _toast('Erro no Google. Tente novamente.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

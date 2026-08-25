@@ -85,7 +85,12 @@ final class ShareDestinationCell: UITableViewCell {
 
   required init?(coder: NSCoder) { nil }
 
-  func configure(_ row: ShareCallableClient.Destination, sending: Bool, membersLabel: String) {
+  func configure(
+    _ row: ShareCallableClient.Destination,
+    sending: Bool,
+    selected: Bool,
+    membersLabel: String
+  ) {
     // No remote photo downloads in the extension — avoids jetsam from large CDN images.
     avatar.image = nil
     initialLabel.isHidden = false
@@ -106,11 +111,18 @@ final class ShareDestinationCell: UITableViewCell {
     initialLabel.text = trimmed.isEmpty ? "R" : String(trimmed.prefix(1)).uppercased()
     if sending {
       spinner.startAnimating()
+      accessoryType = .none
     } else {
       spinner.stopAnimating()
+      accessoryType = selected ? .checkmark : .none
     }
+    tintColor = ShareTheme.blue
+    contentView.backgroundColor = selected
+      ? ShareTheme.blue.withAlphaComponent(0.08)
+      : ShareTheme.canvas
+    backgroundColor = contentView.backgroundColor
     alpha = row.allowed ? 1 : 0.55
-    isUserInteractionEnabled = row.allowed
+    isUserInteractionEnabled = row.allowed && !sending
   }
 
   override func prepareForReuse() {
@@ -119,5 +131,8 @@ final class ShareDestinationCell: UITableViewCell {
     initialLabel.isHidden = false
     spinner.stopAnimating()
     onlineDot.isHidden = true
+    accessoryType = .none
+    contentView.backgroundColor = ShareTheme.canvas
+    backgroundColor = ShareTheme.canvas
   }
 }

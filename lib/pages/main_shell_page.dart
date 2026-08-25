@@ -11,6 +11,7 @@ import 'create_group_page.dart';
 
 
 import '../services/presence_service.dart';
+import '../services/presence_display_hub.dart';
 import '../services/push_service.dart';
 import '../services/android_back_navigation.dart';
 import '../l10n/app_texts.dart';
@@ -76,7 +77,7 @@ void initState() {
       dismissAppKeyboard();
 
       await PresenceService.instance.start();
-
+      PresenceDisplayHub.instance.setHomeVisible(_index == 0);
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
@@ -108,6 +109,7 @@ void initState() {
 
   @override
   void dispose() {
+    PresenceDisplayHub.instance.onLogout();
     PresenceService.instance.stop();
     super.dispose();
   }
@@ -174,6 +176,7 @@ void initState() {
     if (!mounted) return;
     if (i < 0 || i > 3) return;
     setState(() => _index = i);
+    PresenceDisplayHub.instance.setHomeVisible(i == 0);
 
     if (i != MainShell.eventsTabIndex) return;
 
@@ -295,7 +298,10 @@ Stream<int> _activeEventsStream() {
                 }
               },
               child: Scaffold(
-      resizeToAvoidBottomInset: true,
+      // Chat/DM/group are pushed routes with their own Scaffold. If the shell
+      // also resizes for the keyboard, BottomNavigationBar fights the chat
+      // composer and the keyboard appears to cover the bottom bar.
+      resizeToAvoidBottomInset: false,
       body: KeyboardDismissOnTap(
         child: IndexedStack(
           index: _index,

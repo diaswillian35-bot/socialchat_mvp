@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'online_status.dart';
 import 'presence_lifecycle.dart';
 import 'presence_rtdb_config.dart';
+import 'presence_heartbeat_gate.dart';
 
 /// Presença via Realtime Database.
 ///
@@ -47,6 +48,9 @@ class PresenceService with WidgetsBindingObserver {
   bool _connectionActive = false;
   bool _legacyPrefsCleared = false;
   bool _rtdbConnected = false;
+  final SeparateHeartbeatGate _hbGate = SeparateHeartbeatGate();
+  /// Último modo sanitizado: `legacy` | `new` | `denied` | `dual` | `probed`.
+  String _heartbeatDiag = 'unknown';
 
   String? _uid;
   String? _connectionId;
@@ -56,6 +60,10 @@ class PresenceService with WidgetsBindingObserver {
 
   String? get debugConnectionId => _connectionId;
   bool get debugConnectionActive => _connectionActive;
+  String get debugHeartbeatDiag => _heartbeatDiag;
+  bool get debugSeparateHeartbeatDenied => _hbGate.denied;
+  int get debugSeparateHeartbeatAttempts => _hbGate.attempts;
+  bool get debugSeparateHeartbeatProbed => _hbGate.probedThisSession;
 
   @Deprecated('Use PresenceWatch')
   static bool isPublicUserOnline(Map<String, dynamic> data, DateTime now) {
@@ -124,6 +132,10 @@ class PresenceService with WidgetsBindingObserver {
 
     _started = true;
     _foreground = true;
+    _hbGate.onNewSession();
+    if (PresenceRtdbConfig.separateHeartbeatBackendReady) {
+      _hbGate.onBackendReady();
+    }
     _registerObserver();
     _uid = user.uid;
     _listenConnected();
@@ -144,9 +156,112 @@ class PresenceService with WidgetsBindingObserver {
       PresenceRtdbConfig.connectionHeartbeatInterval,
       (_) {
         if (!_started || !_foreground || !_connectionActive) return;
-        unawaited(_ensureOnDisconnect(refreshTimestamp: true));
+        unawaited(_writeHeartbeat());
       },
     );
+    unawaited(_writeHeartbeat());
+  }
+
+  Future<void> _writeHeartbeat() async {
+    final uid = _uid;
+    if (uid == null) return;
+    final ref = _connectionRef;
+
+    if (PresenceRtdbConfig.separateHeartbeatBackendReady &&
+        _hbGate.denied) {
+      _hbGate.onBackendReady();
+    }
+
+    if (PresenceRtdbConfig.separateHeartbeatIsPrimary) {
+      // Pós-deploy: keep-alive só no path sem trigger CF.
+      try {
+        await _rtdb.ref('presence/$uid/heartbeat').set(ServerValue.timestamp);
+        if (ref != null) await ref.onDisconnect().remove();
+        _heartbeatDiag = 'new';
+      } catch (e) {
+        if (_isPermissionDenied(e)) {
+          _hbGate.markDenied();
+          _heartbeatDiag = 'denied';
+          if (_hbGate.consumeDeniedLogSlot()) {
+            _log('heartbeat_separate denied');
+          }
+        } else {
+          _log('_writeHeartbeat new-primary', e);
+        }
+        // Fallback de emergência: renovar connection (legado).
+        await _refreshLegacyConnectionTimestamp(ref);
+      }
+      return;
+    }
+
+    // Pré-deploy (default): keep-alive canônico só no path legado.
+    await _refreshLegacyConnectionTimestamp(ref);
+
+    // No máximo 1 probe/sessão no path novo; após denied → só legado.
+    if (!_hbGate.shouldAttemptNewPath) {
+      if (_heartbeatDiag != 'denied') {
+        _heartbeatDiag = 'legacy';
+      }
+      return;
+    }
+
+    _hbGate.markAttemptStarting();
+    try {
+      await _rtdb.ref('presence/$uid/heartbeat').set(ServerValue.timestamp);
+      _heartbeatDiag = 'probed';
+    } catch (e) {
+      if (_isPermissionDenied(e)) {
+        _hbGate.markDenied();
+        _heartbeatDiag = 'denied';
+        if (_hbGate.consumeDeniedLogSlot()) {
+          _log('heartbeat_separate denied');
+        }
+      } else {
+        // Já consumiu o único probe da sessão; keep-alive segue só legado.
+        _heartbeatDiag = 'legacy';
+        _log('_writeHeartbeat separate', e);
+      }
+    }
+  }
+
+  Future<void> _refreshLegacyConnectionTimestamp(DatabaseReference? ref) async {
+    if (ref == null) return;
+    try {
+      await ref.onDisconnect().remove();
+      await ref.set(ServerValue.timestamp);
+      if (_heartbeatDiag != 'probed' && _heartbeatDiag != 'denied') {
+        _heartbeatDiag = 'legacy';
+      }
+    } catch (e) {
+      _log('_refreshLegacyConnectionTimestamp', e);
+    }
+  }
+
+  bool _isPermissionDenied(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('permission-denied') ||
+        s.contains('permission_denied') ||
+        s.contains('permission denied');
+  }
+
+  Future<void> _ensureOnDisconnect({bool refreshTimestamp = false}) async {
+    final ref = _connectionRef;
+    if (ref == null) return;
+    try {
+      await ref.onDisconnect().remove();
+      if (refreshTimestamp) {
+        await _writeHeartbeat();
+      }
+    } catch (e) {
+      _log('_ensureOnDisconnect', e);
+      // Conexão perdida no servidor → recria.
+      _connectionActive = false;
+      _connectionRef = null;
+      _connectionId = null;
+      if (_started && _foreground) {
+        await _goOnline(forceNew: true);
+      }
+    }
   }
 
   void _stopHeartbeat() {
@@ -162,7 +277,6 @@ class PresenceService with WidgetsBindingObserver {
       if (!_started) return;
 
       if (connected && !was) {
-        // Reconexão real de rede.
         unawaited(_onRtdbReconnected());
       }
     }, onError: (Object e) {
@@ -174,31 +288,10 @@ class PresenceService with WidgetsBindingObserver {
     if (!_started || !_foreground) return;
     _log('rtdb reconnected');
     if (_connectionActive && _connectionRef != null && _connectionId != null) {
-      // Mesmo connectionId: só re-registra onDisconnect + refresh timestamp.
       await _ensureOnDisconnect(refreshTimestamp: true);
       return;
     }
     await _goOnline(forceNew: false);
-  }
-
-  Future<void> _ensureOnDisconnect({bool refreshTimestamp = false}) async {
-    final ref = _connectionRef;
-    if (ref == null) return;
-    try {
-      await ref.onDisconnect().remove();
-      if (refreshTimestamp) {
-        await ref.set(ServerValue.timestamp);
-      }
-    } catch (e) {
-      _log('_ensureOnDisconnect', e);
-      // Conexão perdida no servidor → recria.
-      _connectionActive = false;
-      _connectionRef = null;
-      _connectionId = null;
-      if (_started && _foreground) {
-        await _goOnline(forceNew: true);
-      }
-    }
   }
 
   void _registerObserver() {
@@ -315,6 +408,20 @@ class PresenceService with WidgetsBindingObserver {
       if (connRef != null) {
         await connRef.onDisconnect().cancel();
         await connRef.remove();
+      }
+      // Best-effort: só se houve probe bem-sucedido nesta sessão.
+      if (uid != null &&
+          _hbGate.probedThisSession &&
+          !_hbGate.denied &&
+          _heartbeatDiag == 'probed') {
+        try {
+          await _rtdb.ref('presence/$uid/heartbeat').remove();
+        } catch (e) {
+          if (_isPermissionDenied(e)) {
+            _hbGate.markDenied();
+            _heartbeatDiag = 'denied';
+          }
+        }
       }
     } catch (e) {
       _log('_clearRtdbConnection id=$clearedId', e);

@@ -188,8 +188,7 @@ void main() {
     test('PresenceWatch não escuta árvore mundial presenceIndex/byCountry', () {
       final src = File('lib/services/presence_watch.dart').readAsStringSync();
       expect(src.contains("ref('presenceIndex/byCountry')"), isFalse);
-      expect(src.contains('presenceCounters/world'), isTrue);
-      expect(src.contains('presenceCounters/byCountry'), isTrue);
+      expect(src.contains('PresenceDisplayHub'), isTrue);
     });
 
     test('cliente não escreve índice/counters', () {
@@ -198,6 +197,13 @@ void main() {
       expect(src.contains('presenceCounters'), isFalse);
       expect(src.contains('presence/'), isTrue);
       expect(src.contains('onDisconnect'), isTrue);
+    });
+
+    test('hub tem fallback legado e paths novos', () {
+      final hub = File('lib/services/presence_display_hub.dart').readAsStringSync();
+      expect(hub.contains('presenceDisplayCounters'), isTrue);
+      expect(hub.contains('presenceCounters/world'), isTrue);
+      expect(hub.contains('presenceCounters/byCountry'), isTrue);
     });
   });
 

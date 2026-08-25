@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
+import '../services/people_browse_config_service.dart';
+import '../services/people_browse_grouping.dart';
 import '../services/user_avatar_resolver.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
@@ -299,148 +301,227 @@ class NearbyUsersPage extends StatelessWidget {
             );
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              final data = doc.data();
-              final name = (data['name'] ?? t.get('user')).toString();
-              final photoUrl = UserAvatarResolver.resolve(data);
-              final city = (data['cityName'] ?? data['city'] ?? '').toString();
-              final createdAt = data['createdAt'] is Timestamp
-                  ? data['createdAt'] as Timestamp
-                  : null;
-              final updatedAt = data['updatedAt'] is Timestamp
-                  ? data['updatedAt'] as Timestamp
-                  : null;
-              final initial = UserAvatarResolver.initialFor(name);
+          return FutureBuilder<int>(
+            future: PeopleBrowseConfigService.citySectionMinProfiles(),
+            initialData:
+                PeopleBrowseConfigService.cachedCitySectionMinProfiles,
+            builder: (context, cfgSnap) {
+              final minCity = cfgSnap.data ??
+                  PeopleBrowseConfigService.defaultCitySectionMin;
+              final profiles = docs.map((doc) {
+                final data = doc.data();
+                return PeopleBrowseProfile(
+                  uid: doc.id,
+                  name: (data['name'] ?? t.get('user')).toString(),
+                  city: (data['cityName'] ?? data['city'] ?? '').toString(),
+                  state:
+                      (data['stateName'] ?? data['state'] ?? '').toString(),
+                  photoUrl: UserAvatarResolver.resolve(data),
+                  countryCode: countryCode,
+                );
+              }).toList();
 
-              return Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => openChat(
-                    context,
-                    otherUid: doc.id,
-                    otherName: name,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: _border),
-                    ),
-                    child: Row(
-                      children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            CircleAvatar(
-                              radius: 26,
-                              backgroundColor: const Color(0xFFE8ECF5),
-                              backgroundImage: photoUrl.isNotEmpty
-                                  ? NetworkImage(photoUrl)
-                                  : null,
-                              onBackgroundImageError: photoUrl.isNotEmpty
-                                  ? (_, __) {}
-                                  : null,
-                              child: photoUrl.isEmpty
-                                  ? Text(
-                                      initial,
-                                      style: const TextStyle(
-                                        color: _primary,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                            Positioned(
-                              top: -2,
-                              right: -2,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF16A34A),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Text(
-                                  t.get('home_new_badge'),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: _text,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                _joinedLabel(createdAt, updatedAt),
-                                style: const TextStyle(
-                                  color: _muted,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              if (city.trim().isNotEmpty) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  city.trim(),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: _muted,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.chat_bubble_outline_rounded,
-                          color: _primary,
-                          size: 22,
-                        ),
-                      ],
+              final groups = PeopleBrowseGrouping.group(
+                profiles: profiles,
+                citySectionMinProfiles: minCity,
+                otherCitiesLabel: t.get('people_other_cities_in_state'),
+              );
+
+              final tiles = <Widget>[];
+              for (final state in groups) {
+                tiles.add(
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+                    child: Text(
+                      state.stateLabel,
+                      style: const TextStyle(
+                        color: _text,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
-                ),
+                );
+                for (final section in state.sections) {
+                  tiles.add(
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                      child: Text(
+                        section.title,
+                        style: TextStyle(
+                          color: section.isOtherCitiesBucket ? _muted : _primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  );
+                  for (final p in section.profiles) {
+                    final data = docs.firstWhere((d) => d.id == p.uid).data();
+                    final createdAt = data['createdAt'] is Timestamp
+                        ? data['createdAt'] as Timestamp
+                        : null;
+                    final updatedAt = data['updatedAt'] is Timestamp
+                        ? data['updatedAt'] as Timestamp
+                        : null;
+                    tiles.add(
+                      _NearbyPersonTile(
+                        profile: p,
+                        joinedLabel: _joinedLabel(createdAt, updatedAt),
+                        onTap: () => openChat(
+                          context,
+                          otherUid: p.uid,
+                          otherName: p.name,
+                        ),
+                      ),
+                    );
+                    tiles.add(const SizedBox(height: 10));
+                  }
+                }
+              }
+
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                children: tiles,
               );
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _NearbyPersonTile extends StatelessWidget {
+  const _NearbyPersonTile({
+    required this.profile,
+    required this.joinedLabel,
+    required this.onTap,
+  });
+
+  final PeopleBrowseProfile profile;
+  final String joinedLabel;
+  final VoidCallback onTap;
+
+  static const Color _text = Color(0xFF111827);
+  static const Color _muted = Color(0xFF6B7280);
+  static const Color _border = Color(0xFFE5E7EB);
+  static const Color _primary = Color(0xFF313A5F);
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTexts.current;
+    final initial = UserAvatarResolver.initialFor(profile.name);
+    final cityLine = PeopleBrowseGrouping.displayCityUnderName(profile);
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _border),
+          ),
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 26,
+                    backgroundColor: const Color(0xFFE8ECF5),
+                    backgroundImage: profile.photoUrl.isNotEmpty
+                        ? NetworkImage(profile.photoUrl)
+                        : null,
+                    onBackgroundImageError:
+                        profile.photoUrl.isNotEmpty ? (_, __) {} : null,
+                    child: profile.photoUrl.isEmpty
+                        ? Text(
+                            initial,
+                            style: const TextStyle(
+                              color: _primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          )
+                        : null,
+                  ),
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16A34A),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      child: Text(
+                        t.get('home_new_badge'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      profile.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _text,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (cityLine.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        cityLine,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 3),
+                    Text(
+                      joinedLabel,
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chat_bubble_outline_rounded,
+                color: _primary,
+                size: 22,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
