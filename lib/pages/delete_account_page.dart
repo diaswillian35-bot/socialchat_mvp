@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_texts.dart';
 import '../services/account_deletion_service.dart';
+import '../services/push_service.dart';
 import 'login_page.dart';
 
 /// Fluxo de exclusão definitiva da conta (confirmação forte + reauth + CF).
@@ -72,6 +73,10 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
             ? _passwordCtrl.text.trim()
             : null,
       );
+
+      // Clear FCM/APNs on device + Firestore before server wipe.
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      await PushService.clearForLogout(uid);
 
       await AccountDeletionService.deleteMyAccount();
       await AccountDeletionService.clearLocalSession();

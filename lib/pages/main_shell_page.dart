@@ -55,6 +55,7 @@ Future<void> _checkBannedUser() async {
 
   if (snap.data()?['isBanned'] == true) {
     await AppBadgeService.setBadge(0);
+    await PushService.clearForLogout(user.uid);
     await ShareExtensionSessionService.revokeLocalAndRemote();
     await FirebaseAuth.instance.signOut();
   }

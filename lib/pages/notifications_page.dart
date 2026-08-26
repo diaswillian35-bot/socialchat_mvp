@@ -49,12 +49,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
   bool _chat = true;
   bool _groups = true;
   bool _events = true;
+  bool _offerIosSettingsGuidance = false;
 
 
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshIosAuthGuidance();
+  }
+
+  Future<void> _refreshIosAuthGuidance() async {
+    final snap = await PushService.readIosNotificationAuth();
+    if (!mounted) return;
+    setState(() {
+      _offerIosSettingsGuidance = snap?.shouldOfferSettingsGuidance ?? false;
+    });
   }
 
 
@@ -140,17 +150,24 @@ class _NotificationsPageState extends State<NotificationsPage> {
         final ok = await PushService.enableAndSyncToken(uid);
         if (!mounted) return;
 
+        await _refreshIosAuthGuidance();
+        if (!mounted) return;
+
+        final guidance = PushService.lastIosAuthSnapshot;
+        final needsSettings = guidance?.shouldOfferSettingsGuidance ?? !ok;
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              ok
-                  ? t.get('notifications_enabled')
-                  : t.get('notifications_enabled_but_no_permission'),
+              needsSettings
+                  ? t.get('notifications_ios_alert_sound_hint')
+                  : (ok
+                      ? t.get('notifications_enabled')
+                      : t.get('notifications_enabled_but_no_permission')),
             ),
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(12),
-            duration: const Duration(seconds: 2),
+            duration: Duration(seconds: needsSettings ? 4 : 2),
           ),
         );
       } else {
@@ -314,6 +331,47 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 ],
               ),
             ),
+            if (_offerIosSettingsGuidance) ...[
+              const SizedBox(height: 14),
+              _card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.get('notifications_ios_settings_title'),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: _text,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      t.get('notifications_ios_alert_sound_hint'),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: _muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () async {
+                          // Manual only — never auto-open Settings.
+                          await PushService.openSystemNotificationSettings();
+                        },
+                        child: Text(
+                          t.get('notifications_open_settings'),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             SizedBox(
               height: 46,

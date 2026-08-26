@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../pages/main_shell_page.dart';
 import '../pages/group_chat_page.dart';
@@ -15,6 +16,44 @@ import '../pages/group_info_page.dart';
 import '../pages/chat_page.dart';
 import '../pages/event_detail_page.dart';
 import 'app_notification_state.dart';
+import 'push_token_sync.dart';
+
+/// Snapshot of iOS notification authorization (no tokens / PII).
+class IosNotificationAuthSnapshot {
+  const IosNotificationAuthSnapshot({
+    required this.authorizationStatus,
+    required this.alert,
+    required this.badge,
+    required this.sound,
+  });
+
+  final String authorizationStatus;
+  final String alert;
+  final String badge;
+  final String sound;
+
+  bool get isBadgeOnly => PushTokenSync.isBadgeOnlyPresentation(
+        authorizationStatus: authorizationStatus,
+        alert: alert,
+        badge: badge,
+        sound: sound,
+      );
+
+  bool get shouldOfferSettingsGuidance =>
+      PushTokenSync.shouldOfferNotificationSettingsGuidance(
+        authorizationStatus: authorizationStatus,
+        alert: alert,
+        badge: badge,
+        sound: sound,
+      );
+
+  String get sanitizedLogLine => PushTokenSync.formatIosAuthAuditLine(
+        authorizationStatus: authorizationStatus,
+        alert: alert,
+        badge: badge,
+        sound: sound,
+      );
+}
 
 class PushService {
   static final navKey = GlobalKey<NavigatorState>();
@@ -27,13 +66,26 @@ class PushService {
 
   static bool _started = false;
   static bool _localInitialized = false;
+  static String? _activeUid;
+  static IosNotificationAuthSnapshot? lastIosAuthSnapshot;
 
   static Future<void> init() async {
     AppNotificationState.instance.bind();
     await _initLocalNotifications();
-    await _applyIosForegroundPresentation(show: false);
+    await _applyIosForegroundPresentation();
     try {
-      await FirebaseMessaging.instance.requestPermission(
+      final settings = await _requestNotificationPermission();
+      _recordIosAuth(settings);
+    } catch (_) {}
+  }
+
+  /// Full alert/badge/sound in foreground (not silent / not badge-only).
+  static Future<void> _applyIosForegroundPresentation() async {
+    if (kIsWeb) return;
+    try {
+      if (!Platform.isIOS) return;
+      await FirebaseMessaging.instance
+          .setForegroundNotificationPresentationOptions(
         alert: true,
         badge: true,
         sound: true,
@@ -41,20 +93,65 @@ class PushService {
     } catch (_) {}
   }
 
-  /// iOS: em foreground o FCM nativo também não deve alertar/som.
-  static Future<void> _applyIosForegroundPresentation({
-    required bool show,
-  }) async {
-    if (kIsWeb) return;
+  /// Never provisional / critical / silent — always alert+badge+sound.
+  static Future<NotificationSettings> _requestNotificationPermission() {
+    return FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+      criticalAlert: false,
+      announcement: false,
+      carPlay: false,
+    );
+  }
+
+  static IosNotificationAuthSnapshot _snapshotFromSettings(
+    NotificationSettings settings,
+  ) {
+    return IosNotificationAuthSnapshot(
+      authorizationStatus: settings.authorizationStatus.name,
+      alert: settings.alert.name,
+      badge: settings.badge.name,
+      sound: settings.sound.name,
+    );
+  }
+
+  static void _recordIosAuth(NotificationSettings settings) {
+    final snap = _snapshotFromSettings(settings);
+    lastIosAuthSnapshot = snap;
+    if (kDebugMode) {
+      debugPrint(snap.sanitizedLogLine);
+    }
+  }
+
+  /// Read current iOS authorization (sanitized). Safe on Android (null).
+  static Future<IosNotificationAuthSnapshot?> readIosNotificationAuth() async {
+    if (kIsWeb) return null;
     try {
-      if (!Platform.isIOS) return;
-      await FirebaseMessaging.instance
-          .setForegroundNotificationPresentationOptions(
-        alert: show,
-        badge: show,
-        sound: show,
-      );
+      if (!Platform.isIOS) return null;
+      final settings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+      final snap = _snapshotFromSettings(settings);
+      lastIosAuthSnapshot = snap;
+      if (kDebugMode) {
+        debugPrint(snap.sanitizedLogLine);
+      }
+      return snap;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Opens system Settings only when the user taps a UI action — never auto.
+  static Future<bool> openSystemNotificationSettings() async {
+    try {
+      final uri = Uri.parse('app-settings:');
+      if (await canLaunchUrl(uri)) {
+        return launchUrl(uri);
+      }
     } catch (_) {}
+    return false;
   }
 
   static Future<void> _initLocalNotifications() async {
@@ -93,25 +190,30 @@ class PushService {
 
   /// Chame 1x após login (com uid válido).
   static Future<void> start(String uid) async {
+    final trimmedUid = uid.trim();
+    if (trimmedUid.isEmpty) return;
+    _activeUid = trimmedUid;
+
     AppNotificationState.instance.bind();
     await _initLocalNotifications();
-    await _applyIosForegroundPresentation(show: false);
+    await _applyIosForegroundPresentation();
 
     if (!_started) {
       _started = true;
 
-      // Continua recebendo FCM em foreground para dados/contadores,
-      // mas não cria notificação visual/local.
+      // Foreground: system may present alert/badge/sound; local banner still gated.
       FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
       FirebaseMessaging.onMessageOpenedApp.listen((message) async {
         await _handleOpen(message);
       });
 
+      // Bind once, but always write against the current logged-in uid.
       FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
         final trimmed = token.trim();
-        if (trimmed.isEmpty) return;
-        await _saveToken(uid, trimmed);
+        final currentUid = (_activeUid ?? '').trim();
+        if (trimmed.isEmpty || currentUid.isEmpty) return;
+        await _saveToken(currentUid, trimmed);
       });
 
       final initial = await FirebaseMessaging.instance.getInitialMessage();
@@ -120,7 +222,7 @@ class PushService {
       }
     }
 
-    await enableAndSyncToken(uid);
+    await enableAndSyncToken(trimmedUid);
   }
 
   static Future<bool> enableAndSyncToken(String uid) async {
@@ -130,15 +232,15 @@ class PushService {
 
     NotificationSettings settings;
     try {
-      settings = await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      settings = await _requestNotificationPermission();
+      _recordIosAuth(settings);
+      await _applyIosForegroundPresentation();
     } catch (_) {
       return false;
     }
 
+    // Accept authorized only for "ok" UX; still sync token if provisional
+    // was previously granted by the OS (we never request provisional).
     final authorized =
         settings.authorizationStatus == AuthorizationStatus.authorized ||
             settings.authorizationStatus == AuthorizationStatus.provisional;
@@ -156,6 +258,10 @@ class PushService {
   static Future<void> disableAndClearToken(String uid) async {
     try {
       await FirebaseMessaging.instance.setAutoInitEnabled(false);
+    } catch (_) {}
+
+    try {
+      await FirebaseMessaging.instance.deleteToken();
     } catch (_) {}
 
     try {
@@ -178,19 +284,59 @@ class PushService {
         SetOptions(merge: true),
       );
     } catch (_) {}
+
+    if ((_activeUid ?? '') == uid) {
+      _activeUid = null;
+    }
+  }
+
+  /// Clears Firestore + device token for the active uid (call on logout).
+  static Future<void> clearForLogout(String? uid) async {
+    final trimmed = (uid ?? _activeUid ?? '').trim();
+    if (trimmed.isEmpty) {
+      _activeUid = null;
+      return;
+    }
+    await disableAndClearToken(trimmed);
   }
 
   static Future<void> _saveToken(String uid, String token) async {
     final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+    final platform = _platform();
+    final bundleId = PushTokenSync.bundleIdForPlatform(platform);
+    final apsEnv = PushTokenSync.apsEnvironment(isReleaseMode: kReleaseMode);
+    final fields = PushTokenSync.tokenDocFields(
+      token: token,
+      platform: platform,
+      bundleId: bundleId,
+      apsEnvironment: platform == 'ios' ? apsEnv : '',
+    );
 
     await userRef.collection('fcmTokens').doc(token).set(
       {
-        'token': token,
-        'platform': _platform(),
+        ...fields,
         'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
     );
+
+    // Drop stale iOS siblings so TestFlight rebuilds don't keep dead tokens.
+    try {
+      final snap = await userRef.collection('fcmTokens').get();
+      final prune = PushTokenSync.iosTokenDocsToPrune(
+        currentToken: token,
+        docs: snap.docs.map(
+          (d) => <String, String?>{
+            'id': d.id,
+            'platform': (d.data()['platform'] ?? '').toString(),
+            'token': (d.data()['token'] ?? d.id).toString(),
+          },
+        ),
+      );
+      for (final id in prune) {
+        await userRef.collection('fcmTokens').doc(id).delete();
+      }
+    } catch (_) {}
 
     await userRef.set(
       {

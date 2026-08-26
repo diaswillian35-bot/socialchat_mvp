@@ -30,6 +30,7 @@ import '../services/premium_access_service.dart';
 import '../services/purchase_service.dart';
 import '../services/user_search_service.dart';
 import '../services/app_badge_service.dart';
+import '../services/push_service.dart';
 import '../services/share_extension_session_service.dart';
 import '../widgets/remdy_logo.dart';
 
@@ -344,6 +345,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await PurchaseService.instance.logOut();
     } catch (_) {}
     await AppBadgeService.setBadge(0);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    await PushService.clearForLogout(uid);
     await ShareExtensionSessionService.revokeLocalAndRemote();
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
