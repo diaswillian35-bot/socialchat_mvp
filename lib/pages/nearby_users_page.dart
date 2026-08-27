@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
+import '../services/new_user_policy.dart';
 import '../services/people_browse_config_service.dart';
 import '../services/people_browse_grouping.dart';
 import '../services/user_avatar_resolver.dart';
@@ -126,26 +127,14 @@ class NearbyUsersPage extends StatelessWidget {
   }
 
   bool _isRecent(Map<String, dynamic> data) {
-    final cutoff =
-        Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 30)));
-    final createdAt = data['createdAt'];
-    if (createdAt is Timestamp && createdAt.compareTo(cutoff) >= 0) {
-      return true;
-    }
-    final updatedAt = data['updatedAt'];
-    if (createdAt == null &&
-        updatedAt is Timestamp &&
-        updatedAt.compareTo(cutoff) >= 0) {
-      return true;
-    }
-    return createdAt == null && updatedAt == null;
+    return NewUserPolicy.isEligibleDiscoverableNewUser(data);
   }
 
-  String _joinedLabel(Timestamp? createdAt, Timestamp? updatedAt) {
-    final reference = createdAt ?? updatedAt;
-    if (reference == null) return AppTexts.t('home_new_user');
+  String _joinedLabel(Map<String, dynamic> data) {
+    final instant = NewUserPolicy.profileCompletedInstant(data);
+    if (instant == null) return AppTexts.t('home_new_user');
 
-    final diff = DateTime.now().difference(reference.toDate());
+    final diff = DateTime.now().difference(instant);
     if (diff.inMinutes < 60) {
       return AppTexts.t('home_joined_minutes_ago').replaceAll(
         '{minutes}',
@@ -158,7 +147,7 @@ class NearbyUsersPage extends StatelessWidget {
         '${diff.inHours}',
       );
     }
-    if (diff.inDays < 30) {
+    if (diff.inDays < NewUserPolicy.newUserWindowDays) {
       return AppTexts.t('home_joined_days_ago').replaceAll(
         '{days}',
         '${diff.inDays}',
@@ -190,10 +179,10 @@ class NearbyUsersPage extends StatelessWidget {
     }).toList();
 
     filtered.sort((a, b) {
-      final aTs = a.data()['createdAt'] ?? a.data()['updatedAt'];
-      final bTs = b.data()['createdAt'] ?? b.data()['updatedAt'];
-      if (aTs is Timestamp && bTs is Timestamp) {
-        return bTs.compareTo(aTs);
+      final aInstant = NewUserPolicy.profileCompletedInstant(a.data());
+      final bInstant = NewUserPolicy.profileCompletedInstant(b.data());
+      if (aInstant != null && bInstant != null) {
+        return bInstant.compareTo(aInstant);
       }
       return 0;
     });
@@ -358,16 +347,10 @@ class NearbyUsersPage extends StatelessWidget {
                   );
                   for (final p in section.profiles) {
                     final data = docs.firstWhere((d) => d.id == p.uid).data();
-                    final createdAt = data['createdAt'] is Timestamp
-                        ? data['createdAt'] as Timestamp
-                        : null;
-                    final updatedAt = data['updatedAt'] is Timestamp
-                        ? data['updatedAt'] as Timestamp
-                        : null;
                     tiles.add(
                       _NearbyPersonTile(
                         profile: p,
-                        joinedLabel: _joinedLabel(createdAt, updatedAt),
+                        joinedLabel: _joinedLabel(data),
                         onTap: () => openChat(
                           context,
                           otherUid: p.uid,

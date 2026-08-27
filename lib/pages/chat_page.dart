@@ -24,6 +24,8 @@ import '../services/forward_message_service.dart';
 import '../services/chat_read_guard.dart';
 import '../services/conversation_read_write.dart';
 import '../services/conversation_unread.dart';
+import '../services/unread_clear_audit.dart';
+import '../services/app_notification_state.dart';
 import '../services/dm_reply_quota.dart';
 import '../services/international_chat_service.dart';
 import '../services/international_country_codes.dart';
@@ -32,7 +34,6 @@ import '../services/premium_access_service.dart';
 import '../services/send_dm_message_service.dart';
 import '../services/report_category.dart';
 import '../services/voice_service.dart';
-import '../services/app_notification_state.dart';
 import '../utils/chat_message_list_stability.dart';
 import '../widgets/international_premium_dialog.dart';
 import '../widgets/message_text_with_links.dart';
@@ -231,6 +232,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _msgsSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _convSub;
   int _myUnread = 0;
+  bool _conversationHydrated = false;
   bool _pendingClearUnread = false;
   int _peerUnread = 0;
   DateTime? _peerLastReadAt;
@@ -834,28 +836,99 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   bool _isViewingLatestMessages() {
-    if (!_scrollC.hasClients) return true;
-    // Reverse list: offset 0 = newest messages visible.
+    // Not ready until list is laid out — avoids clearing while loading.
+    if (!_scrollC.hasClients) return false;
     return _scrollC.offset <= 48;
+  }
+
+  bool _isThisChatSurfaceActive() {
+    return AppNotificationState.instance.activeConversationId ==
+        widget.conversationId;
   }
 
   Future<void> _markAsRead({
     bool clearUnread = false,
     bool forceWatermark = false,
+    String caller = 'markAsRead',
   }) async {
-    if (!_mayPersistReadState()) return;
+    if (!_mayPersistReadState()) {
+      UnreadClearAudit.logClearAttempt(
+        caller: caller,
+        reason: 'mayPersistRead_false',
+        willClear: false,
+        unreadBefore: _myUnread,
+        lifecycle: '${WidgetsBinding.instance.lifecycleState}',
+        routeIsCurrent: ModalRoute.of(context)?.isCurrent ?? false,
+        chatSurfaceActive: _isThisChatSurfaceActive(),
+        tickerEnabled: TickerMode.of(context),
+        contentReady: _conversationHydrated,
+        viewingLatest: _isViewingLatestMessages(),
+        mounted: mounted,
+        activeConversationMasked: UnreadClearAudit.maskUid(
+          AppNotificationState.instance.activeConversationId,
+        ),
+        thisConversationMasked:
+            UnreadClearAudit.maskUid(widget.conversationId),
+      );
+      return;
+    }
 
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final routeCurrent = ModalRoute.of(context)?.isCurrent ?? false;
+    final surfaceActive = _isThisChatSurfaceActive();
+    final ticker = TickerMode.of(context);
+    final viewing = _isViewingLatestMessages();
+
+    final mayClearConditions = <String, bool>{
+      'contentReady': _conversationHydrated,
+      'chatSurfaceActive': surfaceActive,
+      'tickerEnabled': ticker,
+      'mounted': mounted,
+      'lifecycleResumed': lifecycle == AppLifecycleState.resumed,
+      'routeIsCurrent': routeCurrent,
+      'viewingLatestMessages': viewing,
+    };
     final mayClear = clearUnread &&
         ChatReadGuard.mayClearUnread(
           mounted: mounted,
-          lifecycle: WidgetsBinding.instance.lifecycleState,
-          routeIsCurrent: ModalRoute.of(context)?.isCurrent ?? false,
-          viewingLatestMessages: _isViewingLatestMessages(),
+          lifecycle: lifecycle,
+          routeIsCurrent: routeCurrent,
+          viewingLatestMessages: viewing,
+          contentReady: _conversationHydrated,
+          chatSurfaceActive: surfaceActive,
+          tickerEnabled: ticker,
         );
 
     final needUnread = ChatUnreadClearCoordinator.shouldWriteUnreadZero(
       mayClear: mayClear,
       myUnread: _myUnread,
+    );
+
+    UnreadClearAudit.logClearAttempt(
+      caller: caller,
+      reason: !clearUnread
+          ? 'watermark_only'
+          : (!mayClear
+              ? 'mayClear_false'
+              : (needUnread ? 'clear_unread_write' : 'unread_already_zero')),
+      willClear: needUnread,
+      unreadBefore: _myUnread,
+      lifecycle: '$lifecycle',
+      routeIsCurrent: routeCurrent,
+      chatSurfaceActive: surfaceActive,
+      tickerEnabled: ticker,
+      contentReady: _conversationHydrated,
+      viewingLatest: viewing,
+      mounted: mounted,
+      uidMasked: UnreadClearAudit.maskUid(myUid),
+      activeSurface: AppNotificationState.instance.activeConversationId == null
+          ? 'none'
+          : (surfaceActive ? 'this_chat' : 'other_chat'),
+      activeConversationMasked: UnreadClearAudit.maskUid(
+        AppNotificationState.instance.activeConversationId,
+      ),
+      thisConversationMasked: UnreadClearAudit.maskUid(widget.conversationId),
+      mayClearConditions: mayClearConditions,
     );
 
     if (ChatUnreadClearCoordinator.shouldQueuePendingClear(
@@ -886,6 +959,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     try {
       // View-scoped clear — independent of _send() / reply.
       // Patch keys must stay inside firestore.rules conversations hasOnly.
+      UnreadClearAudit.logReadWrite(
+        caller: caller,
+        clearUnread: needUnread,
+        uidMasked: UnreadClearAudit.maskUid(myUid),
+      );
       await ConversationReadWrite.commitClearUnread(
         db: db,
         conversationRef: convDoc,
@@ -914,7 +992,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ) &&
           mounted &&
           _mayPersistReadState()) {
-        unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+        unawaited(_markAsRead(
+          clearUnread: true,
+          forceWatermark: true,
+          caller: 'retry_pending',
+        ));
       }
     }
   }
@@ -923,7 +1005,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_pendingClearUnread || _myUnread <= 0) return;
     if (!_mayPersistReadState()) return;
     if (!_isViewingLatestMessages()) return;
-    unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+    unawaited(_markAsRead(
+      clearUnread: true,
+      forceWatermark: true,
+      caller: 'scroll',
+    ));
   }
 
   /// Presence writes while the chat is open also advance the read watermark.
@@ -991,7 +1077,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_mayPersistReadState()) return;
     _readWatermarkDebounce?.cancel();
     _readWatermarkDebounce = Timer(const Duration(milliseconds: 350), () {
-      unawaited(_markAsRead(forceWatermark: true));
+      unawaited(_markAsRead(forceWatermark: true, caller: 'watermark_debounce'));
     });
   }
 
@@ -1018,6 +1104,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _onConversationSnapshot(DocumentSnapshot<Map<String, dynamic>> snap) {
+    _conversationHydrated = true;
     final d = snap.data() ?? {};
     final unreadRaw = d['unread'];
     var myUnread = 0;
@@ -1051,7 +1138,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     if (_mayPersistReadState()) {
       if (myUnread > 0 || _pendingClearUnread) {
-        unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+        unawaited(_markAsRead(
+          clearUnread: true,
+          forceWatermark: true,
+          caller: 'conv_snapshot',
+        ));
       } else {
         _scheduleReadWatermark();
       }
@@ -1234,28 +1325,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     await db.runTransaction((tx) async {
       final snap = await tx.get(convDoc);
-      final data = snap.data() ?? {};
-
-      final unread = Map<String, dynamic>.from(
-        (data['unread'] is Map) ? data['unread'] : {},
-      );
-
-      final otherCount =
-          (unread[widget.otherUid] is int) ? unread[widget.otherUid] as int : 0;
-
-      unread[widget.otherUid] = otherCount + 1;
-      unread[myUid] = 0;
-
+      // Server owns peer unread (+1). Client only clears own counter.
+      // Never replace the whole unread map (races with onPrivateMessageCreated).
       tx.set(
         convDoc,
         {
           'lastMessage': lastMessage,
           'lastMessageAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
-          'unread': unread,
+          'unread.$myUid': 0,
         },
         SetOptions(merge: true),
       );
+      // Touch snap so the transaction is not empty-read-only on some SDKs.
+      if (!snap.exists) {
+        throw StateError('conversation missing');
+      }
     });
 
     if (kDebugMode) {
@@ -2042,9 +2127,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (!_mayPersistReadState()) return;
       _pendingClearUnread = true;
       if (_myUnread > 0) {
-        unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+        unawaited(_markAsRead(
+          clearUnread: true,
+          forceWatermark: true,
+          caller: 'init_postframe',
+        ));
       } else {
-        unawaited(_markAsRead(forceWatermark: true));
+        unawaited(_markAsRead(forceWatermark: true, caller: 'init_postframe'));
       }
     });
 
@@ -2060,9 +2149,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     // and the user is looking at the latest messages.
     if (state == AppLifecycleState.resumed && _mayPersistReadState()) {
       if (_pendingClearUnread && _myUnread > 0 && _isViewingLatestMessages()) {
-        unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
+        unawaited(_markAsRead(
+          clearUnread: true,
+          forceWatermark: true,
+          caller: 'lifecycle_resume',
+        ));
       } else {
-        unawaited(_markAsRead(forceWatermark: true));
+        unawaited(
+          _markAsRead(forceWatermark: true, caller: 'lifecycle_resume'),
+        );
       }
     }
   }
@@ -2070,16 +2165,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+
+    // Clear while this chat is still the active surface (before leave).
+    // Receiving a push / Home open must never reach this path.
+    if (_mayPersistReadOnExit() &&
+        _isThisChatSurfaceActive() &&
+        _conversationHydrated &&
+        _myUnread > 0 &&
+        _isViewingLatestMessages()) {
+      unawaited(_markAsRead(
+        clearUnread: true,
+        forceWatermark: true,
+        caller: 'dispose',
+      ));
+    }
+
     AppNotificationState.instance.leavePrivateChat(widget.conversationId);
 
     _msgsSub?.cancel();
     _msgsSub = null;
     _convSub?.cancel();
     _convSub = null;
-
-    if (_mayPersistReadOnExit()) {
-      unawaited(_markAsRead(clearUnread: true, forceWatermark: true));
-    }
 
     _typingDebounce?.cancel();
     _setTyping(false);

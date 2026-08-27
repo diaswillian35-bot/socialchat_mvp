@@ -73,6 +73,7 @@ void main() {
           lifecycle: AppLifecycleState.resumed,
           routeIsCurrent: true,
           viewingLatestMessages: true,
+          contentReady: true,
         ),
         isTrue,
       );
@@ -82,6 +83,7 @@ void main() {
           lifecycle: AppLifecycleState.resumed,
           routeIsCurrent: true,
           viewingLatestMessages: false,
+          contentReady: true,
         ),
         isFalse,
       );
@@ -91,16 +93,65 @@ void main() {
           lifecycle: AppLifecycleState.resumed,
           routeIsCurrent: false,
           viewingLatestMessages: true,
+          contentReady: true,
         ),
         isFalse,
       );
-      // 6. resume/background without open chat → no clear
       expect(
         ChatReadGuard.mayClearUnread(
           mounted: true,
           lifecycle: AppLifecycleState.paused,
           routeIsCurrent: true,
           viewingLatestMessages: true,
+          contentReady: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not clear while content still loading', () {
+      expect(
+        ChatReadGuard.mayClearUnread(
+          mounted: true,
+          lifecycle: AppLifecycleState.resumed,
+          routeIsCurrent: true,
+          viewingLatestMessages: true,
+          contentReady: false,
+        ),
+        isFalse,
+      );
+      expect(
+        ChatReadGuard.mayClearUnread(
+          mounted: true,
+          lifecycle: AppLifecycleState.resumed,
+          routeIsCurrent: true,
+          viewingLatestMessages: false,
+          contentReady: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not clear when chat surface inactive or ticker off', () {
+      expect(
+        ChatReadGuard.mayClearUnread(
+          mounted: true,
+          lifecycle: AppLifecycleState.resumed,
+          routeIsCurrent: true,
+          viewingLatestMessages: true,
+          contentReady: true,
+          chatSurfaceActive: false,
+        ),
+        isFalse,
+      );
+      expect(
+        ChatReadGuard.mayClearUnread(
+          mounted: true,
+          lifecycle: AppLifecycleState.resumed,
+          routeIsCurrent: true,
+          viewingLatestMessages: true,
+          contentReady: true,
+          tickerEnabled: false,
         ),
         isFalse,
       );

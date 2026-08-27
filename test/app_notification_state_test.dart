@@ -41,12 +41,19 @@ void main() {
         reason: 'conversa aberta não aumenta unread',
       );
       expect(
+        state.shouldIncrementInAppUnread({
+          'type': 'chat',
+          'conversationId': 'c_other',
+        }),
+        isTrue,
+        reason: 'outra conversa incrementa bolinha via Firestore',
+      );
+      expect(
         state.shouldSkipUnreadIncrement({
           'type': 'chat',
           'conversationId': 'c_other',
         }),
         isFalse,
-        reason: 'outra conversa ainda atualiza bolinha via Firestore',
       );
     });
 

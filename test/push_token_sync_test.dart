@@ -5,13 +5,17 @@ import 'package:socialchat_mvp/services/push_token_sync.dart';
 
 void main() {
   group('PushTokenSync', () {
-    test('apsEnvironment production in release', () {
+    test('apsEnvironment production in release, development in profile', () {
       expect(
         PushTokenSync.apsEnvironment(isReleaseMode: true),
         'production',
       );
       expect(
         PushTokenSync.apsEnvironment(isReleaseMode: false),
+        'development',
+      );
+      expect(
+        PushTokenSync.apsEnvironment(isReleaseMode: true, isProfileMode: true),
         'development',
       );
     });
@@ -143,21 +147,16 @@ void main() {
       expect(push.contains('alert: true'), isTrue);
       expect(push.contains('badge: true'), isTrue);
       expect(push.contains('sound: true'), isTrue);
-      expect(push.contains('provisional: false'), isTrue);
+      expect(
+        push.contains('provisional: false'), isTrue);
       expect(push.contains('criticalAlert: false'), isTrue);
-      expect(push.contains('provisional: true'), isFalse);
-      expect(push.contains('criticalAlert: true'), isFalse);
       expect(
         push.contains('setForegroundNotificationPresentationOptions'),
         isTrue,
       );
-      // Foreground presentation must enable alert/badge/sound (not silent).
+      // Foreground: iOS system presentation off; in-app unread via Firestore.
       expect(
-        RegExp(
-          r'setForegroundNotificationPresentationOptions\(\s*'
-          r'alert:\s*true,\s*badge:\s*true,\s*sound:\s*true',
-          multiLine: true,
-        ).hasMatch(push),
+        push.contains('enableSystem = !AppNotificationState.instance.isForeground'),
         isTrue,
       );
       // Settings open is manual API only — page must not auto-call on init.

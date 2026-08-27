@@ -448,16 +448,22 @@ class _GroupChatPageState extends State<GroupChatPage>
   bool _pendingMarkGroupAsRead = false;
 
   bool _isViewingLatestGroupMessages() {
-    if (!_scrollC.hasClients) return true;
+    if (!_scrollC.hasClients) return false;
     return _scrollC.offset <= 48;
   }
 
   bool _mayClearGroupUnread() {
+    if (_loadingRole) return false;
+    final surfaceActive =
+        AppNotificationState.instance.activeGroupId == widget.groupId;
     return ChatReadGuard.mayClearUnread(
       mounted: mounted,
       lifecycle: WidgetsBinding.instance.lifecycleState,
       routeIsCurrent: ModalRoute.of(context)?.isCurrent ?? false,
       viewingLatestMessages: _isViewingLatestGroupMessages(),
+      contentReady: _groupData != null,
+      chatSurfaceActive: surfaceActive,
+      tickerEnabled: TickerMode.of(context),
     );
   }
 

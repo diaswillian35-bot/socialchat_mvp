@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../pages/nearby_users_page.dart';
 import '../services/international_chat_service.dart';
+import '../services/new_user_policy.dart';
 import '../services/user_avatar_resolver.dart';
 import 'home_section_header.dart';
 
@@ -26,11 +27,11 @@ class HomeNearbyUsersSection extends StatelessWidget {
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
 
-  String _joinedLabel(Timestamp? createdAt, Timestamp? updatedAt) {
-    final reference = createdAt ?? updatedAt;
-    if (reference == null) return AppTexts.t('home_new_user');
+  String _joinedLabel(Map<String, dynamic> data) {
+    final instant = NewUserPolicy.profileCompletedInstant(data);
+    if (instant == null) return AppTexts.t('home_new_user');
 
-    final diff = DateTime.now().difference(reference.toDate());
+    final diff = DateTime.now().difference(instant);
     if (diff.inMinutes < 60) {
       return AppTexts.t('home_joined_minutes_ago').replaceAll(
         '{minutes}',
@@ -43,7 +44,7 @@ class HomeNearbyUsersSection extends StatelessWidget {
         '${diff.inHours}',
       );
     }
-    if (diff.inDays < 30) {
+    if (diff.inDays < NewUserPolicy.newUserWindowDays) {
       return AppTexts.t('home_joined_days_ago').replaceAll(
         '{days}',
         '${diff.inDays}',
@@ -53,19 +54,7 @@ class HomeNearbyUsersSection extends StatelessWidget {
   }
 
   bool _isRecent(Map<String, dynamic> data) {
-    final cutoff =
-        Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 30)));
-    final createdAt = data['createdAt'];
-    if (createdAt is Timestamp && createdAt.compareTo(cutoff) >= 0) {
-      return true;
-    }
-    final updatedAt = data['updatedAt'];
-    if (createdAt == null &&
-        updatedAt is Timestamp &&
-        updatedAt.compareTo(cutoff) >= 0) {
-      return true;
-    }
-    return createdAt == null && updatedAt == null;
+    return NewUserPolicy.isEligibleDiscoverableNewUser(data);
   }
 
   bool _matchesCity(Map<String, dynamic> data) {
@@ -104,10 +93,10 @@ class HomeNearbyUsersSection extends StatelessWidget {
     }).toList();
 
     filtered.sort((a, b) {
-      final aTs = a.data()['createdAt'] ?? a.data()['updatedAt'];
-      final bTs = b.data()['createdAt'] ?? b.data()['updatedAt'];
-      if (aTs is Timestamp && bTs is Timestamp) {
-        return bTs.compareTo(aTs);
+      final aInstant = NewUserPolicy.profileCompletedInstant(a.data());
+      final bInstant = NewUserPolicy.profileCompletedInstant(b.data());
+      if (aInstant != null && bInstant != null) {
+        return bInstant.compareTo(aInstant);
       }
       return 0;
     });
@@ -214,12 +203,6 @@ class HomeNearbyUsersSection extends StatelessWidget {
                   final data = doc.data();
                   final name = (data['name'] ?? t.get('user')).toString();
                   final photoUrl = UserAvatarResolver.resolve(data);
-                  final createdAt = data['createdAt'] is Timestamp
-                      ? data['createdAt'] as Timestamp
-                      : null;
-                  final updatedAt = data['updatedAt'] is Timestamp
-                      ? data['updatedAt'] as Timestamp
-                      : null;
                   final initial = UserAvatarResolver.initialFor(name);
 
                   return InkWell(
@@ -298,7 +281,7 @@ class HomeNearbyUsersSection extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            _joinedLabel(createdAt, updatedAt),
+                            _joinedLabel(data),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,

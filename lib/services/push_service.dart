@@ -71,6 +71,12 @@ class PushService {
 
   static Future<void> init() async {
     AppNotificationState.instance.bind();
+    AppNotificationState.instance.onLifecycleChanged = (_) {
+      refreshIosForegroundPresentation();
+    };
+    AppNotificationState.instance.onActiveSurfaceChanged = () {
+      refreshIosForegroundPresentation();
+    };
     await _initLocalNotifications();
     await _applyIosForegroundPresentation();
     try {
@@ -79,18 +85,25 @@ class PushService {
     } catch (_) {}
   }
 
-  /// Full alert/badge/sound in foreground (not silent / not badge-only).
+  /// Foreground: suppress iOS system banner/sound/badge (in-app unread only).
+  /// Background: OS handles full FCM notification payload.
   static Future<void> _applyIosForegroundPresentation() async {
     if (kIsWeb) return;
     try {
       if (!Platform.isIOS) return;
+      final enableSystem = !AppNotificationState.instance.isForeground;
       await FirebaseMessaging.instance
           .setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
+        alert: enableSystem,
+        badge: enableSystem,
+        sound: enableSystem,
       );
     } catch (_) {}
+  }
+
+  /// Re-aplica opções iOS quando ciclo de vida muda (sem heartbeat).
+  static Future<void> refreshIosForegroundPresentation() async {
+    await _applyIosForegroundPresentation();
   }
 
   /// Never provisional / critical / silent — always alert+badge+sound.
@@ -304,7 +317,10 @@ class PushService {
     final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
     final platform = _platform();
     final bundleId = PushTokenSync.bundleIdForPlatform(platform);
-    final apsEnv = PushTokenSync.apsEnvironment(isReleaseMode: kReleaseMode);
+    final apsEnv = PushTokenSync.apsEnvironment(
+      isReleaseMode: kReleaseMode,
+      isProfileMode: kProfileMode,
+    );
     final fields = PushTokenSync.tokenDocFields(
       token: token,
       platform: platform,

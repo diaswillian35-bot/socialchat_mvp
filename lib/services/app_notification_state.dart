@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import 'notification_policy.dart';
+
 /// Estado central de notificações do Remdy.
 ///
 /// Uma única fonte de verdade para:
@@ -52,6 +54,15 @@ class AppNotificationState with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _lifecycle = state;
+    onLifecycleChanged?.call(state);
+  }
+
+  /// Hook opcional (PushService) — evita import circular.
+  void Function(AppLifecycleState)? onLifecycleChanged;
+  void Function()? onActiveSurfaceChanged;
+
+  void _notifyActiveSurfaceChanged() {
+    onActiveSurfaceChanged?.call();
   }
 
   /// Para testes: força o ciclo de vida sem o binding do Flutter.
@@ -73,6 +84,7 @@ class AppNotificationState with WidgetsBindingObserver {
     if (id.isEmpty) return;
     _activeConversationId = id;
     _activeGroupId = null;
+    _notifyActiveSurfaceChanged();
   }
 
   void enterGroupChat(String groupId) {
@@ -80,29 +92,34 @@ class AppNotificationState with WidgetsBindingObserver {
     if (id.isEmpty) return;
     _activeGroupId = id;
     _activeConversationId = null;
+    _notifyActiveSurfaceChanged();
   }
 
   void enterEvent(String eventId) {
     final id = eventId.trim();
     if (id.isEmpty) return;
     _activeEventId = id;
+    _notifyActiveSurfaceChanged();
   }
 
   void leavePrivateChat(String conversationId) {
     if (_activeConversationId == conversationId.trim()) {
       _activeConversationId = null;
+      _notifyActiveSurfaceChanged();
     }
   }
 
   void leaveGroupChat(String groupId) {
     if (_activeGroupId == groupId.trim()) {
       _activeGroupId = null;
+      _notifyActiveSurfaceChanged();
     }
   }
 
   void leaveEvent(String eventId) {
     if (_activeEventId == eventId.trim()) {
       _activeEventId = null;
+      _notifyActiveSurfaceChanged();
     }
   }
 
@@ -110,6 +127,7 @@ class AppNotificationState with WidgetsBindingObserver {
     _activeConversationId = null;
     _activeGroupId = null;
     _activeEventId = null;
+    _notifyActiveSurfaceChanged();
   }
 
   /// Extrai IDs relevantes do payload FCM/data.
@@ -144,25 +162,35 @@ class AppNotificationState with WidgetsBindingObserver {
 
   /// Mensagem na conversa/grupo aberto: não deve aumentar unread localmente.
   bool shouldSkipUnreadIncrement(Map<String, dynamic> data) {
-    return isForActiveSurface(targetFromData(data));
+    return NotificationPolicy.shouldSkipUnreadIncrement(
+      isForActiveSurface: isForActiveSurface(targetFromData(data)),
+    );
   }
 
   /// Deve criar notificação **local** a partir de `onMessage`?
-  ///
-  /// Sempre `false`:
-  /// - Em foreground o Remdy não deve exibir banner/som/vibração;
-  /// - Em background/terminated o SO já mostra o payload FCM `notification`.
-  /// Criar local aqui causaria o bug atual (push em primeiro plano) ou duplicata.
   bool shouldShowLocalNotification(Map<String, dynamic> data) {
-    // Mantém data no signature para testes e futuras regras por tipo.
-    if (isForeground) return false;
-    if (isForActiveSurface(targetFromData(data))) return false;
-    return false;
+    return NotificationPolicy.shouldShowLocalNotification(
+      lifecycle: _lifecycle,
+      isForActiveSurface: isForActiveSurface(targetFromData(data)),
+      data: data,
+    );
   }
 
-  /// Alias: em foreground (e em geral no onMessage) sempre suprime visual local.
+  /// Suprime banner/som local + iOS system presentation em foreground.
   bool shouldSuppressVisualNotification(Map<String, dynamic> data) {
-    return !shouldShowLocalNotification(data);
+    return NotificationPolicy.shouldSuppressSystemVisual(
+      lifecycle: _lifecycle,
+      isForActiveSurface: isForActiveSurface(targetFromData(data)),
+      data: data,
+    );
+  }
+
+  /// Foreground Home/outra tela: bolinha/unread via Firestore, sem system badge.
+  bool shouldIncrementInAppUnread(Map<String, dynamic> data) {
+    return NotificationPolicy.shouldIncrementInAppUnread(
+      lifecycle: _lifecycle,
+      isForActiveSurface: isForActiveSurface(targetFromData(data)),
+    );
   }
 
   /// Compatível com a API pedida nos testes.

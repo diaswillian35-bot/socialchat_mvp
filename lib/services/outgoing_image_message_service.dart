@@ -157,7 +157,7 @@ class OutgoingImageMessageService {
             'lastMessage': label,
             'lastMessageAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
-            'unread.$otherUid': FieldValue.increment(1),
+            // Server owns peer unread; client only clears own.
             'unread.$uid': 0,
           },
           SetOptions(merge: true),

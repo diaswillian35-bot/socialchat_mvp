@@ -17,6 +17,7 @@ import '../services/android_back_navigation.dart';
 import '../l10n/app_texts.dart';
 import '../widgets/keyboard_dismiss.dart';
 import '../services/app_badge_service.dart';
+import '../services/unread_clear_audit.dart';
 import '../services/share_extension_session_service.dart';
 
 
@@ -168,7 +169,9 @@ void initState() {
 
 
   void _syncAppBadge(int messages, int groups) {
-    AppBadgeService.setBadge(messages + groups);
+    final total = messages + groups;
+    AppBadgeService.setBadge(total);
+    UnreadClearAudit.logBadgeSync(count: total, source: 'MainShell');
   }
 
   /// Troca a aba do [IndexedStack] — o mesmo caminho do menu inferior.

@@ -8,6 +8,7 @@ import '../l10n/app_texts.dart';
 import '../widgets/keyboard_dismiss.dart';
 import '../utils/user_search_normalize.dart';
 import '../services/user_search_service.dart';
+import '../services/profile_completed_at_policy.dart';
 
 import 'splash_page.dart';
 import 'login_page.dart';
@@ -418,6 +419,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'profileComplete': true,
         'updatedAt': now,
       };
+      ProfileCompletedAtPolicy.applyFirstCompletionTimestamp(
+        payload: userPayload,
+        existingUserData: userData,
+        serverTimestamp: now,
+      );
       // Sincroniza avatar em `users` (cards da região leem daqui).
       if (photoUrl.trim().isNotEmpty) {
         userPayload['photoUrl'] = photoUrl.trim();

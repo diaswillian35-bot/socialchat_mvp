@@ -9,9 +9,12 @@ class PushTokenSync {
   static const bundleIdIos = 'com.remdy.app';
 
   /// APNs environment implied by build mode.
-  /// Release/TestFlight/App Store → production. Debug → development.
-  static String apsEnvironment({required bool isReleaseMode}) =>
-      isReleaseMode ? 'production' : 'development';
+  /// Release/TestFlight/App Store → production. Debug/Profile → development.
+  static String apsEnvironment({
+    required bool isReleaseMode,
+    bool isProfileMode = false,
+  }) =>
+      (isReleaseMode && !isProfileMode) ? 'production' : 'development';
 
   /// Fields written under `users/{uid}/fcmTokens/{token}`.
   static Map<String, Object?> tokenDocFields({

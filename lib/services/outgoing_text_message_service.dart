@@ -345,21 +345,17 @@ class OutgoingTextMessageService {
     final convDoc = _db.collection('conversations').doc(conversationId);
     await _db.runTransaction((tx) async {
       final snap = await tx.get(convDoc);
-      final data = snap.data() ?? {};
-      final unread = Map<String, dynamic>.from(
-        (data['unread'] is Map) ? data['unread'] as Map : {},
-      );
-      final otherCount =
-          (unread[otherUid] is int) ? unread[otherUid] as int : 0;
-      unread[otherUid] = otherCount + 1;
-      unread[myUid] = 0;
+      if (!snap.exists) {
+        throw StateError('conversation missing');
+      }
+      // Server owns peer unread (+1). Client only clears own counter.
       tx.set(
         convDoc,
         {
           'lastMessage': lastMessage,
           'lastMessageAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
-          'unread': unread,
+          'unread.$myUid': 0,
         },
         SetOptions(merge: true),
       );
