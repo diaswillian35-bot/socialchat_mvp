@@ -19,6 +19,8 @@ import '../widgets/keyboard_dismiss.dart';
 import '../services/app_badge_service.dart';
 import '../services/unread_clear_audit.dart';
 import '../services/share_extension_session_service.dart';
+import '../services/group_pending_join_badge_service.dart';
+import '../services/group_pending_join_badge_logic.dart';
 
 
 class MainShell extends StatefulWidget {
@@ -80,6 +82,7 @@ void initState() {
 
       await PresenceService.instance.start();
       PresenceDisplayHub.instance.setHomeVisible(_index == 0);
+      GroupPendingJoinBadgeService.instance.ensureStarted();
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
@@ -111,8 +114,8 @@ void initState() {
 
   @override
   void dispose() {
-    PresenceDisplayHub.instance.onLogout();
-    PresenceService.instance.stop();
+    // Presença é sessão Auth — NÃO parar no dispose do shell
+    // (AuthGate splash remount matava o writer).
     super.dispose();
   }
 
@@ -375,21 +378,30 @@ Stream<int> _activeEventsStream() {
           BottomNavigationBarItem(
             icon: StreamBuilder<int>(
               stream: _unreadGroupsStream(),
-              builder: (context, snap) {
-                final n = snap.data ?? 0;
+              builder: (context, unreadSnap) {
+                return StreamBuilder<GroupPendingJoinCounts>(
+                  stream: GroupPendingJoinBadgeService.instance.stream,
+                  builder: (context, pendingSnap) {
+                    final unread = unreadSnap.data ?? 0;
+                    final pending = pendingSnap.data?.total ?? 0;
+                    // Pedidos pendentes (admin) + não lidas; badge some em zero.
+                    final n = unread + pending;
+                    final label =
+                        GroupPendingJoinBadgeLogic.formatBadge(n);
 
-
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Icon(Icons.groups_rounded),
-                    if (n > 0)
-                      Positioned(
-                        right: -2,
-                        top: -2,
-                        child: _Badge(count: n),
-                      ),
-                  ],
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(Icons.groups_rounded),
+                        if (label != null)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: _Badge(count: n),
+                          ),
+                      ],
+                    );
+                  },
                 );
               },
             ),

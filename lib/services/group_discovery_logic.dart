@@ -109,6 +109,17 @@ class GroupDiscoveryLogic {
     return false;
   }
 
+  static bool isPrivateGroup(Map<String, dynamic> data) =>
+      data['isPrivate'] == true;
+
+  /// Opt-out explícito de descoberta (campo futuro / admin).
+  /// Valores: `discoverable: false` ou `hiddenFromDiscovery: true`.
+  static bool isOptedOutOfDiscovery(Map<String, dynamic> data) {
+    if (data['hiddenFromDiscovery'] == true) return true;
+    if (data['discoverable'] == false) return true;
+    return false;
+  }
+
   /// Documentos sem escopo canônico confiável: fora das abas de descoberta.
   static bool isDiscoverableScope(String scope) =>
       scope == 'city' || scope == 'region' || scope == 'country';
@@ -116,6 +127,24 @@ class GroupDiscoveryLogic {
   static bool matchesMine(Map<String, dynamic> data, String uid) {
     if (isDeletedOrInactive(data)) return false;
     return isParticipating(data: data, uid: uid);
+  }
+
+  /// Remove grupos ocultos pelo usuário (preferência pessoal).
+  static List<GroupDiscoveryItem> excludeHidden({
+    required List<GroupDiscoveryItem> items,
+    required Set<String> hiddenIds,
+  }) {
+    if (hiddenIds.isEmpty) return items;
+    return items.where((e) => !hiddenIds.contains(e.id)).toList();
+  }
+
+  /// Card de descoberta para privado não-membro: só metadados públicos mínimos.
+  static bool shouldShowLockedPrivateDiscoveryCard({
+    required Map<String, dynamic> data,
+    required bool isMember,
+  }) {
+    if (isMember) return false;
+    return isPrivateGroup(data);
   }
 
   /// País do card: sempre ISO-2, nunca o nome do Places.
@@ -164,6 +193,7 @@ class GroupDiscoveryLogic {
     required String userCityKey,
   }) {
     if (isDeletedOrInactive(data)) return false;
+    if (isOptedOutOfDiscovery(data)) return false;
     if (isParticipating(data: data, uid: uid)) return false;
     if (GroupLocationNormalize.scope(data['scope']) != 'city') return false;
 
@@ -192,6 +222,7 @@ class GroupDiscoveryLogic {
     required num? userCityLongitude,
   }) {
     if (isDeletedOrInactive(data)) return false;
+    if (isOptedOutOfDiscovery(data)) return false;
     if (isParticipating(data: data, uid: uid)) return false;
     if (GroupLocationNormalize.scope(data['scope']) != 'region') return false;
 
@@ -233,6 +264,7 @@ class GroupDiscoveryLogic {
     required String userCountryCode,
   }) {
     if (isDeletedOrInactive(data)) return false;
+    if (isOptedOutOfDiscovery(data)) return false;
     if (isParticipating(data: data, uid: uid)) return false;
     if (GroupLocationNormalize.scope(data['scope']) != 'country') return false;
 

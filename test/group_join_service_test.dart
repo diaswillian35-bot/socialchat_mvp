@@ -92,4 +92,38 @@ void main() {
       );
     });
   });
+
+  group('approval pending request (link + discovery)', () {
+    test('link and discovery share the same approval entry convergence', () {
+      expect(
+        GroupJoinService.approvalJoinEntryPoint(viaInviteCode: true),
+        'link_or_code',
+      );
+      expect(
+        GroupJoinService.approvalJoinEntryPoint(viaInviteCode: false),
+        'discovery_or_id',
+      );
+      // Both eventually call joinByGroupId for approval (not inviteOnly/open).
+      expect(GroupJoinService.normalizeJoinPolicy('approval'), 'approval');
+    });
+
+    test('re-request after rejected/approved must recreate pending doc', () {
+      expect(GroupJoinService.shouldRecreatePendingRequestDoc(null), isFalse);
+      expect(GroupJoinService.shouldRecreatePendingRequestDoc(''), isFalse);
+      expect(GroupJoinService.shouldRecreatePendingRequestDoc('pending'), isFalse);
+      expect(GroupJoinService.shouldRecreatePendingRequestDoc('rejected'), isTrue);
+      expect(GroupJoinService.shouldRecreatePendingRequestDoc('approved'), isTrue);
+    });
+
+    test('pending payload is canonical and pending-only', () {
+      final payload = GroupJoinService.buildPendingRequestPayload(
+        uid: 'u1',
+        name: 'Willian Dias',
+        photoUrl: 'https://cdn.example.com/a.jpg',
+      );
+      expect(payload.keys.toSet(), {'uid', 'name', 'photoUrl', 'status'});
+      expect(payload['status'], 'pending');
+      expect(payload['uid'], 'u1');
+    });
+  });
 }

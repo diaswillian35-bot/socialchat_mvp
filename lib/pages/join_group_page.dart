@@ -10,6 +10,7 @@ import '../services/group_location_normalize.dart';
 import '../services/iso_country_names.dart';
 import '../services/safe_remdy_navigation.dart';
 import '../services/premium_access_service.dart';
+import '../services/remdy_launch_access.dart';
 import '../widget/remdy_app.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'group_chat_page.dart';
@@ -197,6 +198,26 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     try {
       final doc = _groupDoc!;
       final data = doc.data() ?? {};
+      final groupCountry = GroupLocationNormalize.countryCode(
+        data['countryCode'] ?? data['country'],
+      );
+      final mySnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final myData = mySnap.data() ?? {};
+      final myCountry = GroupLocationNormalize.countryCode(
+        myData['homeCountryCode'] ?? myData['countryCode'],
+      );
+      if (!RemdyLaunchAccess.canAccessGroupCountry(
+        userHomeCountryCode: myCountry,
+        groupCountryCode: groupCountry,
+      )) {
+        if (!mounted) return;
+        await RemdyLaunchAccess.showComingSoon(context);
+        return;
+      }
+
       final bool isPremiumGroup = data['isPremiumGroup'] == true;
 
       if (isPremiumGroup) {

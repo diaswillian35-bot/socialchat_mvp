@@ -20,6 +20,7 @@ import '../services/group_read_service.dart';
 import '../services/chat_read_guard.dart';
 import '../services/message_delivery_status.dart';
 import '../services/premium_access_service.dart';
+import '../services/remdy_launch_access.dart';
 import '../utils/chat_message_list_stability.dart';
 import '../services/app_notification_state.dart';
 import '../services/online_status.dart';
@@ -107,6 +108,8 @@ class _GroupChatPageState extends State<GroupChatPage>
   bool _isPremium = false;
   bool _isMaster = false;
   bool _isWorldGroup = false;
+  /// Lançamento gratuito: grupo de outro país (ou fechado) — sem msgs/membros.
+  bool _countryAccessDenied = false;
 
   String _myCountryCode = '';
   String _groupCountryCode = '';
@@ -613,9 +616,9 @@ class _GroupChatPageState extends State<GroupChatPage>
       if (!mounted) return;
       setState(() {
         _isBanned = banned;
-        _isMember = alreadyMember && !banned;
+        _isMember = alreadyMember && !banned && !_countryAccessDenied;
         _previewMode = !_isMember;
-        _canSend = _isMember && !(_isWorldGroup && !_isPremium);
+        _canSend = _computeCanSend(isMember: _isMember);
       });
 
       if (banned && mounted) {
@@ -645,6 +648,16 @@ class _GroupChatPageState extends State<GroupChatPage>
 
     if (myUid == null) {
       _toast(t.get('group_login_to_join'));
+      return;
+    }
+
+    if (_countryAccessDenied ||
+        (RemdyLaunchAccess.isFreeBrazilLaunch &&
+            !RemdyLaunchAccess.canAccessGroupCountry(
+              userHomeCountryCode: _myCountryCode,
+              groupCountryCode: _groupCountryCode,
+            ))) {
+      await RemdyLaunchAccess.showComingSoon(context);
       return;
     }
 
@@ -703,10 +716,14 @@ class _GroupChatPageState extends State<GroupChatPage>
         // Atualiza a UI IMEDIATAMENTE — não espera markAsRead (callable).
         // Antes: await markAsRead bloqueava o setState e o spinner de
         // mensagens (PERMISSION_DENIED no preview) parecia eterno.
+        if (_countryAccessDenied) {
+          await RemdyLaunchAccess.showComingSoon(context);
+          return;
+        }
         setState(() {
           _isMember = true;
           _previewMode = false;
-          _canSend = true;
+          _canSend = _computeCanSend(isMember: true);
           _didInitialRead = true;
           _isBanned = false;
         });
@@ -823,15 +840,48 @@ class _GroupChatPageState extends State<GroupChatPage>
         _isWorldGroup = myCountry.isNotEmpty &&
             groupCountry.isNotEmpty &&
             myCountry != groupCountry;
+
+        // Lançamento gratuito: Premium/Master/premiumUntil NÃO atravessam país.
+        _countryAccessDenied = !RemdyLaunchAccess.canAccessGroupCountry(
+          userHomeCountryCode: myCountry,
+          groupCountryCode: groupCountry,
+        );
+        if (_countryAccessDenied) {
+          _canSend = false;
+          _isMember = false;
+          _previewMode = false;
+        }
       });
     } catch (e) {
       debugPrint('Erro _loadGroupScope: $e');
     }
   }
 
+  bool _computeCanSend({required bool isMember}) {
+    if (_countryAccessDenied) return false;
+    if (!isMember) return false;
+    if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+      // País já validado por canAccessGroupCountry.
+      return true;
+    }
+    return !(_isWorldGroup && !_isPremium);
+  }
+
   Future<void> _bootstrap() async {
     await _loadGroupHeaderAndRole();
     await _loadGroupScope();
+    if (_countryAccessDenied) {
+      if (!mounted) return;
+      setState(() {
+        _booting = false;
+        _canSend = false;
+        _isMember = false;
+        _previewMode = false;
+      });
+      await RemdyLaunchAccess.showComingSoon(context);
+      if (mounted) Navigator.maybePop(context);
+      return;
+    }
     await _resolveMembershipMode();
     _watchGroupDoc();
 
@@ -1045,7 +1095,7 @@ class _GroupChatPageState extends State<GroupChatPage>
       if (!mounted) return;
 
       setState(() {
-        _canSend = !(_isWorldGroup && !_isPremium);
+        _canSend = _computeCanSend(isMember: false);
       });
 
       return;
@@ -1066,7 +1116,20 @@ class _GroupChatPageState extends State<GroupChatPage>
 
       if (alreadyMember) {
         if (!mounted) return;
-        setState(() => _canSend = true);
+        if (_countryAccessDenied) {
+          setState(() {
+            _canSend = false;
+            _isMember = false;
+          });
+          return;
+        }
+        setState(() => _canSend = _computeCanSend(isMember: true));
+        return;
+      }
+
+      if (_countryAccessDenied) {
+        if (!mounted) return;
+        setState(() => _canSend = false);
         return;
       }
 
@@ -1229,7 +1292,7 @@ class _GroupChatPageState extends State<GroupChatPage>
         return;
       }
 
-      text = _textC.text.trim();
+      text = ChatComposerText.prepareOutgoingText(_textC.text);
       if (text.isEmpty) return;
 
       pendingId = _msgsRef.doc().id;
@@ -3030,15 +3093,28 @@ class _GroupChatPageState extends State<GroupChatPage>
                                         maxLines: 5,
                                         keyboardType:
                                             TextInputType.multiline,
+                                        textCapitalization:
+                                            ChatComposerText
+                                                .keyboardCapitalization,
+                                        inputFormatters: [
+                                          ChatComposerText
+                                              .leadingAlphaCapitalizationFormatter,
+                                        ],
                                         textInputAction:
                                             TextInputAction.newline,
                                         decoration: InputDecoration(
                                           hintText: uid == null
                                               ? t.get('group_login_to_chat')
                                               : !_canSend
-                                                  ? (_isWorldGroup &&
-                                                          !_isPremium
-                                                      ? 'Grupo de outro país é Premium'
+                                                  ? (_countryAccessDenied ||
+                                                          (_isWorldGroup &&
+                                                              !_isPremium)
+                                                      ? (RemdyLaunchAccess
+                                                              .isFreeBrazilLaunch
+                                                          ? RemdyLaunchAccess
+                                                              .comingSoonMessage(
+                                                                  t)
+                                                          : 'Grupo de outro país é Premium')
                                                       : t.get(
                                                           'group_cannot_send_in_this_group'))
                                                   : t.get('group_type_message'),

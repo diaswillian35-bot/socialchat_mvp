@@ -99,6 +99,34 @@ class GroupJoinService {
     return 'open';
   }
 
+  /// Re-pedido após rejected/approved precisa recriar o doc (não merge).
+  /// Caso contrário só há update e o trigger `onCreate` não dispara push.
+  static bool shouldRecreatePendingRequestDoc(String? previousStatus) {
+    final s = (previousStatus ?? '').trim().toLowerCase();
+    if (s.isEmpty) return false;
+    return s != 'pending';
+  }
+
+  /// Payload canônico do pedido (link e descoberta usam o mesmo).
+  static Map<String, dynamic> buildPendingRequestPayload({
+    required String uid,
+    required String name,
+    required String photoUrl,
+  }) {
+    return {
+      'uid': uid,
+      'name': name,
+      'photoUrl': photoUrl,
+      'status': 'pending',
+    };
+  }
+
+  /// Link (`joinByInviteCode`) e descoberta (`joinByGroupId`) convergem aqui
+  /// para `approval` → mesma escrita de `pendingRequests`.
+  static String approvalJoinEntryPoint({required bool viaInviteCode}) {
+    return viaInviteCode ? 'link_or_code' : 'discovery_or_id';
+  }
+
   static List<String> _membersOf(Map<String, dynamic> data) {
     final raw = data['members'];
     if (raw is! List) return <String>[];
@@ -347,19 +375,23 @@ class GroupJoinService {
 
           final userSnap = await tx.get(_db.collection('users').doc(userUid));
           final userData = userSnap.data() ?? <String, dynamic>{};
-
-          tx.set(
-            pendingRef,
-            {
-              'uid': userUid,
-              'name': (userData['name'] ?? '').toString(),
-              'photoUrl': (userData['photoUrl'] ?? userData['avatarUrl'] ?? '')
-                  .toString(),
-              'status': 'pending',
-              'createdAt': FieldValue.serverTimestamp(),
-            },
-            SetOptions(merge: true),
+          final payload = buildPendingRequestPayload(
+            uid: userUid,
+            name: (userData['name'] ?? '').toString(),
+            photoUrl: (userData['photoUrl'] ?? userData['avatarUrl'] ?? '')
+                .toString(),
           );
+
+          // Re-pedido após rejected/approved: apagar doc antigo e criar de novo
+          // para disparar onCreate (além do onUpdate no servidor).
+          if (shouldRecreatePendingRequestDoc(status)) {
+            tx.delete(pendingRef);
+          }
+
+          tx.set(pendingRef, {
+            ...payload,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
 
           return GroupJoinResult(
             outcome: GroupJoinOutcome.pendingCreated,

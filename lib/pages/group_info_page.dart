@@ -11,13 +11,16 @@ import 'package:share_plus/share_plus.dart';
 import '../l10n/app_texts.dart';
 import '../services/group_ban_service.dart';
 import '../services/group_discovery_logic.dart';
+import '../services/group_hidden_prefs_service.dart';
 import '../services/group_lifecycle_service.dart';
 import '../services/group_location_normalize.dart';
 import '../services/group_roles_service.dart';
 import '../services/group_settings_service.dart';
 import '../services/group_join_request_service.dart';
+import '../services/group_pending_join_badge_logic.dart';
 import '../services/international_chat_service.dart';
 import '../services/iso_country_names.dart';
+import '../widgets/group_pending_request_row.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -711,7 +714,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     );
   }
 
-  Future<void> _leaveGroup() async {
+  Future<void> _leaveGroup({bool alsoHide = false}) async {
     final t = AppTexts.current;
     final myUid = _uid;
     if (myUid == null) return;
@@ -735,11 +738,17 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(t.get('leaveGroup')),
+        title: Text(
+          alsoHide
+              ? t.get('group_leave_and_hide')
+              : t.get('leaveGroup'),
+        ),
         content: Text(
           _isOwner
               ? t.get('group_transfer_leave_confirm')
-              : t.get('group_leave_confirm'),
+              : alsoHide
+                  ? t.get('group_leave_and_hide_confirm')
+                  : t.get('group_leave_confirm'),
         ),
         actions: [
           TextButton(
@@ -748,7 +757,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(t.get('leave')),
+            child: Text(alsoHide ? t.get('group_leave_and_hide') : t.get('leave')),
           ),
         ],
       ),
@@ -765,8 +774,20 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
         );
       }
       await GroupLifecycleService.leaveGroup(groupId: widget.groupId);
+      if (alsoHide) {
+        final name = (_groupData?['name'] ?? '').toString();
+        await GroupHiddenPrefsService().hideGroup(
+          uid: myUid,
+          groupId: widget.groupId,
+          groupName: name,
+        );
+      }
       if (!mounted) return;
-      _toast(t.get('group_left_success'));
+      _toast(
+        alsoHide
+            ? t.get('group_left_and_hidden_success')
+            : t.get('group_left_success'),
+      );
       Navigator.pop(context, true);
     } on FirebaseFunctionsException catch (e) {
       final key = _isOwner && e.message?.toLowerCase().contains('owner') != true
@@ -782,6 +803,76 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
       );
     } catch (e) {
       _toast('${t.get('group_leave_error')}: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _hideGroupForMe() async {
+    final t = AppTexts.current;
+    final myUid = _uid;
+    if (myUid == null) return;
+
+    final isMember = GroupDiscoveryLogic.isParticipating(
+      data: _groupData ?? {},
+      uid: myUid,
+    );
+    if (isMember) {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(t.get('group_hide_for_me')),
+          content: Text(t.get('group_hide_must_leave_first')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(t.get('cancel')),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _leaveGroup(alsoHide: true);
+              },
+              child: Text(t.get('group_leave_and_hide')),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(t.get('group_hide_for_me')),
+        content: Text(t.get('group_hide_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t.get('group_hide_for_me')),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      setState(() => _saving = true);
+      final name = (_groupData?['name'] ?? '').toString();
+      await GroupHiddenPrefsService().hideGroup(
+        uid: myUid,
+        groupId: widget.groupId,
+        groupName: name,
+      );
+      if (!mounted) return;
+      _toast(t.get('group_hidden_success'));
+      Navigator.pop(context, true);
+    } catch (e) {
+      _toast('${t.get('group_hide_error')}: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1404,147 +1495,134 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
 
   Widget _pendingRequestsCard() {
     return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Pedidos pendentes',
-            style: TextStyle(
-              color: _text,
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 12),
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _groupRef
-                .collection('pendingRequests')
-                .where('status', isEqualTo: 'pending')
-                .snapshots(),
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _groupRef
+            .collection('pendingRequests')
+            .where('status', isEqualTo: 'pending')
+            .snapshots(),
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
 
-              final docs = snap.data?.docs ?? [];
+          final docs = snap.data?.docs ?? [];
+          final badgeLabel =
+              GroupPendingJoinBadgeLogic.formatBadge(docs.length);
 
-              if (docs.isEmpty) {
-                return const Text(
-                  'Nenhum pedido pendente.',
-                  style: TextStyle(
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      AppTexts.current.get('group_pending_requests'),
+                      style: const TextStyle(
+                        color: _text,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  if (badgeLabel != null)
+                    Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 22,
+                        minHeight: 22,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDC2626),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        badgeLabel,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (docs.isEmpty)
+                Text(
+                  AppTexts.current.get('group_no_pending_requests'),
+                  style: const TextStyle(
                     color: _muted,
                     fontWeight: FontWeight.w600,
                   ),
-                );
-              }
+                )
+              else
+                Column(
+                  children: docs.map((reqDoc) {
+                    final req = reqDoc.data();
+                    final requestUid = reqDoc.id.trim().isNotEmpty
+                        ? reqDoc.id.trim()
+                        : (req['uid'] ?? '').toString().trim();
+                    final busyThis = _busyJoinRequestUid == requestUid;
+                    final busyAny = _busyJoinRequestUid != null;
 
-              return Column(
-                children: docs.map((reqDoc) {
-                  final req = reqDoc.data();
-                  final requestUid = reqDoc.id.trim().isNotEmpty
-                      ? reqDoc.id.trim()
-                      : (req['uid'] ?? '').toString().trim();
-                  final busyThis = _busyJoinRequestUid == requestUid;
-                  final busyAny = _busyJoinRequestUid != null;
+                    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      future: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(requestUid)
+                          .get(),
+                      builder: (context, userSnap) {
+                        final userData = userSnap.data?.data() ?? {};
+                        final userName =
+                            (userData['name'] ?? 'Usuário').toString().trim();
+                        final photoUrl =
+                            (userData['photoUrl'] ?? '').toString().trim();
+                        final avatarUrl =
+                            (userData['avatarUrl'] ?? '').toString().trim();
+                        final pic =
+                            photoUrl.isNotEmpty ? photoUrl : avatarUrl;
 
-                  return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                    future: FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(requestUid)
-                        .get(),
-                    builder: (context, userSnap) {
-                      final userData = userSnap.data?.data() ?? {};
-                      final userName =
-                          (userData['name'] ?? 'Usuário').toString().trim();
-                      final photoUrl =
-                          (userData['photoUrl'] ?? '').toString().trim();
-                      final avatarUrl =
-                          (userData['avatarUrl'] ?? '').toString().trim();
-                      final pic = photoUrl.isNotEmpty ? photoUrl : avatarUrl;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: _border),
-                        ),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(999),
-                              child: Container(
-                                width: 42,
-                                height: 42,
-                                color: const Color(0xFFF1F5F9),
-                                child: pic.isNotEmpty
-                                    ? Image.network(
-                                        pic,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) =>
-                                            const Icon(Icons.person),
-                                      )
-                                    : const Icon(Icons.person, color: _muted),
-                              ),
+                        return GroupPendingRequestRow(
+                          userName: userName.isEmpty ? 'Usuário' : userName,
+                          avatar: ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: Container(
+                              width: 42,
+                              height: 42,
+                              color: const Color(0xFFF1F5F9),
+                              child: pic.isNotEmpty
+                                  ? Image.network(
+                                      pic,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.person),
+                                    )
+                                  : const Icon(Icons.person, color: _muted),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                userName.isEmpty ? 'Usuário' : userName,
-                                style: const TextStyle(
-                                  color: _text,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ),
-                            if (busyThis)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 12),
-                                child: SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              )
-                            else ...[
-                              TextButton(
-                                onPressed: busyAny
-                                    ? null
-                                    : () => _rejectJoinRequest(requestUid),
-                                child: Text(
-                                  AppTexts.current.get('group_join_reject'),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              ElevatedButton(
-                                onPressed: busyAny
-                                    ? null
-                                    : () => _approveJoinRequest(requestUid),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _remdyBlue,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                ),
-                                child: Text(
-                                  AppTexts.current.get('group_join_approve'),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ],
+                          ),
+                          rejectLabel:
+                              AppTexts.current.get('group_join_reject'),
+                          approveLabel:
+                              AppTexts.current.get('group_join_approve'),
+                          onReject: () => _rejectJoinRequest(requestUid),
+                          onApprove: () => _approveJoinRequest(requestUid),
+                          busy: busyThis,
+                          busyAny: busyAny,
+                          borderColor: _border,
+                          textColor: _text,
+                          mutedColor: _muted,
+                          primaryColor: _remdyBlue,
+                        );
+                      },
+                    );
+                  }).toList(),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1871,7 +1949,8 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton.icon(
-                              onPressed: _saving ? null : _leaveGroup,
+                              onPressed:
+                                  _saving ? null : () => _leaveGroup(),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: _remdyBlue,
                                 side: const BorderSide(color: _border),
@@ -1884,6 +1963,45 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                               icon: const Icon(Icons.logout_rounded),
                               label: Text(
                                 t.get('leaveGroup'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _saving
+                                  ? null
+                                  : () => _leaveGroup(alsoHide: true),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: _remdyBlue,
+                                side: const BorderSide(color: _border),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                              ),
+                              icon: const Icon(Icons.visibility_off_outlined),
+                              label: Text(
+                                t.get('group_leave_and_hide'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: TextButton.icon(
+                              onPressed: _saving ? null : _hideGroupForMe,
+                              icon: const Icon(Icons.remove_circle_outline),
+                              label: Text(
+                                t.get('group_hide_for_me'),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                 ),

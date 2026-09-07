@@ -7,14 +7,19 @@ import 'package:flutter/material.dart';
 
 import 'create_group_page.dart';
 import 'group_chat_page.dart';
+import 'hidden_groups_page.dart';
 import '../l10n/app_texts.dart';
 import '../services/group_discovery_logic.dart';
 import '../services/group_discovery_service.dart';
+import '../services/group_hidden_prefs_service.dart';
 import '../services/group_lifecycle_service.dart';
 import '../services/group_location_normalize.dart';
 import '../services/groups_list_logic.dart';
 import '../services/iso_country_names.dart';
 import '../services/premium_access_service.dart';
+import '../services/remdy_launch_access.dart';
+import '../services/group_pending_join_badge_service.dart';
+import '../services/group_pending_join_badge_logic.dart';
 
 class GroupsListPage extends StatefulWidget {
   const GroupsListPage({super.key});
@@ -52,11 +57,14 @@ class GroupsListPageState extends State<GroupsListPage> {
   bool _profileLoaded = false;
   int _retryToken = 0;
   Set<String> _pendingIds = {};
+  Set<String> _hiddenIds = {};
   String _loadedLocaleCode = '';
   // Premium ainda é lido do perfil (join internacional / chat); descoberta
   // geográfica usa sempre o país do usuário.
   // ignore: unused_field
   bool _isPremium = false;
+
+  final GroupHiddenPrefsService _hiddenPrefs = GroupHiddenPrefsService();
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -113,6 +121,7 @@ class GroupsListPageState extends State<GroupsListPage> {
           lngRaw is num ? lngRaw.toDouble() : double.tryParse('$lngRaw');
 
       final pending = await _discovery.loadPendingGroupIds(myUid);
+      final hidden = await _hiddenPrefs.loadHiddenIds(myUid);
 
       if (!mounted) return;
       setState(() {
@@ -124,6 +133,7 @@ class GroupsListPageState extends State<GroupsListPage> {
         _myCityLongitude = cityLng;
         _isPremium = PremiumAccessService.isPremiumActiveFromData(data);
         _pendingIds = pending;
+        _hiddenIds = hidden;
         _profileLoaded = true;
       });
       await _ensureTabLoaded(_tab, force: true);
@@ -386,6 +396,17 @@ class GroupsListPageState extends State<GroupsListPage> {
   Future<void> _openGroup(GroupDiscoveryItem item) async {
     final name =
         (item.data['name'] ?? AppTexts.current.get('group')).toString().trim();
+    final groupCountry = GroupLocationNormalize.countryCode(
+      item.data['countryCode'] ?? item.data['country'],
+    );
+    if (!RemdyLaunchAccess.canAccessGroupCountry(
+      userHomeCountryCode: _myCountryCode,
+      groupCountryCode: groupCountry,
+    )) {
+      await RemdyLaunchAccess.showComingSoon(context);
+      return;
+    }
+
     final wasMember = item.isMember ||
         GroupDiscoveryLogic.isParticipating(
           data: item.data,
@@ -485,7 +506,6 @@ class GroupsListPageState extends State<GroupsListPage> {
       data: data,
       uid: myUid,
     );
-    if (!isMember) return;
 
     final scheme = Theme.of(context).colorScheme;
 
@@ -509,7 +529,7 @@ class GroupsListPageState extends State<GroupsListPage> {
                     await _deleteGroupFromList(groupId: groupId);
                   },
                 ),
-              if (!isOwner)
+              if (isMember && !isOwner) ...[
                 ListTile(
                   leading: Icon(Icons.logout_rounded, color: scheme.primary),
                   title: Text(
@@ -519,6 +539,81 @@ class GroupsListPageState extends State<GroupsListPage> {
                   onTap: () async {
                     Navigator.pop(context);
                     await _leaveGroupFromList(groupId: groupId);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.visibility_off_outlined,
+                    color: scheme.primary,
+                  ),
+                  title: Text(
+                    t.get('group_leave_and_hide'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _leaveGroupFromList(
+                      groupId: groupId,
+                      alsoHide: true,
+                    );
+                  },
+                ),
+              ],
+              if (!isMember)
+                ListTile(
+                  leading: Icon(
+                    Icons.remove_circle_outline,
+                    color: scheme.primary,
+                  ),
+                  title: Text(
+                    t.get('group_hide_for_me'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(t.get('group_hide_confirm_short')),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _hideGroupFromList(
+                      groupId: groupId,
+                      data: data,
+                    );
+                  },
+                ),
+              if (isMember)
+                ListTile(
+                  leading: Icon(
+                    Icons.remove_circle_outline,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    t.get('group_hide_for_me'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(t.get('group_hide_must_leave_first')),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await showDialog<void>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: Text(t.get('group_hide_for_me')),
+                        content: Text(t.get('group_hide_must_leave_first')),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: Text(t.get('cancel')),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _leaveGroupFromList(
+                                groupId: groupId,
+                                alsoHide: true,
+                              );
+                            },
+                            child: Text(t.get('group_leave_and_hide')),
+                          ),
+                        ],
+                      ),
+                    );
                   },
                 ),
               ListTile(
@@ -608,13 +703,22 @@ class GroupsListPageState extends State<GroupsListPage> {
     }
   }
 
-  Future<void> _leaveGroupFromList({required String groupId}) async {
+  Future<void> _leaveGroupFromList({
+    required String groupId,
+    bool alsoHide = false,
+  }) async {
     final t = AppTexts.current;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(t.get('leaveGroup')),
-        content: Text(t.get('group_leave_confirm')),
+        title: Text(
+          alsoHide ? t.get('group_leave_and_hide') : t.get('leaveGroup'),
+        ),
+        content: Text(
+          alsoHide
+              ? t.get('group_leave_and_hide_confirm')
+              : t.get('group_leave_confirm'),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -622,7 +726,9 @@ class GroupsListPageState extends State<GroupsListPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(t.get('leave')),
+            child: Text(
+              alsoHide ? t.get('group_leave_and_hide') : t.get('leave'),
+            ),
           ),
         ],
       ),
@@ -631,22 +737,39 @@ class GroupsListPageState extends State<GroupsListPage> {
 
     try {
       await GroupLifecycleService.leaveGroup(groupId: groupId);
+      final uid = _uid;
+      if (alsoHide && uid != null) {
+        await _hiddenPrefs.hideGroup(uid: uid, groupId: groupId);
+        _hiddenIds = {..._hiddenIds, groupId};
+      }
       if (!mounted) return;
       setState(() {
         _caches[GroupDiscoveryTab.mine]!
             .items
             .removeWhere((e) => e.id == groupId);
-        for (final t in [
-          GroupDiscoveryTab.city,
-          GroupDiscoveryTab.region,
-          GroupDiscoveryTab.country,
-        ]) {
-          _caches[t]!.cacheKey = '';
-          _caches[t]!.loadedOnce = false;
+        if (alsoHide) {
+          for (final c in _caches.values) {
+            c.items.removeWhere((e) => e.id == groupId);
+          }
+        } else {
+          for (final t in [
+            GroupDiscoveryTab.city,
+            GroupDiscoveryTab.region,
+            GroupDiscoveryTab.country,
+          ]) {
+            _caches[t]!.cacheKey = '';
+            _caches[t]!.loadedOnce = false;
+          }
         }
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(t.get('group_left_success'))),
+        SnackBar(
+          content: Text(
+            alsoHide
+                ? t.get('group_left_and_hidden_success')
+                : t.get('group_left_success'),
+          ),
+        ),
       );
       await _ensureTabLoaded(_tab, force: true);
     } on FirebaseFunctionsException catch (e) {
@@ -664,6 +787,75 @@ class GroupsListPageState extends State<GroupsListPage> {
         SnackBar(content: Text('${t.get('group_leave_error')}: $e')),
       );
     }
+  }
+
+  Future<void> _hideGroupFromList({
+    required String groupId,
+    required Map<String, dynamic> data,
+  }) async {
+    final t = AppTexts.current;
+    final uid = _uid;
+    if (uid == null) return;
+
+    final isMember = GroupDiscoveryLogic.isParticipating(
+      data: data,
+      uid: uid,
+    );
+    if (isMember) {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(t.get('group_hide_for_me')),
+          content: Text(t.get('group_hide_must_leave_first')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(t.get('cancel')),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _leaveGroupFromList(groupId: groupId, alsoHide: true);
+              },
+              child: Text(t.get('group_leave_and_hide')),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(t.get('group_hide_for_me')),
+        content: Text(t.get('group_hide_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t.get('group_hide_for_me')),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    final name = (data['name'] ?? '').toString();
+    await _hiddenPrefs.hideGroup(uid: uid, groupId: groupId, groupName: name);
+    if (!mounted) return;
+    setState(() {
+      _hiddenIds = {..._hiddenIds, groupId};
+      for (final c in _caches.values) {
+        c.items.removeWhere((e) => e.id == groupId);
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(t.get('group_hidden_success'))),
+    );
   }
 
   int _membersCount(Map<String, dynamic> data) {
@@ -718,9 +910,13 @@ class GroupsListPageState extends State<GroupsListPage> {
   }
 
   List<GroupDiscoveryItem> _visibleItems(_TabCache cache) {
+    final withoutHidden = GroupDiscoveryLogic.excludeHidden(
+      items: cache.items,
+      hiddenIds: _hiddenIds,
+    );
     final q = _searchC.text.trim().toLowerCase();
-    if (q.isEmpty) return cache.items;
-    return cache.items.where((item) {
+    if (q.isEmpty) return withoutHidden;
+    return withoutHidden.where((item) {
       final data = item.data;
       final name = (data['name'] ?? '').toString().toLowerCase();
       final bio = (data['bio'] ?? '').toString().toLowerCase();
@@ -752,7 +948,7 @@ class GroupsListPageState extends State<GroupsListPage> {
       locationOk: locationOk || !GroupDiscoveryLogic.needsLocation(_tab),
       loading: !_profileLoaded || (cache.loading && !cache.loadedOnce),
       hasError: cache.error != null,
-      hasItems: cache.items.isNotEmpty,
+      hasItems: _visibleItems(cache).isNotEmpty,
     );
 
     return Scaffold(
@@ -772,6 +968,21 @@ class GroupsListPageState extends State<GroupsListPage> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: t.get('group_hidden_list_title'),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HiddenGroupsPage()),
+              );
+              final uid = _uid;
+              if (uid != null) {
+                final hidden = await _hiddenPrefs.loadHiddenIds(uid);
+                if (mounted) setState(() => _hiddenIds = hidden);
+              }
+            },
+            icon: Icon(Icons.visibility_off_outlined, color: scheme.primary),
+          ),
           IconButton(
             tooltip: t.get('create_group_title'),
             onPressed: _openCreate,
@@ -1024,12 +1235,19 @@ class GroupsListPageState extends State<GroupsListPage> {
     final myUnread = myUid == null ? 0 : _readMyUnread(data, myUid);
     final hasUnread = myUnread > 0 && isMember;
     final avatarUrl = (data['avatarUrl'] ?? '').toString().trim();
+    final lockedPrivate =
+        GroupDiscoveryLogic.shouldShowLockedPrivateDiscoveryCard(
+      data: data,
+      isMember: isMember,
+    );
 
     String actionLabel;
     if (isMember) {
       actionLabel = t.get('open');
     } else if (pending) {
       actionLabel = t.get('groups_request_pending');
+    } else if (lockedPrivate) {
+      actionLabel = t.get('private_group');
     } else {
       actionLabel = t.get('preview');
     }
@@ -1037,9 +1255,7 @@ class GroupsListPageState extends State<GroupsListPage> {
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () => _openGroup(item),
-      onLongPress: isMember
-          ? () => _showGroupActions(groupId: item.id, data: data)
-          : null,
+      onLongPress: () => _showGroupActions(groupId: item.id, data: data),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(14),
@@ -1088,7 +1304,7 @@ class GroupsListPageState extends State<GroupsListPage> {
                       Expanded(
                         child: Text(
                           name.isEmpty ? t.get('group') : name,
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: scheme.onSurface,
@@ -1096,6 +1312,52 @@ class GroupsListPageState extends State<GroupsListPage> {
                             fontSize: 16,
                           ),
                         ),
+                      ),
+                      if (lockedPrivate) ...[
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.lock_rounded,
+                          size: 18,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ],
+                      StreamBuilder<GroupPendingJoinCounts>(
+                        stream: GroupPendingJoinBadgeService.instance.stream,
+                        builder: (context, pendingSnap) {
+                          final pendingLabel =
+                              GroupPendingJoinBadgeLogic.formatBadge(
+                            pendingSnap.data?.forGroup(item.id) ?? 0,
+                          );
+                          if (pendingLabel == null) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 24,
+                                minHeight: 24,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 4,
+                              ),
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFDC2626),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                pendingLabel,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                       if (hasUnread)
                         Container(
@@ -1134,30 +1396,44 @@ class GroupsListPageState extends State<GroupsListPage> {
                       fontSize: 13,
                     ),
                   ),
-                  const SizedBox(height: 5),
-                  Text(
-                    '$members ${members == 1 ? t.get('member') : t.get('members')}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                  if (bio.isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                  if (lockedPrivate) ...[
+                    const SizedBox(height: 5),
                     Text(
-                      bio,
-                      maxLines: 2,
+                      t.get('private_group'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      '$members ${members == 1 ? t.get('member') : t.get('members')}',
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                         fontSize: 12,
-                        height: 1.25,
                       ),
                     ),
+                    if (bio.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        bio,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
                   ],
                   const SizedBox(height: 10),
                   Row(
@@ -1170,13 +1446,13 @@ class GroupsListPageState extends State<GroupsListPage> {
                             vertical: 7,
                           ),
                           decoration: BoxDecoration(
-                            color: isMember || pending
+                            color: isMember || pending || lockedPrivate
                                 ? scheme.surfaceContainerHighest
                                     .withValues(alpha: 0.5)
                                 : scheme.primary,
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: isMember || pending
+                              color: isMember || pending || lockedPrivate
                                   ? scheme.outlineVariant
                                   : scheme.primary,
                             ),
@@ -1184,7 +1460,7 @@ class GroupsListPageState extends State<GroupsListPage> {
                           child: Text(
                             actionLabel,
                             style: TextStyle(
-                              color: isMember || pending
+                              color: isMember || pending || lockedPrivate
                                   ? scheme.onSurfaceVariant
                                   : scheme.onPrimary,
                               fontWeight: FontWeight.w800,
