@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../services/presence_session_state.dart';
 import '../services/presence_watch.dart';
 
-/// Bolinha de presença — somente Realtime Database (`presence/{uid}/connections`).
+/// Bolinha de presença — RTDB via hub tri-estado.
 ///
-/// Listener ativo só enquanto o widget estiver montado.
+/// Verde = online confirmado · Cinza = offline confirmado ·
+/// Neutro = unavailable/carregando (nunca cinza por erro).
 class OnlineDot extends StatelessWidget {
   final String uid;
   final double size;
@@ -19,21 +21,38 @@ class OnlineDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (uid.trim().isEmpty) return _dot(false);
+    if (uid.trim().isEmpty) {
+      return _dot(PresenceReadStatus.offline);
+    }
 
-    return StreamBuilder<bool>(
-      stream: PresenceWatch.watchIsOnline(uid),
-      // Avoid forcing a false flash before the first RTDB/hub event.
-      builder: (context, snap) => _dot(snap.data == true),
+    return StreamBuilder<PresenceReadStatus>(
+      stream: PresenceWatch.watchStatus(uid),
+      builder: (context, snap) {
+        final status = snap.data ?? PresenceReadStatus.unavailable;
+        return _dot(status);
+      },
     );
   }
 
-  Widget _dot(bool isOnline) {
+  Widget _dot(PresenceReadStatus status) {
+    final Color color;
+    switch (status) {
+      case PresenceReadStatus.online:
+        color = Colors.green;
+        break;
+      case PresenceReadStatus.offline:
+        color = const Color(0xFFCBD5E1);
+        break;
+      case PresenceReadStatus.unavailable:
+        color = const Color(0xFFE5E7EB);
+        break;
+    }
+
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: isOnline ? Colors.green : const Color(0xFFCBD5E1),
+        color: color,
         shape: BoxShape.circle,
         border: showBorder ? Border.all(color: Colors.white, width: 2) : null,
       ),

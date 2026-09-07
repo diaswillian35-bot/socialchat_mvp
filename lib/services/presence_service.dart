@@ -10,16 +10,20 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'online_status.dart';
+import 'presence_diagnostics.dart';
+import 'presence_display_hub.dart';
 import 'presence_lifecycle.dart';
 import 'presence_rtdb_config.dart';
 import 'presence_heartbeat_gate.dart';
+import 'presence_session_state.dart';
+import 'presence_writer_recovery.dart';
 
 /// Presença via Realtime Database.
 ///
 /// Cliente escreve **somente** `presence/{uid}/connections/{connectionId}`.
 /// Contadores: Cloud Function atômica (Firestore) + mirror RTDB.
 ///
-/// `resumed` curto **não** recria conexão se ela ainda está ativa.
+/// Sessão amarrada ao Auth (não ao lifetime do MainShell).
 class PresenceService with WidgetsBindingObserver {
   PresenceService._();
   static final PresenceService instance = PresenceService._();
@@ -32,6 +36,7 @@ class PresenceService with WidgetsBindingObserver {
   static const _legacyPrefsConnectionKey = 'remdy_presence_connection_id';
 
   final _fs = FirebaseFirestore.instance;
+  final PresenceDiagnostics diagnostics = PresenceDiagnostics();
 
   FirebaseDatabase get _rtdb => FirebaseDatabase.instanceFor(
         app: Firebase.app(),
@@ -40,7 +45,9 @@ class PresenceService with WidgetsBindingObserver {
 
   Timer? _deferredOfflineTimer;
   Timer? _heartbeatTimer;
+  Timer? _recoveryTimer;
   StreamSubscription<DatabaseEvent>? _connectedSub;
+  StreamSubscription<User?>? _authSub;
   Future<void> _opChain = Future<void>.value();
   bool _started = false;
   bool _foreground = true;
@@ -48,7 +55,11 @@ class PresenceService with WidgetsBindingObserver {
   bool _connectionActive = false;
   bool _legacyPrefsCleared = false;
   bool _rtdbConnected = false;
+  bool _recoveryInFlight = false;
+  PresenceSessionPhase _phase = PresenceSessionPhase.offline;
+  DateTime? _lastHeartbeatAt;
   final SeparateHeartbeatGate _hbGate = SeparateHeartbeatGate();
+  final PresenceWriterRecovery _recovery = PresenceWriterRecovery();
   /// Último modo sanitizado: `legacy` | `new` | `denied` | `dual` | `probed`.
   String _heartbeatDiag = 'unknown';
 
@@ -59,11 +70,41 @@ class PresenceService with WidgetsBindingObserver {
   DatabaseReference? _connectionRef;
 
   String? get debugConnectionId => _connectionId;
+  String? get debugActiveUid => _uid;
   bool get debugConnectionActive => _connectionActive;
+  bool get debugStarted => _started;
+  bool get debugRecoveryScheduled => _recoveryTimer != null;
+  int get debugRecoveryFailures => _recovery.consecutiveFailures;
   String get debugHeartbeatDiag => _heartbeatDiag;
   bool get debugSeparateHeartbeatDenied => _hbGate.denied;
   int get debugSeparateHeartbeatAttempts => _hbGate.attempts;
   bool get debugSeparateHeartbeatProbed => _hbGate.probedThisSession;
+  PresenceSessionPhase get debugPhase => _phase;
+  int? get debugHeartbeatAgeSec {
+    final at = _lastHeartbeatAt;
+    if (at == null) return null;
+    return DateTime.now().difference(at).inSeconds;
+  }
+
+  void _setPhase(PresenceSessionPhase next, {required String code}) {
+    if (_phase == next) return;
+    final from = _phase;
+    _phase = next;
+    diagnostics.record(
+      PresenceDiagEvent(
+        code: code,
+        at: DateTime.now(),
+        role: 'writer',
+        fromPhase: from.name,
+        toPhase: next.name,
+        attempt: _recovery.consecutiveFailures,
+        heartbeatAgeSec: debugHeartbeatAgeSec,
+      ),
+    );
+    if (kDebugMode) {
+      debugPrint('PresenceWriter: phase ${from.name}→${next.name} ($code)');
+    }
+  }
 
   @Deprecated('Use PresenceWatch')
   static bool isPublicUserOnline(Map<String, dynamic> data, DateTime now) {
@@ -94,6 +135,180 @@ class PresenceService with WidgetsBindingObserver {
     }
   }
 
+  /// Sanitized writer diagnostics (Profile/Release-safe — no UID/token/path).
+  void _logWriterFailure(String context, [Object? error]) {
+    final reason = error != null
+        ? PresenceWriterRecovery.sanitizeError(error)
+        : 'no_connection';
+    diagnostics.record(
+      PresenceDiagEvent(
+        code: 'writer_$context',
+        at: DateTime.now(),
+        role: 'writer',
+        fromPhase: _phase.name,
+        toPhase: PresenceSessionPhase.recovering.name,
+        errorCategory: reason,
+        attempt: _recovery.consecutiveFailures,
+        heartbeatAgeSec: debugHeartbeatAgeSec,
+      ),
+    );
+    debugPrint(
+      'PresenceWriter: $context reason=$reason '
+      'phase=${_phase.name} started=$_started fg=$_foreground '
+      'rtdb=$_rtdbConnected conn=$_connectionActive',
+    );
+  }
+
+  Future<bool> _ensureAuthReady({bool forceRefresh = false}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    if (_uid != null && user.uid != _uid) {
+      _logWriterFailure('auth_uid_mismatch');
+      return false;
+    }
+    try {
+      await user.getIdToken(forceRefresh);
+      return true;
+    } catch (e) {
+      _logWriterFailure('auth_token', e);
+      return false;
+    }
+  }
+
+  void _listenAuth() {
+    _authSub ??= FirebaseAuth.instance.idTokenChanges().listen((user) {
+      if (user == null) {
+        if (_started || _uid != null) {
+          unawaited(stop());
+        }
+        return;
+      }
+      // Auth pronto mas writer ainda não iniciado → start (cold start / TF).
+      if (!_started) {
+        unawaited(start());
+        return;
+      }
+      if (_uid != null && user.uid != _uid) {
+        unawaited(_restartForUid(user.uid));
+        return;
+      }
+      if (_foreground && !_connectionActive) {
+        unawaited(_attemptWriterRecovery(trigger: 'auth_token'));
+      }
+    }, onError: (Object e) {
+      _logWriterFailure('auth_stream', e);
+      _setPhase(
+        PresenceSessionMachine.afterTransientFailure(
+          started: _started,
+          foreground: _foreground,
+        ),
+        code: 'auth_stream_error',
+      );
+    });
+  }
+
+  Future<void> _restartForUid(String newUid) async {
+    await stop();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && user.uid == newUid) {
+      await start();
+    }
+  }
+
+  void _cancelRecovery() {
+    _recoveryTimer?.cancel();
+    _recoveryTimer = null;
+    _recoveryInFlight = false;
+  }
+
+  void _scheduleWriterRecovery({required String trigger}) {
+    if (!_recovery.shouldRecover(
+      started: _started,
+      foreground: _foreground,
+      connectionActive: _connectionActive,
+      hasConnectionRef: _connectionRef != null,
+    )) {
+      _cancelRecovery();
+      return;
+    }
+
+    _recoveryTimer?.cancel();
+    final now = DateTime.now();
+    final delay = _recovery.delayUntilNextAttempt(now);
+    if (delay == Duration.zero) {
+      unawaited(_attemptWriterRecovery(trigger: trigger));
+      return;
+    }
+
+    _recoveryTimer = Timer(delay, () {
+      _recoveryTimer = null;
+      unawaited(_attemptWriterRecovery(trigger: '${trigger}_timer'));
+    });
+  }
+
+  Future<void> _attemptWriterRecovery({required String trigger}) async {
+    if (_recoveryInFlight) return;
+    if (!_recovery.shouldRecover(
+      started: _started,
+      foreground: _foreground,
+      connectionActive: _connectionActive,
+      hasConnectionRef: _connectionRef != null,
+    )) {
+      _cancelRecovery();
+      return;
+    }
+
+    _recoveryInFlight = true;
+    final now = DateTime.now();
+    if (!_recovery.canAttemptNow(now)) {
+      _recoveryInFlight = false;
+      _scheduleWriterRecovery(trigger: trigger);
+      return;
+    }
+
+    _recovery.markAttempt(now);
+    try {
+      final forceToken = trigger.contains('permission') ||
+          trigger.contains('auth') ||
+          _recovery.consecutiveFailures >= 2;
+      if (!await _ensureAuthReady(forceRefresh: forceToken)) {
+        _recovery.markFailure(now);
+        _logWriterFailure('recovery_$trigger');
+        _setPhase(
+          PresenceSessionMachine.afterTransientFailure(
+            started: _started,
+            foreground: _foreground,
+          ),
+          code: 'recovery_auth_wait',
+        );
+        _recoveryInFlight = false;
+        _scheduleWriterRecovery(trigger: 'auth_wait');
+        return;
+      }
+
+      _setPhase(PresenceSessionPhase.recovering, code: 'recovery_$trigger');
+      await _goOnline(forceNew: !_connectionActive);
+
+      if (_connectionActive && _connectionRef != null) {
+        _recovery.markSuccess();
+        _setPhase(PresenceSessionPhase.online, code: 'recovery_ok');
+        _cancelRecovery();
+      } else {
+        _recovery.markFailure(now);
+        _logWriterFailure('recovery_$trigger');
+        _setPhase(PresenceSessionPhase.recovering, code: 'recovery_retry');
+        _recoveryInFlight = false;
+        _scheduleWriterRecovery(trigger: 'retry');
+      }
+    } catch (e) {
+      _recovery.markFailure(now);
+      _logWriterFailure('recovery_$trigger', e);
+      _setPhase(PresenceSessionPhase.recovering, code: 'recovery_exception');
+      _recoveryInFlight = false;
+      _scheduleWriterRecovery(trigger: 'retry');
+    }
+  }
+
   Future<void> _clearLegacyPersistedConnectionId() async {
     if (_legacyPrefsCleared) return;
     _legacyPrefsCleared = true;
@@ -120,26 +335,54 @@ class PresenceService with WidgetsBindingObserver {
     if (_started && _uid == user.uid) {
       _cancelDeferredOffline();
       _foreground = true;
+      _listenAuth();
       _listenConnected();
+      if (!await _ensureAuthReady()) {
+        _setPhase(PresenceSessionPhase.starting, code: 'restart_auth_wait');
+        _scheduleWriterRecovery(trigger: 'restart_auth_wait');
+        return;
+      }
       if (!_connectionActive || _connectionRef == null) {
+        _setPhase(PresenceSessionPhase.recovering, code: 'restart_no_conn');
         await _goOnline(forceNew: false);
+        if (!_connectionActive) {
+          _scheduleWriterRecovery(trigger: 'restart_go_online');
+        } else {
+          _setPhase(PresenceSessionPhase.online, code: 'restart_online');
+        }
       } else {
         await _ensureOnDisconnect(refreshTimestamp: true);
         _startHeartbeat();
+        _recovery.markSuccess();
+        _cancelRecovery();
+        _setPhase(PresenceSessionPhase.online, code: 'restart_keepalive');
       }
       return;
     }
 
     _started = true;
     _foreground = true;
+    _setPhase(PresenceSessionPhase.starting, code: 'start');
     _hbGate.onNewSession();
     if (PresenceRtdbConfig.separateHeartbeatBackendReady) {
       _hbGate.onBackendReady();
     }
     _registerObserver();
+    _listenAuth();
     _uid = user.uid;
     _listenConnected();
+    if (!await _ensureAuthReady()) {
+      _setPhase(PresenceSessionPhase.starting, code: 'start_auth_wait');
+      _scheduleWriterRecovery(trigger: 'start_auth_wait');
+      return;
+    }
     await _goOnline(forceNew: false);
+    if (_connectionActive) {
+      _setPhase(PresenceSessionPhase.online, code: 'start_online');
+    } else {
+      _setPhase(PresenceSessionPhase.recovering, code: 'start_go_online');
+      _scheduleWriterRecovery(trigger: 'start_go_online');
+    }
   }
 
   /// Serializa goOnline/goOffline/clear para não criar connectionIds em paralelo.
@@ -229,11 +472,17 @@ class PresenceService with WidgetsBindingObserver {
     try {
       await ref.onDisconnect().remove();
       await ref.set(ServerValue.timestamp);
+      _lastHeartbeatAt = DateTime.now();
       if (_heartbeatDiag != 'probed' && _heartbeatDiag != 'denied') {
         _heartbeatDiag = 'legacy';
       }
     } catch (e) {
       _log('_refreshLegacyConnectionTimestamp', e);
+      if (_isPermissionDenied(e)) {
+        _connectionActive = false;
+        _setPhase(PresenceSessionPhase.recovering, code: 'hb_permission');
+        _scheduleWriterRecovery(trigger: 'hb_permission');
+      }
     }
   }
 
@@ -292,6 +541,9 @@ class PresenceService with WidgetsBindingObserver {
       return;
     }
     await _goOnline(forceNew: false);
+    if (!_connectionActive) {
+      _scheduleWriterRecovery(trigger: 'rtdb_reconnect');
+    }
   }
 
   void _registerObserver() {
@@ -322,9 +574,13 @@ class PresenceService with WidgetsBindingObserver {
 
   Future<void> stop() async {
     _cancelDeferredOffline();
+    _cancelRecovery();
+    _recovery.reset();
     _stopHeartbeat();
     await _connectedSub?.cancel();
     _connectedSub = null;
+    await _authSub?.cancel();
+    _authSub = null;
     final uid = _uid;
     _uid = null;
     _foreground = false;
@@ -334,6 +590,10 @@ class PresenceService with WidgetsBindingObserver {
     if (uid != null) {
       await _touchFirestoreLastSeen(uid: uid, force: true);
     }
+    _setPhase(PresenceSessionPhase.offline, code: 'stop');
+    try {
+      PresenceDisplayHub.instance.onLogout();
+    } catch (_) {}
   }
 
   /// [forceNew] só quando a conexão foi perdida / nunca existiu.
@@ -364,6 +624,12 @@ class PresenceService with WidgetsBindingObserver {
         await _clearRtdbConnection(writeFirestoreLastSeen: false);
       }
 
+      if (!await _ensureAuthReady()) {
+        _logWriterFailure('go_online_auth');
+        _scheduleWriterRecovery(trigger: 'go_online_auth');
+        return;
+      }
+
       final connectionId = generateConnectionId();
       _connectionId = connectionId;
       final connRef = _rtdb.ref('presence/$uid/connections/$connectionId');
@@ -373,14 +639,28 @@ class PresenceService with WidgetsBindingObserver {
         await connRef.set(ServerValue.timestamp);
         _connectionRef = connRef;
         _connectionActive = true;
+        _lastHeartbeatAt = DateTime.now();
+        _recovery.markSuccess();
+        _cancelRecovery();
         _startHeartbeat();
+        _setPhase(PresenceSessionPhase.online, code: 'go_online_ok');
         await _touchFirestoreLastSeen(uid: uid, force: false);
       } catch (e) {
+        final denied = _isPermissionDenied(e);
+        _logWriterFailure(denied ? 'go_online_permission' : 'go_online', e);
         _log('_goOnline', e);
         _stopHeartbeat();
         _connectionRef = null;
         _connectionActive = false;
         _connectionId = null;
+        _setPhase(PresenceSessionPhase.recovering, code: 'go_online_fail');
+        if (denied) {
+          // Força renovação de token na próxima recovery.
+          unawaited(_ensureAuthReady(forceRefresh: true));
+        }
+        _scheduleWriterRecovery(
+          trigger: denied ? 'go_online_permission' : 'go_online_fail',
+        );
       }
     });
   }
@@ -392,6 +672,7 @@ class PresenceService with WidgetsBindingObserver {
       _foreground = false;
       _stopHeartbeat();
       await _clearRtdbConnection(writeFirestoreLastSeen: true);
+      _setPhase(PresenceSessionPhase.offline, code: 'go_offline_$reason');
     });
   }
 
@@ -465,7 +746,14 @@ class PresenceService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        if (!_started) break;
+        if (!_started) {
+          // Sessão autenticada pode existir sem start (shell remount).
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            unawaited(start());
+          }
+          break;
+        }
         _cancelDeferredOffline();
         _foreground = true;
         final action = PresenceLifecycle.decideResume(
@@ -473,11 +761,20 @@ class PresenceService with WidgetsBindingObserver {
           hasConnectionRef: _connectionRef != null,
         );
         if (action == PresenceResumeAction.keepAlive) {
-          // inactive→resumed, câmera, permissão: sem novo connectionId.
           unawaited(_ensureOnDisconnect(refreshTimestamp: true));
           _startHeartbeat();
+          _recovery.markSuccess();
+          _cancelRecovery();
+          _setPhase(PresenceSessionPhase.online, code: 'resume_keepalive');
         } else {
-          unawaited(_goOnline(forceNew: false));
+          _setPhase(PresenceSessionPhase.recovering, code: 'resume_reestablish');
+          unawaited(_goOnline(forceNew: false).then((_) {
+            if (!_connectionActive) {
+              _scheduleWriterRecovery(trigger: 'resume');
+            } else {
+              _setPhase(PresenceSessionPhase.online, code: 'resume_online');
+            }
+          }));
         }
         break;
       case AppLifecycleState.inactive:
@@ -485,6 +782,7 @@ class PresenceService with WidgetsBindingObserver {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
         if (_started) {
+          _cancelRecovery();
           _scheduleDeferredOffline(reason: state.name);
         }
         break;

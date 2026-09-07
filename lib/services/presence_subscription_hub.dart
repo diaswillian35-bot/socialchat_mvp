@@ -1,27 +1,33 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 
+import 'presence_diagnostics.dart';
 import 'presence_rtdb_config.dart';
 import 'presence_rtdb_logic.dart';
+import 'presence_session_state.dart';
 import 'presence_stability.dart';
 
-/// Hub de assinaturas RTDB com refcount + cache curto + histerese offline.
+/// Hub de assinaturas RTDB com refcount + cache + histerese + recuperação.
 ///
-/// - Uma assinatura por UID compartilhada entre widgets
-/// - Cancela após o último listener (com grace curto)
-/// - Não cria assinatura por tick/rebuild
-/// - Offline só após [PresenceStabilityGate.defaultOfflineHold] (anti-flicker)
+/// - Erro de leitura → [PresenceReadStatus.unavailable] (NÃO offline)
+/// - Reproduz último valor confirmado ao reter listener / soft-cache
+/// - Renova token e recria assinatura após falhas
 class PresenceSubscriptionHub {
   PresenceSubscriptionHub._();
   static final PresenceSubscriptionHub instance = PresenceSubscriptionHub._();
 
-  /// Grace antes de cancelar a assinatura RTDB após o último listener.
   static const Duration unsubscribeGrace = Duration(seconds: 2);
+  static const Duration softCacheTtl = Duration(minutes: 2);
+  static const Duration resubscribeMinInterval = Duration(seconds: 3);
+  static const Duration resubscribeMaxInterval = Duration(seconds: 30);
 
   final Map<String, _UidEntry> _entries = {};
+  final Map<String, _SoftCacheEntry> _softCache = {};
+  final PresenceDiagnostics diagnostics = PresenceDiagnostics();
 
   @visibleForTesting
   int get debugActiveSubscriptions =>
@@ -30,22 +36,61 @@ class PresenceSubscriptionHub {
   @visibleForTesting
   int debugRefCount(String uid) => _entries[uid.trim()]?.refCount ?? 0;
 
+  @visibleForTesting
+  PresenceReadStatus? debugLastStatus(String uid) =>
+      _entries[uid.trim()]?.lastStatus;
+
   FirebaseDatabase get _db => FirebaseDatabase.instanceFor(
         app: Firebase.app(),
         databaseURL: PresenceRtdbConfig.databaseURL,
       );
 
-  /// Stream compartilhado: online se há ≥1 conexão (com hold offline).
-  Stream<bool> watchIsOnline(String uid) {
+  /// Stream tri-estado compartilhado.
+  Stream<PresenceReadStatus> watchStatus(String uid) {
     final trimmed = uid.trim();
-    if (trimmed.isEmpty) return Stream<bool>.value(false);
+    if (trimmed.isEmpty) {
+      return Stream<PresenceReadStatus>.value(PresenceReadStatus.offline);
+    }
 
-    late StreamController<bool> controller;
-    controller = StreamController<bool>.broadcast(
+    late StreamController<PresenceReadStatus> controller;
+    controller = StreamController<PresenceReadStatus>.broadcast(
       onListen: () => _retain(trimmed, controller),
       onCancel: () => _release(trimmed, controller),
     );
     return controller.stream;
+  }
+
+  /// Compat: emite só online/offline confirmados (filtra unavailable).
+  Stream<bool> watchIsOnline(String uid) {
+    return watchStatus(uid)
+        .where((s) => s != PresenceReadStatus.unavailable)
+        .map((s) => s == PresenceReadStatus.online);
+  }
+
+  void _emit(_UidEntry entry, PresenceReadStatus status) {
+    if (entry.lastStatus == status) return;
+    final from = entry.lastStatus?.name;
+    entry.lastStatus = status;
+    entry.lastUpdated = DateTime.now();
+    if (status == PresenceReadStatus.online ||
+        status == PresenceReadStatus.offline) {
+      entry.lastConfirmed = status;
+      _softCache[entry.uid] = _SoftCacheEntry(status, DateTime.now());
+    }
+    for (final c in List<StreamController<PresenceReadStatus>>.from(
+      entry.consumers,
+    )) {
+      if (!c.isClosed) c.add(status);
+    }
+    diagnostics.record(
+      PresenceDiagEvent(
+        code: 'reader_emit',
+        at: DateTime.now(),
+        role: 'reader',
+        fromPhase: from,
+        toPhase: status.name,
+      ),
+    );
   }
 
   void _emitStable(_UidEntry entry, bool rawOnline) {
@@ -54,64 +99,138 @@ class PresenceSubscriptionHub {
     entry.flushTimer?.cancel();
     entry.flushTimer = null;
     if (next != null) {
-      entry.lastValue = next;
-      entry.lastUpdated = now;
-      for (final c in List<StreamController<bool>>.from(entry.consumers)) {
-        if (!c.isClosed) c.add(next);
-      }
+      _emit(
+        entry,
+        next ? PresenceReadStatus.online : PresenceReadStatus.offline,
+      );
     }
     final pending = entry.gate.pendingOfflineRemaining(now);
     if (pending != null && pending > Duration.zero) {
       entry.flushTimer = Timer(pending + const Duration(milliseconds: 50), () {
         final flushed = entry.gate.flush(DateTime.now());
         if (flushed == null) return;
-        entry.lastValue = flushed;
-        entry.lastUpdated = DateTime.now();
-        for (final c in List<StreamController<bool>>.from(entry.consumers)) {
-          if (!c.isClosed) c.add(flushed);
-        }
+        _emit(
+          entry,
+          flushed ? PresenceReadStatus.online : PresenceReadStatus.offline,
+        );
       });
     }
   }
 
-  void _retain(String uid, StreamController<bool> consumer) {
+  PresenceReadStatus? _replayStatus(_UidEntry entry) {
+    if (entry.lastConfirmed != null) return entry.lastConfirmed;
+    if (entry.lastStatus != null) return entry.lastStatus;
+    final soft = _softCache[entry.uid];
+    if (soft == null) return null;
+    if (DateTime.now().difference(soft.at) > softCacheTtl) {
+      _softCache.remove(entry.uid);
+      return null;
+    }
+    return soft.status;
+  }
+
+  void _retain(String uid, StreamController<PresenceReadStatus> consumer) {
     final entry = _entries.putIfAbsent(uid, () => _UidEntry(uid));
     entry.graceTimer?.cancel();
     entry.graceTimer = null;
     entry.consumers.add(consumer);
     entry.refCount++;
 
+    final replay = _replayStatus(entry);
+    if (replay != null && !consumer.isClosed) {
+      consumer.add(replay);
+    } else if (!consumer.isClosed) {
+      consumer.add(PresenceReadStatus.unavailable);
+    }
+
     if (entry.subscription == null) {
-      entry.subscription = _db.ref('presence/$uid/connections').onValue.listen(
-        (event) {
-          final online =
-              PresenceRtdbLogic.isOnlineFromConnections(event.snapshot.value);
-          _emitStable(entry, online);
-        },
-        onError: (Object e, StackTrace st) {
-          if (kDebugMode) {
-            debugPrint('PresenceSubscriptionHub($uid): $e');
-          }
-          // Treat error as offline raw — still respect hold if was online.
-          _emitStable(entry, false);
-        },
-      );
-    } else if (entry.lastValue != null && !consumer.isClosed) {
-      consumer.add(entry.lastValue!);
+      _attachSubscription(entry);
     }
   }
 
-  void _release(String uid, StreamController<bool> consumer) {
+  void _attachSubscription(_UidEntry entry) {
+    entry.subscription?.cancel();
+    entry.subscription =
+        _db.ref('presence/${entry.uid}/connections').onValue.listen(
+      (event) {
+        entry.consecutiveErrors = 0;
+        final online =
+            PresenceRtdbLogic.isOnlineFromConnections(event.snapshot.value);
+        _emitStable(entry, online);
+      },
+      onError: (Object e, StackTrace st) {
+        if (kDebugMode) {
+          debugPrint('PresenceSubscriptionHub: read_error');
+        }
+        diagnostics.record(
+          PresenceDiagEvent(
+            code: 'reader_error',
+            at: DateTime.now(),
+            role: 'reader',
+            fromPhase: entry.lastStatus?.name,
+            toPhase: PresenceReadStatus.unavailable.name,
+            errorCategory: PresenceDiagnostics.sanitizeError(e),
+            attempt: entry.consecutiveErrors + 1,
+          ),
+        );
+        _emit(entry, PresenceReadStatus.unavailable);
+        entry.consecutiveErrors++;
+        _scheduleResubscribe(entry);
+      },
+    );
+  }
+
+  void _scheduleResubscribe(_UidEntry entry) {
+    if (entry.refCount <= 0) return;
+    entry.resubscribeTimer?.cancel();
+    final exp = entry.consecutiveErrors.clamp(1, 4);
+    final ms = (resubscribeMinInterval.inMilliseconds * (1 << (exp - 1)))
+        .clamp(
+          resubscribeMinInterval.inMilliseconds,
+          resubscribeMaxInterval.inMilliseconds,
+        );
+    entry.resubscribeTimer = Timer(Duration(milliseconds: ms), () {
+      entry.resubscribeTimer = null;
+      if (entry.refCount <= 0) return;
+      unawaited(_resubscribeWithTokenRefresh(entry));
+    });
+  }
+
+  Future<void> _resubscribeWithTokenRefresh(_UidEntry entry) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await user.getIdToken(true);
+      }
+    } catch (_) {}
+    if (entry.refCount <= 0) return;
+    diagnostics.record(
+      PresenceDiagEvent(
+        code: 'reader_resubscribe',
+        at: DateTime.now(),
+        role: 'reader',
+        attempt: entry.consecutiveErrors,
+      ),
+    );
+    _attachSubscription(entry);
+  }
+
+  void _release(String uid, StreamController<PresenceReadStatus> consumer) {
     final entry = _entries[uid];
     if (entry == null) return;
     entry.consumers.remove(consumer);
     entry.refCount = entry.consumers.length;
     if (entry.refCount > 0) return;
 
+    if (entry.lastConfirmed != null) {
+      _softCache[uid] = _SoftCacheEntry(entry.lastConfirmed!, DateTime.now());
+    }
+
     entry.graceTimer?.cancel();
     entry.graceTimer = Timer(unsubscribeGrace, () {
       if (entry.refCount > 0) return;
       entry.flushTimer?.cancel();
+      entry.resubscribeTimer?.cancel();
       entry.subscription?.cancel();
       entry.subscription = null;
       entry.gate.reset();
@@ -124,12 +243,15 @@ class PresenceSubscriptionHub {
     for (final e in _entries.values) {
       e.graceTimer?.cancel();
       e.flushTimer?.cancel();
+      e.resubscribeTimer?.cancel();
       e.subscription?.cancel();
       for (final c in e.consumers) {
         if (!c.isClosed) c.close();
       }
     }
     _entries.clear();
+    _softCache.clear();
+    diagnostics.clear();
   }
 }
 
@@ -139,10 +261,19 @@ class _UidEntry {
   final String uid;
   final PresenceStabilityGate gate = PresenceStabilityGate();
   int refCount = 0;
-  bool? lastValue;
+  PresenceReadStatus? lastStatus;
+  PresenceReadStatus? lastConfirmed;
   DateTime? lastUpdated;
+  int consecutiveErrors = 0;
   StreamSubscription<DatabaseEvent>? subscription;
   Timer? graceTimer;
   Timer? flushTimer;
-  final Set<StreamController<bool>> consumers = {};
+  Timer? resubscribeTimer;
+  final Set<StreamController<PresenceReadStatus>> consumers = {};
+}
+
+class _SoftCacheEntry {
+  _SoftCacheEntry(this.status, this.at);
+  final PresenceReadStatus status;
+  final DateTime at;
 }

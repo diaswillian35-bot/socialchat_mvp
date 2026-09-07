@@ -30,8 +30,10 @@ class GroupOnlineDot extends StatelessWidget {
         uids: uids,
         maxWatches: PresenceRtdbConfig.maxGroupPresenceWatches,
       ),
-      initialData: 0,
       builder: (context, snap) {
+        if (!snap.hasData) {
+          return _dot(const Color(0xFFE5E7EB)); // unavailable / loading
+        }
         final n = snap.data ?? 0;
         return _dot(n > 0 ? const Color(0xFF22C55E) : const Color(0xFFCBD5E1));
       },

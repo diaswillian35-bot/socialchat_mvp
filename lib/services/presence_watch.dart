@@ -4,7 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 import 'presence_rtdb_config.dart';
-import 'presence_rtdb_logic.dart';
+import 'presence_session_state.dart';
 import 'presence_subscription_hub.dart';
 import 'presence_display_hub.dart';
 
@@ -17,12 +17,17 @@ class PresenceWatch {
         databaseURL: PresenceRtdbConfig.databaseURL,
       );
 
-  /// Bolinha / UID único — via hub compartilhado.
+  /// Bolinha / UID — tri-estado (online / offline / unavailable).
+  static Stream<PresenceReadStatus> watchStatus(String uid) {
+    return PresenceSubscriptionHub.instance.watchStatus(uid);
+  }
+
+  /// Compat: só emite quando o status é confirmado (filtra unavailable).
   static Stream<bool> watchIsOnline(String uid) {
     return PresenceSubscriptionHub.instance.watchIsOnline(uid);
   }
 
-  /// Contagem entre UIDs (dedupe). Usa hub; não recria por tick.
+  /// Contagem entre UIDs. Unavailable NÃO remove UID do conjunto online.
   static Stream<int> watchOnlineCount({
     required Iterable<String> uids,
     Set<String>? excludeUids,
@@ -42,23 +47,24 @@ class PresenceWatch {
 
     late StreamController<int> controller;
     final online = <String>{};
-    final subs = <StreamSubscription<bool>>[];
+    final subs = <StreamSubscription<PresenceReadStatus>>[];
 
     controller = StreamController<int>.broadcast(
       onListen: () {
         for (final uid in only) {
           subs.add(
-            PresenceSubscriptionHub.instance.watchIsOnline(uid).listen(
-              (isOn) {
-                if (isOn) {
+            PresenceSubscriptionHub.instance.watchStatus(uid).listen(
+              (status) {
+                if (status == PresenceReadStatus.online) {
                   online.add(uid);
-                } else {
+                } else if (status == PresenceReadStatus.offline) {
                   online.remove(uid);
                 }
+                // unavailable: mantém último conhecido
                 if (!controller.isClosed) controller.add(online.length);
               },
               onError: (_, __) {
-                online.remove(uid);
+                // Erro de stream: não zera presença confirmada.
                 if (!controller.isClosed) controller.add(online.length);
               },
             ),
@@ -77,12 +83,10 @@ class PresenceWatch {
     return controller.stream;
   }
 
-  /// Contador Home por país — display novo com fallback legado (hub).
   static Stream<int> watchCountryOnlineCount(String countryCode) {
     return PresenceDisplayHub.instance.watchCountry(countryCode);
   }
 
-  /// Contador mundial — display novo com fallback legado. Sem árvore RTDB.
   static Stream<int> watchWorldOnlineCount({String? excludeCountryCode}) {
     return PresenceDisplayHub.instance.watchWorld(
       excludeCountryCode: excludeCountryCode,
