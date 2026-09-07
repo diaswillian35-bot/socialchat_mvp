@@ -8,23 +8,44 @@ import 'splash_page.dart';
 import 'main_shell_page.dart';
 import 'email_verification_page.dart';
 import '../l10n/app_texts.dart';
-import '../services/group_join_service.dart';
 import '../services/push_service.dart';
 import '../services/event_deep_link_service.dart';
 import '../services/invite_premium_service.dart';
 import '../services/share_in_service.dart';
 import '../services/share_extension_session_service.dart';
 import '../services/share_extension_incoming_service.dart';
-import 'group_chat_page.dart';
+import '../services/presence_service.dart';
+import '../services/remdy_deep_link_parser.dart';
+import '../services/safe_remdy_navigation.dart';
+import 'join_group_page.dart';
 import 'age_verification_page.dart';
 import '../services/age_verification.dart';
 import '../services/google_sign_in_service.dart';
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
   static bool _applyingPendingGroup = false;
   static bool _applyingPendingInvite = false;
+
+  /// Evita remount do MainShell a cada rebuild do FutureBuilder.
+  String? _cachedUid;
+  Future<DocumentSnapshot<Map<String, dynamic>>>? _userDocFuture;
+
+  Future<DocumentSnapshot<Map<String, dynamic>>> _userDoc(String uid) {
+    if (_cachedUid == uid && _userDocFuture != null) {
+      return _userDocFuture!;
+    }
+    _cachedUid = uid;
+    _userDocFuture =
+        FirebaseFirestore.instance.collection('users').doc(uid).get();
+    return _userDocFuture!;
+  }
 
   Future<void> _applyPendingInviteIfAny(User user) async {
     if (_applyingPendingInvite) return;
@@ -82,6 +103,9 @@ class AuthGate extends StatelessWidget {
     }
   }
 
+  /// Reabre só a prévia do grupo após login/idade.
+  /// Nunca chama join automaticamente — o pedido só nasce no toque em
+  /// “Solicitar entrada” / Entrar na [JoinGroupPage].
   Future<void> _applyPendingGroupIfAny(User user) async {
     if (_applyingPendingGroup) return;
     _applyingPendingGroup = true;
@@ -89,7 +113,7 @@ class AuthGate extends StatelessWidget {
     try {
       final prefs = await SharedPreferences.getInstance();
       final rawCode = prefs.getString('pending_group_code') ?? '';
-      final code = GroupJoinService.normalizeInviteCode(rawCode);
+      final code = RemdyDeepLinkParser.normalizeGroupCode(rawCode);
 
       print('DEBUG group: pending code = $code');
 
@@ -100,61 +124,23 @@ class AuthGate extends StatelessWidget {
         return;
       }
 
-      final result = await GroupJoinService.joinByInviteCode(
-        inviteCode: code,
-        uid: user.uid,
-      );
-
-      // Limpa após processamento concluído ou erro definitivo.
+      // Consome a pendência antes de navegar (evita reentrada / auto-join).
       await prefs.remove('pending_group_code');
 
-      final ctx = PushService.navKey.currentContext;
-      if (ctx == null) return;
-
-      String message;
-      try {
-        final t = AppTexts.current;
-        if (result.outcome == GroupJoinOutcome.error) {
-          message =
-              '${t.get(result.messageKey)} ${result.errorDetail ?? ''}'.trim();
-        } else if (result.outcome == GroupJoinOutcome.pendingCreated) {
-          message = t.get('group_request_pending_toast');
-        } else {
-          message = t.get(result.messageKey);
-        }
-      } catch (_) {
-        message = result.messageKey;
+      final nav = PushService.navKey.currentState;
+      if (nav == null) {
+        // Sem navigator ainda: reinsere para a próxima tentativa pós-shell.
+        await prefs.setString('pending_group_code', code);
+        return;
       }
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+      await SafeRemdyNavigation.openOverShell(
+        nav: nav,
+        shellIndex: 2,
+        page: JoinGroupPage(inviteCode: code),
+      );
 
-        if (result.didEnterChat &&
-            result.groupId != null &&
-            result.groupId!.isNotEmpty) {
-          final groupName = (result.groupName ?? '').trim().isEmpty
-              ? 'Grupo'
-              : result.groupName!.trim();
-
-          Navigator.push(
-            ctx,
-            MaterialPageRoute(
-              builder: (_) => GroupChatPage(
-                groupId: result.groupId!,
-                groupName: groupName,
-              ),
-            ),
-          );
-        }
-      });
-
-      print('DEBUG group: pending outcome = ${result.outcome}');
+      print('DEBUG group: pending opened JoinGroupPage (preview only)');
     } finally {
       _applyingPendingGroup = false;
     }
@@ -170,16 +156,17 @@ class AuthGate extends StatelessWidget {
         }
 
         final user = snap.data;
-        if (user == null) return const LoginPage();
+        if (user == null) {
+          _cachedUid = null;
+          _userDocFuture = null;
+          return const LoginPage();
+        }
 
         if (authRequiresEmailVerification(user)) {
           return const EmailVerificationPage();
         }
         return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          future: FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .get(),
+          future: _userDoc(user.uid),
           builder: (context, userSnap) {
             if (userSnap.connectionState != ConnectionState.done) {
               return const SplashPage();
@@ -188,6 +175,8 @@ class AuthGate extends StatelessWidget {
               return const AgeVerificationPage();
             }
             WidgetsBinding.instance.addPostFrameCallback((_) {
+              // Garante writer mesmo se MainShell ainda não montou.
+              PresenceService.instance.start();
               _applyPendingInviteIfAny(user);
               _applyPendingGroupIfAny(user);
               EventDeepLinkService.applyPendingIfAny();

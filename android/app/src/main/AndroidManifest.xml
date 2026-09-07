@@ -68,17 +68,77 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
-            <!-- Deep link -->
+            <!-- Deep links: pathPrefix com barra final para NÃO capturar /eventos -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="remdy.app" />
+                    android:host="remdy.app"
+                    android:pathPrefix="/g/" />
                 <data
                     android:scheme="https"
-                    android:host="www.remdy.app" />
+                    android:host="www.remdy.app"
+                    android:pathPrefix="/g/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="remdy.app"
+                    android:pathPrefix="/e/" />
+                <data
+                    android:scheme="https"
+                    android:host="www.remdy.app"
+                    android:pathPrefix="/e/" />
+                <data
+                    android:scheme="https"
+                    android:host="remdy.app"
+                    android:pathPrefix="/events/" />
+                <data
+                    android:scheme="https"
+                    android:host="www.remdy.app"
+                    android:pathPrefix="/events/" />
+                <data
+                    android:scheme="https"
+                    android:host="remdy.app"
+                    android:pathPrefix="/event/" />
+                <data
+                    android:scheme="https"
+                    android:host="www.remdy.app"
+                    android:pathPrefix="/event/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="remdy.app"
+                    android:pathPrefix="/invite" />
+                <data
+                    android:scheme="https"
+                    android:host="www.remdy.app"
+                    android:pathPrefix="/invite" />
+                <data
+                    android:scheme="https"
+                    android:host="remdy.app"
+                    android:pathPrefix="/group" />
+                <data
+                    android:scheme="https"
+                    android:host="www.remdy.app"
+                    android:pathPrefix="/group" />
+                <data
+                    android:scheme="https"
+                    android:host="remdy.app"
+                    android:pathPrefix="/portal-login" />
+                <data
+                    android:scheme="https"
+                    android:host="www.remdy.app"
+                    android:pathPrefix="/portal-login" />
             </intent-filter>
 
             <!-- Firebase push -->

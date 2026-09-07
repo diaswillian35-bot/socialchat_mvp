@@ -79,10 +79,49 @@
       "public": "public",
       "ignore": [
         "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
+        "**/node_modules/**",
+        "**/.git/**"
       ],
       "headers": [
+        {
+          "source": "/.well-known/apple-app-site-association",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, max-age=0"
+            }
+          ]
+        },
+        {
+          "source": "/apple-app-site-association",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, max-age=0"
+            }
+          ]
+        },
+        {
+          "source": "/.well-known/assetlinks.json",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, max-age=0"
+            }
+          ]
+        },
         {
           "source": "/portal-login",
           "headers": [
@@ -149,7 +188,11 @@
         },
         {
           "source": "/g/**",
-          "destination": "/index.html"
+          "destination": "/g/index.html"
+        },
+        {
+          "source": "/g",
+          "destination": "/g/index.html"
         },
         {
           "source": "/invite",

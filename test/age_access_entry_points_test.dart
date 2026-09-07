@@ -40,4 +40,18 @@ void main() {
     expect(authGate.indexOf('_applyPendingGroupIfAny(user)'),
         greaterThan(verified));
   });
+
+  test('pending group opens preview only — never auto-joins', () {
+    final authGate = source('lib/pages/auth_gate.dart');
+    expect(authGate, contains('_applyPendingGroupIfAny(user)'));
+    expect(authGate, contains('JoinGroupPage'));
+    expect(authGate, isNot(contains('joinByInviteCode')));
+    expect(authGate, isNot(contains('GroupChatPage')));
+  });
+
+  test('main deep-link router uses RemdyDeepLinkParser', () {
+    final mainSrc = source('lib/main.dart');
+    expect(mainSrc, contains('RemdyDeepLinkParser.parse'));
+    expect(mainSrc, contains('clearsPendingGroup'));
+  });
 }

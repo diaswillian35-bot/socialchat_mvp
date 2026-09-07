@@ -13,13 +13,14 @@ import 'pages/auth_gate.dart';
 import 'pages/join_group_page.dart';
 import 'services/app_orientation.dart';
 import 'services/firebase_bootstrap.dart';
-import 'services/group_join_service.dart';
 import 'services/locale_controller.dart';
 import 'services/photo_picker_config.dart';
 import 'services/push_service.dart';
 import 'services/remdy_link_router.dart';
+import 'services/remdy_deep_link_parser.dart';
 import 'services/safe_remdy_navigation.dart';
 import 'services/age_access_service.dart';
+import 'services/presence_service.dart';
 import 'pages/event_deep_link_page.dart';
 import 'pages/portal_qr_login_approve_page.dart';
 import 'services/event_deep_link_service.dart';
@@ -44,6 +45,12 @@ Future<void> main() async {
   configurePhotoPicker();
 
   await ensureFirebaseInitialized();
+
+  // Presença amarrada à sessão Auth — não esperar MainShell/AuthGate.
+  // Corrige cold-start / Profile→TF / splash remount onde o writer nunca partia.
+  if (FirebaseAuth.instance.currentUser != null) {
+    unawaited(PresenceService.instance.start());
+  }
 
   tzdata.initializeTimeZones();
   EventTimezone.markReady();
@@ -90,6 +97,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // Share-in nativo (Android ACTION_SEND / iOS Share Extension).
     ShareInService.start();
     ShareExtensionSessionService.start();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (FirebaseAuth.instance.currentUser != null) {
+        unawaited(PresenceService.instance.start());
+      }
+    });
   }
 
   @override
@@ -109,6 +121,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       ShareExtensionSessionService.ensureSession();
       ShareExtensionDestinationsService.publish();
       ShareExtensionIncomingService.consumePendingJobs();
+      if (FirebaseAuth.instance.currentUser != null) {
+        unawaited(PresenceService.instance.start());
+      }
     }
   }
 
@@ -186,14 +201,24 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _clearPendingGroupCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pending_group_code');
+    _lastGroupInviteCode = '';
+  }
+
+  /// Abre apenas a prévia ([JoinGroupPage]). Nunca cria solicitação sozinho.
   Future<void> _openGroupInviteByCode(String rawCode) async {
-    final code = GroupJoinService.normalizeInviteCode(rawCode);
-    if (code.isEmpty) return;
+    final code = RemdyDeepLinkParser.normalizeGroupCode(rawCode);
+    if (code.isEmpty) {
+      await _clearPendingGroupCode();
+      return;
+    }
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('pending_group_code', code);
 
-    // O convite permanece pendente e só será processado pelo AuthGate após 18+.
+    // Pendente até 18+; AuthGate só reabre a prévia — sem auto-join.
     if (!await AgeAccessService.currentUserIsVerified()) return;
 
     if (_openingGroupInvite && _lastGroupInviteCode == code) {
@@ -227,46 +252,44 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final nav = PushService.navKey.currentState;
     if (nav == null) return;
 
-    final segments = uri.pathSegments;
-    print('DEBUG main: segments = $segments');
-    print('DEBUG main: query ref = ${uri.queryParameters['ref']}');
+    final parsed = RemdyDeepLinkParser.parse(uri);
+    print('DEBUG main: deepLink kind = ${parsed.kind}');
 
-    // 🔹 GRUPO: /g/CODIGO
-    if (segments.length >= 2 && segments.first.toLowerCase() == 'g') {
-      final code = segments[1].trim();
-      if (code.isEmpty) return;
-      await _openGroupInviteByCode(code);
-      return;
+    if (parsed.clearsPendingGroup) {
+      await _clearPendingGroupCode();
     }
 
-    // 🔹 GRUPO (legado): /group?code=CODIGO
-    if (segments.isNotEmpty && segments.first.toLowerCase() == 'group') {
-      final code = uri.queryParameters['code']?.trim() ?? '';
-      if (code.isNotEmpty) {
+    switch (parsed.kind) {
+      case RemdyDeepLinkKind.none:
+      case RemdyDeepLinkKind.groupInviteInvalid:
+        // Raiz, /eventos, /g inválido: nada de grupo. Landing fica no browser
+        // quando Universal Links / App Links não capturarem a URL.
+        return;
+
+      case RemdyDeepLinkKind.groupInvite:
+        final code = parsed.groupCode ?? '';
+        if (code.isEmpty) {
+          await _clearPendingGroupCode();
+          return;
+        }
         await _openGroupInviteByCode(code);
-      }
-      return;
-    }
+        final ref = (parsed.inviteRef ?? '').trim();
+        if (ref.isNotEmpty) {
+          await _saveInviteRef(ref);
+        }
+        return;
 
-    if (segments.length >= 2 &&
-        (segments.first.toLowerCase() == 'e' ||
-            segments.first.toLowerCase() == 'events' ||
-            segments.first.toLowerCase() == 'event')) {
-      final eventId = segments[1].trim();
-
-      if (eventId.isNotEmpty) {
+      case RemdyDeepLinkKind.event:
+        final eventId = (parsed.eventId ?? '').trim();
+        if (eventId.isEmpty) return;
         final user = FirebaseAuth.instance.currentUser;
         if (user == null) {
           await EventDeepLinkService.savePendingEventId(eventId);
           return;
         }
-
         final ctx = PushService.navKey.currentContext;
         if (ctx != null) {
-          await EventDeepLinkService.openEventById(
-            ctx,
-            eventId: eventId,
-          );
+          await EventDeepLinkService.openEventById(ctx, eventId: eventId);
         } else {
           nav.push(
             MaterialPageRoute(
@@ -274,63 +297,37 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             ),
           );
         }
-      }
+        return;
 
-      return;
-    }
-
-    if (segments.length >= 2 &&
-        segments.first.toLowerCase() == 'portal-login') {
-      final sessionId = segments[1].trim();
-
-      if (sessionId.isNotEmpty) {
+      case RemdyDeepLinkKind.portalLogin:
+        final sessionId = (parsed.portalSessionId ?? '').trim();
+        if (sessionId.isEmpty) return;
         nav.push(
           MaterialPageRoute(
             builder: (_) => PortalQrLoginApprovePage(sessionId: sessionId),
           ),
         );
-      }
+        return;
 
-      return;
-    }
-
-    // 🔹 CONVITE GERAL: /invite?ref=CODE  (também aceita ?code= para grupo)
-    if (segments.isNotEmpty && segments.first.toLowerCase() == 'invite') {
-      final ref = uri.queryParameters['ref']?.trim() ?? '';
-      print('DEBUG main: ref capturado = $ref');
-      final groupCode = uri.queryParameters['code'] ?? '';
-
-      if (groupCode.trim().isNotEmpty) {
-        await _openGroupInviteByCode(groupCode);
-      }
-
-      if (ref.isEmpty) return;
-
-      // copia pro clipboard (opcional)
-      Clipboard.setData(ClipboardData(text: ref));
-
-      // 🔥 AGORA COM AWAIT (ESSENCIAL)
-      await _saveInviteRef(ref);
-
-      // 🔍 verifica se salvou mesmo
-      final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString('pending_invite_ref') ?? '';
-
-      print('DEBUG main: confirm saved = $saved');
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(nav.context).showSnackBar(
-          SnackBar(
-            content: Text(
-              AppTexts.t('invite_saved').replaceAll('{code}', saved),
+      case RemdyDeepLinkKind.invitePremium:
+        final ref = (parsed.inviteRef ?? '').trim();
+        if (ref.isEmpty) return;
+        Clipboard.setData(ClipboardData(text: ref));
+        await _saveInviteRef(ref);
+        final prefs = await SharedPreferences.getInstance();
+        final saved = prefs.getString('pending_invite_ref') ?? '';
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ScaffoldMessenger.of(nav.context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppTexts.t('invite_saved').replaceAll('{code}', saved),
+              ),
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(12),
             ),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(12),
-          ),
-        );
-      });
-
-      return;
+          );
+        });
+        return;
     }
   }
 

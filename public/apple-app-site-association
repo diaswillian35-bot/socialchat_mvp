@@ -1,0 +1,27 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "CZN2YMTU7B.com.remdy.app",
+        "paths": [
+          "/g/*",
+          "/e/*",
+          "/events/*",
+          "/event/*",
+          "/invite",
+          "/invite/*",
+          "/group",
+          "/group/*",
+          "/portal-login",
+          "/portal-login/*"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "CZN2YMTU7B.com.remdy.app"
+    ]
+  }
+}
