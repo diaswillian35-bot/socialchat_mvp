@@ -8,6 +8,11 @@ const { defineSecret } = require("firebase-functions/params");
 
 const admin = require("firebase-admin");
 const { validateOpenJoin } = require("./group_open_join_logic");
+const {
+  shouldNotifyJoinRequest,
+  resolveJoinRequestAdminUids,
+  formatJoinRequestPushCopy,
+} = require("./group_join_request_push_logic");
 function distanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
 
@@ -111,10 +116,12 @@ const {
   onPresenceConnectionWritten,
   reconcilePresenceCounters,
   reconcilePresenceCountersNow,
+  flushPresenceDisplayCounters,
 } = require("./presence_rtdb_counters");
 exports.onPresenceConnectionWritten = onPresenceConnectionWritten;
 exports.reconcilePresenceCounters = reconcilePresenceCounters;
 exports.reconcilePresenceCountersNow = reconcilePresenceCountersNow;
+exports.flushPresenceDisplayCounters = flushPresenceDisplayCounters;
 
 const {
   claimInvitePremiumReward,
@@ -178,6 +185,17 @@ const {
 
 const ANDROID_CHANNEL_ID = "high_importance_channel";
 
+const {
+  sanitizeMessagingErrorCode,
+  isPermanentInvalidRegistrationCode,
+  normalizePlatform,
+  platformMapFromEntries,
+  summarizePushResultsByPlatform,
+  collectPermanentInvalidTokens,
+  shouldClearLegacyFcmToken,
+  formatPushPlatformLog,
+} = require("./push_delivery_logic");
+
 function pushAllowed(userData, kind) {
   if (!userData || userData.notifEnabled === false) return false;
   if (userData.ageVerificationStatus !== "verified") return false;
@@ -189,7 +207,10 @@ function pushAllowed(userData, kind) {
   return true;
 }
 
-async function collectTokensForUid(uid, kind) {
+/**
+ * @returns {Promise<Array<{token:string, platform:string, source:string}>>}
+ */
+async function collectTokenEntriesForUid(uid, kind) {
   if (!uid) return [];
 
   const userSnap = await admin.firestore().collection("users").doc(uid).get();
@@ -198,9 +219,17 @@ async function collectTokensForUid(uid, kind) {
   const userData = userSnap.data() || {};
   if (!pushAllowed(userData, kind)) return [];
 
-  const tokens = [];
+  /** @type {Array<{token:string, platform:string, source:string}>} */
+  const entries = [];
+
   const mainToken = (userData.fcmToken || "").toString().trim();
-  if (mainToken) tokens.push(mainToken);
+  if (mainToken) {
+    entries.push({
+      token: mainToken,
+      platform: "unknown",
+      source: "legacy",
+    });
+  }
 
   const tokensSnap = await admin
     .firestore()
@@ -210,13 +239,34 @@ async function collectTokensForUid(uid, kind) {
     .get();
 
   for (const tokenDoc of tokensSnap.docs) {
-    const token = (tokenDoc.data().token || tokenDoc.id || "")
-      .toString()
-      .trim();
-    if (token) tokens.push(token);
+    const data = tokenDoc.data() || {};
+    const token = (data.token || tokenDoc.id || "").toString().trim();
+    if (!token) continue;
+    entries.push({
+      token,
+      platform: normalizePlatform(data.platform),
+      source: "sub",
+    });
   }
 
-  return [...new Set(tokens)];
+  // Dedupe by token; prefer known platform over unknown.
+  const byToken = new Map();
+  for (const e of entries) {
+    const prev = byToken.get(e.token);
+    if (!prev) {
+      byToken.set(e.token, e);
+      continue;
+    }
+    if (prev.platform === "unknown" && e.platform !== "unknown") {
+      byToken.set(e.token, { ...e, source: prev.source });
+    }
+  }
+  return [...byToken.values()];
+}
+
+async function collectTokensForUid(uid, kind) {
+  const entries = await collectTokenEntriesForUid(uid, kind);
+  return entries.map((e) => e.token);
 }
 
 async function collectTokensForUids(uids, kind) {
@@ -292,18 +342,13 @@ function toStringData(data) {
   return out;
 }
 
-function unreadFromMap(unreadMap, uid) {
-  if (!unreadMap || typeof unreadMap !== "object") return 0;
-  const value = unreadMap[uid];
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value > 0 ? value : 0;
-  }
-  if (typeof value === "string") {
-    const n = Number.parseInt(value, 10);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  }
-  return 0;
-}
+const {
+  unreadFromMap,
+  resolveTargetUids,
+  parseServerUnreadApplied,
+  shouldSkipTriggerUnreadIncrement,
+  sanitizeUnreadErrorCode,
+} = require("./private_message_unread_logic");
 
 function userCountryFromData(userData) {
   const home = (userData?.homeCountryCode || "")
@@ -380,7 +425,15 @@ async function computeAppBadge(uid) {
   return total;
 }
 
-async function sendPush({ tokens, title, body, data, imageUrl, badge }) {
+async function sendPush({
+  tokens,
+  title,
+  body,
+  data,
+  imageUrl,
+  badge,
+  platformByToken,
+}) {
   const uniqueTokens = [...new Set((tokens || []).filter(Boolean))];
   if (uniqueTokens.length === 0) return null;
 
@@ -402,6 +455,15 @@ async function sendPush({ tokens, title, body, data, imageUrl, badge }) {
     apns: apnsPushConfig(title, body, image, badge),
   });
 
+  try {
+    const summary = summarizePushResultsByPlatform(
+      uniqueTokens,
+      response.responses,
+      platformByToken || new Map(),
+    );
+    console.log(`sendPush byPlatform ${formatPushPlatformLog(summary)}`);
+  } catch (_) {}
+
   await deleteInvalidTokens(response, uniqueTokens);
   return response;
 }
@@ -412,8 +474,10 @@ async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
   let success = 0;
   let failure = 0;
   for (const uid of uniqueUids) {
-    const tokens = await collectTokensForUid(uid, prefKey);
-    if (!tokens.length) continue;
+    const entries = await collectTokenEntriesForUid(uid, prefKey);
+    if (!entries.length) continue;
+    const tokens = entries.map((e) => e.token);
+    const platformByToken = platformMapFromEntries(entries);
     const badge = await computeAppBadge(uid);
     const response = await sendPush({
       tokens,
@@ -422,6 +486,7 @@ async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
       data,
       imageUrl,
       badge,
+      platformByToken,
     });
     success += response?.successCount ?? 0;
     failure += response?.failureCount ?? 0;
@@ -430,17 +495,10 @@ async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
 }
 
 async function deleteInvalidTokens(response, tokens) {
-  const invalidTokens = [];
-  response.responses.forEach((r, index) => {
-    if (r.success) return;
-    const code = r.error?.code || "";
-    if (
-      code === "messaging/registration-token-not-registered" ||
-      code === "messaging/invalid-registration-token"
-    ) {
-      invalidTokens.push(tokens[index]);
-    }
-  });
+  const invalidTokens = collectPermanentInvalidTokens(
+    tokens,
+    response && response.responses,
+  );
 
   if (invalidTokens.length === 0) return;
 
@@ -448,8 +506,49 @@ async function deleteInvalidTokens(response, tokens) {
     const snap = await admin.firestore().collectionGroup("fcmTokens").get();
     for (const doc of snap.docs) {
       const token = (doc.data().token || doc.id || "").toString().trim();
-      if (invalidTokens.includes(token)) {
-        await doc.ref.delete();
+      if (!invalidTokens.includes(token)) continue;
+      await doc.ref.delete();
+      try {
+        const userRef = doc.ref.parent.parent;
+        if (!userRef) continue;
+        const userSnap = await userRef.get();
+        const legacy = (userSnap.data()?.fcmToken || "").toString().trim();
+        if (shouldClearLegacyFcmToken(legacy, invalidTokens)) {
+          await userRef.set(
+            {
+              fcmToken: admin.firestore.FieldValue.delete(),
+              fcmUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+      } catch (_) {}
+    }
+
+    // Legacy-only tokens (no fcmTokens doc): clear matching users.fcmToken.
+    for (const token of invalidTokens) {
+      try {
+        const usersSnap = await admin
+          .firestore()
+          .collection("users")
+          .where("fcmToken", "==", token)
+          .limit(25)
+          .get();
+        for (const userDoc of usersSnap.docs) {
+          const legacy = (userDoc.data()?.fcmToken || "").toString().trim();
+          if (!shouldClearLegacyFcmToken(legacy, invalidTokens)) continue;
+          await userDoc.ref.set(
+            {
+              fcmToken: admin.firestore.FieldValue.delete(),
+              fcmUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+      } catch (e) {
+        console.warn(
+          `deleteInvalidTokens legacy query skipped code=${sanitizeMessagingErrorCode(e && e.code)}`,
+        );
       }
     }
   } catch (e) {
@@ -612,6 +711,7 @@ exports.onPrivateMessageCreated = onDocumentCreated(
       if (!msg) return;
 
       const conversationId = event.params.conversationId;
+      const messageId = event.params.messageId;
       const msgType = (msg.type || "text").toString().trim();
 
       const senderId = (msg.senderId || msg.fromUid || msg.uid || "")
@@ -619,10 +719,12 @@ exports.onPrivateMessageCreated = onDocumentCreated(
         .trim();
       if (!senderId) return;
 
-      const convRef = admin
-        .firestore()
-        .collection("conversations")
-        .doc(conversationId);
+      const db = admin.firestore();
+      const convRef = db.collection("conversations").doc(conversationId);
+      const processedRef = db
+        .collection("processedPrivateMessages")
+        .doc(`${conversationId}_${messageId}`);
+
       const convSnap = await convRef.get();
       if (!convSnap.exists) return;
 
@@ -633,10 +735,9 @@ exports.onPrivateMessageCreated = onDocumentCreated(
           ? conv.members
           : [];
 
-      const targetUids = participants.filter((uid) => uid && uid !== senderId);
+      const targetUids = resolveTargetUids(participants, senderId);
       if (targetUids.length === 0) return;
 
-      // Atualiza resumo no servidor e reabre conversa oculta para destinatários.
       const preview =
         msgType === "audio"
           ? "🎤 Áudio"
@@ -644,44 +745,171 @@ exports.onPrivateMessageCreated = onDocumentCreated(
             ? "📷 Foto"
             : (msg.text || "Nova mensagem").toString();
 
-      const unreadPatch = {};
+      const appliedMeta = parseServerUnreadApplied(msg);
+      const skipIncrement = shouldSkipTriggerUnreadIncrement(
+        appliedMeta,
+        targetUids,
+      );
+
+      const unreadBefore = {};
       for (const uid of targetUids) {
-        unreadPatch[`unread.${uid}`] = admin.firestore.FieldValue.increment(1);
+        unreadBefore[uid] = unreadFromMap(conv.unread, uid);
       }
 
-      await convRef.set(
-        {
+      /** @type {'already_processed'|'callable_applied'|'trigger_applied'} */
+      let mode = "trigger_applied";
+
+      // Idempotent unread: processedPrivateMessages prevents double +1 on retry.
+      // sendDmMessage path skips increment when serverUnreadApplied matches recipient.
+      mode = await db.runTransaction(async (tx) => {
+        const processedSnap = await tx.get(processedRef);
+        if (processedSnap.exists) {
+          return "already_processed";
+        }
+
+        const summaryPatch = {
           lastMessage: preview.slice(0, 200),
           lastMessageType: msgType || "text",
           lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          ...unreadPatch,
           hiddenFor: admin.firestore.FieldValue.arrayRemove(...targetUids),
-        },
-        { merge: true },
+        };
+
+        if (skipIncrement) {
+          tx.set(convRef, summaryPatch, { merge: true });
+          tx.set(processedRef, {
+            conversationId,
+            messageId,
+            senderId,
+            recipientUids: appliedMeta.recipientUid
+              ? [appliedMeta.recipientUid]
+              : targetUids,
+            source: "sendDmMessage",
+            serverUnreadApplied: appliedMeta,
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return "callable_applied";
+        }
+
+        // Client-originated (Master/same-country/media): trigger owns +1.
+        const patch = {
+          ...summaryPatch,
+          [`unread.${senderId}`]: 0,
+        };
+        for (const uid of targetUids) {
+          patch[`unread.${uid}`] = admin.firestore.FieldValue.increment(1);
+        }
+        tx.set(convRef, patch, { merge: true });
+        tx.set(processedRef, {
+          conversationId,
+          messageId,
+          senderId,
+          recipientUids: targetUids,
+          source: "onPrivateMessageCreated",
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return "trigger_applied";
+      });
+
+      const afterSnap = await convRef.get();
+      const afterData = afterSnap.data() || {};
+      const unreadAfter = {};
+      let unreadOk = true;
+      for (const uid of targetUids) {
+        const v = unreadFromMap(afterData.unread, uid);
+        unreadAfter[uid] = v;
+        if (v < 1) unreadOk = false;
+      }
+
+      console.log(
+        JSON.stringify({
+          tag: "dm_unread_stage",
+          conversationId,
+          messageId,
+          mode,
+          senderMasked: `${senderId.slice(0, 6)}…`,
+          targetCount: targetUids.length,
+          appliedRecipientMasked: appliedMeta.recipientUid
+            ? `${appliedMeta.recipientUid.slice(0, 6)}…`
+            : null,
+          skipIncrement,
+          unreadBefore,
+          unreadAfter,
+          unreadOk,
+        }),
       );
+
+      if (!unreadOk) {
+        try {
+          const repair = {};
+          for (const uid of targetUids) {
+            if (unreadFromMap(afterData.unread, uid) < 1) {
+              repair[`unread.${uid}`] = admin.firestore.FieldValue.increment(1);
+            }
+          }
+          if (Object.keys(repair).length) {
+            await convRef.update(repair);
+          }
+          const repaired = (await convRef.get()).data() || {};
+          unreadOk = targetUids.every(
+            (uid) => unreadFromMap(repaired.unread, uid) >= 1,
+          );
+          console.log(
+            JSON.stringify({
+              tag: "dm_unread_repair",
+              conversationId,
+              messageId,
+              unreadOk,
+            }),
+          );
+        } catch (repairErr) {
+          console.error(
+            JSON.stringify({
+              tag: "dm_unread_repair_error",
+              conversationId,
+              code: sanitizeUnreadErrorCode(repairErr),
+            }),
+          );
+          unreadOk = false;
+        }
+      }
+
+      if (!unreadOk) {
+        console.error(
+          JSON.stringify({
+            tag: "dm_unread_failed_skip_push",
+            conversationId,
+            messageId,
+            code: "unread_not_confirmed",
+          }),
+        );
+        return;
+      }
 
       let body = preview;
       let senderName = "Alguém";
       let senderImage = "";
-      const senderSnap = await admin
-        .firestore()
-        .collection("users")
-        .doc(senderId)
-        .get();
+      const senderSnap = await db.collection("users").doc(senderId).get();
       const senderData = senderSnap.data() || {};
       const senderLabel = (senderData.name || "").toString().trim();
       if (senderLabel) senderName = senderLabel;
       senderImage = profileImageUrl(senderData);
 
       const uniqueTokens = await collectTokensForUids(targetUids, "chat");
-      if (uniqueTokens.length === 0) return;
+      if (uniqueTokens.length === 0) {
+        console.log(
+          `Push privado skipped (no tokens / pushAllowed blocked) (${conversationId})`,
+        );
+        return;
+      }
 
-      const response = await sendPush({
-        tokens: uniqueTokens,
+      // Badge only after unread confirmed on the conversation doc.
+      const response = await sendPushToUids({
+        uids: targetUids,
         title: senderName,
         body,
         imageUrl: senderImage,
+        prefKey: "chat",
         data: {
           type: "chat",
           conversationId,
@@ -696,6 +924,12 @@ exports.onPrivateMessageCreated = onDocumentCreated(
         `Push privado enviado (${conversationId}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`,
       );
     } catch (e) {
+      console.error(
+        JSON.stringify({
+          tag: "onPrivateMessageCreated_error",
+          code: sanitizeUnreadErrorCode(e),
+        }),
+      );
       console.error("Erro onPrivateMessageCreated:", e);
     }
   },
@@ -1069,72 +1303,109 @@ exports.onGroupJoinRequestCreated = onDocumentCreated(
   "groups/{groupId}/pendingRequests/{uid}",
   async (event) => {
     try {
-      const req = event.data?.data();
-      if (!req) return;
-
-      const status = (req.status || "pending").toString().trim();
-      if (status !== "pending") return;
-
-      const groupId = event.params.groupId;
-      const requestUid = event.params.uid;
-
-      const groupSnap = await admin
-        .firestore()
-        .collection("groups")
-        .doc(groupId)
-        .get();
-      if (!groupSnap.exists) return;
-
-      const group = groupSnap.data() || {};
-      const groupName = (group.name || "Grupo").toString();
-      const admins = Array.isArray(group.admins) ? group.admins : [];
-      if (admins.length === 0) return;
-
-      const userName = (req.name || "Alguém").toString();
-      const targetAdmins = admins.filter(
-        (adminUid) => adminUid && adminUid !== requestUid,
-      );
-      if (targetAdmins.length === 0) return;
-
-      const uniqueTokens = await collectTokensForUids(
-        targetAdmins,
-        "group_join_request",
-      );
-      if (uniqueTokens.length === 0) return;
-
-      const title = "Novo pedido de entrada";
-      const body = `${userName} quer entrar no grupo ${groupName}`;
-
-      const response = await sendPush({
-        tokens: uniqueTokens,
-        title,
-        body,
-        data: {
-          type: "group_join_request",
-          groupId,
-          requestUid,
-        },
+      const after = event.data?.data();
+      if (!shouldNotifyJoinRequest(null, after)) return;
+      await notifyAdminsOfGroupJoinRequest({
+        groupId: event.params.groupId,
+        requestUid: event.params.uid,
+        req: after,
       });
-
-      console.log(
-        `Push pedido de entrada enviado (${groupId}/${requestUid}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`,
-      );
     } catch (e) {
       console.error("Erro onGroupJoinRequestCreated:", e);
     }
   },
 );
 
+/**
+ * Re-pedido após rejected/approved: o cliente faz update (merge) no mesmo doc.
+ * onCreate não dispara — este trigger cobre a transição → pending.
+ */
+exports.onGroupJoinRequestUpdated = onDocumentUpdated(
+  "groups/{groupId}/pendingRequests/{uid}",
+  async (event) => {
+    try {
+      const before = event.data?.before?.data();
+      const after = event.data?.after?.data();
+      if (!shouldNotifyJoinRequest(before, after)) return;
+      await notifyAdminsOfGroupJoinRequest({
+        groupId: event.params.groupId,
+        requestUid: event.params.uid,
+        req: after,
+      });
+    } catch (e) {
+      console.error("Erro onGroupJoinRequestUpdated:", e);
+    }
+  },
+);
+
+async function notifyAdminsOfGroupJoinRequest({ groupId, requestUid, req }) {
+  if (!groupId || !requestUid || !req) return;
+
+  const groupSnap = await admin
+    .firestore()
+    .collection("groups")
+    .doc(groupId)
+    .get();
+  if (!groupSnap.exists) return;
+
+  const group = groupSnap.data() || {};
+  const groupName = (group.name || "Grupo").toString();
+  const targetAdmins = resolveJoinRequestAdminUids(group, requestUid);
+  if (targetAdmins.length === 0) {
+    console.log(
+      `Push pedido de entrada skip: sem admins (${groupId}/${requestUid})`,
+    );
+    return;
+  }
+
+  const userName = (req.name || "Alguém").toString();
+  const adminEntries = [];
+  for (const adminUid of targetAdmins) {
+    adminEntries.push(
+      ...(await collectTokenEntriesForUid(adminUid, "group_join_request")),
+    );
+  }
+  const uniqueTokens = [
+    ...new Set(adminEntries.map((e) => e.token).filter(Boolean)),
+  ];
+  if (uniqueTokens.length === 0) {
+    console.log(
+      `Push pedido de entrada skip: sem tokens (${groupId}/${requestUid}) admins=${targetAdmins.length}`,
+    );
+    return;
+  }
+
+  const { title, body } = formatJoinRequestPushCopy(userName, groupName);
+
+  const response = await sendPush({
+    tokens: uniqueTokens,
+    title,
+    body,
+    platformByToken: platformMapFromEntries(adminEntries),
+    data: {
+      type: "group_join_request",
+      groupId: String(groupId),
+      requestUid: String(requestUid),
+      groupName: String(groupName),
+    },
+  });
+
+  console.log(
+    `Push pedido de entrada enviado (${groupId}/${requestUid}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`,
+  );
+}
+
 async function notifyEventCreator({ creatorUid, title, body, eventId, type }) {
   if (!creatorUid) return;
-  const tokens = await collectTokensForUid(creatorUid, "event");
-  if (!tokens.length) return;
+  const entries = await collectTokenEntriesForUid(creatorUid, "event");
+  if (!entries.length) return;
   const badge = await computeAppBadge(creatorUid);
   await sendPush({
-    tokens,
+    tokens: entries.map((e) => e.token),
     title,
     body,
     badge,
+    platformByToken: platformMapFromEntries(entries),
     data: {
       type: type || "event_moderation",
       eventId: eventId || "",
@@ -1267,6 +1538,8 @@ exports.onEventUpdated = onDocumentUpdated(
         es: [],
         fr: [],
       };
+      /** @type {Array<{token:string, platform:string}>} */
+      const allTokenEntries = [];
 
       const usersSnap = await admin
         .firestore()
@@ -1312,14 +1585,19 @@ exports.onEventUpdated = onDocumentUpdated(
           { merge: true },
         );
 
-        const userTokens = await collectTokensForUid(userDoc.id, "event");
-        if (userTokens.length > 0) {
-          tokensByLang[finalLang].push(...userTokens);
+        const userEntries = await collectTokenEntriesForUid(
+          userDoc.id,
+          "event",
+        );
+        if (userEntries.length > 0) {
+          tokensByLang[finalLang].push(...userEntries.map((e) => e.token));
+          allTokenEntries.push(...userEntries);
         }
       }
 
       let totalSuccess = 0;
       let totalFail = 0;
+      const platformByToken = platformMapFromEntries(allTokenEntries);
 
       for (const [lang, tokenList] of Object.entries(tokensByLang)) {
         const uniqueTokens = [...new Set(tokenList)];
@@ -1354,6 +1632,7 @@ exports.onEventUpdated = onDocumentUpdated(
           tokens: uniqueTokens,
           title: notifTitle,
           body: notifBody,
+          platformByToken,
           data: {
             type: "event",
             eventId,
@@ -3234,8 +3513,8 @@ async function notifyJoinRequestDecision({
   approved,
 }) {
   try {
-    const tokens = await collectTokensForUid(requestUid, "group");
-    if (!tokens.length) return;
+    const entries = await collectTokenEntriesForUid(requestUid, "group");
+    if (!entries.length) return;
 
     const name = (groupName || "group").toString().trim() || "group";
     const title = approved
@@ -3246,9 +3525,10 @@ async function notifyJoinRequestDecision({
       : "Sua solicitação para entrar no grupo não foi aprovada.";
 
     await sendPush({
-      tokens,
+      tokens: entries.map((e) => e.token),
       title,
       body,
+      platformByToken: platformMapFromEntries(entries),
       data: {
         type: approved ? "group_join_approved" : "group_join_rejected",
         groupId: String(groupId || ""),

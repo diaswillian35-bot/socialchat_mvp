@@ -12,9 +12,14 @@ const entries = {
   purgeExpiredShareExtensionData: ["maintenance", "Scheduled security cleanup."],
   onPresenceConnectionWritten: ["maintenance", "Automatic presence aggregation/cleanup."],
   reconcilePresenceCounters: ["maintenance", "Scheduled presence reconciliation."],
+  flushPresenceDisplayCounters: ["maintenance", "Scheduled display counter publish to RTDB."],
   onGroupMessageCreated: ["trigger", "Automatic unread/push; recipients are age-filtered."],
   onPrivateMessageCreated: ["trigger", "Automatic unread/push; recipients are age-filtered."],
   onGroupJoinRequestCreated: ["trigger", "Automatic push; recipients are age-filtered."],
+  onGroupJoinRequestUpdated: [
+    "trigger",
+    "Push when pending status is re-requested after reject/approve (client update path).",
+  ],
   onEventUpdated: ["trigger", "Automatic moderation/push; recipients are age-filtered."],
 };
 
