@@ -11,7 +11,7 @@ void main() {
   test('pubspec pins RevenueCat 10.9 through purchases_flutter', () {
     final pubspec = source('pubspec.yaml');
     expect(pubspec, contains('purchases_flutter: ^10.9.0'));
-    expect(pubspec, contains('version: 1.0.3+14'));
+    expect(pubspec, contains('version: 1.0.4+29'));
     expect(pubspec, isNot(contains('com.android.billingclient')));
   });
 
@@ -36,6 +36,8 @@ void main() {
     expect(dart, contains('return result.customerInfo;'));
     expect(dart, contains('Purchases.restorePurchases()'));
     expect(dart, contains('Purchases.getOfferings()'));
+    expect(dart, isNot(contains('test_zbKrc')));
+    expect(dart, isNot(contains("defaultValue: 'test_")));
     expect(dart, isNot(contains('purchasePackage')));
     expect(dart, contains("httpsCallable('syncRevenueCatEntitlement')"));
   });
@@ -65,6 +67,8 @@ void main() {
     expect(page, contains('PurchaseService.instance.restore()'));
     expect(page, contains('PurchaseService.instance.hasPackageAvailable()'));
     expect(page, contains('PurchaseService.instance.getDefaultPriceString()'));
+    expect(page, contains('friendlyErrorMessage'));
+    expect(page, contains('purchasesEnabled'));
     expect(page, contains('syncEntitlementWithServer'));
     expect(page, contains("não grava isPremium no cliente"));
     expect(page, isNot(contains("'isPremium': true")));

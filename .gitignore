@@ -52,6 +52,10 @@ app.*.map.json
 **/*.keystore
 **/remdy-upload-credentials.txt
 
+# RevenueCat SDK keys (public, but per-environment — never commit)
+dart_defines.local.json
+ios/RevenueCat.local.xcconfig
+
 # Local QA dumps
 tmp_part*/
 tmp_*/

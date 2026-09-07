@@ -121,8 +121,10 @@ void main() {
     test('event share has link fallback when image fails', () {
       final src =
           File('lib/services/event_share_image_service.dart').readAsStringSync();
-      expect(src.contains('Share.share(text'), isTrue);
-      expect(src.contains('image share failed'), isTrue);
+      expect(src.contains('Share.share('), isTrue);
+      expect(src.contains('sharePositionOrigin'), isTrue);
+      expect(src.contains('image_share_failed'), isTrue);
+      expect(src.contains('canonicalPublicUrl'), isTrue);
     });
 
     test('remi languages page uses AppTexts (not hardcoded English)', () {
