@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
+import '../services/presence_session_state.dart';
 import '../services/presence_watch.dart';
 import '../services/report_category.dart';
 
@@ -152,11 +153,12 @@ class PublicProfilePage extends StatelessWidget {
     final isMe = userUid == _myUid;
     final userDoc = _userDoc(userUid);
 
-    return StreamBuilder<bool>(
-      stream: PresenceWatch.watchIsOnline(userUid),
-      initialData: false,
+    return StreamBuilder<PresenceReadStatus>(
+      stream: PresenceWatch.watchStatus(userUid),
       builder: (context, presenceSnap) {
-        final bool isOnline = presenceSnap.data == true;
+        final status =
+            presenceSnap.data ?? PresenceReadStatus.unavailable;
+        final bool isOnline = status == PresenceReadStatus.online;
         return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: userDoc.snapshots(),
           builder: (context, snap) {

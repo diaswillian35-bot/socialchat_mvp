@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../services/purchase_service.dart';
 import '../services/premium_access_service.dart';
+import '../services/remdy_launch_access.dart';
 import '../l10n/app_texts.dart';
 import 'terms_page.dart';
 import 'privacy_page.dart';
@@ -28,11 +29,17 @@ class _PremiumPageState extends State<PremiumPage> {
   bool _loading = false;
 
 
+  /// Preço real do StoreKit/RevenueCat (nunca o preço administrativo Firestore).
   String? _priceString;
-bool _hasPackage = true;
 
-String _adminPriceText = '';
-bool _adminPremiumEnabled = true;
+  /// Pacote mensal RC (`$rc_monthly`) carregado com sucesso.
+  bool _hasPackage = false;
+
+  /// Já tentamos resolver offerings nesta sessão da tela.
+  bool _storeOfferResolved = false;
+
+  /// Flag admin (Firestore) — só controla se o país permite Premium; não é prova de IAP.
+  bool _adminPremiumEnabled = true;
 
 
 
@@ -56,8 +63,13 @@ bool _adminPremiumEnabled = true;
   void initState() {
     super.initState();
 
-
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!RemdyLaunchAccess.showPremiumUi) {
+        if (!mounted) return;
+        await RemdyLaunchAccess.showComingSoon(context);
+        if (mounted) Navigator.of(context).maybePop();
+        return;
+      }
       if (uid == null) return;
       await _prepareRevenueCat();
       // Sync de apoio (não grava isPremium no cliente)
@@ -88,26 +100,58 @@ bool _adminPremiumEnabled = true;
   Future<void> _prepareRevenueCat() async {
     if (uid == null) return;
 
+    final t = AppTexts.current;
+    final setupMsg = t.get('premium_in_setup_try_later');
 
     try {
-      await PurchaseService.instance.configure(appUserId: uid!);
+      await PurchaseService.instance.configure(
+        appUserId: uid!,
+      );
 
+      if (!PurchaseService.instance.purchasesEnabled) {
+        if (!mounted) return;
+        setState(() {
+          _storeOfferResolved = true;
+          _hasPackage = false;
+          _priceString = null;
+        });
+        return;
+      }
 
       final has = await PurchaseService.instance.hasPackageAvailable();
-      final price = await PurchaseService.instance.getDefaultPriceString();
-
+      final price = has
+          ? await PurchaseService.instance.getDefaultPriceString()
+          : null;
+      final snap = await PurchaseService.instance.debugOfferSnapshot();
+      debugPrint(
+        'PremiumRC: enabled=${snap['purchasesEnabled']} '
+        'hasMonthly=${snap['hasMonthlyPackage']} '
+        'priceLoaded=${snap['priceLoaded']} '
+        'pkgCount=${snap['packageCount']} '
+        'defaultOffering=${snap['hasDefaultOffering']} '
+        'errorKind=${snap['errorKind']}',
+      );
 
       if (!mounted) return;
       setState(() {
-        _hasPackage = has;
-        _priceString = price;
+        _storeOfferResolved = true;
+        _hasPackage = has && (price != null && price.trim().isNotEmpty);
+        _priceString = _hasPackage ? price : null;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('PremiumRC: prepare_failed kind=${e.runtimeType}');
       if (!mounted) return;
       setState(() {
+        _storeOfferResolved = true;
         _hasPackage = false;
         _priceString = null;
       });
+      final msg = PurchaseService.friendlyErrorMessage(
+        e,
+        setupMessage: setupMsg,
+        purchaseErrorLabel: t.get('purchase_error'),
+      );
+      if (msg.isNotEmpty) _snack(msg);
     }
   }
 
@@ -141,52 +185,30 @@ bool _adminPremiumEnabled = true;
     }
     return false;
   }
-Future<void> _loadAdminPremiumPrice(Map<String, dynamic> userData) async {
-  final code = (userData['homeCountryCode'] ??
-          userData['countryCode'] ??
-          userData['country'] ??
-          '')
-      .toString()
-      .trim()
-      .toLowerCase();
+  /// Só lê se o país habilita Premium no admin. Não usa preço Firestore no CTA.
+  Future<void> _loadAdminPremiumGate(Map<String, dynamic> userData) async {
+    final code = (userData['homeCountryCode'] ??
+            userData['countryCode'] ??
+            userData['country'] ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
 
-  if (code.isEmpty) return;
+    if (code.isEmpty) return;
 
-  try {
-    final snap = await db.collection('configCountries').doc(code).get();
-    final country = snap.data() ?? {};
+    try {
+      final snap = await db.collection('configCountries').doc(code).get();
+      final country = snap.data() ?? {};
+      final enabled = country['premiumEnabled'] != false;
 
-    final priceRaw = country['premiumPrice'];
-    final price = priceRaw is num ? priceRaw.toDouble() : 0.0;
-
-    final currency =
-        (country['premiumCurrency'] ?? '').toString().trim().toUpperCase();
-
-    final enabled = country['premiumEnabled'] != false;
-
-    if (!mounted) return;
-    setState(() {
-      _adminPremiumEnabled = enabled;
-      _adminPriceText =
-  price > 0 && currency.isNotEmpty
-    ? _formatPrice(currency, price)
-    : '';
-
-    });
-  } catch (_) {}
-}
-String _formatPrice(String currency, double price) {
-  switch (currency) {
-    case 'BRL':
-      return 'R\$ ${price.toStringAsFixed(2).replaceAll('.', ',')}';
-    case 'CAD':
-      return 'CA\$ ${price.toStringAsFixed(2)}';
-    case 'USD':
-      return 'US\$ ${price.toStringAsFixed(2)}';
-    default:
-      return '$currency ${price.toStringAsFixed(2)}';
+      if (!mounted) return;
+      if (_adminPremiumEnabled == enabled) return;
+      setState(() {
+        _adminPremiumEnabled = enabled;
+      });
+    } catch (_) {}
   }
-}
 
 
   void _snack(String msg) {
@@ -203,16 +225,21 @@ String _formatPrice(String currency, double price) {
 
   Future<void> _buyPremiumReal() async {
     final t = AppTexts.current;
+    final setupMsg = t.get('premium_in_setup_try_later');
     if (uid == null) return;
 
-    if (!_hasPackage) {
-      _snack(t.get('premium_in_setup_try_later'));
+    if (!_hasPackage || !PurchaseService.instance.purchasesEnabled) {
+      _snack(setupMsg);
       return;
     }
 
     setState(() => _loading = true);
     try {
       await PurchaseService.instance.configure(appUserId: uid!);
+      if (!PurchaseService.instance.purchasesEnabled) {
+        _snack(setupMsg);
+        return;
+      }
       await PurchaseService.instance.buyPremium();
 
       if (!mounted) return;
@@ -230,7 +257,12 @@ String _formatPrice(String currency, double price) {
     } catch (e) {
       if (!mounted) return;
       if (PurchaseService.isUserCancellation(e)) return;
-      _snack('${t.get('purchase_error')}: $e');
+      final msg = PurchaseService.friendlyErrorMessage(
+        e,
+        setupMessage: setupMsg,
+        purchaseErrorLabel: t.get('purchase_error'),
+      );
+      if (msg.isNotEmpty) _snack(msg);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -238,11 +270,16 @@ String _formatPrice(String currency, double price) {
 
   Future<void> _restorePremiumReal() async {
     final t = AppTexts.current;
+    final setupMsg = t.get('premium_in_setup_try_later');
     if (uid == null) return;
 
     setState(() => _loading = true);
     try {
       await PurchaseService.instance.configure(appUserId: uid!);
+      if (!PurchaseService.instance.purchasesEnabled) {
+        _snack(setupMsg);
+        return;
+      }
       await PurchaseService.instance.restore();
 
       if (!mounted) return;
@@ -260,7 +297,12 @@ String _formatPrice(String currency, double price) {
     } catch (e) {
       if (!mounted) return;
       if (PurchaseService.isUserCancellation(e)) return;
-      _snack('${t.get('restore_error')}: $e');
+      final msg = PurchaseService.friendlyErrorMessage(
+        e,
+        setupMessage: setupMsg,
+        purchaseErrorLabel: t.get('restore_error'),
+      );
+      if (msg.isNotEmpty) _snack(msg);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -313,9 +355,11 @@ String _formatPrice(String currency, double price) {
       if (until != null && !until.isAfter(DateTime.now())) {
         return t.get('premium_benefit_expired');
       }
-      return _hasPackage
-          ? t.get('subscribe_and_chat_outside_country')
-          : t.get('premium_products_not_connected');
+      // Só mostra "produtos ainda não conectados" após resolver e sem pacote RC.
+      if (_storeOfferResolved && !_hasPackage) {
+        return t.get('premium_products_not_connected');
+      }
+      return t.get('subscribe_and_chat_outside_country');
     }
 
     if (data['isMaster'] == true) {
@@ -387,9 +431,9 @@ String _formatPrice(String currency, double price) {
       
 final data = snap.data?.data() ?? {};
 
-WidgetsBinding.instance.addPostFrameCallback((_) {
-  _loadAdminPremiumPrice(data);
-});
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _loadAdminPremiumGate(data);
+        });
 
 final accessActive =
     PremiumAccessService.isPremiumActiveFromData(data);
@@ -531,16 +575,19 @@ final accessActive =
       ),
     ),
     child: ElevatedButton.icon(
-      onPressed: (_loading || !_adminPremiumEnabled) ? null : _buyPremiumReal,
+      onPressed: (_loading ||
+              !_adminPremiumEnabled ||
+              !_hasPackage ||
+              !PurchaseService.instance.purchasesEnabled)
+          ? null
+          : _buyPremiumReal,
       icon: const Icon(Icons.star, size: 18),
       label: Text(
         _loading
             ? t.get('please_wait')
-            : (_adminPriceText.isNotEmpty
-                ? '${t.get('subscribe_premium')} • $_adminPriceText'
-                : (_priceString == null
-                    ? t.get('subscribe_premium')
-                    : '${t.get('subscribe_premium')} • $_priceString')),
+            : (_hasPackage && _priceString != null
+                ? '${t.get('subscribe_premium')} • $_priceString'
+                : t.get('subscribe_premium')),
         style: const TextStyle(fontWeight: FontWeight.w900),
       ),
       style: ElevatedButton.styleFrom(
@@ -575,7 +622,7 @@ else
 const SizedBox(height: 10),
 
 OutlinedButton.icon(
-  onPressed: (_loading || !_adminPremiumEnabled)
+  onPressed: (_loading || !_adminPremiumEnabled || !PurchaseService.instance.purchasesEnabled)
       ? null
       : _restorePremiumReal,
   icon: const Icon(Icons.restore, size: 18),

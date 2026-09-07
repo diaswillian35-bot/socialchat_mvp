@@ -13,6 +13,7 @@ import 'dm_reply_quota.dart';
 import 'international_chat_service.dart';
 import 'outgoing_text_message_service.dart';
 import 'premium_access_service.dart';
+import 'remdy_launch_access.dart';
 
 /// Envio de imagem (DM e grupo) a partir do job da Share Extension.
 class OutgoingImageMessageService {
@@ -210,8 +211,16 @@ class OutgoingImageMessageService {
     final isWorld = myCountry.isNotEmpty &&
         groupCountry.isNotEmpty &&
         myCountry != groupCountry;
-    if (isWorld && !PremiumAccessService.isPremiumActiveFromData(myData)) {
-      return OutgoingTextSendResult.fail('share_in_no_permission');
+    if (isWorld ||
+        !RemdyLaunchAccess.canAccessGroupCountry(
+          userHomeCountryCode: myCountry,
+          groupCountryCode: groupCountry,
+        )) {
+      if (RemdyLaunchAccess.isFreeBrazilLaunch ||
+          (isWorld &&
+              !PremiumAccessService.isPremiumActiveFromData(myData))) {
+        return OutgoingTextSendResult.fail('share_in_no_permission');
+      }
     }
 
     try {

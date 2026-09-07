@@ -388,6 +388,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         finalLocked = true;
       }
       if (_cityName.trim().isEmpty ||
+          _stateName.trim().isEmpty ||
           _displayLocation.trim().isEmpty ||
           _selectedLat == null ||
           _selectedLng == null) {

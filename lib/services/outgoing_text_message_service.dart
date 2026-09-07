@@ -11,6 +11,7 @@ import 'group_discovery_logic.dart';
 import 'international_chat_service.dart';
 import 'link_preview_service.dart';
 import 'premium_access_service.dart';
+import 'remdy_launch_access.dart';
 import 'send_dm_message_service.dart';
 
 enum OutgoingTextSendTarget { conversation, group }
@@ -270,9 +271,17 @@ class OutgoingTextMessageService {
     final isWorld = myCountry.isNotEmpty &&
         groupCountry.isNotEmpty &&
         myCountry != groupCountry;
-    final isPremium = PremiumAccessService.isPremiumActiveFromData(myData);
-    if (isWorld && !isPremium) {
-      return OutgoingTextSendResult.fail('share_in_no_permission');
+    if (isWorld ||
+        !RemdyLaunchAccess.canAccessGroupCountry(
+          userHomeCountryCode: myCountry,
+          groupCountryCode: groupCountry,
+        )) {
+      // Lançamento gratuito: canAccessGroupCountry já cobre isWorld.
+      // Fora do lançamento: mantém regra Premium legado abaixo.
+      if (RemdyLaunchAccess.isFreeBrazilLaunch ||
+          (isWorld && !PremiumAccessService.isPremiumActiveFromData(myData))) {
+        return OutgoingTextSendResult.fail('share_in_no_permission');
+      }
     }
 
     final msgs = _db.collection('groups').doc(groupId).collection('messages');

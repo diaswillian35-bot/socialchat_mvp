@@ -9,6 +9,7 @@ import '../services/international_chat_service.dart';
 import '../services/people_browse_config_service.dart';
 import '../services/people_browse_grouping.dart';
 import '../services/user_avatar_resolver.dart';
+import '../services/user_location_scope.dart';
 import '../utils/user_search_normalize.dart';
 import '../widget/online_dot.dart';
 import '../widgets/international_premium_dialog.dart';
@@ -191,6 +192,8 @@ class _CountryPeoplePageState extends State<CountryPeoplePage> {
     // Ban / soft-delete / age gates covered by isActiveAccount when possible.
     if (data['isBanned'] == true || data['deleted'] == true) return false;
     if (data['suspended'] == true) return false;
+    // Sem cidade/estado confirmados não entram na descoberta regional.
+    if (!UserLocationScope.isDiscoverableProfile(data)) return false;
     return true;
   }
 

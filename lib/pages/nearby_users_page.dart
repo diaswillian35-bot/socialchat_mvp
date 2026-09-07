@@ -9,21 +9,32 @@ import '../services/new_user_policy.dart';
 import '../services/people_browse_config_service.dart';
 import '../services/people_browse_grouping.dart';
 import '../services/user_avatar_resolver.dart';
+import '../services/user_location_scope.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
 
-/// Lista completa de novos usuários do país (ex.: Brasil — todos, sem filtro de cidade).
+/// Lista regional (“Ver todos”): mesmo país + distância Haversine ≤ 110 km.
+/// Estado/província é só visual. Sem fallback estadual/nacional.
 class NearbyUsersPage extends StatelessWidget {
   const NearbyUsersPage({
     super.key,
     required this.countryCode,
     required this.countryName,
     required this.flag,
+    required this.viewerCity,
+    required this.viewerState,
+    required this.viewerLat,
+    required this.viewerLng,
   });
 
   final String countryCode;
   final String countryName;
   final String flag;
+  final String viewerCity;
+  /// Rótulo visual apenas.
+  final String viewerState;
+  final double viewerLat;
+  final double viewerLng;
 
   static const Color _bg = Color(0xFFF6F7FB);
   static const Color _text = Color(0xFF111827);
@@ -161,17 +172,31 @@ class NearbyUsersPage extends StatelessWidget {
     String myUid,
   ) {
     final normalizedCountry = countryCode.trim().toLowerCase();
+    if (!UserLocationScope.isValidCityCoordinate(viewerLat, viewerLng)) {
+      return const [];
+    }
 
     final filtered = docs.where((doc) {
       if (doc.id == myUid) return false;
       final data = doc.data();
       if (!InternationalChatService.isActiveAccount(data)) return false;
+      if (!UserLocationScope.isDiscoverableProfile(data)) return false;
       if (!_isRecent(data)) return false;
 
       final code = InternationalChatService.readHomeCountryCode(data);
       if (normalizedCountry.isNotEmpty &&
           code.isNotEmpty &&
           code != normalizedCountry) {
+        return false;
+      }
+
+      // Raio geográfico 110 km — estado/UF nunca define o limite.
+      if (!UserLocationScope.matchesViewerRegion(
+        otherData: data,
+        viewerCountryCode: normalizedCountry,
+        viewerLat: viewerLat,
+        viewerLng: viewerLng,
+      )) {
         return false;
       }
 
@@ -196,11 +221,12 @@ class NearbyUsersPage extends StatelessWidget {
     final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final normalizedCountry = countryCode.trim().toLowerCase();
     final subtitle = t
-        .get('nearby_users_all_in_country')
+        .get('nearby_users_region_subtitle')
         .replaceAll('{flag}', flag)
         .replaceAll('{country}', countryName);
 
-    if (normalizedCountry.isEmpty) {
+    if (normalizedCountry.isEmpty ||
+        !UserLocationScope.isValidCityCoordinate(viewerLat, viewerLng)) {
       return Scaffold(
         backgroundColor: _bg,
         appBar: AppBar(
@@ -211,11 +237,11 @@ class NearbyUsersPage extends StatelessWidget {
           scrolledUnderElevation: 0,
           iconTheme: const IconThemeData(color: _muted),
           title: Text(
-            t.get('home_nearby_users'),
+            t.get('home_nearby_users_region_title'),
             style: const TextStyle(color: _text, fontWeight: FontWeight.w800),
           ),
         ),
-        body: Center(child: Text(t.get('home_nearby_users_empty'))),
+        body: Center(child: Text(t.get('nearby_users_region_empty'))),
       );
     }
 
@@ -232,7 +258,7 @@ class NearbyUsersPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              t.get('home_nearby_users'),
+              t.get('home_nearby_users_region_title'),
               style: const TextStyle(
                 color: _text,
                 fontWeight: FontWeight.w800,
@@ -278,7 +304,7 @@ class NearbyUsersPage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  t.get('home_nearby_users_empty'),
+                  t.get('nearby_users_region_empty'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: _muted,

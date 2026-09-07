@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'international_country_codes.dart';
 import 'premium_access_service.dart';
+import 'remdy_launch_access.dart';
 
 /// Erro ao consultar conversas existentes — não criar DM sem confirmação.
 class ConversationLookupException implements Exception {
@@ -60,17 +61,25 @@ class InternationalChatService {
   }
 
   /// Premium/Master ou mesmo país com ambos códigos conhecidos.
+  /// No lançamento BR+CA (iOS): só mesmo país aberto (BR↔BR ou CA↔CA).
   static bool canSendMessage({
     required Map<String, dynamic> senderData,
     required Map<String, dynamic> recipientData,
     DateTime? now,
   }) {
+    if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+      return RemdyLaunchAccess.canChatBetweenCountries(
+        senderCountryCode: resolveCountryCode(senderData),
+        recipientCountryCode: resolveCountryCode(recipientData),
+        premiumActive: false,
+      );
+    }
     if (isPremiumActive(senderData, now: now)) return true;
     return dmCountryRelation(senderData, recipientData) ==
         DmCountryRelation.same;
   }
 
-  /// Free precisa de Premium para iniciar chat internacional (sem conversa).
+  /// Free precisa de Premium (ou "Em breve" no lançamento BR) para intl.
   static bool needsPremiumToStartChat({
     required Map<String, dynamic> senderData,
     required Map<String, dynamic> recipientData,

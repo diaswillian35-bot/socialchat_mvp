@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../pages/system_inbox_page.dart';
 import '../pages/delete_account_page.dart';
+import '../services/remdy_launch_access.dart';
 
 enum MenuAction {
   profile,
@@ -243,13 +244,15 @@ Stream<int> _unreadSystemCount() {
                   title: '${t.get('invite')} (${widget.invites}/$inviteTarget)',
                   onTap: () => _open(context, widget.invitePage),
                 ),
-                const Divider(height: 1),
-                _item(
-                  context: context,
-                  icon: Icons.star_rounded,
-                  title: t.get('premium'),
-                  onTap: () => _open(context, widget.premiumPage),
-                ),
+                if (RemdyLaunchAccess.showPremiumUi) ...[
+                  const Divider(height: 1),
+                  _item(
+                    context: context,
+                    icon: Icons.star_rounded,
+                    title: t.get('premium'),
+                    onTap: () => _open(context, widget.premiumPage),
+                  ),
+                ],
                 const Divider(height: 1),
                 _item(
                   context: context,

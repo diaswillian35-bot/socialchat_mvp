@@ -31,6 +31,7 @@ import '../services/international_chat_service.dart';
 import '../services/international_country_codes.dart';
 import '../services/message_delivery_status.dart';
 import '../services/premium_access_service.dart';
+import '../services/remdy_launch_access.dart';
 import '../services/send_dm_message_service.dart';
 import '../services/report_category.dart';
 import '../services/voice_service.dart';
@@ -286,6 +287,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int get _remainingSeconds =>
       (_dailyLimitSeconds - _dailySecondsUsed).clamp(0, _dailyLimitSeconds);
   bool get _canUseWorldChat {
+    // Lançamento gratuito: Premium não libera chat entre países.
+    if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+      return !_isWorldChat;
+    }
     return !_isWorldChat || _isPremium;
   }
 
@@ -1270,6 +1275,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     if (canSend) return true;
 
+    // Lançamento gratuito: sem franquia internacional — Em breve.
+    if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+      if (showReplyModal && mounted) {
+        await RemdyLaunchAccess.showComingSoon(context);
+      }
+      return false;
+    }
+
     // Free internacional: franquia 300 via Callable (não bloqueio total).
     final rel = InternationalChatService.dmCountryRelation(
       senderData,
@@ -1389,10 +1402,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
       if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PremiumPage()),
-        );
+        if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+          await RemdyLaunchAccess.showComingSoon(context);
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PremiumPage()),
+          );
+        }
         return;
       }
 
@@ -1407,7 +1424,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         if (diff < _cooldownMs) return;
       }
 
-      text = _textC.text.trim();
+      text = ChatComposerText.prepareOutgoingText(_textC.text);
       if (text.isEmpty) return;
 
       if (_containsPhone(text)) {
@@ -1718,10 +1735,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
       if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PremiumPage()),
-        );
+        if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+          await RemdyLaunchAccess.showComingSoon(context);
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PremiumPage()),
+          );
+        }
         return;
       }
 
@@ -1961,10 +1982,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
       if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PremiumPage()),
-        );
+        if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+          await RemdyLaunchAccess.showComingSoon(context);
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PremiumPage()),
+          );
+        }
         return;
       }
 
@@ -3099,7 +3124,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 6),
                                 child: Text(
-                                  t.get('chat_world_is_premium'),
+                                  RemdyLaunchAccess.isFreeBrazilLaunch
+                                      ? RemdyLaunchAccess.comingSoonMessage(t)
+                                      : t.get('chat_world_is_premium'),
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: _muted,
@@ -3261,6 +3288,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                               maxLines: 5,
                                               keyboardType:
                                                   TextInputType.multiline,
+                                              textCapitalization:
+                                                  ChatComposerText
+                                                      .keyboardCapitalization,
+                                              inputFormatters: [
+                                                ChatComposerText
+                                                    .leadingAlphaCapitalizationFormatter,
+                                              ],
                                               textInputAction:
                                                   TextInputAction.newline,
                                               decoration: InputDecoration(

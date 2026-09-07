@@ -24,10 +24,13 @@ import 'package:socialchat_mvp/pages/about_page.dart';
 import 'package:socialchat_mvp/widgets/home_discover_section.dart';
 import 'package:socialchat_mvp/widgets/home_nearby_users_section.dart';
 import '../services/online_status.dart';
+import '../services/presence_service.dart';
 import '../services/presence_watch.dart';
 import '../services/presence_display_hub.dart';
 import '../services/premium_access_service.dart';
 import '../services/purchase_service.dart';
+import '../services/remdy_launch_access.dart';
+import '../services/user_location_scope.dart';
 import '../services/user_search_service.dart';
 import '../services/app_badge_service.dart';
 import '../services/push_service.dart';
@@ -148,6 +151,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ];
 
   void showPremiumDialog(String countryName) {
+    if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+      RemdyLaunchAccess.showComingSoon(context);
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -348,6 +355,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     await PushService.clearForLogout(uid);
     await ShareExtensionSessionService.revokeLocalAndRemote();
+    await PresenceService.instance.stop();
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
 
@@ -365,7 +373,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  void _openCountry({required _Country item}) {
+  void _openCountry({
+    required _Country item,
+    required String homeCountryCode,
+  }) {
+    // Acesso só ao país canônico do perfil (homeCountryCode).
+    if (!RemdyLaunchAccess.canAccessCountryContent(
+      userHomeCountryCode: homeCountryCode,
+      targetCountryCode: item.code,
+    )) {
+      RemdyLaunchAccess.showComingSoon(context);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -442,7 +461,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final homeCode =
             (data['homeCountryCode'] ?? '').toString().trim().toLowerCase();
 
-        if (homeCode.isEmpty) {
+        if (homeCode.isEmpty ||
+            !UserLocationScope.hasCompleteProfileLocation(data)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             Navigator.pushReplacement(
@@ -487,6 +507,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final userCountryName = _countryName(homeCode);
         final userCity =
             (data['cityName'] ?? data['city'] ?? '').toString().trim();
+        final userState = (data['stateName'] ??
+                data['stateCode'] ??
+                data['state'] ??
+                '')
+            .toString()
+            .trim();
+        final viewerCoords = UserLocationScope.resolveCanonicalCoords(data);
+        final userLat = viewerCoords?.latitude;
+        final userLng = viewerCoords?.longitude;
 
         final countriesStream = db
             .collection('configCountries')
@@ -494,6 +523,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             .snapshots();
 
         bool canOpenCountry(_Country item) {
+          if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+            return RemdyLaunchAccess.canAccessCountryContent(
+              userHomeCountryCode: homeCode,
+              targetCountryCode: item.code,
+            );
+          }
           if (isPremiumActive) return true;
           return item.code.trim().toLowerCase() == homeCode;
         }
@@ -553,7 +588,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         myUid: uid,
                         inviteCode: inviteCode,
                       ),
-                      premiumPage: const PremiumPage(),
+                      premiumPage: RemdyLaunchAccess.showPremiumUi
+                          ? const PremiumPage()
+                          : const SizedBox.shrink(),
                       languagePage: const LanguagePage(),
                       notificationsPage: const NotificationsPage(),
                       systemInboxPage: const SystemInboxPage(),
@@ -681,9 +718,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            isPremiumActive
-                                ? t.get('world')
-                                : t.get('world_premium'),
+                            RemdyLaunchAccess.isFreeBrazilLaunch
+                                ? t.get('world_coming_soon')
+                                : (isPremiumActive
+                                    ? t.get('world')
+                                    : t.get('world_premium')),
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
@@ -791,6 +830,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   }
 
                   bool canOpenCountry(_Country item) {
+                    if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+                      return RemdyLaunchAccess.canAccessCountryContent(
+                        userHomeCountryCode: homeCode,
+                        targetCountryCode: item.code,
+                      );
+                    }
                     if (item.premiumOnly && !isPremiumActive) return false;
                     if (isPremiumActive) return true;
                     return item.code.trim().toLowerCase() == homeCode;
@@ -811,11 +856,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       final item = sortedCountries[i];
                       final isMyCountry =
                           item.code.trim().toLowerCase() == homeCode;
-                      // Free: selo informativo em países internacionais (sem bloquear/abrir cinza).
-                      final showPremiumBadge = !isPremiumActive && !isMyCountry;
+                      // Selo relativo ao país canônico do perfil (não fixo em CA).
+                      final showComingSoonBadge =
+                          RemdyLaunchAccess.showsComingSoonOnHome(
+                        userHomeCountryCode: homeCode,
+                        targetCountryCode: item.code,
+                      );
+                      final showPremiumBadge = !RemdyLaunchAccess
+                              .isFreeBrazilLaunch &&
+                          !isPremiumActive &&
+                          !isMyCountry;
 
                       return InkWell(
-                        onTap: () => _openCountry(item: item),
+                        onTap: () => _openCountry(
+                          item: item,
+                          homeCountryCode: homeCode,
+                        ),
                         borderRadius: BorderRadius.circular(18),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -846,7 +902,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if (showPremiumBadge) ...[
+                              if (showComingSoonBadge || showPremiumBadge) ...[
                                 const SizedBox(height: 4),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
@@ -860,7 +916,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         color: const Color(0xFFE2E8F0)),
                                   ),
                                   child: Text(
-                                    t.get('premium'),
+                                    showComingSoonBadge
+                                        ? RemdyLaunchAccess
+                                            .comingSoonBadgeLabel(t)
+                                        : t.get('premium'),
                                     style: const TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w700,
@@ -888,6 +947,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 countryCode: homeCode,
                 countryName: userCountryName,
                 city: userCity.isEmpty ? null : userCity,
+                state: userState.isEmpty ? null : userState,
+                viewerLat: userLat,
+                viewerLng: userLng,
               ),
             ],
           ),

@@ -7,21 +7,29 @@ import '../pages/nearby_users_page.dart';
 import '../services/international_chat_service.dart';
 import '../services/new_user_policy.dart';
 import '../services/user_avatar_resolver.dart';
+import '../services/user_location_scope.dart';
 import 'home_section_header.dart';
 
-/// Novos usuários perto de você — somente vitrine; chat segue regras existentes.
+/// Novos usuários na **mesma cidade** — sem fallback estadual/nacional.
 class HomeNearbyUsersSection extends StatelessWidget {
   const HomeNearbyUsersSection({
     super.key,
     required this.countryCode,
     required this.countryName,
     this.city,
+    this.state,
+    this.viewerLat,
+    this.viewerLng,
     this.limit = 12,
   });
 
   final String countryCode;
   final String countryName;
   final String? city;
+  /// Só visual (rótulo); não filtra.
+  final String? state;
+  final double? viewerLat;
+  final double? viewerLng;
   final int limit;
 
   static const Color _text = Color(0xFF111827);
@@ -53,25 +61,12 @@ class HomeNearbyUsersSection extends StatelessWidget {
     return AppTexts.t('home_new_user');
   }
 
-  bool _isRecent(Map<String, dynamic> data) {
-    return NewUserPolicy.isEligibleDiscoverableNewUser(data);
-  }
-
-  bool _matchesCity(Map<String, dynamic> data) {
-    final normalizedCity = city?.trim().toLowerCase() ?? '';
-    if (normalizedCity.isEmpty) return true;
-    final userCity = (data['cityName'] ?? data['city'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
-    if (userCity.isEmpty) return true;
-    return userCity == normalizedCity;
-  }
-
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterDocs(
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterSameCity(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
     String myUid, {
-    required bool strictCity,
+    required String viewerCity,
+    required double lat,
+    required double lng,
   }) {
     final normalizedCountry = countryCode.trim().toLowerCase();
 
@@ -79,13 +74,23 @@ class HomeNearbyUsersSection extends StatelessWidget {
       if (doc.id == myUid) return false;
       final data = doc.data();
       if (!InternationalChatService.isActiveAccount(data)) return false;
-      if (strictCity && !_matchesCity(data)) return false;
-      if (!_isRecent(data)) return false;
+      if (!UserLocationScope.isDiscoverableProfile(data)) return false;
+      if (!NewUserPolicy.isEligibleDiscoverableNewUser(data)) return false;
 
       final code = InternationalChatService.readHomeCountryCode(data);
       if (normalizedCountry.isNotEmpty &&
           code.isNotEmpty &&
           code != normalizedCountry) {
+        return false;
+      }
+
+      if (!UserLocationScope.matchesViewerCity(
+        otherData: data,
+        viewerCity: viewerCity,
+        viewerCountryCode: normalizedCountry,
+        viewerLat: lat,
+        viewerLng: lng,
+      )) {
         return false;
       }
 
@@ -118,8 +123,13 @@ class HomeNearbyUsersSection extends StatelessWidget {
     final t = AppTexts.current;
     final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final normalizedCountry = countryCode.trim().toLowerCase();
+    final viewerCity = (city ?? '').trim();
+    final lat = viewerLat;
+    final lng = viewerLng;
 
-    if (normalizedCountry.isEmpty) {
+    if (normalizedCountry.isEmpty ||
+        viewerCity.isEmpty ||
+        !UserLocationScope.isValidCityCoordinate(lat, lng)) {
       return const SizedBox.shrink();
     }
 
@@ -150,13 +160,25 @@ class HomeNearbyUsersSection extends StatelessWidget {
                   countryCode: countryCode,
                   countryName: countryName,
                   flag: _flagEmoji(countryCode),
+                  viewerCity: viewerCity,
+                  viewerState: (state ?? '').trim(),
+                  viewerLat: lat!,
+                  viewerLng: lng!,
                 ),
               ),
             );
           },
         ),
+        const SizedBox(height: 4),
+        Text(
+          t.get('home_nearby_users_city_subtitle'),
+          style: const TextStyle(
+            color: _muted,
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+          ),
+        ),
         const SizedBox(height: 8),
-        // Fonte oficial: `users` (homeCountryCode). Evita órfãos de publicUsers.
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('users')
@@ -173,10 +195,14 @@ class HomeNearbyUsersSection extends StatelessWidget {
             }
 
             final allDocs = snapshot.data?.docs ?? [];
-            var docs = _filterDocs(allDocs, myUid, strictCity: true);
-            if (docs.isEmpty && (city?.trim().isNotEmpty ?? false)) {
-              docs = _filterDocs(allDocs, myUid, strictCity: false);
-            }
+            // Sem fallback estadual/nacional: lista vazia permanece vazia.
+            final docs = _filterSameCity(
+              allDocs,
+              myUid,
+              viewerCity: viewerCity,
+              lat: lat!,
+              lng: lng!,
+            );
 
             if (docs.isEmpty) {
               return Padding(

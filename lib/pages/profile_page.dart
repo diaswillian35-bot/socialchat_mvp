@@ -9,10 +9,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../l10n/app_texts.dart';
 import '../services/premium_access_service.dart';
+import '../services/remdy_launch_access.dart';
 import '../services/user_search_service.dart';
 import '../widget/city_search_dialog.dart';
 
 import 'Premium_page.dart'; // <-- se o seu for "premium_page.dart", troque aqui
+import 'hidden_groups_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -657,13 +659,50 @@ class _ProfilePageState extends State<ProfilePage> {
 
             const SizedBox(height: 18),
 
+            if (RemdyLaunchAccess.showPremiumUi) ...[
+              SizedBox(
+                height: 46,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PremiumPage()),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: _border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    backgroundColor: Colors.white,
+                  ),
+                  icon: Icon(
+                    _isPremium ? Icons.star : Icons.star_border,
+                    color: const Color(0xFF313A5F),
+                  ),
+                  label: Text(
+                    _isPremium
+                        ? AppTexts.current.get('premium_active_short')
+                        : AppTexts.current.get('go_premium'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
             SizedBox(
               height: 46,
               child: OutlinedButton.icon(
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const PremiumPage()),
+                    MaterialPageRoute(
+                      builder: (_) => const HiddenGroupsPage(),
+                    ),
                   );
                 },
                 style: OutlinedButton.styleFrom(
@@ -673,14 +712,12 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   backgroundColor: Colors.white,
                 ),
-                icon: Icon(
-                  _isPremium ? Icons.star : Icons.star_border,
-                  color: const Color(0xFF313A5F),
+                icon: const Icon(
+                  Icons.visibility_off_outlined,
+                  color: Color(0xFF313A5F),
                 ),
                 label: Text(
-                  _isPremium
-                      ? AppTexts.current.get('premium_active_short')
-                      : AppTexts.current.get('go_premium'),
+                  AppTexts.current.get('group_hidden_list_title'),
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF111827),
@@ -688,7 +725,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
             ),
-
             const SizedBox(height: 12),
 
             SizedBox(

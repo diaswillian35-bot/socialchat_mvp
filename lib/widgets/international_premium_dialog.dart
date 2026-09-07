@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../pages/invite_page.dart';
 import '../pages/premium_page.dart';
+import '../services/remdy_launch_access.dart';
 
 enum InternationalPremiumDialogMode { start, reply, quotaExhausted }
 
@@ -41,6 +42,11 @@ class InternationalPremiumDialog {
     required InternationalPremiumDialogMode mode,
     String otherFirstName = '',
   }) async {
+    if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+      await RemdyLaunchAccess.showComingSoon(context);
+      return;
+    }
+
     final t = AppTexts.current;
     final isStart = mode == InternationalPremiumDialogMode.start;
     final isQuota = mode == InternationalPremiumDialogMode.quotaExhausted;

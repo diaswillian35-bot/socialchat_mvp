@@ -89,13 +89,25 @@ void main() {
       );
     });
 
-    test('canSendMessage international premium allowed', () {
+    test('canSendMessage international blocked even with premium in free launch',
+        () {
       expect(
         InternationalChatService.canSendMessage(
           senderData: {'countryCode': 'br', 'isPremium': true},
           recipientData: {'countryCode': 'ca'},
         ),
-        true,
+        false,
+      );
+      expect(
+        InternationalChatService.canSendMessage(
+          senderData: {
+            'homeCountryCode': 'br',
+            'isMaster': true,
+            'premiumUntil': DateTime.now().add(const Duration(days: 30)),
+          },
+          recipientData: {'homeCountryCode': 'ca'},
+        ),
+        false,
       );
     });
   });
