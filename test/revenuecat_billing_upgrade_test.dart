@@ -11,7 +11,7 @@ void main() {
   test('pubspec pins RevenueCat 10.9 through purchases_flutter', () {
     final pubspec = source('pubspec.yaml');
     expect(pubspec, contains('purchases_flutter: ^10.9.0'));
-    expect(pubspec, contains('version: 1.0.4+29'));
+    expect(pubspec, contains('version: 1.0.4+31'));
     expect(pubspec, isNot(contains('com.android.billingclient')));
   });
 

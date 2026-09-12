@@ -233,4 +233,144 @@ class EventAddressParts {
       legacyAddress: legacyAddress,
     );
   }
+
+  /// Preferência: valor novo não vazio; senão mantém o existente.
+  static String preferIncoming(String incoming, String existing) {
+    final next = incoming.trim();
+    if (next.isNotEmpty) return next;
+    return existing;
+  }
+}
+
+/// Resultado do merge Places → formulário (sem apagar campos válidos).
+class EventPlaceDetailsMerge {
+  const EventPlaceDetailsMerge({
+    required this.placeName,
+    required this.street,
+    required this.streetNumber,
+    required this.noStreetNumber,
+    required this.addressComplement,
+    required this.district,
+    required this.city,
+    required this.stateName,
+    required this.postalCode,
+    required this.countryCode,
+    required this.countryName,
+    required this.address,
+    required this.publicAddress,
+    this.lat,
+    this.lng,
+  });
+
+  final String placeName;
+  final String street;
+  final String streetNumber;
+  final bool noStreetNumber;
+  final String addressComplement;
+  final String district;
+  final String city;
+  final String stateName;
+  final String postalCode;
+  final String countryCode;
+  final String countryName;
+  final String address;
+  final String publicAddress;
+  final double? lat;
+  final double? lng;
+
+  /// Aplica componentes do Places sobre valores já preenchidos.
+  /// Campos ausentes na resposta **não** limpam valores válidos existentes.
+  factory EventPlaceDetailsMerge.apply({
+    required EventAddressParts parts,
+    required String existingPlaceName,
+    required String existingStreet,
+    required String existingStreetNumber,
+    required bool existingNoStreetNumber,
+    required String existingComplement,
+    required String existingDistrict,
+    required String existingCity,
+    required String existingStateName,
+    required String existingPostalCode,
+    required String existingCountryCode,
+    required String existingCountryName,
+    required String existingAddress,
+    String? apiPlaceName,
+    String? formattedAddress,
+    double? lat,
+    double? lng,
+    double? existingLat,
+    double? existingLng,
+  }) {
+    final street =
+        EventAddressParts.preferIncoming(parts.street, existingStreet);
+    final streetNumber = EventAddressParts.preferIncoming(
+      parts.streetNumber,
+      existingStreetNumber,
+    );
+    final complement = EventAddressParts.preferIncoming(
+      parts.addressComplement,
+      existingComplement,
+    );
+    final district =
+        EventAddressParts.preferIncoming(parts.district, existingDistrict);
+    final city = EventAddressParts.preferIncoming(parts.city, existingCity);
+    final stateName =
+        EventAddressParts.preferIncoming(parts.stateName, existingStateName);
+    final postalCode =
+        EventAddressParts.preferIncoming(parts.postalCode, existingPostalCode);
+    final countryCode = EventAddressParts.preferIncoming(
+      parts.countryCode,
+      existingCountryCode,
+    );
+    final countryName = EventAddressParts.preferIncoming(
+      parts.countryName,
+      existingCountryName,
+    );
+    final placeName = EventAddressParts.preferIncoming(
+      apiPlaceName ?? '',
+      existingPlaceName,
+    );
+    final address = EventAddressParts.preferIncoming(
+      formattedAddress ?? '',
+      existingAddress,
+    );
+
+    // Número vindo da API desmarca "sem número". Sem número na API,
+    // preserva a escolha atual do organizador (não força automaticamente).
+    final noStreetNumber = streetNumber.trim().isNotEmpty
+        ? false
+        : existingNoStreetNumber;
+
+    final mergedParts = EventAddressParts(
+      street: street,
+      streetNumber: streetNumber,
+      noStreetNumber: noStreetNumber,
+      addressComplement: complement,
+      district: district,
+      city: city,
+      stateName: stateName,
+      postalCode: postalCode,
+      countryCode: countryCode,
+      countryName: countryName,
+      legacyAddress: address,
+    );
+
+    return EventPlaceDetailsMerge(
+      placeName: placeName,
+      street: street,
+      streetNumber: streetNumber,
+      noStreetNumber: noStreetNumber,
+      addressComplement: complement,
+      district: district,
+      city: city,
+      stateName: stateName,
+      postalCode: postalCode,
+      countryCode: countryCode,
+      countryName: countryName,
+      address: address,
+      publicAddress: mergedParts.composePublicAddress(),
+      lat: lat ?? existingLat,
+      lng: lng ?? existingLng,
+    );
+  }
 }

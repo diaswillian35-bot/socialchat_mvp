@@ -188,7 +188,11 @@ class _EditEventPageState extends State<EditEventPage> {
       initial: _draft!,
       isEdit: true,
       onSubmit: _onSubmit,
-      onCancel: () => Navigator.of(context).maybePop(),
+      onCancel: () {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      },
     );
   }
 }

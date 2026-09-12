@@ -12,6 +12,7 @@ import '../../models/event_editorial_draft.dart';
 import '../../services/event_address_parts.dart';
 import '../../utils/event_timezone.dart';
 import '../keyboard_dismiss.dart';
+import 'event_search_sheet_chrome.dart';
 
 /// Wizard canônico de 7 passos para criar/editar evento.
 class EventEditorialWizard extends StatefulWidget {
@@ -156,6 +157,12 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     widget.onDraftChanged?.call(next);
   }
 
+  /// Marca alterações e reconstrói o [PopScope] (`canPop: !_dirty`).
+  void _markDirty() {
+    if (_dirty) return;
+    setState(() => _dirty = true);
+  }
+
   void _pullTextFieldsIntoDraft() {
     final audienceRaw = _audienceC.text.trim();
     final audience = audienceRaw.isEmpty ? null : int.tryParse(audienceRaw);
@@ -199,6 +206,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
             child: Text(AppTexts.t('event_cancel')),
           ),
           TextButton(
+            key: const Key('event_wizard_discard_confirm'),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(AppTexts.t('event_wizard_discard_confirm')),
           ),
@@ -208,16 +216,28 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     return ok == true;
   }
 
+  /// Descarta o rascunho desta edição e fecha de verdade.
+  ///
+  /// Importante: limpa [_dirty] **antes** do pop — senão o [PopScope]
+  /// (`canPop: !_dirty`) bloqueia o fechamento e a tela fica presa.
+  Future<void> _discardDraftAndLeave() async {
+    final ok = await _confirmDiscard();
+    if (!ok || !mounted) return;
+    dismissAppKeyboard();
+    _dirty = false;
+    if (widget.onCancel != null) {
+      widget.onCancel!();
+      return;
+    }
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    }
+  }
+
   Future<void> _onPopInvoked(bool didPop) async {
     if (didPop) return;
-    final ok = await _confirmDiscard();
-    if (ok && mounted) {
-      if (widget.onCancel != null) {
-        widget.onCancel!();
-      } else {
-        Navigator.of(context).maybePop();
-      }
-    }
+    await _discardDraftAndLeave();
   }
 
   String? _validateCurrent() {
@@ -250,14 +270,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     dismissAppKeyboard();
     _pullTextFieldsIntoDraft();
     if (_step <= 0) {
-      final ok = await _confirmDiscard();
-      if (ok && mounted) {
-        if (widget.onCancel != null) {
-          widget.onCancel!();
-        } else {
-          Navigator.of(context).maybePop();
-        }
-      }
+      await _discardDraftAndLeave();
       return;
     }
     setState(() => _step -= 1);
@@ -486,10 +499,10 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
             ? _draft.countryCode
             : _countryCodeFromName(_draft.countryName))
         .toUpperCase();
+    // Sem `types=address` para incluir estabelecimentos e endereços.
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/autocomplete/json'
       '?input=${Uri.encodeComponent(query)}'
-      '&types=address'
       '&components=country:$placeCountryCode'
       '&language=pt-BR'
       '&key=$_googlePlacesApiKey',
@@ -526,8 +539,8 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     final result = data['result'] as Map<String, dynamic>? ?? {};
     final location = result['geometry']?['location'];
     final components = result['address_components'] as List<dynamic>? ?? [];
-    final formatted =
-        (result['formatted_address'] ?? _draft.address).toString();
+    final formatted = (result['formatted_address'] ?? '').toString();
+    final apiName = (result['name'] ?? '').toString();
     final parts = EventAddressParts.fromPlacesComponents(
       components,
       legacyAddress: formatted,
@@ -537,41 +550,47 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
       countryNameFallback: _draft.countryName,
       postalFallback: _draft.postalCode,
     );
-    // Places sem street_number: não marcar "sem número" automaticamente
-    // se o organizador ainda puder completar — só pré-preenche.
-    final noNumber = parts.street.isNotEmpty && parts.streetNumber.isEmpty
-        ? _draft.noStreetNumber
-        : false;
-    final next = _draft.copyWith(
-      street: parts.street.isNotEmpty ? parts.street : _draft.street,
-      streetNumber: parts.streetNumber,
-      noStreetNumber: noNumber,
-      addressComplement: parts.addressComplement.isNotEmpty
-          ? parts.addressComplement
-          : _draft.addressComplement,
-      district:
-          parts.district.isNotEmpty ? parts.district : _draft.district,
-      postalCode: parts.postalCode.isNotEmpty
-          ? parts.postalCode
-          : _draft.postalCode,
-      city: parts.city.isNotEmpty ? parts.city : _draft.city,
-      stateName:
-          parts.stateName.isNotEmpty ? parts.stateName : _draft.stateName,
-      countryCode: parts.countryCode.isNotEmpty
-          ? parts.countryCode
-          : _draft.countryCode,
-      countryName: parts.countryName.isNotEmpty
-          ? parts.countryName
-          : _draft.countryName,
-      address: formatted,
-      publicAddress: formatted,
-      lat: location == null
-          ? _draft.lat
-          : (location['lat'] as num?)?.toDouble(),
-      lng: location == null
-          ? _draft.lng
-          : (location['lng'] as num?)?.toDouble(),
-    ).withComposedPublicAddress();
+    final merged = EventPlaceDetailsMerge.apply(
+      parts: parts,
+      existingPlaceName: _draft.placeName,
+      existingStreet: _draft.street,
+      existingStreetNumber: _draft.streetNumber,
+      existingNoStreetNumber: _draft.noStreetNumber,
+      existingComplement: _draft.addressComplement,
+      existingDistrict: _draft.district,
+      existingCity: _draft.city,
+      existingStateName: _draft.stateName,
+      existingPostalCode: _draft.postalCode,
+      existingCountryCode: _draft.countryCode,
+      existingCountryName: _draft.countryName,
+      existingAddress: _draft.address,
+      apiPlaceName: apiName,
+      formattedAddress: formatted,
+      lat: location == null ? null : (location['lat'] as num?)?.toDouble(),
+      lng: location == null ? null : (location['lng'] as num?)?.toDouble(),
+      existingLat: _draft.lat,
+      existingLng: _draft.lng,
+    );
+    final next = _draft
+        .copyWith(
+          placeName: merged.placeName,
+          street: merged.street,
+          streetNumber: merged.streetNumber,
+          noStreetNumber: merged.noStreetNumber,
+          addressComplement: merged.addressComplement,
+          district: merged.district,
+          postalCode: merged.postalCode,
+          city: merged.city,
+          cityKey: merged.city.toLowerCase(),
+          stateName: merged.stateName,
+          countryCode: merged.countryCode,
+          countryName: merged.countryName,
+          address: merged.address,
+          publicAddress: merged.publicAddress,
+          lat: merged.lat,
+          lng: merged.lng,
+        )
+        .withComposedPublicAddress();
     _streetC.text = next.street;
     _streetNumberC.text = next.streetNumber;
     _complementC.text = next.addressComplement;
@@ -587,6 +606,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     return showModalBottomSheet<_CitySuggestion>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: false,
       backgroundColor: Colors.white,
       builder: (sheetContext) {
         return StatefulBuilder(
@@ -607,56 +627,41 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
               });
             }
 
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.75,
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: searchC,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        labelText: AppTexts.t('create_event_city'),
-                        hintText:
-                            AppTexts.t('create_event_city_search_hint'),
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.search),
-                      ),
-                      onChanged: runSearch,
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: loading
-                          ? const Center(child: CircularProgressIndicator())
-                          : results.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    AppTexts.t('create_event_type_2_letters'),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  itemCount: results.length,
-                                  itemBuilder: (context, i) {
-                                    final item = results[i];
-                                    return ListTile(
-                                      title: Text(item.display),
-                                      onTap: () => Navigator.pop(
-                                        sheetContext,
-                                        item,
-                                      ),
-                                    );
-                                  },
-                                ),
-                    ),
-                  ],
+            return EventSearchSheetChrome(
+              title: AppTexts.t('create_event_city'),
+              cancelLabel: AppTexts.t('cancel'),
+              searchField: TextField(
+                controller: searchC,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: AppTexts.t('create_event_city'),
+                  hintText: AppTexts.t('create_event_city_search_hint'),
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.search),
                 ),
+                onChanged: runSearch,
               ),
+              body: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : results.isEmpty
+                      ? Center(
+                          child: Text(
+                            AppTexts.t('create_event_type_2_letters'),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: results.length,
+                          itemBuilder: (context, i) {
+                            final item = results[i];
+                            return ListTile(
+                              title: Text(item.display),
+                              onTap: () {
+                                FocusManager.instance.primaryFocus?.unfocus();
+                                Navigator.pop(sheetContext, item);
+                              },
+                            );
+                          },
+                        ),
             );
           },
         );
@@ -671,6 +676,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
     return showModalBottomSheet<_PlaceSuggestion>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: false,
       backgroundColor: Colors.white,
       builder: (sheetContext) {
         return StatefulBuilder(
@@ -691,57 +697,42 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
               });
             }
 
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.75,
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: searchC,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        labelText: AppTexts.t('create_event_place'),
-                        hintText:
-                            AppTexts.t('create_event_place_search_hint'),
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.place),
-                      ),
-                      onChanged: runSearch,
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: loading
-                          ? const Center(child: CircularProgressIndicator())
-                          : results.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    AppTexts.t('create_event_type_2_letters'),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  itemCount: results.length,
-                                  itemBuilder: (context, i) {
-                                    final item = results[i];
-                                    return ListTile(
-                                      title: Text(item.placeName),
-                                      subtitle: Text(item.address),
-                                      onTap: () => Navigator.pop(
-                                        sheetContext,
-                                        item,
-                                      ),
-                                    );
-                                  },
-                                ),
-                    ),
-                  ],
+            return EventSearchSheetChrome(
+              title: AppTexts.t('create_event_place'),
+              cancelLabel: AppTexts.t('cancel'),
+              searchField: TextField(
+                controller: searchC,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: AppTexts.t('create_event_place'),
+                  hintText: AppTexts.t('create_event_place_search_hint'),
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.place),
                 ),
+                onChanged: runSearch,
               ),
+              body: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : results.isEmpty
+                      ? Center(
+                          child: Text(
+                            AppTexts.t('create_event_type_2_letters'),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: results.length,
+                          itemBuilder: (context, i) {
+                            final item = results[i];
+                            return ListTile(
+                              title: Text(item.placeName),
+                              subtitle: Text(item.address),
+                              onTap: () {
+                                FocusManager.instance.primaryFocus?.unfocus();
+                                Navigator.pop(sheetContext, item);
+                              },
+                            );
+                          },
+                        ),
             );
           },
         );
@@ -991,14 +982,14 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         TextField(
           controller: _titleC,
           decoration: _dec(t('create_event_name'), hint: t('create_event_name_hint')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _shortDescC,
           maxLength: 280,
           decoration: _dec(t('event_wizard_short_description')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -1008,7 +999,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
             t('create_event_description'),
             hint: t('create_event_description_hint'),
           ),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
@@ -1028,7 +1019,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         TextField(
           controller: _langC,
           decoration: _dec(t('event_wizard_primary_language')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
       ],
     );
@@ -1146,7 +1137,6 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
           controller: _streetC,
           decoration: _dec(t('event_wizard_street')),
           onChanged: (v) {
-            _dirty = true;
             _setDraft(_draft.copyWith(street: v).withComposedPublicAddress());
           },
         ),
@@ -1160,7 +1150,6 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
                 enabled: !_draft.noStreetNumber,
                 decoration: _dec(t('event_wizard_street_number')),
                 onChanged: (v) {
-                  _dirty = true;
                   _setDraft(
                     _draft
                         .copyWith(streetNumber: v, noStreetNumber: false)
@@ -1203,7 +1192,6 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
           controller: _complementC,
           decoration: _dec(t('event_wizard_address_complement')),
           onChanged: (v) {
-            _dirty = true;
             _setDraft(
               _draft
                   .copyWith(addressComplement: v)
@@ -1216,7 +1204,6 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
           controller: _districtC,
           decoration: _dec(t('event_wizard_district')),
           onChanged: (v) {
-            _dirty = true;
             _setDraft(
               _draft.copyWith(district: v).withComposedPublicAddress(),
             );
@@ -1227,7 +1214,6 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
           controller: _postalC,
           decoration: _dec(t('event_wizard_postal_code')),
           onChanged: (v) {
-            _dirty = true;
             _setDraft(
               _draft.copyWith(postalCode: v).withComposedPublicAddress(),
             );
@@ -1279,33 +1265,33 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
             controller: _priceC,
             decoration: _dec(t('event_wizard_price')),
             keyboardType: TextInputType.text,
-            onChanged: (_) => _dirty = true,
+            onChanged: (_) => _markDirty(),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _currencyC,
             decoration: _dec(t('event_wizard_currency'), hint: 'BRL'),
-            onChanged: (_) => _dirty = true,
+            onChanged: (_) => _markDirty(),
           ),
         ],
         const SizedBox(height: 12),
         TextField(
           controller: _ticketUrlC,
           decoration: _dec(t('event_wizard_ticket_url')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _ticketInfoC,
           decoration: _dec(t('event_wizard_ticket_info')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _audienceC,
           decoration: _dec(t('event_wizard_expected_audience')),
           keyboardType: TextInputType.number,
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
       ],
     );
@@ -1631,40 +1617,40 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
           controller: _accessC,
           maxLines: 2,
           decoration: _dec(t('event_wizard_accessibility')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _parkingC,
           maxLines: 2,
           decoration: _dec(t('event_wizard_parking')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _foodC,
           maxLines: 2,
           decoration: _dec(t('event_wizard_food')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _ageC,
           decoration: _dec(t('event_wizard_age_rating')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _entryC,
           maxLines: 2,
           decoration: _dec(t('event_wizard_entry_policy')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _contactC,
           decoration: _dec(t('event_wizard_public_contact')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         CheckboxListTile(
           value: _draft.publicContactConsent,
@@ -1678,14 +1664,14 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         TextField(
           controller: _websiteC,
           decoration: _dec(t('event_wizard_website')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _notesC,
           maxLines: 3,
           decoration: _dec(t('event_wizard_public_notes')),
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 8),
         CheckboxListTile(
