@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'block_service.dart';
+import 'conversation_inbox_visibility.dart';
 import 'dm_reply_quota.dart';
 import 'group_ban_service.dart';
 import 'group_discovery_logic.dart';
@@ -13,6 +14,7 @@ import 'link_preview_service.dart';
 import 'premium_access_service.dart';
 import 'remdy_launch_access.dart';
 import 'send_dm_message_service.dart';
+import 'objectionable_content_filter.dart';
 
 enum OutgoingTextSendTarget { conversation, group }
 
@@ -78,6 +80,10 @@ class OutgoingTextMessageService {
     final text = request.text.trim();
     if (text.isEmpty) {
       return OutgoingTextSendResult.fail('share_in_invalid');
+    }
+    final filterReject = ObjectionableContentFilter.rejectReason(text);
+    if (filterReject != null) {
+      return OutgoingTextSendResult.fail(filterReject);
     }
     if (_containsPhone(text)) {
       return OutgoingTextSendResult.fail('chat_phone_not_allowed');
@@ -360,12 +366,11 @@ class OutgoingTextMessageService {
       // Server owns peer unread (+1). Client only clears own counter.
       tx.set(
         convDoc,
-        {
-          'lastMessage': lastMessage,
-          'lastMessageAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'unread.$myUid': 0,
-        },
+        ConversationInboxVisibility.parentSummaryAfterRealMessage(
+          lastMessage: lastMessage,
+          myUid: myUid,
+          otherUid: otherUid,
+        ),
         SetOptions(merge: true),
       );
     });

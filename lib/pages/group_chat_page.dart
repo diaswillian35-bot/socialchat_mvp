@@ -28,6 +28,7 @@ import '../services/presence_rtdb_config.dart';
 import '../services/presence_rtdb_logic.dart';
 import '../services/presence_watch.dart';
 import '../services/report_category.dart';
+import '../services/objectionable_content_filter.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'group_info_page.dart';
@@ -1294,6 +1295,12 @@ class _GroupChatPageState extends State<GroupChatPage>
 
       text = ChatComposerText.prepareOutgoingText(_textC.text);
       if (text.isEmpty) return;
+
+      final filterReject = ObjectionableContentFilter.rejectReason(text);
+      if (filterReject != null) {
+        _toast(AppTexts.current.get(filterReject));
+        return;
+      }
 
       pendingId = _msgsRef.doc().id;
       reply = _captureReplyData();

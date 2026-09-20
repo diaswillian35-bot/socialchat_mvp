@@ -1494,5 +1494,8 @@
   "group_unhide": "Mostrar de nuevo",
   "group_unhidden_success": "Grupo visible de nuevo en el descubrimiento.",
   "private": "Privado",
-  "public": "Público"
+  "public": "Público",
+  "terms_zero_tolerance_title": "Tolerancia cero",
+  "terms_zero_tolerance_body": "Remdy tiene una política de tolerancia cero hacia el contenido inapropiado y los usuarios abusivos. El acoso, el discurso de odio, las amenazas, la explotación sexual, el material de abuso sexual infantil, las estafas y otros comportamientos abusivos están estrictamente prohibidos. Las infracciones pueden resultar en la eliminación de contenido y en el ban permanente de la cuenta sin aviso previo. Los usuarios pueden denunciar contenido y bloquear cuentas abusivas; Remdy puede actuar sobre las denuncias para proteger a la comunidad.",
+  "content_filter_blocked": "Este mensaje se bloqueó porque puede contener contenido inapropiado o abusivo."
 }

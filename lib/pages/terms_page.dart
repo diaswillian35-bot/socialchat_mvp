@@ -17,6 +17,9 @@ ${t.get('last_update')}: ${t.get('legal_last_update_date')}
 
 ${t.get('terms_welcome')}
 
+${t.get('terms_zero_tolerance_title')}
+${t.get('terms_zero_tolerance_body')}
+
 1. ${t.get('terms_about_remdy')}
 ${t.get('terms_about_intro')}
 • ${t.get('terms_about_item_1')}

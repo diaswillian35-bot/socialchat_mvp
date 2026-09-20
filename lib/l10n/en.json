@@ -1493,5 +1493,8 @@
   "group_unhide": "Unhide",
   "group_unhidden_success": "Group visible again in discovery.",
   "private": "Private",
-  "public": "Public"
+  "public": "Public",
+  "terms_zero_tolerance_title": "Zero tolerance",
+  "terms_zero_tolerance_body": "Remdy has a zero-tolerance policy for objectionable content and abusive users. Harassment, hate speech, threats, sexual exploitation, child sexual abuse material, scams, and other abusive behavior are strictly prohibited. Violations may result in content removal and permanent account bans without prior notice. Users can report content and block abusive accounts; Remdy may act on reports to protect the community.",
+  "content_filter_blocked": "This message was blocked because it may contain objectionable or abusive content."
 }

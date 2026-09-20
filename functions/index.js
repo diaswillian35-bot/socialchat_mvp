@@ -91,6 +91,7 @@ exports.forwardMessage = forwardMessage;
 
 const { sendDmMessage } = require("./send_dm_message");
 exports.sendDmMessage = sendDmMessage;
+const { isObjectionableText } = require("./objectionable_content_filter");
 
 const {
   issueShareExtensionSession,
@@ -578,6 +579,18 @@ exports.onGroupMessageCreated = onDocumentCreated(
           : null;
       if (!type) return;
 
+      if (type === "text" && isObjectionableText(msg.text)) {
+        await event.data.ref.set(
+          {
+            deleted: true,
+            deletedReason: "objectionable",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        return;
+      }
+
       let lastMessage = "Nova mensagem";
       if (type === "audio") {
         lastMessage = "🎤 Áudio";
@@ -772,7 +785,11 @@ exports.onPrivateMessageCreated = onDocumentCreated(
           lastMessageType: msgType || "text",
           lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          hiddenFor: admin.firestore.FieldValue.arrayRemove(...targetUids),
+          hiddenFor: admin.firestore.FieldValue.arrayRemove(
+            ...Array.from(
+              new Set([senderId, ...targetUids].filter(Boolean)),
+            ),
+          ),
         };
 
         if (skipIncrement) {
@@ -4340,6 +4357,11 @@ exports.createEventComment = socialOnCall(
     }
     if (sanitized.error === "too_long") {
       throw new HttpsError("invalid-argument", "Comment is too long.");
+    }
+    if (sanitized.error === "objectionable") {
+      throw new HttpsError("invalid-argument", "Objectionable content.", {
+        code: "content_filter_blocked",
+      });
     }
     const text = sanitized.text;
 

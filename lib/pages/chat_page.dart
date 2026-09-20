@@ -14,6 +14,7 @@ import 'package:socialchat_mvp/pages/Premium_page.dart';
 import 'package:socialchat_mvp/pages/public_profile_page.dart';
 import 'package:socialchat_mvp/services/audio_playback_controller.dart';
 import 'package:socialchat_mvp/services/block_service.dart';
+import 'package:socialchat_mvp/services/objectionable_content_filter.dart';
 import 'package:socialchat_mvp/widget/audio_bubble.dart';
 
 import '../l10n/app_texts.dart';
@@ -22,6 +23,7 @@ import '../widgets/chat_keyboard_inset.dart';
 import '../pages/forward_message_page.dart';
 import '../services/forward_message_service.dart';
 import '../services/chat_read_guard.dart';
+import '../services/conversation_inbox_visibility.dart';
 import '../services/conversation_read_write.dart';
 import '../services/conversation_unread.dart';
 import '../services/unread_clear_audit.dart';
@@ -1333,7 +1335,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       debugPrint(
           '$logPrefix: atualizando resumo da conversa path=conversations/${widget.conversationId}');
       debugPrint(
-          '$logPrefix: campos={lastMessage,lastMessageAt,updatedAt,unread}');
+          '$logPrefix: campos={lastMessage,lastMessageAt,updatedAt,unread,hiddenFor}');
     }
 
     await db.runTransaction((tx) async {
@@ -1342,12 +1344,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       // Never replace the whole unread map (races with onPrivateMessageCreated).
       tx.set(
         convDoc,
-        {
-          'lastMessage': lastMessage,
-          'lastMessageAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'unread.$myUid': 0,
-        },
+        ConversationInboxVisibility.parentSummaryAfterRealMessage(
+          lastMessage: lastMessage,
+          myUid: myUid,
+          otherUid: widget.otherUid,
+        ),
         SetOptions(merge: true),
       );
       // Touch snap so the transaction is not empty-read-only on some SDKs.
@@ -1427,6 +1428,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       text = ChatComposerText.prepareOutgoingText(_textC.text);
       if (text.isEmpty) return;
 
+      final filterReject = ObjectionableContentFilter.rejectReason(text);
+      if (filterReject != null) {
+        _warn(t.get(filterReject));
+        return;
+      }
+
       if (_containsPhone(text)) {
         _warn(t.get('chat_phone_not_allowed'));
         return;
@@ -1495,6 +1502,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ),
         );
         // Unread/lastMessage: onPrivateMessageCreated no servidor.
+        try {
+          await convDoc.set({
+            'hiddenFor': ConversationInboxVisibility.hiddenForUnhide(
+              [myUid, widget.otherUid],
+            ),
+          }, SetOptions(merge: true));
+        } catch (e, st) {
+          if (kDebugMode) {
+            debugPrint('ChatText: falha ao reexibir conversa oculta: $e\n$st');
+          }
+        }
         if (_scrollC.hasClients) {
           _scrollC.jumpTo(0);
         }

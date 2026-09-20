@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/conversation_inbox_visibility.dart';
 import '../services/conversation_unread.dart';
 import '../widget/online_dot.dart';
 import 'chat_page.dart';
@@ -196,6 +197,13 @@ class _MessagesPageState extends State<MessagesPage> {
             return 0;
           });
 
+          docs.removeWhere(
+            (d) => !ConversationInboxVisibility.shouldShowInMessagesTab(
+              data: d.data(),
+              myUid: myUid,
+            ),
+          );
+
           if (docs.isEmpty) {
             return Center(
               child: Text(
@@ -215,15 +223,6 @@ class _MessagesPageState extends State<MessagesPage> {
             itemBuilder: (context, i) {
               final convDoc = docs[i];
               final data = convDoc.data();
-
-              final hiddenRaw = data['hiddenFor'];
-              final hiddenFor = (hiddenRaw is List)
-                  ? hiddenRaw.map((e) => e.toString()).toList()
-                  : <String>[];
-
-              if (hiddenFor.contains(myUid)) {
-                return const SizedBox.shrink();
-              }
 
               final participants =
                   (data['participants'] as List?)?.cast<String>() ?? [];

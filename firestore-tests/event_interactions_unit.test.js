@@ -240,6 +240,10 @@ describe("event interactions unit (functions helpers)", function () {
         h.sanitizeCommentText("x".repeat(h.EVENT_COMMENT_MAX_LEN + 1)).error,
         "too_long"
       );
+      assert.strictEqual(
+        h.sanitizeCommentText("pornografia infantil").error,
+        "objectionable"
+      );
     });
   });
 

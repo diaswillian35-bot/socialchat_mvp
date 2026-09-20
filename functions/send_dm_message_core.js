@@ -12,6 +12,7 @@ const {
   IDEMPOTENCY_TTL_MS,
   REPLY_QUOTA_LIMIT,
 } = require("./dm_reply_quota");
+const { isObjectionableText } = require("./objectionable_content_filter");
 
 function asUidList(raw) {
   if (!Array.isArray(raw)) return [];
@@ -45,6 +46,11 @@ function accountBlocked(userData = {}) {
 async function executeSendDmMessage(db, uid, data) {
   const conversationId = String(data.conversationId || "").trim();
   const text = data.text == null ? "" : String(data.text);
+  if (isObjectionableText(text)) {
+    throw new HttpsError("invalid-argument", "Objectionable content.", {
+      code: "content_filter_blocked",
+    });
+  }
   const otherUidHint = String(data.otherUid || "").trim();
   const messageIdIn = String(data.messageId || "").trim();
   const requestIdCheck = validateRequestId(data.requestId);

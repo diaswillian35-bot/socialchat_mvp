@@ -1284,5 +1284,8 @@
   "group_unhide": "Mostrar novamente",
   "group_unhidden_success": "Grupo visível novamente na descoberta.",
   "private": "Privado",
-  "public": "Público"
+  "public": "Público",
+  "terms_zero_tolerance_title": "Tolerância zero",
+  "terms_zero_tolerance_body": "O Remdy tem uma política de tolerância zero relativamente a conteúdo impróprio e utilizadores abusivos. Assédio, discurso de ódio, ameaças, exploração sexual, material de abuso sexual infantil, fraudes e outros comportamentos abusivos são estritamente proibidos. As violações podem resultar na remoção de conteúdo e no banimento permanente da conta sem aviso prévio. Os utilizadores podem denunciar conteúdo e bloquear contas abusivas; o Remdy pode agir sobre denúncias para proteger a comunidade.",
+  "content_filter_blocked": "Esta mensagem foi bloqueada porque pode conter conteúdo impróprio ou abusivo."
 }

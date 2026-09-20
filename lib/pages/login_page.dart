@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/google_sign_in_service.dart';
+import '../services/apple_sign_in_service.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import '../services/locale_controller.dart';
 import '../services/age_verification.dart';
@@ -16,6 +17,7 @@ import '../widgets/keyboard_safe_body.dart';
 import '../widgets/keyboard_dismiss.dart';
 import 'terms_page.dart';
 import 'privacy_page.dart';
+import '../services/auth_terms_gate.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -52,7 +54,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _rememberMe = true;
   DateTime? _signupBirthDate;
-  bool _signupTermsAccepted = false;
+  bool _termsAccepted = false;
   String _loadedLocaleCode = '';
 
   static const String _testEmail = 'diaswillian35@gmail.com';
@@ -144,6 +146,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   final GoogleSignInService _googleSignInService = GoogleSignInService();
+  final AppleSignInService _appleSignInService = AppleSignInService();
 
   Future<void> _clearStaleSession() async {
     await _googleSignInService.signOutSilently();
@@ -253,6 +256,11 @@ class _LoginPageState extends State<LoginPage> {
       return _toast("Senha precisa ter no mínimo 6 caracteres.");
     }
 
+    final termsReject = AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    if (termsReject != null) {
+      return _toast(AppTexts.current.get(termsReject));
+    }
+
     if (!_isLogin) {
       final confirm = _confirmC.text;
       if (confirm.trim() != pass.trim()) {
@@ -266,9 +274,6 @@ class _LoginPageState extends State<LoginPage> {
       }
       if (!AgeVerification.isAdult(birth, DateTime.now())) {
         return _toast(AppTexts.current.get('age_underage_blocked'));
-      }
-      if (!_signupTermsAccepted) {
-        return _toast(AppTexts.current.get('age_terms_required'));
       }
     }
 
@@ -295,6 +300,7 @@ class _LoginPageState extends State<LoginPage> {
         final freshUser = FirebaseAuth.instance.currentUser;
 
         await _ensureUserDoc(freshUser ?? user, isNewUser: false);
+        await _maybeLinkPendingApple(freshUser ?? user);
       } else {
         cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email,
@@ -320,6 +326,7 @@ class _LoginPageState extends State<LoginPage> {
         }
         await user.sendEmailVerification();
         await _ensureUserDoc(user, isNewUser: true);
+        await _maybeLinkPendingApple(user);
 
         if (!mounted) return;
 
@@ -365,6 +372,10 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginGoogle() async {
     if (_loading) return;
+    final termsReject = AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    if (termsReject != null) {
+      return _toast(AppTexts.current.get(termsReject));
+    }
     setState(() => _loading = true);
 
     try {
@@ -393,6 +404,7 @@ class _LoginPageState extends State<LoginPage> {
         _emailC.text = user.email!.trim();
       }
 
+      await _maybeLinkPendingApple(user);
       await _saveRemembered();
       await _goToApp();
       return;
@@ -406,6 +418,10 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginTest() async {
     if (_loading) return;
+    final termsReject = AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    if (termsReject != null) {
+      return _toast(AppTexts.current.get(termsReject));
+    }
 
     setState(() => _loading = true);
     try {
@@ -434,11 +450,64 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void _loginApple() {
-    _toast("Apple: deixei o botão. Depois configuramos com calma.");
+  Future<void> _maybeLinkPendingApple(User user) async {
+    final linked = await AppleSignInService.linkPendingIfAny(user);
+    if (!mounted) return;
+    if (linked.isSuccess || linked.isCancelled) return;
+    final msg = linked.userMessage?.trim() ?? '';
+    if (msg.isNotEmpty) _toast(msg);
+  }
+
+  Future<void> _loginApple() async {
+    if (_loading) return;
+    final termsReject =
+        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    if (termsReject != null) {
+      return _toast(AppTexts.current.get(termsReject));
+    }
+    setState(() => _loading = true);
+
+    try {
+      final outcome = await _appleSignInService.signIn();
+      if (!mounted) return;
+
+      if (outcome.isCancelled) {
+        return;
+      }
+      if (!outcome.isSuccess || outcome.userCredential == null) {
+        _toast(outcome.userMessage ?? 'Erro no Apple.');
+        return;
+      }
+
+      final cred = outcome.userCredential!;
+      final user = cred.user;
+      if (user == null) {
+        _toast('Erro: usuário da Apple veio vazio.');
+        return;
+      }
+
+      final isNewUser = cred.additionalUserInfo?.isNewUser == true;
+      await _ensureUserDoc(user, isNewUser: isNewUser);
+
+      if (user.email != null && user.email!.trim().isNotEmpty) {
+        _emailC.text = user.email!.trim();
+      }
+
+      await _saveRemembered();
+      await _goToApp();
+      return;
+    } catch (_) {
+      if (mounted) _toast('Erro no Apple. Tente novamente.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _loginFacebook() async {
+    final termsReject = AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    if (termsReject != null) {
+      return _toast(AppTexts.current.get(termsReject));
+    }
     setState(() => _loading = true);
 
     try {
@@ -470,6 +539,10 @@ class _LoginPageState extends State<LoginPage> {
       print("EMAIL: ${user?.email}");
       print("NAME: ${user?.displayName}");
       print("PHOTO: ${user?.photoURL}");
+
+      if (user != null) {
+        await _maybeLinkPendingApple(user);
+      }
 
       await _goToApp();
 
@@ -620,40 +693,40 @@ class _LoginPageState extends State<LoginPage> {
                                 .formatMediumDate(_signupBirthDate!)),
                       ),
                     ),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: _signupTermsAccepted,
-                      onChanged: _loading
-                          ? null
-                          : (v) => setState(
-                                () => _signupTermsAccepted = v == true,
-                              ),
-                      title: Text(t.get('age_accept_terms')),
-                      subtitle: Wrap(
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const TermsPage())),
-                            child: Text(t.get('terms_of_use')),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const PrivacyPage())),
-                            child: Text(t.get('privacy_policy')),
-                          ),
-                        ],
-                      ),
-                    ),
                     Text(
                       t.get('age_18_plus_notice'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ],
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _termsAccepted,
+                    onChanged: _loading
+                        ? null
+                        : (v) => setState(
+                              () => _termsAccepted = v == true,
+                            ),
+                    title: Text(t.get('age_accept_terms')),
+                    subtitle: Wrap(
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const TermsPage())),
+                          child: Text(t.get('terms_of_use')),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const PrivacyPage())),
+                          child: Text(t.get('privacy_policy')),
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -747,7 +820,7 @@ class _LoginPageState extends State<LoginPage> {
                                 _passC.clear();
                                 _confirmC.clear();
                                 _signupBirthDate = null;
-                                _signupTermsAccepted = false;
+                                _termsAccepted = false;
                               });
                             },
                       child: Text(

@@ -3,6 +3,8 @@
  * Usados por Cloud Functions e testes Node — sem Firebase Admin.
  */
 
+const { isObjectionableText } = require("./objectionable_content_filter");
+
 const EVENT_COMMENT_MAX_LEN = 1000;
 const EVENT_COMMENT_REPLY_PREVIEW_LEN = 280;
 
@@ -49,12 +51,14 @@ function resolveRootCommentId(parent) {
   return "";
 }
 
+
 function sanitizeCommentText(raw) {
   if (raw === undefined || raw === null) return { error: "invalid" };
   if (typeof raw !== "string") return { error: "invalid" };
   const text = raw.replace(/\u0000/g, "").trim();
   if (!text) return { error: "empty" };
   if (text.length > EVENT_COMMENT_MAX_LEN) return { error: "too_long" };
+  if (isObjectionableText(text)) return { error: "objectionable" };
   return { text };
 }
 

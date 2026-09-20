@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'purchase_service.dart';
 import 'share_extension_session_service.dart';
+import 'apple_sign_in_service.dart';
 
 /// Exclusão de conta via Cloud Function (Admin SDK).
 class AccountDeletionService {
@@ -116,11 +117,8 @@ class AccountDeletionService {
     }
 
     if (providers.contains('apple.com')) {
-      // Apple Sign-In ainda não está totalmente configurado no app.
-      throw FirebaseAuthException(
-        code: 'operation-not-allowed',
-        message: 'Apple re-authentication is not available yet.',
-      );
+      await AppleSignInService().reauthenticate(user);
+      return;
     }
 
     throw FirebaseAuthException(

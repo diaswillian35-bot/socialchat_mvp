@@ -51,4 +51,9 @@ describe("event_interactions_helpers (functions)", () => {
       false
     );
   });
+
+  it("rejects objectionable comment text", () => {
+    assert.equal(h.sanitizeCommentText("  hi  ").text, "hi");
+    assert.equal(h.sanitizeCommentText("vou te matar").error, "objectionable");
+  });
 });

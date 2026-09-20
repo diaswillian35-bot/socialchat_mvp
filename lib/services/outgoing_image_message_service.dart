@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../l10n/app_texts.dart';
 import 'block_service.dart';
+import 'conversation_inbox_visibility.dart';
 import 'group_ban_service.dart';
 import 'group_discovery_logic.dart';
 import 'dm_reply_quota.dart';
@@ -154,13 +155,11 @@ class OutgoingImageMessageService {
           label = AppTexts.current.get('chat_photo_label');
         } catch (_) {}
         await _db.collection('conversations').doc(conversationId).set(
-          {
-            'lastMessage': label,
-            'lastMessageAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-            // Server owns peer unread; client only clears own.
-            'unread.$uid': 0,
-          },
+          ConversationInboxVisibility.parentSummaryAfterRealMessage(
+            lastMessage: label,
+            myUid: uid,
+            otherUid: otherUid,
+          ),
           SetOptions(merge: true),
         );
       } catch (e, st) {

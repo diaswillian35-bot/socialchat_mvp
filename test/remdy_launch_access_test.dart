@@ -202,8 +202,8 @@ void main() {
       expect(en, contains('"country_coming_soon"'));
     });
 
-    test('pubspec is 1.0.4+29', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+29'));
+    test('pubspec is 1.0.4+32', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+32'));
     });
   });
 }
