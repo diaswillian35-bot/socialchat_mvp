@@ -1,22 +1,34 @@
 import Flutter
 import UIKit
 
+enum RemdyLaunchURL {
+  static func handleShareInIfNeeded(_ url: URL) {
+    if url.scheme?.lowercased() == "remdy",
+       url.host?.lowercased() == "share-in" {
+      NotificationCenter.default.post(
+        name: Notification.Name("RemdyShareInJobAvailable"),
+        object: nil
+      )
+    }
+  }
+}
+
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var channelsReady = false
-  private var channelRetry = 0
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GeneratedPluginRegistrant.register(with: self)
-    let ok = super.application(application, didFinishLaunchingWithOptions: launchOptions)
-    setupNativeChannelsIfNeeded()
-    return ok
+    // Plugins and method channels must be registered in
+    // didInitializeImplicitFlutterEngine. Touching window/rootViewController
+    // here crashes under the UIScene lifecycle required by the iOS 27 SDK.
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     registerNativeChannels(messenger: engineBridge.applicationRegistrar.messenger())
     NSLog("RemdyShareSession channel via implicit engine")
   }
@@ -26,59 +38,8 @@ import UIKit
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    if url.scheme?.lowercased() == "remdy",
-       url.host?.lowercased() == "share-in" {
-      NotificationCenter.default.post(
-        name: Notification.Name("RemdyShareInJobAvailable"),
-        object: nil
-      )
-    }
+    RemdyLaunchURL.handleShareInIfNeeded(url)
     return super.application(app, open: url, options: options)
-  }
-
-  private func setupNativeChannelsIfNeeded() {
-    if channelsReady { return }
-    if let registrar = self.registrar(forPlugin: "RemdyShareSession") {
-      registerNativeChannels(messenger: registrar.messenger())
-      NSLog("RemdyShareSession channel via registrar")
-      return
-    }
-    if let controller = flutterController() {
-      registerNativeChannels(messenger: controller.binaryMessenger)
-      NSLog("RemdyShareSession channel via FlutterViewController")
-      return
-    }
-    channelRetry += 1
-    guard channelRetry < 80 else {
-      NSLog("RemdyShareSession channel not ready after retries")
-      return
-    }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-      self?.setupNativeChannelsIfNeeded()
-    }
-  }
-
-  private func flutterController() -> FlutterViewController? {
-    if let controller = window?.rootViewController as? FlutterViewController {
-      return controller
-    }
-    if let nested = window?.rootViewController?.children.first as? FlutterViewController {
-      return nested
-    }
-    if #available(iOS 13.0, *) {
-      for scene in UIApplication.shared.connectedScenes {
-        guard let windowScene = scene as? UIWindowScene else { continue }
-        for sceneWindow in windowScene.windows {
-          if let controller = sceneWindow.rootViewController as? FlutterViewController {
-            return controller
-          }
-          if let nested = sceneWindow.rootViewController?.children.first as? FlutterViewController {
-            return nested
-          }
-        }
-      }
-    }
-    return nil
   }
 
   private func registerNativeChannels(messenger: FlutterBinaryMessenger) {

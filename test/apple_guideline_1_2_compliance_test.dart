@@ -244,10 +244,10 @@ void main() {
   });
 
   group('Apple 1.2 — versioning', () {
-    test('ships 1.0.4+32 after TestFlight confirmed 31 is the latest uploaded', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+32'));
+    test('ships 1.0.4+33 after 1.0.4 (32) was rejected for iPadOS 27 launch crash', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+33'));
+      expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+32')));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+31')));
-      expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+29')));
     });
   });
 }
