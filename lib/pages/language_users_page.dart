@@ -7,10 +7,12 @@ import 'chat_page.dart';
 import 'public_profile_page.dart';
 import '../l10n/app_texts.dart';
 import '../widget/remdy_app.dart';
+import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
 import '../services/presence_online_set.dart';
 import '../services/presence_rtdb_config.dart';
 import '../widget/online_dot.dart';
+import '../widgets/blocked_uids_builder.dart';
 import '../widgets/international_premium_dialog.dart';
 
 
@@ -44,6 +46,15 @@ class LanguageUsersPage extends StatelessWidget {
     required String otherUid,
     required String otherName,
   }) async {
+    if (!await BlockService.allowOpenPeer(otherUid)) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppTexts.current.get('chat_unavailable_blocked'))),
+        );
+      }
+      return;
+    }
+
     if (!InternationalChatService.isActiveAccount(otherData)) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -176,7 +187,9 @@ class LanguageUsersPage extends StatelessWidget {
       ),
 
 
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: BlockedUidsBuilder(
+        builder: (context, blocked) {
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: q.snapshots(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -190,6 +203,7 @@ class LanguageUsersPage extends StatelessWidget {
           final docs = snap.data?.docs ?? [];
           final filtered = docs.where((d) {
             if (d.id == _myUid) return false;
+            if (blocked.contains(d.id)) return false;
             return InternationalChatService.readHomeCountryCode(d.data()) == code;
           }).toList();
 
@@ -282,6 +296,8 @@ class LanguageUsersPage extends StatelessWidget {
               );
             },
           );
+        },
+      );
         },
       ),
     );

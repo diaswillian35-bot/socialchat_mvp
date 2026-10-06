@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/block_visibility.dart';
 import '../services/forward_message_service.dart';
 import '../services/group_ban_service.dart';
 import '../services/group_discovery_logic.dart';
 import '../services/international_chat_service.dart';
 import '../services/premium_access_service.dart';
 import '../services/user_search_service.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 
 class ForwardMessagePage extends StatefulWidget {
   const ForwardMessagePage({
@@ -185,6 +187,7 @@ class _ForwardMessagePageState extends State<ForwardMessagePage>
             : <String>[];
         final otherUid = parts.firstWhere((u) => u != uid, orElse: () => '');
         if (otherUid.isEmpty) continue;
+        if (BlockVisibility.hidesUid(otherUid)) continue;
 
         String name = '';
         try {
@@ -404,6 +407,7 @@ class _ForwardMessagePageState extends State<ForwardMessagePage>
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 controller: _searchC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   hintText: t.get('forward_search'),

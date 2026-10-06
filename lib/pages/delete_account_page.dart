@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_texts.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import '../services/account_deletion_service.dart';
 import '../services/push_service.dart';
 import 'login_page.dart';
@@ -302,6 +303,7 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
             TextField(
               controller: _passwordCtrl,
               enabled: !_loading,
+              textCapitalization: RemdyKeyboardCaps.none,
               obscureText: true,
               decoration: InputDecoration(
                 hintText: t.get('delete_account_password_hint'),

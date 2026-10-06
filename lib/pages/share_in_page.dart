@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
 import '../models/share_in_payload.dart';
+import '../services/block_visibility.dart';
 import '../services/group_ban_service.dart';
 import '../services/group_discovery_logic.dart';
 import '../services/international_chat_service.dart';
@@ -14,6 +15,7 @@ import '../services/premium_access_service.dart';
 import '../services/safe_external_link.dart';
 import '../services/safe_remdy_navigation.dart';
 import '../services/share_in_service.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import 'chat_page.dart';
 import 'group_chat_page.dart';
 
@@ -106,6 +108,7 @@ class _ShareInPageState extends State<ShareInPage>
           : <String>[];
       final otherUid = parts.firstWhere((u) => u != uid, orElse: () => '');
       if (otherUid.isEmpty) continue;
+      if (BlockVisibility.hidesUid(otherUid)) continue;
 
       String name = '';
       try {
@@ -231,6 +234,12 @@ class _ShareInPageState extends State<ShareInPage>
       return;
     }
 
+    if (dest.kind == ShareInDestinationKind.conversation &&
+        BlockVisibility.hidesUid(dest.otherUid)) {
+      _snack(t.get('chat_unavailable_blocked'));
+      return;
+    }
+
     final text = _textC.text.trim();
     if (text.isEmpty) {
       _snack(t.get('share_in_invalid'));
@@ -347,6 +356,7 @@ class _ShareInPageState extends State<ShareInPage>
                     const SizedBox(height: 8),
                     TextField(
                       controller: _textC,
+                      textCapitalization: RemdyKeyboardCaps.sentences,
                       minLines: 3,
                       maxLines: 6,
                       enabled: !_sending,
@@ -437,6 +447,7 @@ class _ShareInPageState extends State<ShareInPage>
                     const SizedBox(height: 10),
                     TextField(
                       controller: _searchC,
+                      textCapitalization: RemdyKeyboardCaps.none,
                       enabled: !_sending,
                       decoration: InputDecoration(
                         hintText: t.get('share_in_search'),

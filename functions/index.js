@@ -92,6 +92,7 @@ exports.forwardMessage = forwardMessage;
 const { sendDmMessage } = require("./send_dm_message");
 exports.sendDmMessage = sendDmMessage;
 const { isObjectionableText } = require("./objectionable_content_filter");
+const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
 
 const {
   issueShareExtensionSession,
@@ -750,6 +751,22 @@ exports.onPrivateMessageCreated = onDocumentCreated(
 
       const targetUids = resolveTargetUids(participants, senderId);
       if (targetUids.length === 0) return;
+
+      const peerUid = targetUids[0];
+      const [senderUserSnap, peerUserSnap] = await Promise.all([
+        db.collection("users").doc(senderId).get(),
+        db.collection("users").doc(peerUid).get(),
+      ]);
+      if (
+        isEitherBlockedFromUserSnaps(
+          senderUserSnap.data(),
+          peerUserSnap.data(),
+          senderId,
+          peerUid,
+        )
+      ) {
+        return;
+      }
 
       const preview =
         msgType === "audio"

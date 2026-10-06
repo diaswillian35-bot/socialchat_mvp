@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'age_access_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
@@ -15,7 +14,10 @@ import '../pages/group_chat_page.dart';
 import '../pages/group_info_page.dart';
 import '../pages/chat_page.dart';
 import '../pages/event_detail_page.dart';
+import 'age_access_service.dart';
 import 'app_notification_state.dart';
+import 'block_service.dart';
+import 'block_visibility.dart';
 import 'push_token_sync.dart';
 
 /// Snapshot of iOS notification authorization (no tokens / PII).
@@ -556,6 +558,25 @@ class PushService {
       final eventId = (data['eventId'] ?? '').toString().trim();
       if (eventId.isEmpty) return;
 
+      final senderUid = (data['senderId'] ??
+              data['fromUid'] ??
+              data['commentAuthorUid'] ??
+              data['authorUid'] ??
+              '')
+          .toString()
+          .trim();
+      if (BlockVisibility.hidesUid(senderUid)) return;
+
+      try {
+        final ev = await FirebaseFirestore.instance
+            .collection('events')
+            .doc(eventId)
+            .get();
+        if (BlockVisibility.hidesEventMap(ev.data() ?? const {})) return;
+      } catch (_) {
+        return;
+      }
+
       nav.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 3)),
         (route) => false,
@@ -627,6 +648,7 @@ class PushService {
       String otherName = (data['otherName'] ?? '').toString().trim();
 
       if (conversationId.isEmpty || otherUid.isEmpty) return;
+      if (!await BlockService.allowOpenPeer(otherUid)) return;
 
       if (otherName.isEmpty) {
         try {

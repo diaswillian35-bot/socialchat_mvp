@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../pages/system_inbox_page.dart';
 import '../pages/delete_account_page.dart';
+import '../pages/blocked_users_page.dart';
 import '../services/remdy_launch_access.dart';
 
 enum MenuAction {
@@ -266,6 +267,13 @@ Stream<int> _unreadSystemCount() {
                   icon: Icons.notifications,
                   title: t.get('notifications'),
                   onTap: () => _open(context, widget.notificationsPage),
+                ),
+                const Divider(height: 1),
+                _item(
+                  context: context,
+                  icon: Icons.block_rounded,
+                  title: t.get('blocked_users_title'),
+                  onTap: () => _open(context, const BlockedUsersPage()),
                 ),
                 const Divider(height: 1),
 StreamBuilder<int>(

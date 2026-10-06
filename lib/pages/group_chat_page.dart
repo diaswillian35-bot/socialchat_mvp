@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../widgets/chat_composer_text.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import '../widgets/chat_keyboard_inset.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
@@ -29,6 +30,8 @@ import '../services/presence_rtdb_logic.dart';
 import '../services/presence_watch.dart';
 import '../services/report_category.dart';
 import '../services/objectionable_content_filter.dart';
+import '../widgets/blocked_uids_builder.dart';
+import '../services/block_visibility.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'group_info_page.dart';
@@ -56,7 +59,7 @@ class GroupChatPage extends StatefulWidget {
 }
 
 class _GroupChatPageState extends State<GroupChatPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, BlockedUidsListenable {
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
@@ -658,7 +661,7 @@ class _GroupChatPageState extends State<GroupChatPage>
               userHomeCountryCode: _myCountryCode,
               groupCountryCode: _groupCountryCode,
             ))) {
-      await RemdyLaunchAccess.showComingSoon(context);
+      await RemdyLaunchAccess.showUnavailable(context);
       return;
     }
 
@@ -718,7 +721,7 @@ class _GroupChatPageState extends State<GroupChatPage>
         // Antes: await markAsRead bloqueava o setState e o spinner de
         // mensagens (PERMISSION_DENIED no preview) parecia eterno.
         if (_countryAccessDenied) {
-          await RemdyLaunchAccess.showComingSoon(context);
+          await RemdyLaunchAccess.showUnavailable(context);
           return;
         }
         setState(() {
@@ -879,7 +882,7 @@ class _GroupChatPageState extends State<GroupChatPage>
         _isMember = false;
         _previewMode = false;
       });
-      await RemdyLaunchAccess.showComingSoon(context);
+      await RemdyLaunchAccess.showUnavailable(context);
       if (mounted) Navigator.maybePop(context);
       return;
     }
@@ -2413,6 +2416,7 @@ class _GroupChatPageState extends State<GroupChatPage>
         title: _searchMode
             ? TextField(
                 controller: _searchController,
+                textCapitalization: RemdyKeyboardCaps.none,
                 autofocus: true,
                 onChanged: (value) {
                   setState(() {
@@ -2598,7 +2602,15 @@ class _GroupChatPageState extends State<GroupChatPage>
                               );
                             }
 
-                            final allDocs = _cachedMsgDocs;
+                            final allDocs = _cachedMsgDocs.where((doc) {
+                              final sender =
+                                  (doc.data()['senderId'] ?? '').toString();
+                              return !BlockVisibility.hidesGroupSender(
+                                senderId: sender,
+                                myUid: uid,
+                                blocked: blockedUids,
+                              );
+                            }).toList();
 
                             final docs = _searchText.isEmpty
                                 ? allDocs
@@ -3119,7 +3131,7 @@ class _GroupChatPageState extends State<GroupChatPage>
                                                       ? (RemdyLaunchAccess
                                                               .isFreeBrazilLaunch
                                                           ? RemdyLaunchAccess
-                                                              .comingSoonMessage(
+                                                              .unavailableMessage(
                                                                   t)
                                                           : 'Grupo de outro país é Premium')
                                                       : t.get(

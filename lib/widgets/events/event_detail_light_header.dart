@@ -27,6 +27,7 @@ class EventDetailLightHeader extends StatelessWidget {
     this.onBack,
     this.onShare,
     this.onLike,
+    this.onMenu,
     this.pageBackground = const Color(0xFFFFFFFF),
     this.heroHeight = 280,
   });
@@ -54,6 +55,7 @@ class EventDetailLightHeader extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback? onShare;
   final VoidCallback? onLike;
+  final VoidCallback? onMenu;
   final Color pageBackground;
   final double heroHeight;
 
@@ -119,6 +121,13 @@ class EventDetailLightHeader extends StatelessWidget {
                             liked ? const Color(0xFFE11D48) : Colors.white,
                         onTap: onLike,
                       ),
+                      if (onMenu != null) ...[
+                        const SizedBox(width: 8),
+                        _AdaptiveHeroButton(
+                          icon: Icons.more_horiz_rounded,
+                          onTap: onMenu,
+                        ),
+                      ],
                     ],
                   ),
                 ),

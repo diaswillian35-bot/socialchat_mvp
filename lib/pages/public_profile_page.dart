@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
+import '../services/block_visibility.dart';
+import '../widgets/blocked_uids_builder.dart';
 import '../services/presence_session_state.dart';
 import '../services/presence_watch.dart';
 import '../services/report_category.dart';
@@ -81,10 +83,20 @@ class PublicProfilePage extends StatelessWidget {
     try {
       if (isBlocked) {
         await BlockService.unblockUser(userUid);
-      } else {
-        await BlockService.blockUser(userUid);
+        return;
       }
+      final outcome = await BlockService.blockUser(userUid);
+      if (!context.mounted) return;
+      if (outcome.shouldWarnReportFailure) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppTexts.current.get('block_report_notify_failed')),
+          ),
+        );
+      }
+      Navigator.of(context).pop();
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro ao atualizar bloqueio: $e')),
       );
@@ -153,7 +165,36 @@ class PublicProfilePage extends StatelessWidget {
     final isMe = userUid == _myUid;
     final userDoc = _userDoc(userUid);
 
-    return StreamBuilder<PresenceReadStatus>(
+    return BlockedUidsBuilder(
+      builder: (context, blocked) {
+        if (!isMe && BlockVisibility.hidesUid(userUid, blocked: blocked)) {
+          return Scaffold(
+            backgroundColor: _bg,
+            appBar: AppBar(
+              backgroundColor: _bg,
+              elevation: 0,
+            ),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ElevatedButton.icon(
+                  onPressed: () => _toggleBlock(context, true),
+                  icon: const Icon(Icons.lock_open_rounded),
+                  label: const Text(
+                    'Desbloquear',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primary,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return StreamBuilder<PresenceReadStatus>(
       stream: PresenceWatch.watchStatus(userUid),
       builder: (context, presenceSnap) {
         final status =
@@ -545,6 +586,8 @@ class PublicProfilePage extends StatelessWidget {
             );
           },
         );
+      },
+    );
       },
     );
   }

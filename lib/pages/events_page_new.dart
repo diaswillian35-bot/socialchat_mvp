@@ -17,6 +17,7 @@ import '../services/events_geo_constants.dart';
 import '../services/events_scope_classifier.dart';
 import '../utils/event_lifecycle.dart';
 import '../widgets/remdy_logo.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 
 class EventsPage extends StatefulWidget {
   final String? openEventId;
@@ -366,6 +367,7 @@ label: Text(AppTexts.t('events_my_events')),
       child: TextField(
         
 controller: _searchC,
+textCapitalization: RemdyKeyboardCaps.none,
 
 focusNode: _searchFocus,
 

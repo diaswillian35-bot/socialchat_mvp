@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../l10n/app_texts.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 
 class SupportContactPage extends StatefulWidget {
   const SupportContactPage({super.key});
@@ -175,6 +176,7 @@ $message
             const SizedBox(height: 18),
             TextField(
               controller: _emailC,
+              textCapitalization: RemdyKeyboardCaps.none,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               decoration: InputDecoration(
@@ -192,6 +194,7 @@ $message
             const SizedBox(height: 12),
             TextField(
               controller: _phoneC,
+              textCapitalization: RemdyKeyboardCaps.none,
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.next,
               decoration: InputDecoration(
@@ -209,6 +212,7 @@ $message
             const SizedBox(height: 12),
             TextField(
               controller: _subjectC,
+              textCapitalization: RemdyKeyboardCaps.sentences,
               textInputAction: TextInputAction.next,
               decoration: InputDecoration(
                 labelText: t.get('support_contact_subject_label'),
@@ -225,6 +229,7 @@ $message
             const SizedBox(height: 12),
             TextField(
               controller: _messageC,
+              textCapitalization: RemdyKeyboardCaps.sentences,
               minLines: 6,
               maxLines: 12,
               decoration: InputDecoration(

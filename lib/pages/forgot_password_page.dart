@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../widgets/keyboard_safe_body.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 
 
 class ForgotPasswordPage extends StatefulWidget {
@@ -162,6 +163,7 @@ Widget build(BuildContext context) {
                       const SizedBox(height: 14),
                       TextField(
                         controller: _emailC,
+                        textCapitalization: RemdyKeyboardCaps.none,
                         keyboardType: TextInputType.emailAddress,
                         scrollPadding: const EdgeInsets.only(bottom: 120),
                         decoration: const InputDecoration(

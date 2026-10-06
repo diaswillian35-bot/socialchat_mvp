@@ -5,6 +5,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:uuid/uuid.dart';
 import '../data/remi_lessons_data.dart';
 import '../l10n/app_texts.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import '../services/remi_language_contract.dart';
 import '../services/remi_session_prefs.dart';
 import 'remi_intro_page.dart';
@@ -597,6 +598,7 @@ _speakingIndex == index
                   Expanded(
                     child: TextField(
                       controller: _messageC,
+                      textCapitalization: RemdyKeyboardCaps.sentences,
                       enabled: !_sending,
                       minLines: 1,
                       maxLines: 4,

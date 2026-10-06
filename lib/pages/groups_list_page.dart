@@ -9,6 +9,7 @@ import 'create_group_page.dart';
 import 'group_chat_page.dart';
 import 'hidden_groups_page.dart';
 import '../l10n/app_texts.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import '../services/group_discovery_logic.dart';
 import '../services/group_discovery_service.dart';
 import '../services/group_hidden_prefs_service.dart';
@@ -403,7 +404,7 @@ class GroupsListPageState extends State<GroupsListPage> {
       userHomeCountryCode: _myCountryCode,
       groupCountryCode: groupCountry,
     )) {
-      await RemdyLaunchAccess.showComingSoon(context);
+      await RemdyLaunchAccess.showUnavailable(context);
       return;
     }
 
@@ -914,9 +915,20 @@ class GroupsListPageState extends State<GroupsListPage> {
       items: cache.items,
       hiddenIds: _hiddenIds,
     );
+    final inLaunchCountry = RemdyLaunchAccess.isFreeBrazilLaunch
+        ? withoutHidden.where((item) {
+            final groupCountry = GroupLocationNormalize.countryCode(
+              item.data['countryCode'] ?? item.data['country'],
+            );
+            return RemdyLaunchAccess.canAccessGroupCountry(
+              userHomeCountryCode: _myCountryCode,
+              groupCountryCode: groupCountry,
+            );
+          }).toList()
+        : withoutHidden;
     final q = _searchC.text.trim().toLowerCase();
-    if (q.isEmpty) return withoutHidden;
-    return withoutHidden.where((item) {
+    if (q.isEmpty) return inLaunchCountry;
+    return inLaunchCountry.where((item) {
       final data = item.data;
       final name = (data['name'] ?? '').toString().toLowerCase();
       final bio = (data['bio'] ?? '').toString().toLowerCase();
@@ -1044,6 +1056,7 @@ class GroupsListPageState extends State<GroupsListPage> {
   Widget _searchField(ColorScheme scheme, AppTexts t) {
     return TextField(
       controller: _searchC,
+      textCapitalization: RemdyKeyboardCaps.none,
       onChanged: (_) => setState(() {}),
       textInputAction: TextInputAction.search,
       onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),

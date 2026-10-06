@@ -109,7 +109,8 @@ void main() {
       final page = source('lib/pages/group_chat_page.dart');
       expect(page, contains('_countryAccessDenied'));
       expect(page, contains('canAccessGroupCountry'));
-      expect(page, contains('showComingSoon'));
+      expect(page, contains('showUnavailable'));
+      expect(page, isNot(contains('showComingSoon')));
       expect(page, contains('Navigator.maybePop'));
       // Premium no longer unlocks world during free launch send path.
       expect(page, contains('_computeCanSend'));
@@ -119,9 +120,11 @@ void main() {
       final list = source('lib/pages/groups_list_page.dart');
       final join = source('lib/pages/join_group_page.dart');
       expect(list, contains('canAccessGroupCountry'));
-      expect(list, contains('showComingSoon'));
+      expect(list, contains('showUnavailable'));
+      expect(list, isNot(contains('showComingSoon')));
       expect(join, contains('canAccessGroupCountry'));
-      expect(join, contains('showComingSoon'));
+      expect(join, contains('showUnavailable'));
+      expect(join, isNot(contains('showComingSoon')));
     });
   });
 
@@ -164,7 +167,8 @@ void main() {
       final beforeQuota =
           ensure.split('Free internacional: franquia').first;
       expect(beforeQuota, contains('isFreeBrazilLaunch'));
-      expect(beforeQuota, contains('showComingSoon'));
+      expect(beforeQuota, contains('showUnavailable'));
+      expect(beforeQuota, isNot(contains('showComingSoon')));
     });
 
     test('people discovery still country+city/radius scoped', () {

@@ -15,6 +15,7 @@ import 'email_verification_page.dart';
 import '../l10n/app_texts.dart';
 import '../widgets/keyboard_safe_body.dart';
 import '../widgets/keyboard_dismiss.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import 'terms_page.dart';
 import 'privacy_page.dart';
 import '../services/auth_terms_gate.dart';
@@ -612,6 +613,7 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _emailC,
+                    textCapitalization: RemdyKeyboardCaps.none,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     scrollPadding: const EdgeInsets.only(bottom: 120),
@@ -623,6 +625,7 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _passC,
+                    textCapitalization: RemdyKeyboardCaps.none,
                     obscureText: _hidePass,
                     textInputAction:
                         _isLogin ? TextInputAction.done : TextInputAction.next,
@@ -645,6 +648,7 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _confirmC,
+                      textCapitalization: RemdyKeyboardCaps.none,
                       obscureText: _hideConfirm,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => dismissAppKeyboard(),

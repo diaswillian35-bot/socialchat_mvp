@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../widgets/remdy_keyboard_caps.dart';
+
 class CitySearchResult {
   final String cityName;
   final String stateName;
@@ -174,6 +176,7 @@ class CitySearchDialog {
                     const SizedBox(height: 12),
                     TextField(
                       controller: searchC,
+                      textCapitalization: RemdyKeyboardCaps.none,
                       autofocus: true,
                       onChanged: runSearch,
                       decoration: InputDecoration(

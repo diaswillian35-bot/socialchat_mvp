@@ -5,8 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_texts.dart';
 import '../pages/event_detail_page.dart';
-import 'push_service.dart';
 import 'age_access_service.dart';
+import 'block_visibility.dart';
+import 'push_service.dart';
 
 /// Deep links de eventos: `https://remdy.app/e/{eventId}`
 /// (também aceita `/events/{eventId}`).
@@ -111,6 +112,11 @@ class EventDeepLinkService {
           .toString()
           .trim();
       final isOwner = createdBy.isNotEmpty && createdBy == uid;
+
+      if (BlockVisibility.hidesEventAuthor(createdBy)) {
+        _showMessage(context, AppTexts.t('event_link_unavailable'));
+        return false;
+      }
 
       if (status == 'pending' || status == 'rejected') {
         if (!isOwner) {

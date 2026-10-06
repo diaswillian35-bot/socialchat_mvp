@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../widgets/remdy_keyboard_caps.dart';
+
 
 class CardPage extends StatefulWidget {
   const CardPage({super.key});
@@ -377,6 +379,7 @@ class _CardPageState extends State<CardPage> {
               hint: 'Ex: WILLIAN DIAS',
               textInputAction: TextInputAction.next,
               keyboardType: TextInputType.name,
+              textCapitalization: RemdyKeyboardCaps.words,
             ),
             _field(
               label: 'Número do cartão',
@@ -478,6 +481,7 @@ class _CardPageState extends State<CardPage> {
     TextInputType? keyboardType,
     TextInputAction? textInputAction,
     List<TextInputFormatter>? inputFormatters,
+    TextCapitalization textCapitalization = RemdyKeyboardCaps.none,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -491,6 +495,7 @@ class _CardPageState extends State<CardPage> {
           const SizedBox(height: 8),
           TextField(
             controller: controller,
+            textCapitalization: textCapitalization,
             keyboardType: keyboardType,
             textInputAction: textInputAction,
             inputFormatters: inputFormatters,

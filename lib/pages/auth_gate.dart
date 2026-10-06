@@ -20,6 +20,7 @@ import '../services/safe_remdy_navigation.dart';
 import 'join_group_page.dart';
 import 'age_verification_page.dart';
 import '../services/age_verification.dart';
+import '../services/block_visibility.dart';
 import '../services/google_sign_in_service.dart';
 
 class AuthGate extends StatefulWidget {
@@ -157,6 +158,7 @@ class _AuthGateState extends State<AuthGate> {
 
         final user = snap.data;
         if (user == null) {
+          BlockVisibility.detach();
           _cachedUid = null;
           _userDocFuture = null;
           return const LoginPage();
@@ -174,9 +176,11 @@ class _AuthGateState extends State<AuthGate> {
             if (!AgeVerification.isVerified(userSnap.data?.data())) {
               return const AgeVerificationPage();
             }
+            BlockVisibility.attach(user.uid);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               // Garante writer mesmo se MainShell ainda não montou.
               PresenceService.instance.start();
+              BlockVisibility.attach(user.uid);
               _applyPendingInviteIfAny(user);
               _applyPendingGroupIfAny(user);
               EventDeepLinkService.applyPendingIfAny();

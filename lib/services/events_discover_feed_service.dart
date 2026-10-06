@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/event_presentation.dart';
+import 'block_visibility.dart';
 import 'events_discover_feed_logic.dart';
 
 /// Carrega um pool limitado de eventos ativos (poucas leituras) e particiona.
@@ -107,8 +108,13 @@ class EventsDiscoverFeedService {
         return aT.compareTo(bT);
       });
 
+    final visiblePool = EventsDiscoverFeedLogic.withoutBlockedAuthors(
+      pool,
+      BlockVisibility.mine,
+    );
+
     final sections = EventsDiscoverFeedLogic.partition(
-      pool: pool,
+      pool: visiblePool,
       userLat: lat,
       userLng: lng,
       userCityKey: cityKey,

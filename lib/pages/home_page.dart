@@ -21,6 +21,7 @@ import 'package:socialchat_mvp/pages/contact_page.dart';
 import 'package:socialchat_mvp/pages/terms_page.dart';
 import 'package:socialchat_mvp/pages/privacy_page.dart';
 import 'package:socialchat_mvp/pages/about_page.dart';
+import 'package:socialchat_mvp/widgets/home_body_scroll_layout.dart';
 import 'package:socialchat_mvp/widgets/home_discover_section.dart';
 import 'package:socialchat_mvp/widgets/home_nearby_users_section.dart';
 import '../services/online_status.dart';
@@ -152,7 +153,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void showPremiumDialog(String countryName) {
     if (RemdyLaunchAccess.isFreeBrazilLaunch) {
-      RemdyLaunchAccess.showComingSoon(context);
       return;
     }
     showModalBottomSheet(
@@ -382,7 +382,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       userHomeCountryCode: homeCountryCode,
       targetCountryCode: item.code,
     )) {
-      RemdyLaunchAccess.showComingSoon(context);
+      if (RemdyLaunchAccess.isFreeBrazilLaunch) {
+        unawaited(RemdyLaunchAccess.showUnavailable(context));
+      }
       return;
     }
     Navigator.push(
@@ -629,8 +631,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ),
             ],
           ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+          body: SafeArea(
+            top: false,
+            bottom: false,
+            child: ListView(
+            padding: HomeBodyScrollLayout.listPadding(),
             children: [
               Text(
                 '${t.get('hello')}, $name',
@@ -712,14 +717,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    GestureDetector(
+                      onTap: RemdyLaunchAccess.isFreeBrazilLaunch
+                          ? () => unawaited(
+                                RemdyLaunchAccess.showUnavailable(context),
+                              )
+                          : null,
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
                       children: [
                         const Text('🌍', style: TextStyle(fontSize: 16)),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             RemdyLaunchAccess.isFreeBrazilLaunch
-                                ? t.get('world_coming_soon')
+                                ? t.get('world')
                                 : (isPremiumActive
                                     ? t.get('world')
                                     : t.get('world_premium')),
@@ -765,6 +777,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           },
                         ),
                       ],
+                    ),
                     ),
                   ],
                 ),
@@ -845,12 +858,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: sortedCountries.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      childAspectRatio: 1.0,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount:
+                          HomeBodyScrollLayout.countryCrossAxisCount,
+                      mainAxisSpacing:
+                          HomeBodyScrollLayout.countryGridSpacing,
+                      crossAxisSpacing:
+                          HomeBodyScrollLayout.countryGridSpacing,
+                      childAspectRatio:
+                          HomeBodyScrollLayout.countryGridChildAspectRatio(
+                        MediaQuery.sizeOf(context),
+                      ),
                     ),
                     itemBuilder: (context, i) {
                       final item = sortedCountries[i];
@@ -858,10 +876,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           item.code.trim().toLowerCase() == homeCode;
                       // Selo relativo ao país canônico do perfil (não fixo em CA).
                       final showComingSoonBadge =
-                          RemdyLaunchAccess.showsComingSoonOnHome(
-                        userHomeCountryCode: homeCode,
-                        targetCountryCode: item.code,
-                      );
+                          !RemdyLaunchAccess.isFreeBrazilLaunch &&
+                              RemdyLaunchAccess.showsComingSoonOnHome(
+                                userHomeCountryCode: homeCode,
+                                targetCountryCode: item.code,
+                              );
                       final showPremiumBadge = !RemdyLaunchAccess
                               .isFreeBrazilLaunch &&
                           !isPremiumActive &&
@@ -952,6 +971,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 viewerLng: userLng,
               ),
             ],
+          ),
           ),
         );
       },

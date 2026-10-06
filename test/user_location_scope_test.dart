@@ -425,18 +425,24 @@ void main() {
       );
     });
 
-    test('Home shows Mundo (Em breve); unavailable tap blocked', () {
+    test('Home shows Mundo, Canada and Portugal without Em breve copy', () {
       final home = source('lib/pages/home_page.dart');
       final pt = source('lib/l10n/pt-BR.json');
-      expect(home, contains('world_coming_soon'));
+      expect(home, contains("code: 'CA'"));
+      expect(home, contains("code: 'PT'"));
+      expect(home, contains("t.get('world')"));
+      expect(home, isNot(contains('world_coming_soon')));
+      expect(home, contains('showUnavailable'));
       expect(home, contains('canAccessCountryContent'));
+      expect(home, contains('isFreeBrazilLaunch'));
+      expect(pt, contains('"world": "Mundo"'));
       expect(pt, contains('"world_coming_soon": "Mundo (Em breve)"'));
       expect(pt, contains('"live_now": "Agora ao vivo"'));
       expect(RemdyLaunchAccess.isCountryOpen('pt'), isFalse);
     });
 
-    test('pubspec is 1.0.4+33', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+33'));
+    test('pubspec is 1.0.4+34', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+34'));
     });
   });
 }

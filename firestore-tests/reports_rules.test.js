@@ -66,6 +66,77 @@ describe("reports privacy and immutability", () => {
     );
   });
 
+  it("allows an authenticated block-as-report payload (Guideline 1.2)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("users/reporter").set({
+        ageVerificationStatus: "verified",
+      });
+    });
+    const db = testEnv.authenticatedContext("reporter").firestore();
+    await assertSucceeds(
+      db.collection("reports").add({
+        fromUid: "reporter",
+        reporterUid: "reporter",
+        reportedUid: "reported",
+        reason: "user_blocked",
+        reasonCode: "user_blocked",
+        priority: "normal",
+        status: "open",
+        contextType: "block",
+        source: "block_service",
+      }),
+    );
+  });
+
+  it("allows an authenticated event report payload", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("users/reporter").set({
+        ageVerificationStatus: "verified",
+      });
+    });
+    const db = testEnv.authenticatedContext("reporter").firestore();
+    await assertSucceeds(
+      db.collection("reports").add({
+        fromUid: "reporter",
+        reporterUid: "reporter",
+        reportedUid: "organizer",
+        reason: "Spam",
+        reasonCode: "spam",
+        priority: "normal",
+        status: "open",
+        contextType: "event",
+        source: "event_detail",
+        eventId: "event-1",
+        snapshot: { eventId: "event-1" },
+      }),
+    );
+  });
+
+  it("allows an authenticated event comment report payload", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("users/reporter").set({
+        ageVerificationStatus: "verified",
+      });
+    });
+    const db = testEnv.authenticatedContext("reporter").firestore();
+    await assertSucceeds(
+      db.collection("reports").add({
+        fromUid: "reporter",
+        reporterUid: "reporter",
+        reportedUid: "comment-author",
+        reason: "Harassment",
+        reasonCode: "harassment",
+        priority: "normal",
+        status: "open",
+        contextType: "event_comment",
+        source: "event_detail",
+        eventId: "event-1",
+        commentId: "comment-1",
+        snapshot: { eventId: "event-1", commentId: "comment-1" },
+      }),
+    );
+  });
+
   it("rejects unauthenticated report creation", async () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(db.collection("reports").add({ status: "open" }));

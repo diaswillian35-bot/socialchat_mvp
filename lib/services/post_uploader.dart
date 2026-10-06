@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import '../widgets/remdy_keyboard_caps.dart';
+
 class PostUploaderPage extends StatefulWidget {
   const PostUploaderPage({super.key});
 
@@ -97,6 +99,7 @@ class _PostUploaderPageState extends State<PostUploaderPage> {
           children: [
             TextField(
               controller: _captionC,
+              textCapitalization: RemdyKeyboardCaps.sentences,
               decoration: const InputDecoration(
                 labelText: "Legenda (opcional)",
                 border: OutlineInputBorder(),

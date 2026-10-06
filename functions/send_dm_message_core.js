@@ -13,6 +13,7 @@ const {
   REPLY_QUOTA_LIMIT,
 } = require("./dm_reply_quota");
 const { isObjectionableText } = require("./objectionable_content_filter");
+const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
 
 function asUidList(raw) {
   if (!Array.isArray(raw)) return [];
@@ -136,14 +137,8 @@ async function executeSendDmMessage(db, uid, data) {
       throw new HttpsError("failed-precondition", "Peer unavailable.");
     }
 
-    const blockA = await tx.get(
-      db.collection("users").doc(uid).collection("blocked").doc(otherUid),
-    );
-    const blockB = await tx.get(
-      db.collection("users").doc(otherUid).collection("blocked").doc(uid),
-    );
-    if (blockA.exists || blockB.exists) {
-      throw new HttpsError("permission-denied", "Blocked.");
+    if (isEitherBlockedFromUserSnaps(senderData, otherData, uid, otherUid)) {
+      throw new HttpsError("permission-denied", "Not allowed.");
     }
 
     // Re-read conv inside tx for latest replyQuota (concurrency).

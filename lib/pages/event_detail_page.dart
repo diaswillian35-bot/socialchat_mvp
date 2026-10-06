@@ -18,7 +18,12 @@ import '../services/event_comments_service.dart';
 import '../services/event_likes_service.dart';
 import '../services/event_share_image_service.dart';
 import '../services/event_view_service.dart';
+import '../services/event_report_logic.dart';
+import '../services/block_visibility.dart';
+import '../services/report_category.dart';
 import '../utils/event_gallery_urls.dart';
+import '../widgets/blocked_uids_builder.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import '../widgets/events/event_detail_action_bar.dart';
 import '../widgets/events/event_detail_light_header.dart';
 import '../widgets/events/event_gallery_grid.dart';
@@ -33,7 +38,8 @@ class EventDetailPage extends StatefulWidget {
   State<EventDetailPage> createState() => _EventDetailPageState();
 }
 
-class _EventDetailPageState extends State<EventDetailPage> {
+class _EventDetailPageState extends State<EventDetailPage>
+    with BlockedUidsListenable {
   final _db = FirebaseFirestore.instance;
   final _scrollController = ScrollController();
   final _commentC = TextEditingController();
@@ -69,6 +75,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
   bool? _optimisticEventLiked;
   bool _shareBusy = false;
   bool _calendarBusy = false;
+  bool _reportBusy = false;
   /// 0 Sobre · 1 Programação · 2 Atrações · 3 Galeria · 4 Localização
   int _detailTab = 0;
   /// Índice da foto selecionada na Galeria (após fechar o fullscreen).
@@ -407,6 +414,143 @@ class _EventDetailPageState extends State<EventDetailPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AppTexts.t(key))),
     );
+  }
+
+  Future<void> _openEventReport(String organizerUid) async {
+    if (!EventReportLogic.canReportEvent(
+      reporterUid: _uid,
+      organizerUid: organizerUid,
+    )) {
+      return;
+    }
+    if (BlockVisibility.hidesUid(organizerUid, blocked: blockedUids)) return;
+    await _pickAndConfirmReport(
+      reportedUid: organizerUid,
+      commentId: null,
+      sheetTitleKey: 'report_event',
+      confirmKey: 'report_event_confirm',
+    );
+  }
+
+  Future<void> _openCommentReport(_CommentRow row) async {
+    if (row.isPending) return;
+    if (!EventReportLogic.canReportComment(
+      reporterUid: _uid,
+      authorUid: row.uid,
+      commentId: row.id,
+    )) {
+      return;
+    }
+    if (BlockVisibility.hidesUid(row.uid, blocked: blockedUids)) return;
+    await _pickAndConfirmReport(
+      reportedUid: row.uid,
+      commentId: row.id,
+      sheetTitleKey: 'report_comment',
+      confirmKey: 'report_comment_confirm',
+    );
+  }
+
+  Future<void> _pickAndConfirmReport({
+    required String reportedUid,
+    required String? commentId,
+    required String sheetTitleKey,
+    required String confirmKey,
+  }) async {
+    if (_reportBusy || _uid == null) return;
+    final category = await showModalBottomSheet<ReportCategory>(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: Text(AppTexts.t(sheetTitleKey)),
+              ),
+              for (final c in EventReportLogic.categories)
+                ListTile(
+                  leading: c.isChildSafety
+                      ? const Icon(Icons.priority_high, color: Color(0xFFB91C1C))
+                      : null,
+                  title: Text(AppTexts.t(c.labelKey)),
+                  onTap: () => Navigator.pop(ctx, c),
+                ),
+              ListTile(
+                title: Text(AppTexts.t('cancel')),
+                onTap: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || category == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppTexts.t(sheetTitleKey)),
+        content: Text(AppTexts.t(confirmKey)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(AppTexts.t('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(AppTexts.t('report_send')),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (!EventReportLogic.shouldPersist(
+      confirmed: confirmed == true,
+      inFlight: _reportBusy,
+    )) {
+      return;
+    }
+    await _submitEventContentReport(
+      category: category,
+      reportedUid: reportedUid,
+      commentId: commentId,
+    );
+  }
+
+  Future<void> _submitEventContentReport({
+    required ReportCategory category,
+    required String reportedUid,
+    required String? commentId,
+  }) async {
+    final me = _uid;
+    if (me == null || _reportBusy) return;
+    setState(() => _reportBusy = true);
+    try {
+      final fields = EventReportLogic.reportFields(
+        reporterUid: me,
+        reportedUid: reportedUid,
+        category: category,
+        reasonLabel: AppTexts.t(category.labelKey),
+        eventId: widget.eventId,
+        commentId: commentId,
+      );
+      await _db.collection('reports').add({
+        ...fields,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (!mounted) return;
+      _snack(
+        category.isChildSafety
+            ? 'report_child_safety_authorities_notice'
+            : 'report_sent',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      _snack('report_send_failed');
+    } finally {
+      if (mounted) setState(() => _reportBusy = false);
+    }
   }
 
   Future<void> _shareEvent(EventPresentation event) async {
@@ -810,6 +954,12 @@ class _EventDetailPageState extends State<EventDetailPage> {
     for (final doc in _commentDocs) {
       final data = doc.data();
       if (data['isDeleted'] == true) continue;
+      if (BlockVisibility.hidesUid(
+        (data['uid'] ?? '').toString(),
+        blocked: blockedUids,
+      )) {
+        continue;
+      }
       remote.add(_CommentRow.fromRemote(doc.id, data));
     }
 
@@ -875,6 +1025,12 @@ class _EventDetailPageState extends State<EventDetailPage> {
 
     // Cover/gallery/localização via EventPresentation (mesmo contrato de Maps).
     final event = EventPresentation.fromMap(widget.eventId, data);
+    if (BlockVisibility.hidesEventAuthor(event.createdBy, blocked: blockedUids)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).maybePop();
+      });
+      return const Center(child: CircularProgressIndicator());
+    }
     final title = event.title;
     final category = event.category;
     final city = event.city;
@@ -1082,15 +1238,32 @@ class _EventDetailPageState extends State<EventDetailPage> {
                     '${attendees.toString()} ${AppTexts.t('event_detail_attending')}',
               ),
               const SizedBox(height: 10),
-              if (_attendeeDocs.isNotEmpty)
+              if (_attendeeDocs.any(
+                (d) => !BlockVisibility.hidesUid(d.id, blocked: blockedUids),
+              ))
                 SizedBox(
                   height: 42,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: _attendeeDocs.length,
+                    itemCount: _attendeeDocs
+                        .where(
+                          (d) => !BlockVisibility.hidesUid(
+                            d.id,
+                            blocked: blockedUids,
+                          ),
+                        )
+                        .length,
                     separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (context, index) {
-                      final attendeeData = _attendeeDocs[index].data();
+                      final visibleAttendees = _attendeeDocs
+                          .where(
+                            (d) => !BlockVisibility.hidesUid(
+                              d.id,
+                              blocked: blockedUids,
+                            ),
+                          )
+                          .toList();
+                      final attendeeData = visibleAttendees[index].data();
                       final photoUrl =
                           (attendeeData['photoUrl'] ?? '').toString();
                       final name =
@@ -1101,7 +1274,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => PublicProfilePage(
-                                userUid: _attendeeDocs[index].id,
+                                userUid: visibleAttendees[index].id,
                               ),
                             ),
                           );
@@ -1197,6 +1370,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
                       child: TextField(
                         controller: _commentC,
                         focusNode: _commentFocus,
+                        textCapitalization: RemdyKeyboardCaps.sentences,
                         decoration: InputDecoration(
                           hintText: AppTexts.t('event_write_message'),
                           filled: true,
@@ -1451,6 +1625,43 @@ class _EventDetailPageState extends State<EventDetailPage> {
                                             ),
                                           const Spacer(),
                                           if (!row.isPending &&
+                                              EventReportLogic.canReportComment(
+                                                reporterUid: _uid,
+                                                authorUid: row.uid,
+                                                commentId: row.id,
+                                              ) &&
+                                              !BlockVisibility.hidesUid(
+                                                row.uid,
+                                                blocked: blockedUids,
+                                              ))
+                                            GestureDetector(
+                                              onTap: _reportBusy
+                                                  ? null
+                                                  : () =>
+                                                      _openCommentReport(row),
+                                              child: Tooltip(
+                                                message:
+                                                    AppTexts.t('report_comment'),
+                                                child: const Icon(
+                                                  Icons.flag_outlined,
+                                                  size: 18,
+                                                  color: _muted,
+                                                ),
+                                              ),
+                                            ),
+                                          if (!row.isPending &&
+                                              EventReportLogic.canReportComment(
+                                                reporterUid: _uid,
+                                                authorUid: row.uid,
+                                                commentId: row.id,
+                                              ) &&
+                                              !BlockVisibility.hidesUid(
+                                                row.uid,
+                                                blocked: blockedUids,
+                                              ) &&
+                                              (row.uid == _uid || isEventOwner))
+                                            const SizedBox(width: 12),
+                                          if (!row.isPending &&
                                               (row.uid == _uid ||
                                                   isEventOwner))
                                             GestureDetector(
@@ -1498,6 +1709,8 @@ class _EventDetailPageState extends State<EventDetailPage> {
                                   TextField(
                                     controller: _replyC,
                                     focusNode: _replyFocus,
+                                    textCapitalization:
+                                        RemdyKeyboardCaps.sentences,
                                     decoration: InputDecoration(
                                       hintText:
                                           AppTexts.t('event_write_message'),
@@ -1594,6 +1807,13 @@ class _EventDetailPageState extends State<EventDetailPage> {
       onLike: (cancelled || _uid == null || _eventLikeBusy)
           ? null
           : _toggleEventLike,
+      onMenu: EventReportLogic.canReportEvent(
+                reporterUid: _uid,
+                organizerUid: event.createdBy,
+              ) &&
+              !BlockVisibility.hidesUid(event.createdBy, blocked: blockedUids)
+          ? () => _openEventReport(event.createdBy)
+          : null,
       pageBackground: _bg,
     );
   }

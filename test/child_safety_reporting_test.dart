@@ -60,14 +60,15 @@ void main() {
     expect(group, contains('ReportCategory.childSafety'));
     expect(group, contains("'contextType': 'group'"));
 
-    // No event/content report writer currently exists; the requirement applies
-    // when such a UI is introduced.
-    for (final path in Directory('lib/pages')
-        .listSync()
-        .whereType<File>()
-        .where((file) => file.path.contains('event'))) {
-      expect(source(path.path), isNot(contains("collection('reports')")));
-    }
+    final eventDetail = source('lib/pages/event_detail_page.dart');
+    expect(eventDetail, contains('EventReportLogic.categories'));
+    expect(eventDetail, contains("collection('reports')"));
+    expect(source('lib/services/event_report_logic.dart'),
+        contains('ReportCategory.childSafety'));
+    expect(source('lib/services/event_report_logic.dart'),
+        contains("contextEvent = 'event'"));
+    expect(source('lib/services/event_report_logic.dart'),
+        contains("contextComment = 'event_comment'"));
   });
 
   test('report payloads retain references and never copy message media', () {
@@ -75,10 +76,15 @@ void main() {
       'lib/pages/public_profile_page.dart',
       'lib/pages/chat_page.dart',
       'lib/pages/group_chat_page.dart',
+      'lib/services/event_report_logic.dart',
     ]) {
       final file = source(path);
       expect(file, contains('reportClassification(category)'), reason: path);
     }
+    expect(
+      source('lib/pages/event_detail_page.dart'),
+      contains('EventReportLogic.reportFields'),
+    );
 
     final helper = source('lib/services/report_category.dart');
     expect(helper, isNot(contains("'imageUrl'")));

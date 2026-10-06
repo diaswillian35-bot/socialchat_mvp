@@ -141,7 +141,34 @@ class RemdyLaunchAccess {
     return msg;
   }
 
-  /// Snack / dialog único para país indisponível (sem CTA Premium).
+  /// Mensagem neutra (Guideline 2.1(a)): sem promessa futura.
+  static String unavailableMessage([AppTexts? texts]) {
+    final t = texts ?? AppTexts.current;
+    const key = 'launch_content_unavailable';
+    final msg = t.get(key);
+    if (msg == key || msg.trim().isEmpty) {
+      return 'This content is not available.';
+    }
+    return msg;
+  }
+
+  /// Deep link / rota inválida no lançamento: snackbar, sem CTA morto.
+  static Future<void> showUnavailable(BuildContext context) async {
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(unavailableMessage()),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        margin: const EdgeInsets.all(12),
+      ),
+    );
+  }
+
+  /// Preservado para reativar copy "Em breve" fora deste lançamento.
+  /// Não chamar a partir de UI alcançável enquanto [isFreeBrazilLaunch].
   static Future<void> showComingSoon(BuildContext context) async {
     final title = comingSoonTitle();
     final message = comingSoonMessage();

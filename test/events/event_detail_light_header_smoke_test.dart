@@ -31,6 +31,37 @@ void main() {
     expect(find.byIcon(Icons.ios_share_rounded), findsNothing);
     expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
     expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.more_horiz_rounded), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('light header shows menu when onMenu is set', (tester) async {
+    var opened = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EventDetailLightHeader(
+            title: 'ExpoCampo 2027',
+            locationLine: 'Campo Mourão - PR',
+            dateLine: '10 a 14 de março de 2027',
+            confirmed: true,
+            cancelled: false,
+            liked: false,
+            confirmedLabel: 'EVENTO CONFIRMADO',
+            cancelledLabel: 'Cancelado',
+            coverChild: const ColoredBox(color: Color(0xFFE8F0FF)),
+            onBack: () {},
+            onShare: null,
+            onLike: () {},
+            onMenu: () => opened = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    await tester.pump();
+    expect(opened, isTrue);
   });
 }

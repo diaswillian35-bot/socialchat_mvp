@@ -22,6 +22,7 @@ const {
   idempotencyDocId,
   sanitizeLinkPreview,
 } = require("./forward_message_logic");
+const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
 
 const db = () => admin.firestore();
 
@@ -71,12 +72,7 @@ async function isEitherBlocked(uid, otherUid) {
     db().collection("users").doc(uid).get(),
     db().collection("users").doc(otherUid).get(),
   ]);
-  const blockedA = Array.isArray(a.data()?.blocked) ? a.data().blocked : [];
-  const blockedB = Array.isArray(b.data()?.blocked) ? b.data().blocked : [];
-  return (
-    blockedA.map(String).includes(otherUid) ||
-    blockedB.map(String).includes(uid)
-  );
+  return isEitherBlockedFromUserSnaps(a.data(), b.data(), uid, otherUid);
 }
 
 async function isGroupBanned(groupId, uid) {

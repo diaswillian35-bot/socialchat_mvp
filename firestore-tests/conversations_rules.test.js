@@ -267,3 +267,83 @@ describe("conversations rules regression (hasOnly + replyQuota)", () => {
     await assertFails(db.doc("conversations/c1").get());
   });
 });
+
+function dmTextPayload(from, to) {
+  return {
+    type: "text",
+    text: "hello",
+    senderId: from,
+    fromUid: from,
+    toUid: to,
+    createdAt: new Date(),
+    clientCreatedAt: new Date(),
+    deleted: false,
+    deletedBy: "",
+    deletedText: "",
+    deletedAt: null,
+  };
+}
+
+describe("DM client writes respect users/{uid}.blocked array", () => {
+  async function seedConvBlocked(aBlocked, bBlocked) {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      const a = {
+        uid: "a1",
+        homeCountryCode: "br",
+        isPremium: false,
+        ageVerificationStatus: "verified",
+      };
+      const b = {
+        uid: "b1",
+        homeCountryCode: "br",
+        isPremium: false,
+        ageVerificationStatus: "verified",
+      };
+      if (aBlocked !== undefined) a.blocked = aBlocked;
+      if (bBlocked !== undefined) b.blocked = bBlocked;
+      await db.doc("users/a1").set(a);
+      await db.doc("users/b1").set(b);
+      await db.doc("conversations/c1").set({
+        participants: ["a1", "b1"],
+        pairKey: "a1_b1",
+      });
+    });
+  }
+
+  it("denies A→B and B→A after A blocks B", async () => {
+    await seedConvBlocked(["b1"], []);
+    await assertFails(
+      authed("a1").doc("conversations/c1/messages/m1").set(dmTextPayload("a1", "b1")),
+    );
+    await assertFails(
+      authed("b1").doc("conversations/c1/messages/m2").set(dmTextPayload("b1", "a1")),
+    );
+  });
+
+  it("allows send when blocked field is absent or empty", async () => {
+    await seedConvBlocked(undefined, []);
+    await assertSucceeds(
+      authed("a1").doc("conversations/c1/messages/m1").set(dmTextPayload("a1", "b1")),
+    );
+  });
+
+  it("denies image create on a blocked pair", async () => {
+    await seedConvBlocked(["b1"], []);
+    await assertFails(
+      authed("a1").doc("conversations/c1/messages/img1").set({
+        type: "image",
+        imageUrl: "https://example.com/x.jpg",
+        senderId: "a1",
+        fromUid: "a1",
+        toUid: "b1",
+        createdAt: new Date(),
+        clientCreatedAt: new Date(),
+        deleted: false,
+        deletedBy: "",
+        deletedText: "",
+        deletedAt: null,
+      }),
+    );
+  });
+});

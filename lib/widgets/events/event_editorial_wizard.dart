@@ -12,6 +12,7 @@ import '../../models/event_editorial_draft.dart';
 import '../../services/event_address_parts.dart';
 import '../../utils/event_timezone.dart';
 import '../keyboard_dismiss.dart';
+import '../remdy_keyboard_caps.dart';
 import 'event_search_sheet_chrome.dart';
 
 /// Wizard canônico de 7 passos para criar/editar evento.
@@ -632,6 +633,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
               cancelLabel: AppTexts.t('cancel'),
               searchField: TextField(
                 controller: searchC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 autofocus: true,
                 decoration: InputDecoration(
                   labelText: AppTexts.t('create_event_city'),
@@ -702,6 +704,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
               cancelLabel: AppTexts.t('cancel'),
               searchField: TextField(
                 controller: searchC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 autofocus: true,
                 decoration: InputDecoration(
                   labelText: AppTexts.t('create_event_place'),
@@ -795,32 +798,38 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
             children: [
               TextField(
                 controller: titleC,
+                textCapitalization: RemdyKeyboardCaps.words,
                 decoration: _dec(AppTexts.t('event_wizard_schedule_title')),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: dayC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 decoration: _dec(AppTexts.t('event_wizard_schedule_day')),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: startC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 decoration: _dec(AppTexts.t('event_wizard_schedule_start')),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: endC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 decoration: _dec(AppTexts.t('event_wizard_schedule_end')),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: descC,
+                textCapitalization: RemdyKeyboardCaps.sentences,
                 maxLines: 2,
                 decoration: _dec(AppTexts.t('event_wizard_schedule_desc')),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: tagC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 decoration: _dec(AppTexts.t('event_wizard_schedule_tag')),
               ),
             ],
@@ -881,12 +890,14 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
             children: [
               TextField(
                 controller: nameC,
+                textCapitalization: RemdyKeyboardCaps.words,
                 decoration:
                     _dec(AppTexts.t('event_wizard_attraction_name')),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: descC,
+                textCapitalization: RemdyKeyboardCaps.sentences,
                 maxLines: 2,
                 decoration:
                     _dec(AppTexts.t('event_wizard_attraction_desc')),
@@ -894,12 +905,14 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
               const SizedBox(height: 8),
               TextField(
                 controller: typeC,
+                textCapitalization: RemdyKeyboardCaps.words,
                 decoration:
                     _dec(AppTexts.t('event_wizard_attraction_type')),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: photoC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 decoration:
                     _dec(AppTexts.t('event_wizard_attraction_photo')),
               ),
@@ -981,12 +994,14 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
       children: [
         TextField(
           controller: _titleC,
+          textCapitalization: RemdyKeyboardCaps.words,
           decoration: _dec(t('create_event_name'), hint: t('create_event_name_hint')),
           onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _shortDescC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           maxLength: 280,
           decoration: _dec(t('event_wizard_short_description')),
           onChanged: (_) => _markDirty(),
@@ -994,6 +1009,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _descC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           maxLines: 5,
           decoration: _dec(
             t('create_event_description'),
@@ -1018,6 +1034,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _langC,
+          textCapitalization: RemdyKeyboardCaps.words,
           decoration: _dec(t('event_wizard_primary_language')),
           onChanged: (_) => _markDirty(),
         ),
@@ -1135,6 +1152,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _streetC,
+          textCapitalization: RemdyKeyboardCaps.words,
           decoration: _dec(t('event_wizard_street')),
           onChanged: (v) {
             _setDraft(_draft.copyWith(street: v).withComposedPublicAddress());
@@ -1147,6 +1165,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
             Expanded(
               child: TextField(
                 controller: _streetNumberC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 enabled: !_draft.noStreetNumber,
                 decoration: _dec(t('event_wizard_street_number')),
                 onChanged: (v) {
@@ -1190,6 +1209,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 8),
         TextField(
           controller: _complementC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           decoration: _dec(t('event_wizard_address_complement')),
           onChanged: (v) {
             _setDraft(
@@ -1202,6 +1222,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _districtC,
+          textCapitalization: RemdyKeyboardCaps.words,
           decoration: _dec(t('event_wizard_district')),
           onChanged: (v) {
             _setDraft(
@@ -1212,6 +1233,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _postalC,
+          textCapitalization: RemdyKeyboardCaps.none,
           decoration: _dec(t('event_wizard_postal_code')),
           onChanged: (v) {
             _setDraft(
@@ -1263,6 +1285,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         if (_draft.ticketType == 'paid') ...[
           TextField(
             controller: _priceC,
+            textCapitalization: RemdyKeyboardCaps.none,
             decoration: _dec(t('event_wizard_price')),
             keyboardType: TextInputType.text,
             onChanged: (_) => _markDirty(),
@@ -1270,6 +1293,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
           const SizedBox(height: 12),
           TextField(
             controller: _currencyC,
+            textCapitalization: RemdyKeyboardCaps.none,
             decoration: _dec(t('event_wizard_currency'), hint: 'BRL'),
             onChanged: (_) => _markDirty(),
           ),
@@ -1277,18 +1301,21 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _ticketUrlC,
+          textCapitalization: RemdyKeyboardCaps.none,
           decoration: _dec(t('event_wizard_ticket_url')),
           onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _ticketInfoC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           decoration: _dec(t('event_wizard_ticket_info')),
           onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _audienceC,
+          textCapitalization: RemdyKeyboardCaps.none,
           decoration: _dec(t('event_wizard_expected_audience')),
           keyboardType: TextInputType.number,
           onChanged: (_) => _markDirty(),
@@ -1615,6 +1642,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
       children: [
         TextField(
           controller: _accessC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           maxLines: 2,
           decoration: _dec(t('event_wizard_accessibility')),
           onChanged: (_) => _markDirty(),
@@ -1622,6 +1650,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _parkingC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           maxLines: 2,
           decoration: _dec(t('event_wizard_parking')),
           onChanged: (_) => _markDirty(),
@@ -1629,6 +1658,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _foodC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           maxLines: 2,
           decoration: _dec(t('event_wizard_food')),
           onChanged: (_) => _markDirty(),
@@ -1636,12 +1666,14 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _ageC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           decoration: _dec(t('event_wizard_age_rating')),
           onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _entryC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           maxLines: 2,
           decoration: _dec(t('event_wizard_entry_policy')),
           onChanged: (_) => _markDirty(),
@@ -1649,6 +1681,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _contactC,
+          textCapitalization: RemdyKeyboardCaps.none,
           decoration: _dec(t('event_wizard_public_contact')),
           onChanged: (_) => _markDirty(),
         ),
@@ -1663,12 +1696,14 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         ),
         TextField(
           controller: _websiteC,
+          textCapitalization: RemdyKeyboardCaps.none,
           decoration: _dec(t('event_wizard_website')),
           onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _notesC,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           maxLines: 3,
           decoration: _dec(t('event_wizard_public_notes')),
           onChanged: (_) => _markDirty(),

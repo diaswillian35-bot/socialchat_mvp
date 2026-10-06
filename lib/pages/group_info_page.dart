@@ -9,6 +9,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/block_service.dart';
+import '../services/block_visibility.dart';
 import '../services/group_ban_service.dart';
 import '../services/group_discovery_logic.dart';
 import '../services/group_hidden_prefs_service.dart';
@@ -20,6 +22,8 @@ import '../services/group_join_request_service.dart';
 import '../services/group_pending_join_badge_logic.dart';
 import '../services/international_chat_service.dart';
 import '../services/iso_country_names.dart';
+import '../widgets/blocked_uids_builder.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import '../widgets/group_pending_request_row.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
@@ -37,7 +41,8 @@ class GroupInfoPage extends StatefulWidget {
   State<GroupInfoPage> createState() => _GroupInfoPageState();
 }
 
-class _GroupInfoPageState extends State<GroupInfoPage> {
+class _GroupInfoPageState extends State<GroupInfoPage>
+    with BlockedUidsListenable {
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
@@ -213,6 +218,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
               const SizedBox(height: 12),
               TextField(
                 controller: reasonC,
+                textCapitalization: RemdyKeyboardCaps.sentences,
                 maxLength: 300,
                 decoration: InputDecoration(
                   labelText: t.get('group_ban_reason'),
@@ -523,6 +529,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
         title: Text(t.get('editBio')),
         content: TextField(
           controller: controller,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           maxLines: 4,
           maxLength: 1000,
           decoration: InputDecoration(
@@ -947,6 +954,11 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
 
     if (otherUid.isEmpty) {
       _toast(t.get('invalidUser'));
+      return;
+    }
+
+    if (!await BlockService.allowOpenPeer(otherUid)) {
+      _toast(t.get('chat_unavailable_blocked'));
       return;
     }
 
@@ -1941,7 +1953,14 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    ..._membersData.map(_memberTile),
+                    ..._membersData
+                        .where(
+                          (m) => !BlockVisibility.hidesUid(
+                            (m['uid'] ?? '').toString(),
+                            blocked: blockedUids,
+                          ),
+                        )
+                        .map(_memberTile),
                     const SizedBox(height: 16),
                     _card(
                       child: Column(

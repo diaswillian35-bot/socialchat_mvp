@@ -79,7 +79,7 @@ class InternationalChatService {
         DmCountryRelation.same;
   }
 
-  /// Free precisa de Premium (ou "Em breve" no lançamento BR) para intl.
+  /// Free precisa de Premium (fora do lançamento iOS) para intl.
   static bool needsPremiumToStartChat({
     required Map<String, dynamic> senderData,
     required Map<String, dynamic> recipientData,

@@ -5,6 +5,7 @@ import '../models/event_presentation.dart';
 import '../services/event_deep_link_service.dart';
 import '../services/events_discover_feed_logic.dart';
 import '../services/events_discover_feed_service.dart';
+import '../widgets/blocked_uids_builder.dart';
 import '../widgets/events/event_discover_card.dart';
 import '../widgets/events/event_section_row.dart';
 import '../widgets/remdy_logo.dart';
@@ -21,7 +22,8 @@ class EventsDiscoverPage extends StatefulWidget {
   State<EventsDiscoverPage> createState() => _EventsDiscoverPageState();
 }
 
-class _EventsDiscoverPageState extends State<EventsDiscoverPage> {
+class _EventsDiscoverPageState extends State<EventsDiscoverPage>
+    with BlockedUidsListenable {
   final _feed = EventsDiscoverFeedService();
 
   EventsDiscoverFeedResult? _result;
@@ -67,6 +69,7 @@ class _EventsDiscoverPageState extends State<EventsDiscoverPage> {
   }
 
   void _openDetail(EventPresentation event) {
+    if (blockedUids.contains(event.createdBy.trim())) return;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -172,7 +175,7 @@ class _EventsDiscoverPageState extends State<EventsDiscoverPage> {
                   child: _ErrorState(onRetry: _reload),
                 )
               else ...[
-                ..._sectionSlivers(lang),
+                ..._sectionSlivers(lang, blockedUids),
               ],
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
             ],
@@ -182,9 +185,30 @@ class _EventsDiscoverPageState extends State<EventsDiscoverPage> {
     );
   }
 
-  List<Widget> _sectionSlivers(String lang) {
-    final sections = _result?.sections;
-    if (sections == null || sections.isEmpty) {
+  List<Widget> _sectionSlivers(String lang, Set<String> blocked) {
+    final raw = _result?.sections;
+    if (raw == null) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                AppTexts.t('events_empty_country'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: _muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ];
+    }
+    final sections = EventsDiscoverFeedLogic.hideBlockedAuthors(raw, blocked);
+    if (sections.isEmpty) {
       return [
         SliverFillRemaining(
           hasScrollBody: false,
@@ -316,7 +340,13 @@ class _EventsSeeAllPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return BlockedUidsBuilder(
+      builder: (context, blocked) {
+        final visible = EventsDiscoverFeedLogic.withoutBlockedAuthors(
+          events,
+          blocked,
+        );
+        return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -339,9 +369,9 @@ class _EventsSeeAllPage extends StatelessWidget {
           crossAxisSpacing: 12,
           childAspectRatio: 0.72,
         ),
-        itemCount: events.length,
+        itemCount: visible.length,
         itemBuilder: (context, i) {
-          final e = events[i];
+          final e = visible[i];
           return EventDiscoverCard(
             event: e,
             languageCode: languageCode,
@@ -351,6 +381,8 @@ class _EventsSeeAllPage extends StatelessWidget {
           );
         },
       ),
+    );
+      },
     );
   }
 }

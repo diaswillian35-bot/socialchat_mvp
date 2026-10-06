@@ -12,9 +12,11 @@ import '../services/premium_access_service.dart';
 import '../services/remdy_launch_access.dart';
 import '../services/user_search_service.dart';
 import '../widget/city_search_dialog.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 
 import 'Premium_page.dart'; // <-- se o seu for "premium_page.dart", troque aqui
 import 'hidden_groups_page.dart';
+import 'blocked_users_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -588,6 +590,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
             TextField(
               controller: _nameC,
+              textCapitalization: RemdyKeyboardCaps.words,
               decoration: _inputDeco(AppTexts.current.get('name')),
               textInputAction: TextInputAction.next,
             ),
@@ -623,6 +626,7 @@ class _ProfilePageState extends State<ProfilePage> {
               child: AbsorbPointer(
                 child: TextField(
                   controller: _cityC,
+                  textCapitalization: RemdyKeyboardCaps.none,
                   decoration: _inputDeco(
                     AppTexts.current.get('city'),
                     hint: AppTexts.current.get('city_example'),
@@ -638,6 +642,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
             TextField(
               controller: _aboutC,
+              textCapitalization: RemdyKeyboardCaps.sentences,
               maxLines: 4,
               decoration: _inputDeco(
                 AppTexts.current.get('about_you'),
@@ -718,6 +723,39 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 label: Text(
                   AppTexts.current.get('group_hidden_list_title'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            SizedBox(
+              height: 46,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BlockedUsersPage(),
+                    ),
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _border),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  backgroundColor: Colors.white,
+                ),
+                icon: const Icon(
+                  Icons.block_rounded,
+                  color: Color(0xFF313A5F),
+                ),
+                label: Text(
+                  AppTexts.current.get('blocked_users_title'),
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF111827),

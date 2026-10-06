@@ -66,8 +66,7 @@ class _PremiumPageState extends State<PremiumPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!RemdyLaunchAccess.showPremiumUi) {
         if (!mounted) return;
-        await RemdyLaunchAccess.showComingSoon(context);
-        if (mounted) Navigator.of(context).maybePop();
+        Navigator.of(context).maybePop();
         return;
       }
       if (uid == null) return;

@@ -46,6 +46,12 @@ class ReportCategory {
     code: 'other',
     labelKey: 'report_reason_other',
   );
+
+  /// Block-as-report (Guideline 1.2): no message body, no PII.
+  static const userBlocked = ReportCategory(
+    code: 'user_blocked',
+    labelKey: 'report_reason_user_blocked',
+  );
 }
 
 /// Classification fields shared by every report writer.

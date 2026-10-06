@@ -4,8 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/block_visibility.dart';
 import '../services/user_search_service.dart';
 import '../utils/user_search_normalize.dart';
+import '../widgets/blocked_uids_builder.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import 'nearby_users_page.dart';
 
 /// Pesquisa global de usuários Remdy (nome / cidade / região / país).
@@ -18,7 +21,8 @@ class UserSearchPage extends StatefulWidget {
   State<UserSearchPage> createState() => _UserSearchPageState();
 }
 
-class _UserSearchPageState extends State<UserSearchPage> {
+class _UserSearchPageState extends State<UserSearchPage>
+    with BlockedUidsListenable {
   static const Color _bg = Colors.white;
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -186,6 +190,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
   }
 
   Future<void> _openChat(UserSearchHit hit) async {
+    if (BlockVisibility.hidesUid(hit.uid)) return;
     if (hit.uid.trim().isEmpty || hit.name.trim().isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -278,6 +283,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
                   Expanded(
                     child: TextField(
                       controller: _controller,
+                      textCapitalization: RemdyKeyboardCaps.none,
                       autofocus: true,
                       textInputAction: TextInputAction.search,
                       onChanged: _onQueryChanged,
@@ -448,23 +454,25 @@ class _UserSearchPageState extends State<UserSearchPage> {
       return _CenteredMessage(t.get(_type.hintKey));
     }
 
-    if (!_loading && _hits.isEmpty) {
+    final visibleHits =
+        _hits.where((h) => !blockedUids.contains(h.uid)).toList();
+    if (!_loading && visibleHits.isEmpty) {
       return _CenteredMessage(t.get(_type.emptyKey));
     }
 
     return ListView.separated(
       controller: _scrollController,
       padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + bottomInset),
-      itemCount: _hits.length + (_loadingMore ? 1 : 0),
+      itemCount: visibleHits.length + (_loadingMore ? 1 : 0),
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
-        if (index >= _hits.length) {
+        if (index >= visibleHits.length) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Center(child: CircularProgressIndicator()),
           );
         }
-        final hit = _hits[index];
+        final hit = visibleHits[index];
         return _UserSearchTile(hit: hit, onTap: () => _openChat(hit));
       },
     );

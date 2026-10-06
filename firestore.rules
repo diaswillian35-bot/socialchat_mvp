@@ -214,9 +214,25 @@ service cloud.firestore {
       return isPremiumUser(uid());
     }
 
+    function userDocData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    function uidInBlockedArray(ownerId, targetId) {
+      return exists(/databases/$(database)/documents/users/$(ownerId))
+        && userDocData(ownerId).keys().hasAny(['blocked'])
+        && userDocData(ownerId).blocked is list
+        && targetId in userDocData(ownerId).blocked;
+    }
+
+    function eitherDmBlocked(fromId, toId) {
+      return uidInBlockedArray(fromId, toId) || uidInBlockedArray(toId, fromId);
+    }
+
     function canSendMessageInConversation(cid) {
       let parts = partsFrom(conv(cid).data);
-      return !isInternationalParticipants(parts) || isPremiumUser(uid());
+      return (!isInternationalParticipants(parts) || isPremiumUser(uid()))
+        && !eitherDmBlocked(uid(), request.resource.data.toUid);
     }
 
     function isValidTextMessage() {
@@ -267,7 +283,14 @@ service cloud.firestore {
       allow update: if signedIn()
         && uid() == userId
         && premiumInviteFieldsUnchanged()
-        && homeCountryCodeChangeAllowed();
+        && homeCountryCodeChangeAllowed()
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['blocked'])
+          || (
+            request.resource.data.blocked is list
+            && request.resource.data.blocked.size() <= 500
+          )
+        );
 
       allow delete: if false;
 

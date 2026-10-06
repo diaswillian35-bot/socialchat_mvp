@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
 import '../pages/event_detail_page.dart';
+import '../services/block_visibility.dart';
+import '../widgets/blocked_uids_builder.dart';
 import 'home_section_header.dart';
 
 /// Carrossel de eventos na Home.
@@ -31,7 +33,8 @@ class HomeDiscoverSection extends StatefulWidget {
   State<HomeDiscoverSection> createState() => _HomeDiscoverSectionState();
 }
 
-class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
+class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
+    with BlockedUidsListenable {
   static const Color _remdyBlue = Color(0xFF313A5F);
 
   static const Duration _autoInterval = Duration(seconds: 5);
@@ -40,6 +43,15 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
   Timer? _autoTimer;
   int _pageIndex = 0;
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _docs = const [];
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> get _visibleDocs =>
+      _docs
+          .where(
+            (d) => !BlockVisibility.hidesEventMap(
+              d.data(),
+              blocked: blockedUids,
+            ),
+          )
+          .toList();
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
   bool _loading = true;
   bool _hasError = false;
@@ -256,7 +268,7 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
 
   void _restartAuto() {
     _stopAuto();
-    if (_docs.length < 4) return;
+    if (_visibleDocs.length < 4) return;
     _autoTimer = Timer.periodic(_autoInterval, (_) => _goNext());
   }
 
@@ -264,10 +276,10 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
     if (!mounted) return;
     final controller = _pageController;
     if (controller == null || !controller.hasClients) return;
-    if (_docs.length < 4) return;
+    if (_visibleDocs.length < 4) return;
 
     final current = controller.page?.round() ?? _pageIndex;
-    final next = (current + 1) % _docs.length;
+    final next = (current + 1) % _visibleDocs.length;
     controller.animateToPage(
       next,
       duration: const Duration(milliseconds: 420),
@@ -312,7 +324,8 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
     return '';
   }
 
-  void _openEvent(String eventId) {
+  void _openEvent(String eventId, Map<String, dynamic> data) {
+    if (BlockVisibility.hidesEventMap(data, blocked: blockedUids)) return;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -325,11 +338,11 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
   Widget build(BuildContext context) {
     final t = AppTexts.current;
 
-    if (_loading && _docs.isEmpty) {
+    if (_loading && _visibleDocs.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    if (_hasError || _docs.isEmpty) {
+    if (_hasError || _visibleDocs.isEmpty) {
       // 0 eventos: ocultar seção por completo (sem espaço vazio).
       return const SizedBox.shrink();
     }
@@ -343,7 +356,7 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
           onSeeAll: widget.onOpenEventsTab,
         ),
         const SizedBox(height: 8),
-        if (_docs.length <= 3)
+        if (_visibleDocs.length <= 3)
           _staticRow(context)
         else
           _autoCarousel(context),
@@ -354,7 +367,7 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
   Widget _staticRow(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final count = _docs.length;
+        final count = _visibleDocs.length;
         const gap = 8.0;
         final cardWidth = count == 1
             ? constraints.maxWidth
@@ -371,13 +384,16 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
                 if (i > 0) const SizedBox(width: gap),
                 Expanded(
                   child: _EventCard(
-                    doc: _docs[i],
+                    doc: _visibleDocs[i],
                     compact: count > 1,
                     wide: count == 1,
                     resolveImageUrl: _resolveImageUrl,
                     fmtDate: _fmtDate,
                     eventBadge: _eventBadge,
-                    onTap: () => _openEvent(_docs[i].id),
+                    onTap: () => _openEvent(
+                      _visibleDocs[i].id,
+                      _visibleDocs[i].data(),
+                    ),
                   ),
                 ),
               ],
@@ -412,7 +428,7 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
                 },
                 child: PageView.builder(
                   controller: controller,
-                  itemCount: _docs.length,
+                  itemCount: _visibleDocs.length,
                   onPageChanged: (index) {
                     if (!mounted) return;
                     setState(() => _pageIndex = index);
@@ -421,13 +437,16 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: _EventCard(
-                        doc: _docs[index],
+                        doc: _visibleDocs[index],
                         compact: false,
                         wide: true,
                         resolveImageUrl: _resolveImageUrl,
                         fmtDate: _fmtDate,
                         eventBadge: _eventBadge,
-                        onTap: () => _openEvent(_docs[index].id),
+                        onTap: () => _openEvent(
+                          _visibleDocs[index].id,
+                          _visibleDocs[index].data(),
+                        ),
                       ),
                     );
                   },
@@ -437,7 +456,7 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection> {
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_docs.length.clamp(0, 20), (i) {
+              children: List.generate(_visibleDocs.length.clamp(0, 20), (i) {
                 final active = i == _pageIndex;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 200),

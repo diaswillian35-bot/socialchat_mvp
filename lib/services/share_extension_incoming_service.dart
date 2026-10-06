@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'age_access_service.dart';
+import 'block_visibility.dart';
 import 'outgoing_image_message_service.dart';
 import 'outgoing_text_message_service.dart';
 
@@ -51,6 +52,8 @@ class ShareExtensionIncomingService {
               )
             : const <String>[];
         if (destinationId.isEmpty || (text.isEmpty && paths.isEmpty)) continue;
+
+        if (kind != 'group' && BlockVisibility.hidesUid(otherUid)) continue;
 
         var allOk = true;
         final target = kind == 'group'

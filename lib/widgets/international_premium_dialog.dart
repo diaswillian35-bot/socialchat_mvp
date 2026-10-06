@@ -43,7 +43,7 @@ class InternationalPremiumDialog {
     String otherFirstName = '',
   }) async {
     if (RemdyLaunchAccess.isFreeBrazilLaunch) {
-      await RemdyLaunchAccess.showComingSoon(context);
+      await RemdyLaunchAccess.showUnavailable(context);
       return;
     }
 

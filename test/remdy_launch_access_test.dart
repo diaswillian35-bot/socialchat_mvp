@@ -117,15 +117,20 @@ void main() {
       final dialog = source('lib/widgets/international_premium_dialog.dart');
       final premium = source('lib/pages/premium_page.dart');
 
-      expect(home, contains('showsComingSoonOnHome'));
       expect(home, contains('canAccessCountryContent'));
-      expect(home, contains('comingSoonBadgeLabel'));
+      expect(home, contains('isFreeBrazilLaunch'));
+      expect(home, contains("t.get('world')"));
+      expect(home, contains("code: 'CA'"));
+      expect(home, contains("code: 'PT'"));
+      expect(home, isNot(contains('world_coming_soon')));
       expect(home, isNot(contains('isCanada')));
       expect(menu, contains('RemdyLaunchAccess.showPremiumUi'));
       expect(profile, contains('RemdyLaunchAccess.showPremiumUi'));
       expect(dialog, contains('RemdyLaunchAccess.isFreeBrazilLaunch'));
-      expect(dialog, contains('showComingSoon'));
+      expect(dialog, contains('showUnavailable'));
+      expect(dialog, isNot(contains('showComingSoon')));
       expect(premium, contains('RemdyLaunchAccess.showPremiumUi'));
+      expect(premium, isNot(contains('showComingSoon')));
     });
 
     test('Home Em breve badge depends on profile home country BR vs CA', () {
@@ -193,17 +198,19 @@ void main() {
       }
     });
 
-    test('l10n has coming soon keys in pt-BR and en', () {
+    test('l10n keeps coming-soon keys unused by launch UI', () {
       final pt = source('lib/l10n/pt-BR.json');
       final en = source('lib/l10n/en.json');
       expect(pt, contains('"coming_soon_short": "Em breve"'));
       expect(pt, contains('"country_coming_soon"'));
+      expect(pt, contains('"launch_content_unavailable"'));
       expect(en, contains('"coming_soon_short"'));
       expect(en, contains('"country_coming_soon"'));
+      expect(en, contains('"launch_content_unavailable"'));
     });
 
-    test('pubspec is 1.0.4+33', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+33'));
+    test('pubspec is 1.0.4+34', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+34'));
     });
   });
 }

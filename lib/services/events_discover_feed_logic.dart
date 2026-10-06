@@ -114,6 +114,35 @@ class EventsDiscoverFeedLogic {
     );
   }
 
+  static List<EventPresentation> withoutBlockedAuthors(
+    Iterable<EventPresentation> items,
+    Set<String> blocked,
+  ) {
+    if (blocked.isEmpty) return List<EventPresentation>.from(items);
+    return items
+        .where((e) => !blocked.contains(e.createdBy.trim()))
+        .toList();
+  }
+
+  static EventsDiscoverSections hideBlockedAuthors(
+    EventsDiscoverSections sections,
+    Set<String> blocked,
+  ) {
+    if (blocked.isEmpty) return sections;
+    final cats = <String, List<EventPresentation>>{};
+    for (final e in sections.categories.entries) {
+      final next = withoutBlockedAuthors(e.value, blocked);
+      if (next.isNotEmpty) cats[e.key] = next;
+    }
+    return EventsDiscoverSections(
+      featured: withoutBlockedAuthors(sections.featured, blocked),
+      nearby: withoutBlockedAuthors(sections.nearby, blocked),
+      today: withoutBlockedAuthors(sections.today, blocked),
+      upcoming: withoutBlockedAuthors(sections.upcoming, blocked),
+      categories: cats,
+    );
+  }
+
   static String _normalizeCategory(String raw) {
     final v = raw.trim().toLowerCase();
     if (v.isEmpty) return '';

@@ -14,11 +14,14 @@ import 'package:socialchat_mvp/pages/Premium_page.dart';
 import 'package:socialchat_mvp/pages/public_profile_page.dart';
 import 'package:socialchat_mvp/services/audio_playback_controller.dart';
 import 'package:socialchat_mvp/services/block_service.dart';
+import 'package:socialchat_mvp/services/block_visibility.dart';
 import 'package:socialchat_mvp/services/objectionable_content_filter.dart';
 import 'package:socialchat_mvp/widget/audio_bubble.dart';
+import 'package:socialchat_mvp/widgets/blocked_uids_builder.dart';
 
 import '../l10n/app_texts.dart';
 import '../widgets/chat_composer_text.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import '../widgets/chat_keyboard_inset.dart';
 import '../pages/forward_message_page.dart';
 import '../services/forward_message_service.dart';
@@ -63,7 +66,8 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
+class _ChatPageState extends State<ChatPage>
+    with WidgetsBindingObserver, BlockedUidsListenable {
   final _textC = TextEditingController();
   final _scrollC = ScrollController();
   final ImagePicker _picker = ImagePicker();
@@ -1277,10 +1281,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     if (canSend) return true;
 
-    // Lançamento gratuito: sem franquia internacional — Em breve.
+    // Lançamento gratuito: sem franquia internacional.
     if (RemdyLaunchAccess.isFreeBrazilLaunch) {
       if (showReplyModal && mounted) {
-        await RemdyLaunchAccess.showComingSoon(context);
+        await RemdyLaunchAccess.showUnavailable(context);
       }
       return false;
     }
@@ -1404,7 +1408,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
         if (RemdyLaunchAccess.isFreeBrazilLaunch) {
-          await RemdyLaunchAccess.showComingSoon(context);
+          await RemdyLaunchAccess.showUnavailable(context);
         } else {
           Navigator.push(
             context,
@@ -1754,7 +1758,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
         if (RemdyLaunchAccess.isFreeBrazilLaunch) {
-          await RemdyLaunchAccess.showComingSoon(context);
+          await RemdyLaunchAccess.showUnavailable(context);
         } else {
           Navigator.push(
             context,
@@ -2001,7 +2005,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (!_usesReplyQuota && _isWorldChat && _limitReached && !_isPremium) {
         if (!mounted) return;
         if (RemdyLaunchAccess.isFreeBrazilLaunch) {
-          await RemdyLaunchAccess.showComingSoon(context);
+          await RemdyLaunchAccess.showUnavailable(context);
         } else {
           Navigator.push(
             context,
@@ -2250,6 +2254,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _openPublicProfile() {
+    if (BlockVisibility.hidesUid(widget.otherUid)) return;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -2477,6 +2482,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (blockedUids.contains(widget.otherUid)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).maybePop();
+      });
+    }
     final t = AppTexts.current;
 
     return Scaffold(
@@ -2498,6 +2508,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         title: _searchMode
             ? TextField(
                 controller: _searchController,
+                textCapitalization: RemdyKeyboardCaps.none,
                 autofocus: true,
                 decoration: InputDecoration(
                   hintText: t.get('chat_search_message_hit'),
@@ -3143,7 +3154,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                     const EdgeInsets.symmetric(vertical: 6),
                                 child: Text(
                                   RemdyLaunchAccess.isFreeBrazilLaunch
-                                      ? RemdyLaunchAccess.comingSoonMessage(t)
+                                      ? RemdyLaunchAccess.unavailableMessage(t)
                                       : t.get('chat_world_is_premium'),
                                   style: const TextStyle(
                                     fontSize: 12,
@@ -4461,6 +4472,7 @@ class _ReplySearchPageState extends State<_ReplySearchPage> {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: TextField(
                 controller: _searchC,
+                textCapitalization: RemdyKeyboardCaps.none,
                 autofocus: true,
                 decoration: InputDecoration(
                   hintText: AppTexts.current.get('chat_search_hint'),

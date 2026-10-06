@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
+import '../services/remdy_launch_access.dart';
 
 
 class AboutPage extends StatelessWidget {
@@ -52,8 +53,7 @@ class AboutPage extends StatelessWidget {
         '${t.get('about_remdy_paragraph_7')}\n\n'
         '${t.get('about_remdy_safety_title')}\n'
         '${t.get('about_remdy_paragraph_8')}\n\n'
-        '${t.get('about_remdy_getting_started_title')}\n'
-        '${t.get('about_remdy_paragraph_9')}\n\n'
+        '${RemdyLaunchAccess.isFreeBrazilLaunch ? '' : '${t.get('about_remdy_getting_started_title')}\n${t.get('about_remdy_paragraph_9')}\n\n'}'
         '${t.get('about_remdy_thanks_title')}\n'
         '${t.get('about_remdy_paragraph_10')}';
   }

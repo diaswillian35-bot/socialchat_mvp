@@ -214,7 +214,7 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
         groupCountryCode: groupCountry,
       )) {
         if (!mounted) return;
-        await RemdyLaunchAccess.showComingSoon(context);
+        await RemdyLaunchAccess.showUnavailable(context);
         return;
       }
 

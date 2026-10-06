@@ -12,6 +12,7 @@ EventPresentation _e({
   bool featured = false,
   String category = '',
   bool active = true,
+  String createdBy = 'u',
 }) {
   return EventPresentation(
     id: id,
@@ -42,7 +43,7 @@ EventPresentation _e({
     isFree: false,
     scheduleItems: const [],
     attractions: const [],
-    createdBy: 'u',
+    createdBy: createdBy,
   );
 }
 
@@ -85,5 +86,27 @@ void main() {
       userCityKey: '',
     );
     expect(sections.isEmpty, isTrue);
+  });
+
+  test('hideBlockedAuthors drops organizer events only in local view', () {
+    final now = DateTime(2026, 7, 30, 12);
+    final tomorrow = DateTime(2026, 7, 31, 18);
+    final sections = EventsDiscoverFeedLogic.partition(
+      pool: [
+        _e(id: 'keep', createdBy: 'a', start: tomorrow, sponsored: true),
+        _e(id: 'hide', createdBy: 'blocked', start: tomorrow, city: 'Toronto'),
+      ],
+      userLat: 43.65,
+      userLng: -79.38,
+      userCityKey: 'toronto',
+      now: now,
+    );
+    final filtered = EventsDiscoverFeedLogic.hideBlockedAuthors(
+      sections,
+      {'blocked'},
+    );
+    expect(filtered.featured.map((e) => e.id), contains('keep'));
+    expect(filtered.featured.map((e) => e.id), isNot(contains('hide')));
+    expect(filtered.nearby.map((e) => e.id), isNot(contains('hide')));
   });
 }

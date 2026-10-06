@@ -8,6 +8,7 @@ import '../services/international_chat_service.dart';
 import '../services/new_user_policy.dart';
 import '../services/user_avatar_resolver.dart';
 import '../services/user_location_scope.dart';
+import '../widgets/blocked_uids_builder.dart';
 import 'home_section_header.dart';
 
 /// Novos usuários na **mesma cidade** — sem fallback estadual/nacional.
@@ -67,6 +68,7 @@ class HomeNearbyUsersSection extends StatelessWidget {
     required String viewerCity,
     required double lat,
     required double lng,
+    required Set<String> blocked,
   }) {
     final normalizedCountry = countryCode.trim().toLowerCase();
 
@@ -74,6 +76,7 @@ class HomeNearbyUsersSection extends StatelessWidget {
       if (doc.id == myUid) return false;
       final data = doc.data();
       if (!InternationalChatService.isActiveAccount(data)) return false;
+      if (blocked.contains(doc.id)) return false;
       if (!UserLocationScope.isDiscoverableProfile(data)) return false;
       if (!NewUserPolicy.isEligibleDiscoverableNewUser(data)) return false;
 
@@ -179,7 +182,9 @@ class HomeNearbyUsersSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        BlockedUidsBuilder(
+          builder: (context, blocked) {
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('users')
               .where('homeCountryCode', isEqualTo: normalizedCountry)
@@ -202,6 +207,7 @@ class HomeNearbyUsersSection extends StatelessWidget {
               viewerCity: viewerCity,
               lat: lat!,
               lng: lng!,
+              blocked: blocked,
             );
 
             if (docs.isEmpty) {
@@ -323,6 +329,8 @@ class HomeNearbyUsersSection extends StatelessWidget {
                 },
               ),
             );
+          },
+        );
           },
         ),
       ],

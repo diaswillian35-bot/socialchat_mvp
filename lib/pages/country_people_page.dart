@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
 import '../services/people_browse_config_service.dart';
 import '../services/people_browse_grouping.dart';
@@ -12,6 +13,8 @@ import '../services/user_avatar_resolver.dart';
 import '../services/user_location_scope.dart';
 import '../utils/user_search_normalize.dart';
 import '../widget/online_dot.dart';
+import '../widgets/remdy_keyboard_caps.dart';
+import '../widgets/blocked_uids_builder.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
 import 'public_profile_page.dart';
@@ -33,7 +36,8 @@ class CountryPeoplePage extends StatefulWidget {
   State<CountryPeoplePage> createState() => _CountryPeoplePageState();
 }
 
-class _CountryPeoplePageState extends State<CountryPeoplePage> {
+class _CountryPeoplePageState extends State<CountryPeoplePage>
+    with BlockedUidsListenable {
   static const Color _bg = Color(0xFFF6F7FB);
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -52,7 +56,6 @@ class _CountryPeoplePageState extends State<CountryPeoplePage> {
   Object? _error;
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> _docs = [];
   DocumentSnapshot<Map<String, dynamic>>? _lastDoc;
-  Set<String> _blocked = {};
 
   String get _myUid => FirebaseAuth.instance.currentUser?.uid ?? '';
   String get _code => widget.countryCode.trim().toLowerCase();
@@ -73,19 +76,6 @@ class _CountryPeoplePageState extends State<CountryPeoplePage> {
   }
 
   Future<void> _bootstrap() async {
-    try {
-      final me = FirebaseAuth.instance.currentUser?.uid;
-      if (me != null) {
-        final snap =
-            await FirebaseFirestore.instance.collection('users').doc(me).get();
-        final list = snap.data()?['blocked'];
-        if (list is List) {
-          _blocked = list.map((e) => e.toString()).toSet();
-        }
-      }
-    } catch (_) {
-      _blocked = {};
-    }
     await _reload();
   }
 
@@ -183,7 +173,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage> {
 
   bool _isEligible(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     if (d.id == _myUid) return false;
-    if (_blocked.contains(d.id)) return false;
+    if (blockedUids.contains(d.id)) return false;
     final data = d.data();
     if (!InternationalChatService.isActiveAccount(data)) return false;
     final code = InternationalChatService.readHomeCountryCode(data);
@@ -223,6 +213,13 @@ class _CountryPeoplePageState extends State<CountryPeoplePage> {
   }
 
   Future<void> _openChat(Map<String, dynamic> otherData, String otherUid) async {
+    if (!await BlockService.allowOpenPeer(otherUid)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppTexts.current.get('chat_unavailable_blocked'))),
+      );
+      return;
+    }
     final otherName = (otherData['name'] ?? AppTexts.current.get('user')).toString();
     final myData = await InternationalChatService.fetchActiveUserData(_myUid);
     if (myData == null || !InternationalChatService.isActiveAccount(otherData)) {
@@ -279,6 +276,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: TextField(
               controller: _searchC,
+              textCapitalization: RemdyKeyboardCaps.none,
               onChanged: _onSearchChanged,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(

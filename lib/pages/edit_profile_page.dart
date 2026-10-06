@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../l10n/app_texts.dart';
 import '../widgets/keyboard_dismiss.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import '../utils/user_search_normalize.dart';
 import '../services/user_search_service.dart';
 import '../services/profile_completed_at_policy.dart';
@@ -253,6 +254,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _countrySearchC,
+                      textCapitalization: RemdyKeyboardCaps.none,
                       onChanged: (_) => setModalState(() {}),
                       decoration: InputDecoration(
                         hintText: t.get('search_country'),
@@ -621,6 +623,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return TextFormField(
       controller: _citySearchC,
       readOnly: true,
+      textCapitalization: RemdyKeyboardCaps.none,
       decoration: _deco(
         t.get('city'),
         hint: t.get('city_example'),
@@ -815,6 +818,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: searchC,
+                      textCapitalization: RemdyKeyboardCaps.none,
                       autofocus: true,
                       onChanged: (v) async {
                         await runSearch(v);
@@ -967,6 +971,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _nameC,
+                    textCapitalization: RemdyKeyboardCaps.words,
                     decoration: _deco(t.get('full_name')),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty)
@@ -978,11 +983,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _languagesC,
+                    textCapitalization: RemdyKeyboardCaps.words,
                     decoration: _deco(t.get('languages_you_speak')),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _aboutC,
+                    textCapitalization: RemdyKeyboardCaps.sentences,
                     maxLines: 4,
                     decoration: _deco(
                       t.get('about_you'),

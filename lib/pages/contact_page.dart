@@ -87,7 +87,7 @@ class ContactPage extends StatelessWidget {
           : () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(t.get('coming_soon')),
+                  content: Text(t.get('launch_content_unavailable')),
                   duration: const Duration(seconds: 1),
                   behavior: SnackBarBehavior.floating,
                   margin: const EdgeInsets.all(12),

@@ -8,6 +8,7 @@ import '../l10n/app_texts.dart';
 import '../services/group_creation_service.dart';
 import '../services/group_geo.dart';
 import '../widgets/keyboard_dismiss.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 import 'group_info_page.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
@@ -307,6 +308,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: searchC,
+                      textCapitalization: RemdyKeyboardCaps.none,
                       autofocus: true,
                       onChanged: (v) async {
                         await runSearch(v);
@@ -539,6 +541,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 const SizedBox(height: 18),
                 TextField(
                   controller: _nameC,
+                  textCapitalization: RemdyKeyboardCaps.words,
                   textInputAction: TextInputAction.next,
                   decoration: _dec(
                     AppTexts.t('create_group_name'),
@@ -594,6 +597,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   TextField(
                     controller: _cityC,
                     readOnly: true,
+                    textCapitalization: RemdyKeyboardCaps.none,
                     textInputAction: TextInputAction.next,
                     decoration: _dec(
                       AppTexts.t('city'),
@@ -815,6 +819,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _bioC,
+                  textCapitalization: RemdyKeyboardCaps.sentences,
                   maxLines: 4,
                   decoration: _dec(
                     AppTexts.t('create_group_bio'),

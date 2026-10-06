@@ -10,6 +10,7 @@ import '../services/people_browse_config_service.dart';
 import '../services/people_browse_grouping.dart';
 import '../services/user_avatar_resolver.dart';
 import '../services/user_location_scope.dart';
+import '../widgets/blocked_uids_builder.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
 
@@ -57,6 +58,15 @@ class NearbyUsersPage extends StatelessWidget {
     if (!_openingUids.add(target)) return;
 
     try {
+      if (!await BlockService.allowOpenPeer(target)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppTexts.t('chat_unavailable_blocked'))),
+          );
+        }
+        return;
+      }
+
       final myData = await InternationalChatService.fetchActiveUserData(myUid);
       final otherData =
           await InternationalChatService.fetchActiveUserData(target);
@@ -67,16 +77,6 @@ class NearbyUsersPage extends StatelessWidget {
             SnackBar(
               content: Text(AppTexts.t('profile_no_longer_available')),
             ),
-          );
-        }
-        return;
-      }
-
-      final blocked = await BlockService.isEitherBlocked(target);
-      if (blocked) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppTexts.t('chat_unavailable_blocked'))),
           );
         }
         return;
@@ -169,8 +169,9 @@ class NearbyUsersPage extends StatelessWidget {
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterDocs(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    String myUid,
-  ) {
+    String myUid, {
+    required Set<String> blocked,
+  }) {
     final normalizedCountry = countryCode.trim().toLowerCase();
     if (!UserLocationScope.isValidCityCoordinate(viewerLat, viewerLng)) {
       return const [];
@@ -178,10 +179,12 @@ class NearbyUsersPage extends StatelessWidget {
 
     final filtered = docs.where((doc) {
       if (doc.id == myUid) return false;
+      if (blocked.contains(doc.id)) return false;
       final data = doc.data();
       if (!InternationalChatService.isActiveAccount(data)) return false;
       if (!UserLocationScope.isDiscoverableProfile(data)) return false;
-      if (!_isRecent(data)) return false;
+      if (!NewUserPolicy.isEligibleDiscoverableNewUser(data)) return false;
+      if (blocked.contains(doc.id)) return false;
 
       final code = InternationalChatService.readHomeCountryCode(data);
       if (normalizedCountry.isNotEmpty &&
@@ -276,7 +279,9 @@ class NearbyUsersPage extends StatelessWidget {
           ],
         ),
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: BlockedUidsBuilder(
+        builder: (context, blocked) {
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection('users')
             .where('homeCountryCode', isEqualTo: normalizedCountry)
@@ -297,7 +302,11 @@ class NearbyUsersPage extends StatelessWidget {
             );
           }
 
-          final docs = _filterDocs(snapshot.data?.docs ?? [], myUid);
+          final docs = _filterDocs(
+            snapshot.data?.docs ?? [],
+            myUid,
+            blocked: blocked,
+          );
 
           if (docs.isEmpty) {
             return Center(
@@ -395,6 +404,8 @@ class NearbyUsersPage extends StatelessWidget {
               );
             },
           );
+        },
+      );
         },
       ),
     );

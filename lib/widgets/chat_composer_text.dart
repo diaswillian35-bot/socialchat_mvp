@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../services/message_link_utils.dart';
+import 'remdy_keyboard_caps.dart';
 
 /// Visibilidade do botão Enviar vs microfone no composer.
 /// Espaços isolados não contam como mensagem enviável.
@@ -14,7 +15,7 @@ class ChatComposerText {
 
   /// Auxílio do teclado; não é garantia (depende do aparelho).
   static const TextCapitalization keyboardCapitalization =
-      TextCapitalization.sentences;
+      RemdyKeyboardCaps.sentences;
 
   /// Formatter para digitação e colagem no composer.
   static final TextInputFormatter leadingAlphaCapitalizationFormatter =

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'age_access_service.dart';
+import 'block_visibility.dart';
 import 'group_discovery_logic.dart';
 import 'international_chat_service.dart';
 
@@ -51,6 +52,7 @@ class ShareExtensionDestinationsService {
             : <String>[];
         final otherUid = parts.firstWhere((u) => u != uid, orElse: () => '');
         if (otherUid.isEmpty) continue;
+        if (BlockVisibility.hidesUid(otherUid)) continue;
 
         String name = '';
         try {

@@ -202,9 +202,13 @@ void main() {
   group('Apple 1.2 — Report and block preserved', () {
     test('BlockService still exposes block/unblock', () {
       final block = source('lib/services/block_service.dart');
-      expect(block, contains('static Future<void> blockUser'));
+      expect(block, contains('static Future<BlockUserOutcome> blockUser'));
       expect(block, contains('static Future<void> unblockUser'));
       expect(block, contains('isEitherBlocked'));
+      expect(block, contains("collection('reports')"));
+      expect(block, contains('_tryMarkBlocked'));
+      final unblock = block.split('static Future<void> unblockUser').last;
+      expect(unblock.split('isBlockedStream').first, isNot(contains('reports')));
     });
 
     test('profile exposes Reportar and Bloquear', () {
@@ -244,8 +248,9 @@ void main() {
   });
 
   group('Apple 1.2 — versioning', () {
-    test('ships 1.0.4+33 after 1.0.4 (32) was rejected for iPadOS 27 launch crash', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+33'));
+    test('ships 1.0.4+34 after 1.0.4 (33) was rejected for UGC and incomplete UI', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+34'));
+      expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+33')));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+32')));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+31')));
     });

@@ -1,21 +1,71 @@
 import 'dart:async';
+import 'dart:developer' as developer;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+import 'block_report_logic.dart';
+import 'block_visibility.dart';
+
+export 'block_report_logic.dart' show BlockUserOutcome;
 
 class BlockService {
   static final _db = FirebaseFirestore.instance;
 
   static String? get myUid => FirebaseAuth.instance.currentUser?.uid;
 
-  // users/{myUid}.blocked = [otherUid, ...]
-  static Future<void> blockUser(String otherUid) async {
+  /// Applies `users/{me}.blocked` arrayUnion, then a `reports` doc on a real
+  /// not-blocked → blocked transition. Report failure does not undo the block.
+  static Future<BlockUserOutcome> blockUser(String otherUid) async {
     final uid = myUid;
-    if (uid == null) return;
+    final target = otherUid.trim();
+    if (uid == null || target.isEmpty || target == uid) {
+      return BlockUserOutcome.ignored;
+    }
 
-    await _db.collection('users').doc(uid).set({
-      'blocked': FieldValue.arrayUnion([otherUid]),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final newlyBlocked = await _tryMarkBlocked(uid, target);
+    if (!newlyBlocked) {
+      return BlockUserOutcome.alreadyBlocked;
+    }
+
+    BlockVisibility.noteBlocked(target);
+
+    final outcome = await BlockReportLogic.afterNewBlockWriteReport(
+      actorUid: uid,
+      targetUid: target,
+      persistReport: (fields) async {
+        await _db.collection('reports').add({
+          ...fields,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      },
+    );
+    if (outcome.reportError != null) {
+      developer.log(
+        'block report failed: ${outcome.reportError}',
+        name: 'BlockService',
+      );
+    }
+    return outcome;
+  }
+
+  /// Transaction serializes concurrent blockUser calls on the same user doc.
+  static Future<bool> _tryMarkBlocked(String uid, String target) async {
+    return _db.runTransaction((tx) async {
+      final ref = _db.collection('users').doc(uid);
+      final snap = await tx.get(ref);
+      final blocked = BlockReportLogic.blockedUids(snap.data()?['blocked']);
+      if (blocked.contains(target)) return false;
+      tx.set(
+        ref,
+        {
+          'blocked': FieldValue.arrayUnion([target]),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      return true;
+    });
   }
 
   static Future<void> unblockUser(String otherUid) async {
@@ -26,6 +76,7 @@ class BlockService {
       'blocked': FieldValue.arrayRemove([otherUid]),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    BlockVisibility.noteUnblocked(otherUid);
   }
 
   // Stream: "EU bloqueei essa pessoa?"
@@ -111,5 +162,13 @@ class BlockService {
         await s2?.cancel();
       };
     }).distinct();
+  }
+
+  /// My block list **or** they blocked me (peer user doc).
+  static Future<bool> allowOpenPeer(String otherUid) async {
+    final target = otherUid.trim();
+    if (target.isEmpty) return false;
+    if (BlockVisibility.hidesUid(target)) return false;
+    return !(await isEitherBlocked(target));
   }
 }

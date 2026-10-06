@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
 import '../services/conversation_inbox_visibility.dart';
 import '../services/conversation_unread.dart';
+import '../services/block_service.dart';
+import '../services/block_visibility.dart';
 import '../widget/online_dot.dart';
+import '../widgets/blocked_uids_builder.dart';
 import 'chat_page.dart';
 import 'user_search_page.dart';
 
@@ -175,7 +178,9 @@ class _MessagesPageState extends State<MessagesPage> {
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: BlockedUidsBuilder(
+        builder: (context, blocked) {
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: convQuery.snapshots(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -198,10 +203,16 @@ class _MessagesPageState extends State<MessagesPage> {
           });
 
           docs.removeWhere(
-            (d) => !ConversationInboxVisibility.shouldShowInMessagesTab(
-              data: d.data(),
-              myUid: myUid,
-            ),
+            (d) =>
+                !ConversationInboxVisibility.shouldShowInMessagesTab(
+                  data: d.data(),
+                  myUid: myUid,
+                ) ||
+                BlockVisibility.hidesConversation(
+                  data: d.data(),
+                  myUid: myUid,
+                  blocked: blocked,
+                ),
           );
 
           if (docs.isEmpty) {
@@ -245,7 +256,11 @@ class _MessagesPageState extends State<MessagesPage> {
                   subtitle: lastMessage,
                   unread: unreadFinal,
                   onLongPress: () => _openConversationActions(convDoc.id),
-                  onTap: () {
+                  onTap: () async {
+                    if (!await BlockService.allowOpenPeer(otherUid)) {
+                      return;
+                    }
+                    if (!context.mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -274,7 +289,11 @@ class _MessagesPageState extends State<MessagesPage> {
                     subtitle: lastMessage,
                     unread: unreadFinal,
                     onLongPress: () => _openConversationActions(convDoc.id),
-                    onTap: () {
+                    onTap: () async {
+                      if (!await BlockService.allowOpenPeer(otherUid)) {
+                        return;
+                      }
+                      if (!context.mounted) return;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -291,6 +310,8 @@ class _MessagesPageState extends State<MessagesPage> {
               );
             },
           );
+        },
+      );
         },
       ),
     );

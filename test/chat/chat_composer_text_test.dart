@@ -149,7 +149,7 @@ void main() {
     final group = File('lib/pages/group_chat_page.dart').readAsStringSync();
     final shareIn = File('lib/pages/share_in_page.dart').readAsStringSync();
 
-    for (final src in [dm, group, shareIn]) {
+    for (final src in [dm, group]) {
       expect(src.contains('textCapitalization:'), isTrue);
       expect(src.contains('.keyboardCapitalization'), isTrue);
       expect(src.contains('leadingAlphaCapitalizationFormatter'), isTrue);
@@ -160,6 +160,14 @@ void main() {
         isTrue,
       );
     }
+
+    expect(
+      RegExp(
+        r'controller:\s*_textC[\s\S]{0,400}RemdyKeyboardCaps\.sentences',
+      ).hasMatch(shareIn),
+      isTrue,
+    );
+    expect(shareIn.contains('leadingAlphaCapitalizationFormatter'), isFalse);
   });
 
   group('ChatComposerText.hasSendableText', () {
