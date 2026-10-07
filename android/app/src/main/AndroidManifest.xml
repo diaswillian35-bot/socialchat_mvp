@@ -141,11 +141,6 @@
                     android:pathPrefix="/portal-login" />
             </intent-filter>
 
-            <!-- Firebase push -->
-            <meta-data
-                android:name="com.google.firebase.messaging.default_notification_channel_id"
-                android:value="high_importance_channel" />
-
             <!-- Launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -201,6 +196,12 @@
     </intent-filter>
 </activity>
 
+
+        <!-- FCM lê este meta-data no <application>, não na activity.
+             Sem isso, o fallback de segundo plano/app morto não acha o canal. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="high_importance_channel" />
 
         <!-- Flutter embedding -->
         <meta-data

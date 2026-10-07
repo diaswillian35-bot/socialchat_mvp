@@ -155,6 +155,79 @@ function shouldClearLegacyFcmToken(legacyToken, invalidTokens) {
 }
 
 /**
+ * Badge sent with a DM/group alert.
+ *
+ * Do not scan every conversation and group before FCM. That scan blocked
+ * APNs/FCM until it finished, and on a large group it could run until the
+ * function timed out — later members then got no push. The app reconciles
+ * the exact icon count from Firestore when it resumes.
+ * @returns {number}
+ */
+function badgeForImmediateMessagePush() {
+  return 1;
+}
+
+const ANDROID_HIGH_IMPORTANCE_CHANNEL_ID = "high_importance_channel";
+
+/**
+ * Android delivery for a visible chat/group alert (background and killed).
+ * Message priority `high` wakes Doze. Notification priority `high` plus the
+ * app channel keep the banner from landing on the low-importance fallback.
+ * @param {string} [imageUrl]
+ */
+function buildAndroidMessageConfig(imageUrl) {
+  const image = (imageUrl || "").toString().trim();
+  const notification = {
+    sound: "default",
+    channelId: ANDROID_HIGH_IMPORTANCE_CHANNEL_ID,
+    priority: "high",
+  };
+  if (image.startsWith("https://") || image.startsWith("http://")) {
+    notification.imageUrl = image;
+  }
+  return {
+    priority: "high",
+    notification,
+  };
+}
+
+/**
+ * APNs alert for a visible chat/group notification.
+ * Priority 10 + push-type alert is immediate delivery. Priority 5 is the
+ * background/power-saving path and is not used here.
+ * @param {string} title
+ * @param {string} body
+ * @param {string} [imageUrl]
+ * @param {number} [badge]
+ */
+function buildApnsMessageConfig(title, body, imageUrl, badge) {
+  const image = (imageUrl || "").toString().trim();
+  const hasImage = image.startsWith("https://") || image.startsWith("http://");
+  const badgeCount =
+    typeof badge === "number" && Number.isFinite(badge) && badge >= 0
+      ? Math.floor(badge)
+      : badgeForImmediateMessagePush();
+  const config = {
+    headers: {
+      "apns-priority": "10",
+      "apns-push-type": "alert",
+    },
+    payload: {
+      aps: {
+        alert: { title, body },
+        sound: "default",
+        badge: badgeCount,
+      },
+    },
+  };
+  if (hasImage) {
+    config.payload.aps["mutable-content"] = 1;
+    config.fcmOptions = { imageUrl: image };
+  }
+  return config;
+}
+
+/**
  * Format a one-line sanitized summary for Cloud Logging.
  */
 function formatPushPlatformLog(summary) {
@@ -184,4 +257,8 @@ module.exports = {
   collectPermanentInvalidTokens,
   shouldClearLegacyFcmToken,
   formatPushPlatformLog,
+  badgeForImmediateMessagePush,
+  ANDROID_HIGH_IMPORTANCE_CHANNEL_ID,
+  buildAndroidMessageConfig,
+  buildApnsMessageConfig,
 };

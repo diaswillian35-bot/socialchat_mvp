@@ -343,6 +343,7 @@ class PushService {
       final snap = await userRef.collection('fcmTokens').get();
       final prune = PushTokenSync.iosTokenDocsToPrune(
         currentToken: token,
+        writerPlatform: platform,
         docs: snap.docs.map(
           (d) => <String, String?>{
             'id': d.id,

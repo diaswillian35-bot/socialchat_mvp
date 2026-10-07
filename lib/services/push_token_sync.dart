@@ -31,12 +31,19 @@ class PushTokenSync {
     };
   }
 
-  /// After rotating to [currentToken], which sibling token doc ids should be
-  /// deleted? Keeps current token and non-iOS platforms (e.g. Android).
+  /// After an iOS token rotation, which sibling doc ids should be deleted?
+  ///
+  /// Only an iOS writer may prune. An Android save used to delete iOS docs;
+  /// the iPhone cannot recreate that token while it stays in the background,
+  /// so private and group pushes never reached APNs until the next foreground
+  /// sync. Android registrations are always kept.
   static List<String> iosTokenDocsToPrune({
     required String currentToken,
     required Iterable<Map<String, String?>> docs,
+    String? writerPlatform,
   }) {
+    final writer = (writerPlatform ?? '').trim().toLowerCase();
+    if (writer != 'ios') return const [];
     final current = currentToken.trim();
     if (current.isEmpty) return const [];
     final out = <String>[];

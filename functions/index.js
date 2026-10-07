@@ -185,8 +185,6 @@ const {
   estimateApproxTokens,
 } = require("./remi_prompt");
 
-const ANDROID_CHANNEL_ID = "high_importance_channel";
-
 const {
   sanitizeMessagingErrorCode,
   isPermanentInvalidRegistrationCode,
@@ -196,6 +194,9 @@ const {
   collectPermanentInvalidTokens,
   shouldClearLegacyFcmToken,
   formatPushPlatformLog,
+  badgeForImmediateMessagePush,
+  buildAndroidMessageConfig,
+  buildApnsMessageConfig,
 } = require("./push_delivery_logic");
 
 function pushAllowed(userData, kind) {
@@ -298,42 +299,11 @@ function groupImageUrl(group) {
 }
 
 function androidPushConfig(imageUrl) {
-  const image = (imageUrl || "").toString().trim();
-  const notification = {
-    sound: "default",
-    channelId: ANDROID_CHANNEL_ID,
-  };
-  if (image.startsWith("http")) {
-    notification.imageUrl = image;
-  }
-  return {
-    priority: "high",
-    notification,
-  };
+  return buildAndroidMessageConfig(imageUrl);
 }
 
 function apnsPushConfig(title, body, imageUrl, badge) {
-  const image = (imageUrl || "").toString().trim();
-  const hasImage = image.startsWith("http");
-  const badgeCount =
-    typeof badge === "number" && Number.isFinite(badge) && badge >= 0
-      ? Math.floor(badge)
-      : 1;
-  const config = {
-    headers: { "apns-priority": "10" },
-    payload: {
-      aps: {
-        alert: { title, body },
-        sound: "default",
-        badge: badgeCount,
-      },
-    },
-  };
-  if (hasImage) {
-    config.payload.aps["mutable-content"] = 1;
-    config.fcmOptions = { imageUrl: image };
-  }
-  return config;
+  return buildApnsMessageConfig(title, body, imageUrl, badge);
 }
 
 function toStringData(data) {
@@ -480,7 +450,9 @@ async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
     if (!entries.length) continue;
     const tokens = entries.map((e) => e.token);
     const platformByToken = platformMapFromEntries(entries);
-    const badge = await computeAppBadge(uid);
+    // Alert first. A full unread-thread scan here delayed every DM/group
+    // push and could drop the rest of a group if the function timed out.
+    const badge = badgeForImmediateMessagePush();
     const response = await sendPush({
       tokens,
       title,

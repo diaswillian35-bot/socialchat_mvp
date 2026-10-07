@@ -35,6 +35,7 @@ void main() {
     test('iosTokenDocsToPrune keeps current and android', () {
       final prune = PushTokenSync.iosTokenDocsToPrune(
         currentToken: 'ios-new',
+        writerPlatform: 'ios',
         docs: [
           {'id': 'ios-new', 'platform': 'ios', 'token': 'ios-new'},
           {'id': 'ios-old', 'platform': 'ios', 'token': 'ios-old'},
@@ -42,6 +43,29 @@ void main() {
         ],
       );
       expect(prune, ['ios-old']);
+    });
+
+    test('android writer does not delete ios tokens', () {
+      final prune = PushTokenSync.iosTokenDocsToPrune(
+        currentToken: 'and-new',
+        writerPlatform: 'android',
+        docs: [
+          {'id': 'and-new', 'platform': 'android', 'token': 'and-new'},
+          {'id': 'ios-live', 'platform': 'ios', 'token': 'ios-live'},
+          {'id': 'ios-old', 'platform': 'ios', 'token': 'ios-old'},
+        ],
+      );
+      expect(prune, isEmpty);
+    });
+
+    test('missing writer does not prune', () {
+      final prune = PushTokenSync.iosTokenDocsToPrune(
+        currentToken: 'ios-new',
+        docs: [
+          {'id': 'ios-old', 'platform': 'ios', 'token': 'ios-old'},
+        ],
+      );
+      expect(prune, isEmpty);
     });
 
     test('maskToken never returns full value', () {
@@ -159,6 +183,7 @@ void main() {
         push.contains('enableSystem = !AppNotificationState.instance.isForeground'),
         isTrue,
       );
+      expect(push.contains('writerPlatform: platform'), isTrue);
       // Settings open is manual API only — page must not auto-call on init.
       final page =
           File('lib/pages/notifications_page.dart').readAsStringSync();
