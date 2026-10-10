@@ -25,6 +25,7 @@ import 'pages/event_deep_link_page.dart';
 import 'pages/portal_qr_login_approve_page.dart';
 import 'services/event_deep_link_service.dart';
 import 'services/invite_premium_service.dart';
+import 'services/remdy_launch_access.dart';
 import 'services/share_in_service.dart';
 import 'services/share_extension_session_service.dart';
 import 'services/share_extension_destinations_service.dart';
@@ -176,6 +177,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Future<void> _saveInviteRef(String ref) async {
+    if (!RemdyLaunchAccess.showInviteRewards) return;
     print('DEBUG main: entrou _saveInviteRef com ref = $ref');
 
     final prefs = await SharedPreferences.getInstance();
@@ -310,6 +312,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return;
 
       case RemdyDeepLinkKind.invitePremium:
+        if (!RemdyLaunchAccess.showInviteRewards) return;
         final ref = (parsed.inviteRef ?? '').trim();
         if (ref.isEmpty) return;
         Clipboard.setData(ClipboardData(text: ref));

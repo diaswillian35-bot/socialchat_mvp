@@ -580,7 +580,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     builder: (_) => MenuPage(
                       name: name,
                       photoUrl: photoUrl,
-                      isPremium: isPremiumActive,
+                      isPremium: RemdyLaunchAccess.showsPremiumBadge(
+                        premiumActive: isPremiumActive,
+                      ),
                       invites: invites,
                       limit: limit,
                       profilePage: const ProfilePage(),

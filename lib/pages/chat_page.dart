@@ -2587,7 +2587,9 @@ class _ChatPageState extends State<ChatPage>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  if (_isPremium)
+                  if (RemdyLaunchAccess.showsPremiumBadge(
+                    premiumActive: _isPremium,
+                  ))
                     Container(
                       margin: const EdgeInsets.only(right: 8),
                       padding: const EdgeInsets.symmetric(

@@ -8,6 +8,13 @@ class PushTokenSync {
 
   static const bundleIdIos = 'com.remdy.app';
 
+  /// Local label of the APNs environment last successfully registered.
+  /// Never store the token itself.
+  static const apsEnvironmentPrefsKey = 'push_aps_environment';
+
+  /// UID that currently owns the device push registration. Not a token.
+  static const pushOwnerUidPrefsKey = 'push_owner_uid';
+
   /// APNs environment implied by build mode.
   /// Release/TestFlight/App Store → production. Debug/Profile → development.
   static String apsEnvironment({
@@ -82,6 +89,44 @@ class PushTokenSync {
     if (t.isEmpty) return '[empty]';
     if (t.length < 12) return '[short]';
     return '${t.substring(0, 6)}…${t.substring(t.length - 4)} (len=${t.length})';
+  }
+
+  /// Cached FCM token must be discarded when its APNs environment is unknown
+  /// or different from this build. Do not relabel the same token in place.
+  static bool shouldRotateFcmToken({
+    required String? storedEnvironment,
+    required String currentEnvironment,
+  }) {
+    final current = currentEnvironment.trim().toLowerCase();
+    if (current != 'production' && current != 'development') return false;
+    final stored = (storedEnvironment ?? '').trim().toLowerCase();
+    if (stored.isEmpty) return true;
+    return stored != current;
+  }
+
+  /// iOS may persist only after a non-empty APNs token and a matching label.
+  /// Android ignores this and keeps its current save path.
+  static bool canPersistIosFcmToken({
+    required String? apnsToken,
+    required String? storedEnvironment,
+    required String currentEnvironment,
+  }) {
+    if ((apnsToken ?? '').trim().isEmpty) return false;
+    return !shouldRotateFcmToken(
+      storedEnvironment: storedEnvironment,
+      currentEnvironment: currentEnvironment,
+    );
+  }
+
+  /// Previous account must lose the push association when the uid changes.
+  static bool shouldDetachPreviousUid({
+    required String? previousUid,
+    required String currentUid,
+  }) {
+    final previous = (previousUid ?? '').trim();
+    final current = currentUid.trim();
+    if (previous.isEmpty || current.isEmpty) return false;
+    return previous != current;
   }
 
   static String bundleIdForPlatform(String platform) {

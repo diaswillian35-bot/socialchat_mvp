@@ -4,6 +4,10 @@
  */
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
+const {
+  premiumGrantsEnabled,
+  premiumGrantDeniedBody,
+} = require("./launch_access");
 
 const MILESTONES = [
   { level: 3, days: 1 },
@@ -116,6 +120,10 @@ function buildInviteRewardPatch(inviterData, now = new Date()) {
  * Inviter reivindica recompensas pendentes com base no invitesCount real.
  */
 async function claimInvitePremiumRewardHandler(request) {
+  if (!premiumGrantsEnabled()) {
+    return premiumGrantDeniedBody();
+  }
+
   await require("./social_age_guard").assertVerifiedAdult(request, {
     getFirestore: () => admin.firestore(), HttpsError,
   });
@@ -189,6 +197,10 @@ async function claimInvitePremiumRewardHandler(request) {
  * convidante e concede recompensa de marco se houver (mesma transaction).
  */
 async function applyInviteCodeHandler(request) {
+  if (!premiumGrantsEnabled()) {
+    return premiumGrantDeniedBody();
+  }
+
   await require("./social_age_guard").assertVerifiedAdult(request, {
     getFirestore: () => admin.firestore(), HttpsError,
   });
@@ -332,3 +344,6 @@ exports.applyInviteCode = onCall(
   { region: "us-central1" },
   applyInviteCodeHandler
 );
+
+exports._claimInvitePremiumRewardHandler = claimInvitePremiumRewardHandler;
+exports._applyInviteCodeHandler = applyInviteCodeHandler;

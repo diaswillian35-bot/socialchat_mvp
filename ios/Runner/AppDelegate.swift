@@ -13,6 +13,38 @@ enum RemdyLaunchURL {
   }
 }
 
+enum RemdyPushRegistration {
+  static var pluginsReady = false
+  static var pendingDeviceToken: Data?
+  private static var sceneObserver: NSObjectProtocol?
+
+  static func noteDeviceToken(_ deviceToken: Data) {
+    pendingDeviceToken = deviceToken
+  }
+
+  static func takePendingDeviceToken() -> Data? {
+    let token = pendingDeviceToken
+    pendingDeviceToken = nil
+    return token
+  }
+
+  static func registerIfReady() {
+    guard pluginsReady else { return }
+    UIApplication.shared.registerForRemoteNotifications()
+  }
+
+  static func observeSceneActivation() {
+    if sceneObserver != nil { return }
+    sceneObserver = NotificationCenter.default.addObserver(
+      forName: UIScene.didActivateNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      registerIfReady()
+    }
+  }
+}
+
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var channelsReady = false
@@ -30,7 +62,30 @@ enum RemdyLaunchURL {
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     registerNativeChannels(messenger: engineBridge.applicationRegistrar.messenger())
+    RemdyPushRegistration.pluginsReady = true
+    if let token = RemdyPushRegistration.takePendingDeviceToken() {
+      super.application(
+        UIApplication.shared,
+        didRegisterForRemoteNotificationsWithDeviceToken: token
+      )
+    }
+    RemdyPushRegistration.registerIfReady()
+    RemdyPushRegistration.observeSceneActivation()
     NSLog("RemdyShareSession channel via implicit engine")
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    if RemdyPushRegistration.pluginsReady {
+      super.application(
+        application,
+        didRegisterForRemoteNotificationsWithDeviceToken: deviceToken
+      )
+    } else {
+      RemdyPushRegistration.noteDeviceToken(deviceToken)
+    }
   }
 
   override func application(

@@ -166,13 +166,13 @@ void main() {
       expect(line.toLowerCase().contains('token'), isFalse);
     });
 
-    test('source contract: full permission request, no provisional/critical', () {
+    test('source contract: full permission request, no provisional/critical',
+        () {
       final push = File('lib/services/push_service.dart').readAsStringSync();
       expect(push.contains('alert: true'), isTrue);
       expect(push.contains('badge: true'), isTrue);
       expect(push.contains('sound: true'), isTrue);
-      expect(
-        push.contains('provisional: false'), isTrue);
+      expect(push.contains('provisional: false'), isTrue);
       expect(push.contains('criticalAlert: false'), isTrue);
       expect(
         push.contains('setForegroundNotificationPresentationOptions'),
@@ -180,13 +180,13 @@ void main() {
       );
       // Foreground: iOS system presentation off; in-app unread via Firestore.
       expect(
-        push.contains('enableSystem = !AppNotificationState.instance.isForeground'),
+        push.contains(
+            'enableSystem = !AppNotificationState.instance.isForeground'),
         isTrue,
       );
       expect(push.contains('writerPlatform: platform'), isTrue);
       // Settings open is manual API only — page must not auto-call on init.
-      final page =
-          File('lib/pages/notifications_page.dart').readAsStringSync();
+      final page = File('lib/pages/notifications_page.dart').readAsStringSync();
       expect(page.contains('openSystemNotificationSettings'), isTrue);
       expect(page.contains('notifications_ios_alert_sound_hint'), isTrue);
       // Ensure initState does not open settings automatically.
@@ -238,15 +238,102 @@ void main() {
     });
   });
 
+  test('iOS rotates when APNs environment is missing or different', () {
+    expect(
+      PushTokenSync.shouldRotateFcmToken(
+        storedEnvironment: 'production',
+        currentEnvironment: 'development',
+      ),
+      isTrue,
+    );
+    expect(
+      PushTokenSync.shouldRotateFcmToken(
+        storedEnvironment: 'development',
+        currentEnvironment: 'production',
+      ),
+      isTrue,
+    );
+    expect(
+      PushTokenSync.shouldRotateFcmToken(
+        storedEnvironment: null,
+        currentEnvironment: 'development',
+      ),
+      isTrue,
+    );
+    expect(
+      PushTokenSync.shouldRotateFcmToken(
+        storedEnvironment: 'development',
+        currentEnvironment: 'development',
+      ),
+      isFalse,
+    );
+  });
+
+  test('iOS does not persist without an APNs token or after a mismatch', () {
+    expect(
+      PushTokenSync.canPersistIosFcmToken(
+        apnsToken: '',
+        storedEnvironment: 'development',
+        currentEnvironment: 'development',
+      ),
+      isFalse,
+    );
+    expect(
+      PushTokenSync.canPersistIosFcmToken(
+        apnsToken: 'apns',
+        storedEnvironment: 'production',
+        currentEnvironment: 'development',
+      ),
+      isFalse,
+    );
+    expect(
+      PushTokenSync.canPersistIosFcmToken(
+        apnsToken: 'apns',
+        storedEnvironment: 'development',
+        currentEnvironment: 'development',
+      ),
+      isTrue,
+    );
+  });
+
+  test('UID switch detaches the previous owner only', () {
+    expect(
+      PushTokenSync.shouldDetachPreviousUid(
+        previousUid: 'account-a',
+        currentUid: 'account-b',
+      ),
+      isTrue,
+    );
+    expect(
+      PushTokenSync.shouldDetachPreviousUid(
+        previousUid: 'account-a',
+        currentUid: 'account-a',
+      ),
+      isFalse,
+    );
+    expect(
+      PushTokenSync.shouldDetachPreviousUid(
+        previousUid: '',
+        currentUid: 'account-b',
+      ),
+      isFalse,
+    );
+  });
+
   test('logout and account deletion clear push tokens (source contract)', () {
     final home = File('lib/pages/home_page.dart').readAsStringSync();
     final shell = File('lib/pages/main_shell_page.dart').readAsStringSync();
-    final delete = File('lib/pages/delete_account_page.dart').readAsStringSync();
+    final delete =
+        File('lib/pages/delete_account_page.dart').readAsStringSync();
     final push = File('lib/services/push_service.dart').readAsStringSync();
     expect(home.contains('PushService.clearForLogout'), isTrue);
     expect(shell.contains('PushService.clearForLogout'), isTrue);
     expect(delete.contains('PushService.clearForLogout'), isTrue);
     expect(push.contains('deleteToken()'), isTrue);
+    expect(push.contains('getAPNSToken'), isTrue);
+    expect(push.contains('_iosPersistGateOpen'), isTrue);
+    expect(push.contains('shouldDetachPreviousUid'), isTrue);
+    expect(push.contains("if (_platform() == 'ios')"), isTrue);
     expect(push.contains('iosTokenDocsToPrune'), isTrue);
     expect(push.contains('onTokenRefresh'), isTrue);
     expect(push.contains('_activeUid'), isTrue);

@@ -431,10 +431,13 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
-                                    _Tag(
-                                      text: isPremiumGroup ? 'Premium' : 'Free',
-                                      filled: isPremiumGroup,
-                                    ),
+                                    if (!RemdyLaunchAccess.isFreeBrazilLaunch)
+                                      _Tag(
+                                        text: isPremiumGroup
+                                            ? 'Premium'
+                                            : 'Free',
+                                        filled: isPremiumGroup,
+                                      ),
                                     _Tag(
                                       text: joinPolicyLabel,
                                       filled: false,

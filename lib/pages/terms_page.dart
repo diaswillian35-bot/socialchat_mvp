@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
+import '../services/remdy_launch_access.dart';
 
 class TermsPage extends StatelessWidget {
   const TermsPage({super.key});
@@ -9,18 +10,18 @@ class TermsPage extends StatelessWidget {
   static const Color _muted = Color(0xFF6B7280);
   static const Color _border = Color(0xFFE5E7EB);
 
+  @visibleForTesting
+  String get debugTerms => _terms();
+
   String _terms() {
     final t = AppTexts.current;
-    return '''
-${t.get('terms_of_use')} — Remdy
-${t.get('last_update')}: ${t.get('legal_last_update_date')}
-
-${t.get('terms_welcome')}
-
-${t.get('terms_zero_tolerance_title')}
-${t.get('terms_zero_tolerance_body')}
-
-1. ${t.get('terms_about_remdy')}
+    final subscriptionDeletionItem =
+        RemdyLaunchAccess.showSubscriptionManagementCopy
+            ? '• ${t.get('terms_account_deletion_item_4')}\n'
+            : '';
+    final sections = <String>[
+      '''
+${t.get('terms_about_remdy')}
 ${t.get('terms_about_intro')}
 • ${t.get('terms_about_item_1')}
 • ${t.get('terms_about_item_2')}
@@ -30,21 +31,22 @@ ${t.get('terms_about_intro')}
 • ${t.get('terms_about_item_6')}
 
 ${t.get('terms_not_dating_app')}
-${t.get('terms_no_intent_promise')}
-
-2. ${t.get('terms_remi_title')}
+${t.get('terms_no_intent_promise')}''',
+      if (RemdyLaunchAccess.termsSectionVisible('remi'))
+        '''
+${t.get('terms_remi_title')}
 ${t.get('terms_remi_intro')}
 • ${t.get('terms_remi_item_1')}
 • ${t.get('terms_remi_item_2')}
 • ${t.get('terms_remi_item_3')}
 • ${t.get('terms_remi_item_4')}
 • ${t.get('terms_remi_item_5')}
-• ${t.get('terms_remi_item_6')}
-
-3. ${t.get('terms_age_title')}
-${t.get('terms_age_text')}
-
-4. ${t.get('terms_rules_title')}
+• ${t.get('terms_remi_item_6')}''',
+      '''
+${t.get('terms_age_title')}
+${t.get('terms_age_text')}''',
+      '''
+${t.get('terms_rules_title')}
 ${t.get('terms_rules_intro')}
 • ${t.get('terms_rules_item_1')}
 • ${t.get('terms_rules_item_2')}
@@ -58,9 +60,9 @@ ${t.get('terms_rules_intro')}
 • ${t.get('terms_rules_item_10')}
 • ${t.get('terms_rules_item_11')}
 
-${t.get('terms_rules_consequence')}
-
-5. ${t.get('terms_content_title')}
+${t.get('terms_rules_consequence')}''',
+      '''
+${t.get('terms_content_title')}
 ${t.get('terms_content_intro')}
 • ${t.get('terms_content_item_1')}
 • ${t.get('terms_content_item_2')}
@@ -71,9 +73,9 @@ ${t.get('terms_content_intro')}
 • ${t.get('terms_content_item_7')}
 
 ${t.get('terms_content_rights')}
-${t.get('terms_content_moderation')}
-
-6. ${t.get('terms_events_title')}
+${t.get('terms_content_moderation')}''',
+      '''
+${t.get('terms_events_title')}
 ${t.get('terms_events_intro')}
 • ${t.get('terms_events_item_1')}
 • ${t.get('terms_events_item_2')}
@@ -81,17 +83,18 @@ ${t.get('terms_events_intro')}
 • ${t.get('terms_events_item_4')}
 • ${t.get('terms_events_item_5')}
 • ${t.get('terms_events_item_6')}
-• ${t.get('terms_events_item_7')}
-
-7. ${t.get('terms_moderation_title')}
+• ${t.get('terms_events_item_7')}''',
+      '''
+${t.get('terms_moderation_title')}
 ${t.get('terms_moderation_intro')}
 • ${t.get('terms_moderation_item_1')}
 • ${t.get('terms_moderation_item_2')}
 • ${t.get('terms_moderation_item_3')}
 • ${t.get('terms_moderation_item_4')}
-• ${t.get('terms_moderation_item_5')}
-
-8. ${t.get('terms_premium_title')}
+• ${t.get('terms_moderation_item_5')}''',
+      if (RemdyLaunchAccess.termsSectionVisible('premium'))
+        '''
+${t.get('terms_premium_title')}
 ${t.get('terms_premium_intro')}
 • ${t.get('terms_premium_item_1')}
 • ${t.get('terms_premium_item_2')}
@@ -101,38 +104,55 @@ ${t.get('terms_premium_intro')}
 • ${t.get('terms_premium_item_6')}
 • ${t.get('terms_premium_item_7')}
 • ${t.get('terms_premium_item_8')}
-• ${t.get('terms_premium_item_9')}
-
-9. ${t.get('terms_account_deletion_title')}
+• ${t.get('terms_premium_item_9')}''',
+      '''
+${t.get('terms_account_deletion_title')}
 ${t.get('terms_account_deletion_intro')}
 • ${t.get('terms_account_deletion_item_1')}
 • ${t.get('terms_account_deletion_item_2')}
 • ${t.get('terms_account_deletion_item_3')}
-• ${t.get('terms_account_deletion_item_4')}
-• ${t.get('terms_account_deletion_item_5')}
-• ${t.get('terms_account_deletion_item_6')}
-
-10. ${t.get('terms_liability_title')}
+$subscriptionDeletionItem• ${t.get('terms_account_deletion_item_5')}
+• ${t.get('terms_account_deletion_item_6')}''',
+      '''
+${t.get('terms_liability_title')}
 ${t.get('terms_liability_intro')}
 • ${t.get('terms_liability_item_1')}
 • ${t.get('terms_liability_item_2')}
 • ${t.get('terms_liability_item_3')}
 • ${t.get('terms_liability_item_4')}
-• ${t.get('terms_liability_item_5')}
-
-11. ${t.get('terms_availability_title')}
-${t.get('terms_availability_text')}
-
-12. ${t.get('terms_changes_title')}
+• ${t.get('terms_liability_item_5')}''',
+      '''
+${t.get('terms_availability_title')}
+${t.get('terms_availability_text')}''',
+      '''
+${t.get('terms_changes_title')}
 ${t.get('terms_changes_text_1')}
-${t.get('terms_changes_text_2')}
-
-13. ${t.get('terms_law_title')}
-${t.get('terms_law_text')}
-
-14. ${t.get('contact')}
+${t.get('terms_changes_text_2')}''',
+      '''
+${t.get('terms_law_title')}
+${t.get('terms_law_text')}''',
+      '''
+${t.get('contact')}
 ${t.get('terms_contact_intro')}
-${t.get('support_email')}
+${t.get('support_email')}''',
+    ];
+
+    final numbered = sections
+        .asMap()
+        .entries
+        .map((entry) => '${entry.key + 1}. ${entry.value.trim()}')
+        .join('\n\n');
+
+    return '''
+${t.get('terms_of_use')} — Remdy
+${t.get('last_update')}: ${t.get('legal_last_update_date')}
+
+${t.get('terms_welcome')}
+
+${t.get('terms_zero_tolerance_title')}
+${t.get('terms_zero_tolerance_body')}
+
+$numbered
 ''';
   }
 

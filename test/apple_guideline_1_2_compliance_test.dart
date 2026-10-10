@@ -248,8 +248,8 @@ void main() {
   });
 
   group('Apple 1.2 — versioning', () {
-    test('ships 1.0.4+34 after 1.0.4 (33) was rejected for UGC and incomplete UI', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+34'));
+    test('ships 1.0.4+35 after 1.0.4 (34) still exposed Premium rewards', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+35'));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+33')));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+32')));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+31')));

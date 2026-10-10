@@ -11,6 +11,7 @@ import '../l10n/app_texts.dart';
 import '../services/push_service.dart';
 import '../services/event_deep_link_service.dart';
 import '../services/invite_premium_service.dart';
+import '../services/remdy_launch_access.dart';
 import '../services/share_in_service.dart';
 import '../services/share_extension_session_service.dart';
 import '../services/share_extension_incoming_service.dart';
@@ -60,6 +61,11 @@ class _AuthGateState extends State<AuthGate> {
       print('DEBUG invite: pendingRef = $ref');
 
       if (ref.isEmpty) return;
+
+      if (!RemdyLaunchAccess.showInviteRewards) {
+        await prefs.remove('pending_invite_ref');
+        return;
+      }
 
       final result = await InvitePremiumService.applyInviteCode(ref);
       print('DEBUG invite: applyInviteCode result = $result');

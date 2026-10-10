@@ -10,5 +10,11 @@ class SceneDelegate: FlutterSceneDelegate {
       RemdyLaunchURL.handleShareInIfNeeded(context.url)
     }
     super.scene(scene, openURLContexts: URLContexts)
+    RemdyPushRegistration.registerIfReady()
+  }
+
+  override func sceneDidBecomeActive(_ scene: UIScene) {
+    super.sceneDidBecomeActive(scene)
+    RemdyPushRegistration.registerIfReady()
   }
 }

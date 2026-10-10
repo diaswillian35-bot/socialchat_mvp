@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -69,6 +70,10 @@ class PushService {
   static bool _started = false;
   static bool _localInitialized = false;
   static String? _activeUid;
+
+  /// Closed until this iOS process has a real APNs token and, if needed,
+  /// has discarded a cached FCM token from another environment.
+  static bool _iosPersistGateOpen = false;
   static IosNotificationAuthSnapshot? lastIosAuthSnapshot;
 
   static Future<void> init() async {
@@ -228,7 +233,15 @@ class PushService {
         final trimmed = token.trim();
         final currentUid = (_activeUid ?? '').trim();
         if (trimmed.isEmpty || currentUid.isEmpty) return;
+        if (_platform() == 'ios') {
+          if (!_iosPersistGateOpen) return;
+          final apns = await FirebaseMessaging.instance.getAPNSToken();
+          if ((apns ?? '').trim().isEmpty) return;
+        }
         await _saveToken(currentUid, trimmed);
+        if (_platform() == 'ios') {
+          await _rememberIosPushOwner(currentUid);
+        }
       });
 
       final initial = await FirebaseMessaging.instance.getInitialMessage();
@@ -260,6 +273,11 @@ class PushService {
         settings.authorizationStatus == AuthorizationStatus.authorized ||
             settings.authorizationStatus == AuthorizationStatus.provisional;
 
+    if (_platform() == 'ios') {
+      final saved = await _syncIosFcmToken(uid);
+      return authorized && saved;
+    }
+
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.trim().isNotEmpty) {
@@ -268,6 +286,107 @@ class PushService {
     } catch (_) {}
 
     return authorized;
+  }
+
+  /// iOS only. Does not relabel a cached FCM token onto another APNs environment.
+  static Future<bool> _syncIosFcmToken(String uid) async {
+    _iosPersistGateOpen = false;
+    final prefs = await SharedPreferences.getInstance();
+    final currentEnv = PushTokenSync.apsEnvironment(
+      isReleaseMode: kReleaseMode,
+      isProfileMode: kProfileMode,
+    );
+    final storedEnv = prefs.getString(PushTokenSync.apsEnvironmentPrefsKey);
+    final previousUid = prefs.getString(PushTokenSync.pushOwnerUidPrefsKey);
+
+    if (PushTokenSync.shouldDetachPreviousUid(
+      previousUid: previousUid,
+      currentUid: uid,
+    )) {
+      await _removePushAssociation(previousUid!);
+    }
+
+    if (PushTokenSync.shouldRotateFcmToken(
+      storedEnvironment: storedEnv,
+      currentEnvironment: currentEnv,
+    )) {
+      try {
+        await FirebaseMessaging.instance.deleteToken();
+      } catch (_) {}
+    }
+
+    final apns = await _waitForApnsToken();
+    if (!PushTokenSync.canPersistIosFcmToken(
+      apnsToken: apns,
+      storedEnvironment: currentEnv,
+      currentEnvironment: currentEnv,
+    )) {
+      return false;
+    }
+
+    _iosPersistGateOpen = true;
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      final trimmed = (token ?? '').trim();
+      if (trimmed.isEmpty) return false;
+      await _saveToken(uid, trimmed);
+      await _rememberIosPushOwner(uid, environment: currentEnv);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<String?> _waitForApnsToken() async {
+    for (var attempt = 0; attempt < 5; attempt++) {
+      try {
+        final token = await FirebaseMessaging.instance.getAPNSToken();
+        if ((token ?? '').trim().isNotEmpty) return token;
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
+    return null;
+  }
+
+  static Future<void> _rememberIosPushOwner(
+    String uid, {
+    String? environment,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(PushTokenSync.pushOwnerUidPrefsKey, uid);
+    final env = (environment ??
+            PushTokenSync.apsEnvironment(
+              isReleaseMode: kReleaseMode,
+              isProfileMode: kProfileMode,
+            ))
+        .trim();
+    if (env.isNotEmpty) {
+      await prefs.setString(PushTokenSync.apsEnvironmentPrefsKey, env);
+    }
+  }
+
+  /// Removes Firestore push fields for [uid]. Does not print the token.
+  static Future<void> _removePushAssociation(String uid) async {
+    final trimmed = uid.trim();
+    if (trimmed.isEmpty) return;
+    try {
+      final col = FirebaseFirestore.instance
+          .collection('users')
+          .doc(trimmed)
+          .collection('fcmTokens');
+      final snap = await col.get();
+      for (final d in snap.docs) {
+        await d.reference.delete();
+      }
+      await FirebaseFirestore.instance.collection('users').doc(trimmed).set(
+        {
+          'fcmUpdatedAt': FieldValue.serverTimestamp(),
+          'hasPush': false,
+          'fcmToken': FieldValue.delete(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (_) {}
   }
 
   static Future<void> disableAndClearToken(String uid) async {
@@ -303,6 +422,13 @@ class PushService {
     if ((_activeUid ?? '') == uid) {
       _activeUid = null;
     }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final owner = prefs.getString(PushTokenSync.pushOwnerUidPrefsKey);
+      if (owner == uid) {
+        await prefs.remove(PushTokenSync.pushOwnerUidPrefsKey);
+      }
+    } catch (_) {}
   }
 
   /// Clears Firestore + device token for the active uid (call on logout).
@@ -316,8 +442,9 @@ class PushService {
   }
 
   static Future<void> _saveToken(String uid, String token) async {
-    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
     final platform = _platform();
+    if (platform == 'ios' && !_iosPersistGateOpen) return;
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
     final bundleId = PushTokenSync.bundleIdForPlatform(platform);
     final apsEnv = PushTokenSync.apsEnvironment(
       isReleaseMode: kReleaseMode,

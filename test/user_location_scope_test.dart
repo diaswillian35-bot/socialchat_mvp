@@ -441,8 +441,8 @@ void main() {
       expect(RemdyLaunchAccess.isCountryOpen('pt'), isFalse);
     });
 
-    test('pubspec is 1.0.4+34', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+34'));
+    test('pubspec is 1.0.4+35', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+35'));
     });
   });
 }

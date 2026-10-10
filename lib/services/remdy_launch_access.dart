@@ -38,6 +38,79 @@ class RemdyLaunchAccess {
 
   static bool get showPremiumUi => !isFreeBrazilLaunch;
 
+  /// Selo, menu “Premium ativo” e cópia de assinatura. Não concede acesso.
+  static bool get showPremiumStatus => showPremiumUi;
+
+  /// Convites com recompensa Premium, FAQ de assinatura e deep link `/invite`.
+  static bool get showInviteRewards => showPremiumUi;
+
+  /// Texto e botão de cancelar assinatura (exclusão de conta e termos).
+  static bool get showSubscriptionManagementCopy => showPremiumUi;
+
+  /// Remi não tem entrada na Home. FAQ e termos não descrevem a função.
+  static const bool showRemiUi = false;
+
+  /// Badge visual. `isMaster` / `isPremium` / `premiumUntil` não contornam.
+  static bool showsPremiumBadge({required bool premiumActive}) =>
+      showPremiumStatus && premiumActive;
+
+  static const Set<String> _hiddenFaqSectionsWithoutPremium = {
+    'faq_cat_premium',
+    'faq_cat_invites',
+  };
+
+  static bool faqSectionVisible(String titleKey) {
+    if (titleKey == 'faq_cat_remi') return showRemiUi;
+    if (!showPremiumUi && _hiddenFaqSectionsWithoutPremium.contains(titleKey)) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Respostas neutras enquanto a compra está oculta. Chaves ausentes no
+  /// catálogo caem no original via [AppTexts.get].
+  static const Map<String, String> launchFaqAnswerKeys = {
+    'faq_what_is_remdy_a': 'faq_what_is_remdy_a_launch',
+    'faq_countries_available_a': 'faq_countries_available_a_launch',
+    'faq_delete_account_a': 'faq_delete_account_a_launch',
+    'faq_message_anyone_a': 'faq_message_anyone_a_launch',
+    'faq_world_option_a': 'faq_world_option_a_launch',
+    'faq_cant_join_group_a': 'faq_cant_join_group_a_launch',
+  };
+
+  static String faqAnswerKey(String key) {
+    if (showPremiumUi) return key;
+    return launchFaqAnswerKeys[key] ?? key;
+  }
+
+  static bool termsSectionVisible(String sectionId) {
+    if (sectionId == 'remi') return showRemiUi;
+    if (sectionId == 'premium') return showPremiumUi;
+    return true;
+  }
+
+  /// País oferecido no primeiro cadastro. Conta já travada não passa por aqui.
+  static bool isSignupCountryOffered(String? code) {
+    final normalized = normalizeCountryCode(code);
+    if (normalized.isEmpty) return false;
+    if (!isFreeBrazilLaunch) return true;
+    return freeCountryCodes.contains(normalized);
+  }
+
+  /// Gravação do país inicial. Conta travada só pode manter o país já salvo.
+  static bool acceptsHomeCountry({
+    required String? code,
+    required bool alreadyLocked,
+    required String? lockedCode,
+  }) {
+    if (alreadyLocked) {
+      final locked = normalizeCountryCode(lockedCode);
+      if (locked.isEmpty) return isSignupCountryOffered(code);
+      return normalizeCountryCode(code) == locked;
+    }
+    return isSignupCountryOffered(code);
+  }
+
   static String normalizeCountryCode(String? raw) =>
       (raw ?? '').trim().toLowerCase();
 

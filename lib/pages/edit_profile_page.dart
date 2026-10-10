@@ -10,6 +10,7 @@ import '../widgets/remdy_keyboard_caps.dart';
 import '../utils/user_search_normalize.dart';
 import '../services/user_search_service.dart';
 import '../services/profile_completed_at_policy.dart';
+import '../services/remdy_launch_access.dart';
 
 import 'splash_page.dart';
 import 'login_page.dart';
@@ -181,6 +182,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
             final query = _normalizeText(_countrySearchC.text);
 
             final filteredCountries = _countries.where((c) {
+              if (!RemdyLaunchAccess.isSignupCountryOffered(c.code)) {
+                return false;
+              }
               final name = _normalizeText(c.name);
               final code = _normalizeText(c.code);
 
@@ -382,12 +386,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
       bool finalLocked = existingLocked;
 
       if (!existingLocked || existingHome.isEmpty) {
-        if (_homeCountryCode.isEmpty) {
+        if (!RemdyLaunchAccess.acceptsHomeCountry(
+          code: _homeCountryCode,
+          alreadyLocked: false,
+          lockedCode: existingHome,
+        )) {
           setState(() => _err = AppTexts.current.get('select_country'));
           return;
         }
-        finalHomeCode = _homeCountryCode;
+        finalHomeCode =
+            RemdyLaunchAccess.normalizeCountryCode(_homeCountryCode);
         finalLocked = true;
+      } else if (!RemdyLaunchAccess.acceptsHomeCountry(
+        code: finalHomeCode,
+        alreadyLocked: true,
+        lockedCode: existingHome,
+      )) {
+        setState(() => _err = AppTexts.current.get('select_country'));
+        return;
       }
       if (_cityName.trim().isEmpty ||
           _stateName.trim().isEmpty ||

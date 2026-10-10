@@ -208,7 +208,9 @@ Stream<int> _unreadSystemCount() {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        widget.isPremium
+                        RemdyLaunchAccess.showsPremiumBadge(
+                          premiumActive: widget.isPremium,
+                        )
                             ? t.get('premium_active')
                             : t.get('free_account'),
                         style: TextStyle(
@@ -238,13 +240,15 @@ Stream<int> _unreadSystemCount() {
                   title: t.get('profile'),
                   onTap: () => _open(context, widget.profilePage),
                 ),
-                const Divider(height: 1),
-                _item(
-                  context: context,
-                  icon: Icons.card_giftcard,
-                  title: '${t.get('invite')} (${widget.invites}/$inviteTarget)',
-                  onTap: () => _open(context, widget.invitePage),
-                ),
+                if (RemdyLaunchAccess.showInviteRewards) ...[
+                  const Divider(height: 1),
+                  _item(
+                    context: context,
+                    icon: Icons.card_giftcard,
+                    title: '${t.get('invite')} (${widget.invites}/$inviteTarget)',
+                    onTap: () => _open(context, widget.invitePage),
+                  ),
+                ],
                 if (RemdyLaunchAccess.showPremiumUi) ...[
                   const Divider(height: 1),
                   _item(

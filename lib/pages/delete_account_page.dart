@@ -7,6 +7,7 @@ import '../l10n/app_texts.dart';
 import '../widgets/remdy_keyboard_caps.dart';
 import '../services/account_deletion_service.dart';
 import '../services/push_service.dart';
+import '../services/remdy_launch_access.dart';
 import 'login_page.dart';
 
 /// Fluxo de exclusão definitiva da conta (confirmação forte + reauth + CF).
@@ -211,29 +212,31 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
                     height: 1.35,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  t.get('delete_account_subscription_warning'),
-                  style: const TextStyle(
-                    color: _text,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                    height: 1.35,
+                if (RemdyLaunchAccess.showSubscriptionManagementCopy) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    t.get('delete_account_subscription_warning'),
+                    style: const TextStyle(
+                      color: _text,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: _loading ? null : _openManageSubscription,
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  label: Text(
-                    t.get('delete_account_manage_subscription'),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : _openManageSubscription,
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: Text(
+                      t.get('delete_account_manage_subscription'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _text,
+                      side: const BorderSide(color: _border),
+                    ),
                   ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _text,
-                    side: const BorderSide(color: _border),
-                  ),
-                ),
+                ],
               ],
             ),
           ),

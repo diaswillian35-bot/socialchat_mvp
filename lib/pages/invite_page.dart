@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
 import '../services/invite_premium_service.dart';
+import '../services/remdy_launch_access.dart';
 
 class InvitePage extends StatefulWidget {
   final int invites;
@@ -40,6 +41,10 @@ class _InvitePageState extends State<InvitePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!RemdyLaunchAccess.showInviteRewards) {
+        if (mounted) Navigator.of(context).maybePop();
+        return;
+      }
       _claimPendingRewardIfAny();
     });
   }
@@ -128,6 +133,9 @@ ${t.get('invite_share_description')}
 
   @override
   Widget build(BuildContext context) {
+    if (!RemdyLaunchAccess.showInviteRewards) {
+      return const SizedBox.shrink();
+    }
     final t = AppTexts.current;
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../l10n/app_texts.dart';
+import '../services/remdy_launch_access.dart';
 
 class FaqPage extends StatelessWidget {
   const FaqPage({super.key});
@@ -84,12 +85,13 @@ class FaqPage extends StatelessWidget {
     required String titleKey,
     required List<List<String>> items,
   }) {
+    if (!RemdyLaunchAccess.faqSectionVisible(titleKey)) return const [];
     return [
       _sectionTitle(t.get(titleKey)),
       ...items.map(
         (item) => _qa(
           q: t.get(item[0]),
-          a: t.get(item[1]),
+          a: t.get(RemdyLaunchAccess.faqAnswerKey(item[1])),
         ),
       ),
     ];
@@ -191,7 +193,10 @@ class FaqPage extends StatelessWidget {
             titleKey: 'faq_cat_events',
             items: const [
               ['faq_events_how_q', 'faq_events_how_a'],
-              ['faq_events_organized_by_remdy_q', 'faq_events_organized_by_remdy_a'],
+              [
+                'faq_events_organized_by_remdy_q',
+                'faq_events_organized_by_remdy_a'
+              ],
               ['faq_create_event_q', 'faq_create_event_a'],
               ['faq_event_pending_q', 'faq_event_pending_a'],
             ],
