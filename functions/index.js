@@ -1403,15 +1403,13 @@ async function notifyAdminsOfGroupJoinRequest({ groupId, requestUid, req }) {
 
 async function notifyEventCreator({ creatorUid, title, body, eventId, type }) {
   if (!creatorUid) return;
-  const entries = await collectTokenEntriesForUid(creatorUid, "event");
-  if (!entries.length) return;
-  const badge = await computeAppBadge(creatorUid);
-  await sendPush({
-    tokens: entries.map((e) => e.token),
+  // Same immediate path as DMs, groups, and event comments. A badge scan
+  // here held the organizer alert until every unread thread was counted.
+  await sendPushToUids({
+    uids: [creatorUid],
     title,
     body,
-    badge,
-    platformByToken: platformMapFromEntries(entries),
+    prefKey: "event",
     data: {
       type: type || "event_moderation",
       eventId: eventId || "",

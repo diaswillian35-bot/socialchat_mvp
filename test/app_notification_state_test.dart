@@ -138,6 +138,8 @@ void main() {
           {'type': 'chat', 'conversationId': 'c'},
           {'type': 'group', 'groupId': 'g'},
           {'type': 'event_comment', 'eventId': 'e'},
+          {'type': 'event_reply', 'eventId': 'e'},
+          {'type': 'event_approved', 'eventId': 'e'},
           {'type': 'group_join_request', 'groupId': 'g'},
         ]) {
           expect(
@@ -173,7 +175,15 @@ void main() {
         'group_info',
       );
       expect(
+        PushService.resolveOpenRoute({'type': 'event'}),
+        'event',
+      );
+      expect(
         PushService.resolveOpenRoute({'type': 'event_comment'}),
+        'event',
+      );
+      expect(
+        PushService.resolveOpenRoute({'type': 'event_approved'}),
         'event',
       );
       expect(

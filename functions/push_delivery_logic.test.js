@@ -43,18 +43,89 @@ test("permanent registration failures are the only token deletions", () => {
   assert.deepEqual(invalid, ["tok-b"]);
 });
 
-test("DM and group alerts do not wait on a full badge scan", () => {
+function sourceSlice(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.ok(start >= 0 && end > start, startMarker);
+  return source.slice(start, end);
+}
+
+test("DM, group, and event alerts do not wait on a full badge scan", () => {
   assert.equal(badgeForImmediateMessagePush(), 1);
   const index = fs.readFileSync(
     path.join(__dirname, "index.js"),
     "utf8",
   );
-  const start = index.indexOf("async function sendPushToUids");
-  const end = index.indexOf("async function deleteInvalidTokens");
-  assert.ok(start > 0 && end > start);
-  const fn = index.slice(start, end);
-  assert.equal(fn.includes("computeAppBadge"), false);
-  assert.equal(fn.includes("badgeForImmediateMessagePush()"), true);
+  const helper = sourceSlice(
+    index,
+    "async function sendPushToUids",
+    "async function deleteInvalidTokens",
+  );
+  assert.equal(helper.includes("computeAppBadge"), false);
+  assert.equal(helper.includes("badgeForImmediateMessagePush()"), true);
+  assert.equal(helper.includes("collectTokenEntriesForUid(uid, prefKey)"), true);
+  assert.equal(helper.includes("sendPush("), true);
+
+  const delivery = sourceSlice(
+    index,
+    "async function sendPush(",
+    "async function sendPushToUids",
+  );
+  assert.equal(delivery.includes("androidPushConfig(image)"), true);
+  assert.equal(delivery.includes("apnsPushConfig(title, body, image, badge)"), true);
+
+  const allowed = sourceSlice(
+    index,
+    "function pushAllowed",
+    "async function collectTokenEntriesForUid",
+  );
+  assert.equal(allowed.includes('kind === "event" && userData.notifEvents === false'), true);
+
+  const dm = sourceSlice(
+    index,
+    "exports.onPrivateMessageCreated",
+    "exports.askRemi",
+  );
+  assert.equal(dm.includes('prefKey: "chat"'), true);
+  assert.equal(dm.includes("sendPushToUids("), true);
+  assert.equal(dm.includes("computeAppBadge"), false);
+
+  const group = sourceSlice(
+    index,
+    "exports.onGroupMessageCreated",
+    "exports.onPrivateMessageCreated",
+  );
+  assert.equal(group.includes('prefKey: "group"'), true);
+  assert.equal(group.includes("sendPushToUids("), true);
+  assert.equal(group.includes("computeAppBadge"), false);
+
+  const comment = sourceSlice(
+    index,
+    "exports.createEventComment",
+    "Curtir/descurtir evento",
+  );
+  assert.equal(comment.includes('prefKey: "event"'), true);
+  assert.equal(comment.includes("sendPushToUids("), true);
+  assert.equal(comment.includes('type = result.isReply ? "event_reply" : "event_comment"'), true);
+  assert.equal(comment.includes("computeAppBadge"), false);
+
+  const creator = sourceSlice(
+    index,
+    "async function notifyEventCreator",
+    "exports.onEventUpdated",
+  );
+  assert.equal(creator.includes("sendPushToUids("), true);
+  assert.equal(creator.includes('prefKey: "event"'), true);
+  assert.equal(creator.includes("computeAppBadge"), false);
+
+  const nearby = sourceSlice(
+    index,
+    "exports.onEventUpdated",
+    "function normalizeGroupInviteCode",
+  );
+  assert.equal(nearby.includes("computeAppBadge"), false);
+  assert.equal(nearby.includes("sendPush("), true);
+  assert.equal(nearby.includes('type: "event"'), true);
 });
 
 test("background Android payload is high priority on the app channel", () => {
