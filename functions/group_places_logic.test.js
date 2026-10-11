@@ -5,8 +5,10 @@ const test = require("node:test");
 const {
   parsePlaceDetailsResult,
   assertTrustedCityPlace,
+  placesCacheIsCurrent,
   stripClientGeoTrust,
   REGION_RADIUS_KM,
+  PLACE_PARSE_REVISION,
 } = require("./group_places_logic");
 const {
   buildCanonicalGeoFields,
@@ -198,4 +200,131 @@ test("geohash canônico bate com lat/lng públicas", () => {
     countryCode: "br",
   });
   assert.equal(region.regionCenterGeohash, hash);
+});
+
+function yorkDetails() {
+  return {
+    place_id: "york-place",
+    name: "York",
+    types: ["political", "sublocality", "sublocality_level_1"],
+    geometry: { location: { lat: 43.69, lng: -79.48 } },
+    address_components: [
+      {
+        long_name: "York",
+        short_name: "York",
+        types: ["sublocality_level_1", "sublocality", "political"],
+      },
+      {
+        long_name: "Toronto",
+        short_name: "Toronto",
+        types: ["locality", "political"],
+      },
+      {
+        long_name: "Ontario",
+        short_name: "ON",
+        types: ["administrative_area_level_1", "political"],
+      },
+      {
+        long_name: "Canada",
+        short_name: "CA",
+        types: ["country", "political"],
+      },
+    ],
+  };
+}
+
+test("York sublocality keeps York and does not become Toronto", () => {
+  const parsed = assertTrustedCityPlace(
+    parsePlaceDetailsResult(yorkDetails(), "york-place"),
+    { expectedCountryCode: "ca" },
+  );
+  assert.equal(parsed.cityName, "York");
+  assert.equal(parsed.parentLocality, "Toronto");
+  assert.equal(parsed.stateName, "ON");
+  assert.equal(parsed.countryCode, "ca");
+  assert.equal(parsed.latitude, 43.69);
+  assert.equal(parsed.longitude, -79.48);
+  assert.equal(parsed.parseRevision, PLACE_PARSE_REVISION);
+
+  const fields = buildCanonicalGeoFields("city", {
+    place: parsed,
+    countryName: "Canadá",
+    countryCode: "ca",
+    displayLocation: "York, ON, Canadá",
+    stateName: "Toronto",
+  });
+  assert.equal(fields.city, "York");
+  assert.equal(fields.cityName, "York");
+  assert.equal(fields.cityKey, "york");
+  assert.equal(fields.stateName, "ON");
+  assert.equal(fields.displayLocation, "York, ON, Canadá");
+  assert.equal(fields.placeId, "york-place");
+  assert.equal(fields.latitude, 43.69);
+});
+
+test("a Toronto locality stays Toronto", () => {
+  const parsed = assertTrustedCityPlace(
+    parsePlaceDetailsResult(
+      cityDetails({
+        name: "Toronto",
+        place_id: "toronto-place",
+        geometry: { location: { lat: 43.65, lng: -79.38 } },
+        address_components: [
+          {
+            long_name: "Toronto",
+            short_name: "Toronto",
+            types: ["locality", "political"],
+          },
+          {
+            long_name: "Ontario",
+            short_name: "ON",
+            types: ["administrative_area_level_1", "political"],
+          },
+          {
+            long_name: "Canada",
+            short_name: "CA",
+            types: ["country", "political"],
+          },
+        ],
+      }),
+      "toronto-place",
+    ),
+    { expectedCountryCode: "ca" },
+  );
+  const fields = buildCanonicalGeoFields("city", {
+    place: parsed,
+    countryName: "Canada",
+    countryCode: "ca",
+    displayLocation: "Toronto, ON, Canada",
+  });
+  assert.equal(fields.cityName, "Toronto");
+  assert.equal(fields.cityKey, "toronto");
+  assert.equal(fields.displayLocation, "Toronto, ON, Canada");
+});
+
+test("a mismatched display cannot rename the selected place", () => {
+  const parsed = assertTrustedCityPlace(
+    parsePlaceDetailsResult(yorkDetails(), "york-place"),
+    { expectedCountryCode: "ca" },
+  );
+  const fields = buildCanonicalGeoFields("city", {
+    place: parsed,
+    countryName: "Canada",
+    countryCode: "ca",
+    displayLocation: "Toronto, ON, Canada",
+  });
+  assert.equal(fields.cityName, "York");
+  assert.equal(fields.displayLocation, "York, ON, Canada");
+  assert.equal(fields.cityKey, "york");
+});
+
+test("stale places cache without the selected-name revision is ignored", () => {
+  assert.equal(
+    placesCacheIsCurrent({
+      cityName: "Toronto",
+      parseRevision: PLACE_PARSE_REVISION,
+    }),
+    true,
+  );
+  assert.equal(placesCacheIsCurrent({ cityName: "Toronto" }), false);
 });

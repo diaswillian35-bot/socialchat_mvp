@@ -43,6 +43,12 @@ const {
   clientForgedRegionalGeo,
   REGION_RADIUS_KM,
 } = require("./group_geo_canonical");
+const { applyGroupMessageUnread } = require("./group_unread_logic");
+const {
+  MAX_OWNED_GROUPS,
+  evaluateGroupCreate,
+  createGroupFailureLog,
+} = require("./group_create_policy");
 
 const {
   EVENT_CREATE_ALLOWED,
@@ -194,20 +200,14 @@ const {
   collectPermanentInvalidTokens,
   shouldClearLegacyFcmToken,
   formatPushPlatformLog,
+  pushPolicyBlockCode,
   badgeForImmediateMessagePush,
   buildAndroidMessageConfig,
   buildApnsMessageConfig,
 } = require("./push_delivery_logic");
 
 function pushAllowed(userData, kind) {
-  if (!userData || userData.notifEnabled === false) return false;
-  if (userData.ageVerificationStatus !== "verified") return false;
-  if (kind === "chat" && userData.notifChat === false) return false;
-  if (kind === "group" && userData.notifGroups === false) return false;
-  if (kind === "event" && userData.notifEvents === false) return false;
-  if (kind === "group_join_request" && userData.notifGroups === false)
-    return false;
-  return true;
+  return pushPolicyBlockCode(userData, kind) == null;
 }
 
 /**
@@ -320,6 +320,9 @@ const {
   parseServerUnreadApplied,
   shouldSkipTriggerUnreadIncrement,
   sanitizeUnreadErrorCode,
+  buildDmUnreadUpdatePairs,
+  appendDmUnreadArgs,
+  firestoreDmUnreadAdapters,
 } = require("./private_message_unread_logic");
 
 function userCountryFromData(userData) {
@@ -445,9 +448,22 @@ async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
   if (uniqueUids.length === 0) return null;
   let success = 0;
   let failure = 0;
+  let policyBlocked = 0;
+  let zeroTokens = 0;
+  let eligible = 0;
   for (const uid of uniqueUids) {
+    const userSnap = await admin.firestore().collection("users").doc(uid).get();
+    const policy = pushPolicyBlockCode(userSnap.data(), prefKey);
+    if (policy) {
+      policyBlocked += 1;
+      continue;
+    }
     const entries = await collectTokenEntriesForUid(uid, prefKey);
-    if (!entries.length) continue;
+    if (!entries.length) {
+      zeroTokens += 1;
+      continue;
+    }
+    eligible += 1;
     const tokens = entries.map((e) => e.token);
     const platformByToken = platformMapFromEntries(entries);
     // Alert first. A full unread-thread scan here delayed every DM/group
@@ -465,7 +481,16 @@ async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
     success += response?.successCount ?? 0;
     failure += response?.failureCount ?? 0;
   }
-  return { successCount: success, failureCount: failure };
+  console.log(
+    JSON.stringify({
+      tag: "push_targets",
+      kind: prefKey || "unknown",
+      policyBlocked,
+      zeroTokens,
+      eligible,
+    }),
+  );
+  return { successCount: success, failureCount: failure, eligible };
 }
 
 async function deleteInvalidTokens(response, tokens) {
@@ -624,25 +649,42 @@ exports.onGroupMessageCreated = onDocumentCreated(
         groupName = (group.name || "Grupo").toString().trim() || "Grupo";
         groupImage = groupImageUrl(group);
 
-        const patch = {
-          lastMessage,
-          lastSenderId: senderId,
-          lastMessageBy: senderId,
-          lastMessageType: type,
-          lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          [`unread.${senderId}`]: 0,
-        };
+        const applied = applyGroupMessageUnread({
+          groupData: group,
+          senderId,
+          memberUids: members,
+          bannedUids: [...bannedSet],
+          alreadyProcessed: false,
+        });
+        if (!applied) return false;
+        targetUids = applied.targets;
 
-        targetUids = [];
-        for (const uid of members) {
-          if (!uid || uid === senderId) continue;
-          if (bannedSet.has(uid)) continue;
-          patch[`unread.${uid}`] = admin.firestore.FieldValue.increment(1);
-          targetUids.push(uid);
+        const unreadArgs = [];
+        for (const [uid, count] of Object.entries(applied.unread)) {
+          unreadArgs.push(new admin.firestore.FieldPath("unread", uid), count);
         }
-
-        tx.set(groupRef, patch, { merge: true });
+        for (const key of applied.literalKeys) {
+          unreadArgs.push(
+            new admin.firestore.FieldPath(key),
+            admin.firestore.FieldValue.delete(),
+          );
+        }
+        tx.update(
+          groupRef,
+          "lastMessage",
+          lastMessage,
+          "lastSenderId",
+          senderId,
+          "lastMessageBy",
+          senderId,
+          "lastMessageType",
+          type,
+          "lastMessageAt",
+          admin.firestore.FieldValue.serverTimestamp(),
+          "updatedAt",
+          admin.firestore.FieldValue.serverTimestamp(),
+          ...unreadArgs,
+        );
         tx.set(processedRef, {
           groupId,
           messageId: msgId,
@@ -797,15 +839,26 @@ exports.onPrivateMessageCreated = onDocumentCreated(
           return "callable_applied";
         }
 
-        // Client-originated (Master/same-country/media): trigger owns +1.
-        const patch = {
-          ...summaryPatch,
-          [`unread.${senderId}`]: 0,
-        };
-        for (const uid of targetUids) {
-          patch[`unread.${uid}`] = admin.firestore.FieldValue.increment(1);
-        }
-        tx.set(convRef, patch, { merge: true });
+        // Nested map only. A dotted key inside set(merge) becomes the
+        // literal field "unread.<uid>", which the open chat does not clear.
+        const updateArgs = [
+          "lastMessage",
+          summaryPatch.lastMessage,
+          "lastMessageType",
+          summaryPatch.lastMessageType,
+          "lastMessageAt",
+          summaryPatch.lastMessageAt,
+          "updatedAt",
+          summaryPatch.updatedAt,
+          "hiddenFor",
+          summaryPatch.hiddenFor,
+        ];
+        appendDmUnreadArgs(
+          updateArgs,
+          buildDmUnreadUpdatePairs({ senderId, targetUids }),
+          firestoreDmUnreadAdapters(admin),
+        );
+        tx.update(convRef, ...updateArgs);
         tx.set(processedRef, {
           conversationId,
           messageId,
@@ -847,14 +900,21 @@ exports.onPrivateMessageCreated = onDocumentCreated(
 
       if (!unreadOk) {
         try {
-          const repair = {};
+          const repairArgs = [];
           for (const uid of targetUids) {
             if (unreadFromMap(afterData.unread, uid) < 1) {
-              repair[`unread.${uid}`] = admin.firestore.FieldValue.increment(1);
+              repairArgs.push(
+                new admin.firestore.FieldPath("unread", uid),
+                admin.firestore.FieldValue.increment(1),
+              );
+              repairArgs.push(
+                new admin.firestore.FieldPath(`unread.${uid}`),
+                admin.firestore.FieldValue.delete(),
+              );
             }
           }
-          if (Object.keys(repair).length) {
-            await convRef.update(repair);
+          if (repairArgs.length) {
+            await convRef.update(...repairArgs);
           }
           const repaired = (await convRef.get()).data() || {};
           unreadOk = targetUids.every(
@@ -900,14 +960,6 @@ exports.onPrivateMessageCreated = onDocumentCreated(
       const senderLabel = (senderData.name || "").toString().trim();
       if (senderLabel) senderName = senderLabel;
       senderImage = profileImageUrl(senderData);
-
-      const uniqueTokens = await collectTokensForUids(targetUids, "chat");
-      if (uniqueTokens.length === 0) {
-        console.log(
-          `Push privado skipped (no tokens / pushAllowed blocked) (${conversationId})`,
-        );
-        return;
-      }
 
       // Badge only after unread confirmed on the conversation doc.
       const response = await sendPushToUids({
@@ -3332,6 +3384,10 @@ exports.createGroup = socialOnCall(
       }
     }
   } catch (e) {
+    const code = e instanceof HttpsError
+      ? e.code
+      : (e && e.code) || "places";
+    console.error(JSON.stringify(createGroupFailureLog("places", code)));
     if (e instanceof HttpsError) throw e;
     throw mapPlacesError(e);
   }
@@ -3370,12 +3426,26 @@ exports.createGroup = socialOnCall(
   const performedByName = (userData.name || "").toString().trim() || "User";
 
   const existingReq = await requestRef.get();
-  if (existingReq.exists) {
-    const prev = existingReq.data() || {};
+  let ownedCount = 0;
+  if (typeof MAX_OWNED_GROUPS === "number") {
+    const ownedSnap = await db
+      .collection("groups")
+      .where("ownerId", "==", uid)
+      .get();
+    ownedCount = ownedSnap.size;
+  }
+  const decision = evaluateGroupCreate({
+    ownedCount,
+    existingRequest: existingReq.exists ? existingReq.data() : null,
+  });
+  if (decision.action === "deny") {
+    throw new HttpsError("resource-exhausted", "Group owner limit reached.");
+  }
+  if (decision.action === "reuse") {
     return {
       success: true,
-      groupId: prev.groupId,
-      inviteCode: prev.inviteCode,
+      groupId: decision.groupId,
+      inviteCode: decision.inviteCode,
       created: false,
     };
   }
@@ -3485,12 +3555,16 @@ exports.createGroup = socialOnCall(
       if (e instanceof HttpsError && e.code === "aborted") {
         continue;
       }
+      const code = e instanceof HttpsError ? e.code : "internal";
+      console.error(JSON.stringify(createGroupFailureLog("transaction", code)));
       if (e instanceof HttpsError) throw e;
-      console.error("Erro createGroup:", e);
       throw new HttpsError("internal", "Could not create group.");
     }
   }
 
+  console.error(
+    JSON.stringify(createGroupFailureLog("invite", "invite_exhausted")),
+  );
   throw new HttpsError("internal", "Could not allocate invite code.");
 },
 );
@@ -3949,13 +4023,14 @@ exports.markGroupAsRead = socialOnCall({ region: "us-central1" }, async (request
         throw new HttpsError("permission-denied", "Not a group member.");
       }
 
-      tx.set(
+      tx.update(
         groupRef,
-        {
-          [`unread.${uid}`]: 0,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
+        new admin.firestore.FieldPath("unread", uid),
+        0,
+        "updatedAt",
+        admin.firestore.FieldValue.serverTimestamp(),
+        new admin.firestore.FieldPath(`unread.${uid}`),
+        admin.firestore.FieldValue.delete(),
       );
 
       tx.set(

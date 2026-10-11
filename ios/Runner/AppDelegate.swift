@@ -16,10 +16,12 @@ enum RemdyLaunchURL {
 enum RemdyPushRegistration {
   static var pluginsReady = false
   static var pendingDeviceToken: Data?
+  static var messenger: FlutterBinaryMessenger?
   private static var sceneObserver: NSObjectProtocol?
 
   static func noteDeviceToken(_ deviceToken: Data) {
     pendingDeviceToken = deviceToken
+    NSLog("RemdyPush phase=apns state=buffered bytes=%d", deviceToken.count)
   }
 
   static func takePendingDeviceToken() -> Data? {
@@ -29,7 +31,11 @@ enum RemdyPushRegistration {
   }
 
   static func registerIfReady() {
-    guard pluginsReady else { return }
+    guard pluginsReady else {
+      NSLog("RemdyPush phase=register state=plugins_not_ready")
+      return
+    }
+    NSLog("RemdyPush phase=register state=requested")
     UIApplication.shared.registerForRemoteNotifications()
   }
 
@@ -42,6 +48,22 @@ enum RemdyPushRegistration {
     ) { _ in
       registerIfReady()
     }
+  }
+
+  static func notifyDart(received: Bool, byteCount: Int, errorCode: Int?) {
+    guard let messenger else { return }
+    let channel = FlutterMethodChannel(
+      name: "remdy/push_registration",
+      binaryMessenger: messenger
+    )
+    var args: [String: Any] = [
+      "received": received,
+      "bytes": byteCount,
+    ]
+    if let errorCode {
+      args["errorCode"] = errorCode
+    }
+    channel.invokeMethod("apns", arguments: args)
   }
 }
 
@@ -61,16 +83,20 @@ enum RemdyPushRegistration {
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    registerNativeChannels(messenger: engineBridge.applicationRegistrar.messenger())
+    let messenger = engineBridge.applicationRegistrar.messenger()
+    registerNativeChannels(messenger: messenger)
+    RemdyPushRegistration.messenger = messenger
     RemdyPushRegistration.pluginsReady = true
     if let token = RemdyPushRegistration.takePendingDeviceToken() {
       super.application(
         UIApplication.shared,
         didRegisterForRemoteNotificationsWithDeviceToken: token
       )
+      RemdyPushRegistration.notifyDart(received: true, byteCount: token.count, errorCode: nil)
     }
     RemdyPushRegistration.registerIfReady()
     RemdyPushRegistration.observeSceneActivation()
+    NSLog("RemdyPush phase=engine state=plugins_ready")
     NSLog("RemdyShareSession channel via implicit engine")
   }
 
@@ -78,14 +104,26 @@ enum RemdyPushRegistration {
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
+    NSLog("RemdyPush phase=apns state=callback bytes=%d pluginsReady=%d", deviceToken.count, RemdyPushRegistration.pluginsReady ? 1 : 0)
     if RemdyPushRegistration.pluginsReady {
       super.application(
         application,
         didRegisterForRemoteNotificationsWithDeviceToken: deviceToken
       )
+      RemdyPushRegistration.notifyDart(received: true, byteCount: deviceToken.count, errorCode: nil)
     } else {
       RemdyPushRegistration.noteDeviceToken(deviceToken)
     }
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    let nsError = error as NSError
+    NSLog("RemdyPush phase=error source=apns code=%d", nsError.code)
+    RemdyPushRegistration.notifyDart(received: false, byteCount: 0, errorCode: nsError.code)
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
 
   override func application(

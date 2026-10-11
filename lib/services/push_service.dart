@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -19,6 +22,7 @@ import 'age_access_service.dart';
 import 'app_notification_state.dart';
 import 'block_service.dart';
 import 'block_visibility.dart';
+import 'push_open_logic.dart';
 import 'push_token_sync.dart';
 
 /// Snapshot of iOS notification authorization (no tokens / PII).
@@ -58,6 +62,8 @@ class IosNotificationAuthSnapshot {
       );
 }
 
+enum _IosSyncOutcome { saved, permissionBlocked, notReady }
+
 class PushService {
   static final navKey = GlobalKey<NavigatorState>();
 
@@ -75,12 +81,21 @@ class PushService {
   /// has discarded a cached FCM token from another environment.
   static bool _iosPersistGateOpen = false;
   static IosNotificationAuthSnapshot? lastIosAuthSnapshot;
+  static bool _lifecycleHooked = false;
+  static bool _pushChannelBound = false;
+  static bool _iosSyncRunning = false;
+  static String? _iosSyncPendingReason;
+  static const _pushChannel = MethodChannel('remdy/push_registration');
+  static const _fcmFingerprintKey = 'push_fcm_fingerprint';
+
+  static void _logPush(String phase, [Map<String, String> fields = const {}]) {
+    debugPrint(PushTokenSync.formatPushSyncLog(phase: phase, fields: fields));
+  }
 
   static Future<void> init() async {
     AppNotificationState.instance.bind();
-    AppNotificationState.instance.onLifecycleChanged = (_) {
-      refreshIosForegroundPresentation();
-    };
+    _hookLifecycle();
+    _bindPushRegistrationChannel();
     AppNotificationState.instance.onActiveSurfaceChanged = () {
       refreshIosForegroundPresentation();
     };
@@ -111,6 +126,39 @@ class PushService {
   /// Re-aplica opções iOS quando ciclo de vida muda (sem heartbeat).
   static Future<void> refreshIosForegroundPresentation() async {
     await _applyIosForegroundPresentation();
+  }
+
+  static void _hookLifecycle() {
+    if (_lifecycleHooked) return;
+    _lifecycleHooked = true;
+    AppNotificationState.instance.onLifecycleChanged = (state) {
+      refreshIosForegroundPresentation();
+      if (state == AppLifecycleState.resumed) {
+        final uid = (_activeUid ?? '').trim();
+        if (uid.isNotEmpty) {
+          requestIosSync(uid, reason: 'resume');
+        }
+      }
+    };
+  }
+
+  static void _bindPushRegistrationChannel() {
+    if (_pushChannelBound) return;
+    _pushChannelBound = true;
+    _pushChannel.setMethodCallHandler((call) async {
+      if (call.method != 'apns') return;
+      final args = call.arguments;
+      final received = args is Map && args['received'] == true;
+      final errorCode = args is Map ? args['errorCode'] : null;
+      if (errorCode is int) {
+        _logPush('error', {'source': 'apns', 'code': '$errorCode'});
+      }
+      _logPush('apns', {'state': received ? 'callback' : 'callback_empty'});
+      final uid = (_activeUid ?? '').trim();
+      if (uid.isNotEmpty) {
+        await requestIosSync(uid, reason: 'apns_callback');
+      }
+    });
   }
 
   /// Never provisional / critical / silent — always alert+badge+sound.
@@ -224,29 +272,37 @@ class PushService {
       // Foreground: system may present alert/badge/sound; local banner still gated.
       FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
-      FirebaseMessaging.onMessageOpenedApp.listen((message) async {
-        await _handleOpen(message);
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        _offerRemoteOpen(message, PushOpenSource.background);
       });
 
-      // Bind once, but always write against the current logged-in uid.
+      // Bind once. iOS persistence goes through the same sync as cold start
+      // so a refresh that arrives before APNs is not dropped.
       FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
-        final trimmed = token.trim();
         final currentUid = (_activeUid ?? '').trim();
-        if (trimmed.isEmpty || currentUid.isEmpty) return;
+        if (currentUid.isEmpty) return;
+        _logPush('fcm', {
+          'state': token.trim().isEmpty ? 'empty' : 'refreshed',
+        });
         if (_platform() == 'ios') {
-          if (!_iosPersistGateOpen) return;
-          final apns = await FirebaseMessaging.instance.getAPNSToken();
-          if ((apns ?? '').trim().isEmpty) return;
+          await requestIosSync(currentUid, reason: 'onTokenRefresh');
+          return;
         }
+        final trimmed = token.trim();
+        if (trimmed.isEmpty) return;
         await _saveToken(currentUid, trimmed);
-        if (_platform() == 'ios') {
-          await _rememberIosPushOwner(currentUid);
-        }
       });
 
-      final initial = await FirebaseMessaging.instance.getInitialMessage();
-      if (initial != null) {
-        await _handleOpen(initial);
+      try {
+        final initial = await FirebaseMessaging.instance.getInitialMessage();
+        if (initial != null) {
+          _offerRemoteOpen(initial, PushOpenSource.coldStart);
+        }
+      } catch (e) {
+        _logPush('open', {
+          'state': 'initial_error',
+          'code': e.runtimeType.toString(),
+        });
       }
     }
 
@@ -274,7 +330,7 @@ class PushService {
             settings.authorizationStatus == AuthorizationStatus.provisional;
 
     if (_platform() == 'ios') {
-      final saved = await _syncIosFcmToken(uid);
+      final saved = await requestIosSync(uid, reason: 'login');
       return authorized && saved;
     }
 
@@ -288,62 +344,182 @@ class PushService {
     return authorized;
   }
 
-  /// iOS only. Does not relabel a cached FCM token onto another APNs environment.
-  static Future<bool> _syncIosFcmToken(String uid) async {
-    _iosPersistGateOpen = false;
+  /// Cold start, login, resume, APNs callback, and token refresh share one
+  /// loop. A new reason coalesces instead of stacking loops.
+  static Future<bool> requestIosSync(
+    String uid, {
+    required String reason,
+  }) async {
+    if (_platform() != 'ios') return false;
+    final trimmed = uid.trim();
+    if (trimmed.isEmpty) return false;
+    if (_iosSyncRunning) {
+      _iosSyncPendingReason = reason;
+      return false;
+    }
+    _iosSyncRunning = true;
+    var saved = false;
+    try {
+      saved = await _runIosSyncLoop(trimmed, reason: reason);
+    } finally {
+      _iosSyncRunning = false;
+      final pending = _iosSyncPendingReason;
+      _iosSyncPendingReason = null;
+      if (pending != null && (_activeUid ?? '').trim() == trimmed && !saved) {
+        saved = await requestIosSync(trimmed, reason: pending);
+      }
+    }
+    return saved;
+  }
+
+  static Future<bool> _runIosSyncLoop(
+    String uid, {
+    required String reason,
+  }) async {
+    _logPush('retry', {'reason': reason, 'state': 'start'});
+    var failed = 0;
+    while (true) {
+      if ((_activeUid ?? '').trim() != uid) {
+        _logPush('retry', {'reason': reason, 'state': 'uid_changed'});
+        return false;
+      }
+      final outcome = await _attemptIosSync(uid);
+      if (outcome == _IosSyncOutcome.saved) return true;
+      if (outcome == _IosSyncOutcome.permissionBlocked) {
+        _logPush('retry', {'reason': reason, 'state': 'permission_stop'});
+        return false;
+      }
+      final delay = PushTokenSync.nextIosSyncDelay(failed);
+      if (delay == null) {
+        _logPush('retry', {'reason': reason, 'state': 'exhausted'});
+        return false;
+      }
+      failed += 1;
+      _logPush('retry', {
+        'reason': reason,
+        'state': 'wait',
+        'attempt': '$failed',
+      });
+      await Future<void>.delayed(delay);
+    }
+  }
+
+  /// One pass. Does not delete the cached FCM token until APNs is present.
+  static Future<_IosSyncOutcome> _attemptIosSync(String uid) async {
+    NotificationSettings? settings;
+    try {
+      settings = await FirebaseMessaging.instance.getNotificationSettings();
+      _recordIosAuth(settings);
+      _logPush('permission', {
+        'status': settings.authorizationStatus.name,
+        'alert': settings.alert.name,
+        'badge': settings.badge.name,
+        'sound': settings.sound.name,
+      });
+    } catch (e) {
+      _logPush('error', {'source': 'permission', 'code': e.runtimeType.toString()});
+    }
+
+    final status = settings?.authorizationStatus;
+    if (status == AuthorizationStatus.denied) {
+      return _IosSyncOutcome.permissionBlocked;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final currentEnv = PushTokenSync.apsEnvironment(
       isReleaseMode: kReleaseMode,
       isProfileMode: kProfileMode,
     );
     final storedEnv = prefs.getString(PushTokenSync.apsEnvironmentPrefsKey);
+    final storedBuild = prefs.getString(PushTokenSync.registeredBuildPrefsKey);
     final previousUid = prefs.getString(PushTokenSync.pushOwnerUidPrefsKey);
+    _logPush('owner', {
+      'previous': PushTokenSync.maskUid(previousUid),
+      'current': PushTokenSync.maskUid(uid),
+    });
 
     if (PushTokenSync.shouldDetachPreviousUid(
       previousUid: previousUid,
       currentUid: uid,
     )) {
-      await _removePushAssociation(previousUid!);
+      await _removeIosAssociation(previousUid!, environment: storedEnv ?? currentEnv);
     }
 
-    if (PushTokenSync.shouldRotateFcmToken(
+    final apns = await _readApnsToken();
+    final apnsReady = (apns ?? '').trim().isNotEmpty;
+    _logPush('apns', {'state': apnsReady ? 'received' : 'empty'});
+    if (!apnsReady) return _IosSyncOutcome.notReady;
+
+    final refreshBuild = PushTokenSync.shouldRefreshRegistrationForBuild(
+      storedBuild: storedBuild,
+      currentBuild: PushTokenSync.clientBuild,
+    );
+    final rotateEnv = PushTokenSync.shouldDeleteCachedFcmToken(
       storedEnvironment: storedEnv,
       currentEnvironment: currentEnv,
-    )) {
+      apnsReady: true,
+    );
+    if (refreshBuild || rotateEnv) {
       try {
         await FirebaseMessaging.instance.deleteToken();
-      } catch (_) {}
+        _logPush('deleteToken', {
+          'reason': refreshBuild ? 'build_refresh' : 'environment_mismatch',
+          'stored': (storedEnv ?? '').isEmpty ? 'missing' : storedEnv!,
+          'current': currentEnv,
+        });
+      } catch (e) {
+        _logPush('error', {
+          'source': 'deleteToken',
+          'code': e.runtimeType.toString(),
+        });
+      }
     }
 
-    final apns = await _waitForApnsToken();
     if (!PushTokenSync.canPersistIosFcmToken(
       apnsToken: apns,
       storedEnvironment: currentEnv,
       currentEnvironment: currentEnv,
     )) {
-      return false;
+      return _IosSyncOutcome.notReady;
     }
 
     _iosPersistGateOpen = true;
     try {
       final token = await FirebaseMessaging.instance.getToken();
       final trimmed = (token ?? '').trim();
-      if (trimmed.isEmpty) return false;
-      await _saveToken(uid, trimmed);
+      if (trimmed.isEmpty) {
+        _logPush('fcm', {'state': 'empty'});
+        return _IosSyncOutcome.notReady;
+      }
+      final fingerprint = sha256.convert(trimmed.codeUnits).toString();
+      final previousFingerprint = prefs.getString(_fcmFingerprintKey);
+      _logPush('fcm', {
+        'state': 'received',
+        'renewed': previousFingerprint == null
+            ? 'unknown'
+            : (previousFingerprint == fingerprint ? 'false' : 'true'),
+      });
+      final confirmed = await _saveToken(uid, trimmed);
+      if (!confirmed) return _IosSyncOutcome.notReady;
+      await prefs.setString(_fcmFingerprintKey, fingerprint);
+      await prefs.setString(
+        PushTokenSync.registeredBuildPrefsKey,
+        PushTokenSync.clientBuild,
+      );
       await _rememberIosPushOwner(uid, environment: currentEnv);
-      return true;
-    } catch (_) {
-      return false;
+      return _IosSyncOutcome.saved;
+    } catch (e) {
+      _logPush('error', {'source': 'fcm', 'code': e.runtimeType.toString()});
+      return _IosSyncOutcome.notReady;
     }
   }
 
-  static Future<String?> _waitForApnsToken() async {
-    for (var attempt = 0; attempt < 5; attempt++) {
-      try {
-        final token = await FirebaseMessaging.instance.getAPNSToken();
-        if ((token ?? '').trim().isNotEmpty) return token;
-      } catch (_) {}
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+  static Future<String?> _readApnsToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getAPNSToken();
+      if ((token ?? '').trim().isNotEmpty) return token;
+    } catch (e) {
+      _logPush('error', {'source': 'getAPNSToken', 'code': e.runtimeType.toString()});
     }
     return null;
   }
@@ -365,8 +541,11 @@ class PushService {
     }
   }
 
-  /// Removes Firestore push fields for [uid]. Does not print the token.
-  static Future<void> _removePushAssociation(String uid) async {
+  /// Removes only this device's iOS registration for [uid].
+  static Future<void> _removeIosAssociation(
+    String uid, {
+    required String environment,
+  }) async {
     final trimmed = uid.trim();
     if (trimmed.isEmpty) return;
     try {
@@ -375,18 +554,53 @@ class PushService {
           .doc(trimmed)
           .collection('fcmTokens');
       final snap = await col.get();
-      for (final d in snap.docs) {
-        await d.reference.delete();
-      }
-      await FirebaseFirestore.instance.collection('users').doc(trimmed).set(
-        {
-          'fcmUpdatedAt': FieldValue.serverTimestamp(),
-          'hasPush': false,
-          'fcmToken': FieldValue.delete(),
-        },
-        SetOptions(merge: true),
+      final remove = PushTokenSync.iosAssociationDocsToRemove(
+        environment: environment,
+        docs: snap.docs.map(
+          (d) => <String, String?>{
+            'id': d.id,
+            'platform': (d.data()['platform'] ?? '').toString(),
+            'apsEnvironment': (d.data()['apsEnvironment'] ?? '').toString(),
+          },
+        ),
       );
-    } catch (_) {}
+      for (final id in remove) {
+        await col.doc(id).delete();
+      }
+      final left = await col.get();
+      final userRef = FirebaseFirestore.instance.collection('users').doc(trimmed);
+      final userSnap = await userRef.get();
+      final legacy = (userSnap.data()?['fcmToken'] ?? '').toString().trim();
+      final legacyRemoved = legacy.isNotEmpty && remove.contains(legacy);
+      if (left.docs.isEmpty) {
+        await userRef.set(
+          {
+            'fcmUpdatedAt': FieldValue.serverTimestamp(),
+            'hasPush': false,
+            'fcmToken': FieldValue.delete(),
+          },
+          SetOptions(merge: true),
+        );
+      } else if (legacyRemoved) {
+        await userRef.set(
+          {
+            'fcmUpdatedAt': FieldValue.serverTimestamp(),
+            'fcmToken': FieldValue.delete(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+      _logPush('persist', {
+        'state': 'detached',
+        'uid': PushTokenSync.maskUid(trimmed),
+        'removed': '${remove.length}',
+      });
+    } catch (e) {
+      _logPush('error', {
+        'source': 'detach',
+        'code': e.runtimeType.toString(),
+      });
+    }
   }
 
   static Future<void> disableAndClearToken(String uid) async {
@@ -396,28 +610,47 @@ class PushService {
 
     try {
       await FirebaseMessaging.instance.deleteToken();
-    } catch (_) {}
+      _logPush('deleteToken', {'reason': 'logout'});
+    } catch (e) {
+      _logPush('error', {
+        'source': 'deleteToken',
+        'code': e.runtimeType.toString(),
+      });
+    }
 
     try {
-      final col = FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('fcmTokens');
-
-      final snap = await col.get();
-      for (final d in snap.docs) {
-        await d.reference.delete();
+      if (_platform() == 'ios') {
+        final env = PushTokenSync.apsEnvironment(
+          isReleaseMode: kReleaseMode,
+          isProfileMode: kProfileMode,
+        );
+        await _removeIosAssociation(uid, environment: env);
+      } else {
+        final col = FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('fcmTokens');
+        final snap = await col.get();
+        for (final d in snap.docs) {
+          final platform = (d.data()['platform'] ?? '').toString().toLowerCase();
+          if (platform == 'ios') continue;
+          await d.reference.delete();
+        }
+        final left = await col.get();
+        if (left.docs.isEmpty) {
+          await FirebaseFirestore.instance.collection('users').doc(uid).set(
+            {
+              'fcmUpdatedAt': FieldValue.serverTimestamp(),
+              'hasPush': false,
+              'fcmToken': FieldValue.delete(),
+            },
+            SetOptions(merge: true),
+          );
+        }
       }
-
-      await FirebaseFirestore.instance.collection('users').doc(uid).set(
-        {
-          'fcmUpdatedAt': FieldValue.serverTimestamp(),
-          'hasPush': false,
-          'fcmToken': FieldValue.delete(),
-        },
-        SetOptions(merge: true),
-      );
-    } catch (_) {}
+    } catch (e) {
+      _logPush('error', {'source': 'logout', 'code': e.runtimeType.toString()});
+    }
 
     if ((_activeUid ?? '') == uid) {
       _activeUid = null;
@@ -427,6 +660,7 @@ class PushService {
       final owner = prefs.getString(PushTokenSync.pushOwnerUidPrefsKey);
       if (owner == uid) {
         await prefs.remove(PushTokenSync.pushOwnerUidPrefsKey);
+        await prefs.remove(_fcmFingerprintKey);
       }
     } catch (_) {}
   }
@@ -441,9 +675,9 @@ class PushService {
     await disableAndClearToken(trimmed);
   }
 
-  static Future<void> _saveToken(String uid, String token) async {
+  static Future<bool> _saveToken(String uid, String token) async {
     final platform = _platform();
-    if (platform == 'ios' && !_iosPersistGateOpen) return;
+    if (platform == 'ios' && !_iosPersistGateOpen) return false;
     final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
     final bundleId = PushTokenSync.bundleIdForPlatform(platform);
     final apsEnv = PushTokenSync.apsEnvironment(
@@ -457,13 +691,22 @@ class PushService {
       apsEnvironment: platform == 'ios' ? apsEnv : '',
     );
 
-    await userRef.collection('fcmTokens').doc(token).set(
+    final tokenRef = userRef.collection('fcmTokens').doc(token);
+    await tokenRef.set(
       {
         ...fields,
         'updatedAt': FieldValue.serverTimestamp(),
+        'clientBuild': PushTokenSync.clientBuild,
       },
       SetOptions(merge: true),
     );
+
+    final confirmed = await tokenRef.get();
+    final stored = (confirmed.data()?['token'] ?? '').toString().trim();
+    if (!confirmed.exists || stored.isEmpty) {
+      _logPush('persist', {'state': 'unconfirmed'});
+      return false;
+    }
 
     // Drop stale iOS siblings so TestFlight rebuilds don't keep dead tokens.
     try {
@@ -492,6 +735,8 @@ class PushService {
       },
       SetOptions(merge: true),
     );
+    _logPush('persist', {'state': 'confirmed'});
+    return true;
   }
 
   static String _platform() {
@@ -550,7 +795,7 @@ class PushService {
 
     await _initLocalNotifications();
 
-    final payload = _encodePayload(data);
+    final payload = PushOpenParser.encodeData(data);
     final details = await _buildNotificationDetails(
       title: title,
       body: body.isEmpty ? title : body,
@@ -627,184 +872,206 @@ class PushService {
     );
   }
 
-  static String _encodePayload(Map<String, dynamic> data) {
-    return data.entries.map((e) => '${e.key}=${e.value}').join('&');
-  }
+  static final PushOpenQueue openQueue = PushOpenQueue();
+  static bool _flushingOpen = false;
+  static int _openAttempts = 0;
 
-  static Map<String, String> _decodePayload(String payload) {
-    final map = <String, String>{};
-    for (final part in payload.split('&')) {
-      final idx = part.indexOf('=');
-      if (idx <= 0) continue;
-      map[part.substring(0, idx)] = part.substring(idx + 1);
-    }
-    return map;
-  }
-
-  static Future<void> _handleOpenFromPayload(String payload) async {
-    await _handleOpen(RemoteMessage(data: _decodePayload(payload)));
-  }
-
-  /// Resolve a rota de destino do tap (testável sem Navigator).
+  /// Type-only label. Navigation itself uses [PushOpenParser], which rejects
+  /// a missing or unsafe id instead of opening Home.
   @visibleForTesting
   static String resolveOpenRoute(Map<String, dynamic> data) {
     final type = (data['type'] ?? '').toString().trim();
-    if (type.startsWith('event') ||
-        type == 'event_comment' ||
-        type == 'event_reply') {
-      return 'event';
-    }
     if (type == 'group_join_request') return 'group_info';
+    if (type.startsWith('event')) return 'event';
     if (type.startsWith('group')) return 'group';
     if (type == 'chat' || type == 'private') return 'chat';
     return 'unknown';
   }
 
-  static Future<void> _handleOpen(RemoteMessage message) async {
-    final data = message.data;
-    if (kDebugMode) {
-      debugPrint('PUSH OPEN: $data');
+  static void _offerRemoteOpen(RemoteMessage message, PushOpenSource source) {
+    final data = Map<String, dynamic>.from(message.data);
+    final target = PushOpenParser.parse(data, messageId: message.messageId);
+    if (!target.isValid) {
+      _logPush('open', {'state': 'invalid', 'source': source.name});
+      return;
     }
+    final queued = openQueue.offer(target);
+    _logPush('open', {
+      'state': queued ? 'queued' : 'duplicate',
+      'source': source.name,
+      ...PushOpenParser.logFields(target),
+    });
+    if (!queued) return;
+    unawaited(flushPendingOpen());
+  }
 
-    // Notification taps may arrive before/above AuthGate. Never construct a
-    // social route until the private server-issued status is verified.
-    if (!await AgeAccessService.currentUserIsVerified()) return;
+  static Future<void> _handleOpenFromPayload(String payload) async {
+    _offerRemoteOpen(
+      RemoteMessage(data: PushOpenParser.decodeData(payload)),
+      PushOpenSource.foregroundLocal,
+    );
+  }
 
-    final type = (data['type'] ?? '').toString().trim();
+  /// AuthGate and MainShell call this once the navigator exists.
+  /// A tap that arrived during splash or before age verification stays pending.
+  static Future<void> flushPendingOpen() async {
+    if (_flushingOpen) return;
     final nav = navKey.currentState;
-    if (nav == null) return;
+    var verified = false;
+    try {
+      verified = await AgeAccessService.currentUserIsVerified();
+    } catch (_) {
+      verified = false;
+    }
+    final target = openQueue.peekIfReady(ready: verified && nav != null);
+    if (target == null || nav == null) return;
+    _flushingOpen = true;
+    var opened = false;
+    try {
+      opened = await _openTarget(target, nav);
+      if (opened) {
+        openQueue.consume(target);
+        _openAttempts = 0;
+      }
+    } finally {
+      _flushingOpen = false;
+      if (!opened && openQueue.pending != null && _openAttempts < 6) {
+        _openAttempts += 1;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(flushPendingOpen());
+        });
+      }
+    }
+  }
 
-    if (type == 'event' ||
-        type == 'event_approved' ||
-        type == 'event_rejected' ||
-        type == 'event_needs_changes' ||
-        type == 'event_changes_approved' ||
-        type == 'event_changes_submitted' ||
-        type == 'event_moderation' ||
-        type == 'event_comment' ||
-        type == 'event_reply') {
-      final eventId = (data['eventId'] ?? '').toString().trim();
-      if (eventId.isEmpty) return;
+  static void _showShell(NavigatorState nav, int index) {
+    nav.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => MainShell(initialIndex: index),
+      ),
+      (route) => false,
+    );
+  }
 
-      final senderUid = (data['senderId'] ??
-              data['fromUid'] ??
-              data['commentAuthorUid'] ??
-              data['authorUid'] ??
-              '')
-          .toString()
-          .trim();
-      if (BlockVisibility.hidesUid(senderUid)) return;
+  /// Shell first, destination on the next frame so it is not lost under splash.
+  static Future<bool> _pushOverShell({
+    required NavigatorState nav,
+    required int shellIndex,
+    required Widget page,
+  }) async {
+    _showShell(nav, shellIndex);
+    final opened = Completer<bool>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final next = navKey.currentState;
+      if (next == null) {
+        if (!opened.isCompleted) opened.complete(false);
+        return;
+      }
+      next.push(MaterialPageRoute(builder: (_) => page));
+      if (!opened.isCompleted) opened.complete(true);
+    });
+    return opened.future;
+  }
 
+  static Future<bool> _openTarget(
+    PushOpenTarget target,
+    NavigatorState nav,
+  ) async {
+    if (navKey.currentState == null) return false;
+
+    if (target.kind == PushOpenKind.event) {
+      if (target.actorUid.isNotEmpty &&
+          BlockVisibility.hidesUid(target.actorUid)) {
+        _logPush('open', {'state': 'blocked', 'kind': 'event'});
+        final live = navKey.currentState;
+        if (live == null) return false;
+        _showShell(live, target.shellIndex);
+        return true;
+      }
       try {
         final ev = await FirebaseFirestore.instance
             .collection('events')
-            .doc(eventId)
+            .doc(target.eventId)
             .get();
-        if (BlockVisibility.hidesEventMap(ev.data() ?? const {})) return;
+        if (BlockVisibility.hidesEventMap(ev.data() ?? const {})) {
+          _logPush('open', {'state': 'hidden', 'kind': 'event'});
+          _showShell(navKey.currentState ?? nav, target.shellIndex);
+          return true;
+        }
       } catch (_) {
-        return;
+        return false;
       }
-
-      nav.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 3)),
-        (route) => false,
+      final live = navKey.currentState;
+      if (live == null) return false;
+      return _pushOverShell(
+        nav: live,
+        shellIndex: target.shellIndex,
+        page: EventDetailPage(eventId: target.eventId),
       );
-      await Future.delayed(const Duration(milliseconds: 200));
-      nav.push(
-        MaterialPageRoute(builder: (_) => EventDetailPage(eventId: eventId)),
-      );
-      return;
     }
 
-    if (type == 'group' ||
-        type == 'group_join_request' ||
-        type == 'group_join_approved' ||
-        type == 'group_join_rejected') {
-      final groupId = (data['groupId'] ?? '').toString().trim();
-      if (groupId.isEmpty) {
-        nav.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 2)),
-          (route) => false,
-        );
-        return;
-      }
-
-      String groupName = (data['groupName'] ?? '').toString().trim();
-
-      if (groupName.isEmpty) {
-        try {
-          final snap = await FirebaseFirestore.instance
-              .collection('groups')
-              .doc(groupId)
-              .get();
-          final n = (snap.data()?['name'] ?? '').toString().trim();
-          if (n.isNotEmpty) groupName = n;
-        } catch (_) {}
-      }
-
-      if (groupName.isEmpty) groupName = 'Remdy';
-
-      nav.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 2)),
-        (route) => false,
-      );
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      if (type == 'group' || type == 'group_join_approved') {
-        nav.push(
-          MaterialPageRoute(
-            builder: (_) => GroupChatPage(
-              groupId: groupId,
-              groupName: groupName,
-            ),
-          ),
-        );
-      } else if (type == 'group_join_request') {
-        nav.push(
-          MaterialPageRoute(
-            builder: (_) => GroupInfoPage(groupId: groupId),
-          ),
-        );
-      }
-      return;
+    if (target.kind == PushOpenKind.groupTab) {
+      final live = navKey.currentState;
+      if (live == null) return false;
+      _showShell(live, target.shellIndex);
+      return true;
     }
 
-    if (type == 'chat' || type == 'private') {
-      final conversationId = (data['conversationId'] ?? '').toString().trim();
-      final otherUid =
-          (data['otherUid'] ?? data['senderId'] ?? '').toString().trim();
-      String otherName = (data['otherName'] ?? '').toString().trim();
-
-      if (conversationId.isEmpty || otherUid.isEmpty) return;
-      if (!await BlockService.allowOpenPeer(otherUid)) return;
-
-      if (otherName.isEmpty) {
-        try {
-          final snap = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(otherUid)
-              .get();
-          final n = (snap.data()?['name'] ?? '').toString().trim();
-          if (n.isNotEmpty) otherName = n;
-        } catch (_) {}
-      }
-
-      if (otherName.isEmpty) otherName = 'Remdy';
-
-      nav.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 1)),
-        (route) => false,
+    if (target.kind == PushOpenKind.groupChat ||
+        target.kind == PushOpenKind.groupInfo) {
+      var groupName =
+          target.displayName.isEmpty ? 'Remdy' : target.displayName;
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('groups')
+            .doc(target.groupId)
+            .get();
+        final n = (snap.data()?['name'] ?? '').toString().trim();
+        if (n.isNotEmpty) groupName = n;
+      } catch (_) {}
+      final live = navKey.currentState;
+      if (live == null) return false;
+      final page = target.kind == PushOpenKind.groupInfo
+          ? GroupInfoPage(groupId: target.groupId)
+          : GroupChatPage(groupId: target.groupId, groupName: groupName);
+      return _pushOverShell(
+        nav: live,
+        shellIndex: target.shellIndex,
+        page: page,
       );
-      await Future.delayed(const Duration(milliseconds: 200));
-      nav.push(
-        MaterialPageRoute(
-          builder: (_) => ChatPage(
-            conversationId: conversationId,
-            otherUid: otherUid,
-            otherName: otherName,
-          ),
+    }
+
+    if (target.kind == PushOpenKind.chat) {
+      if (!await BlockService.allowOpenPeer(target.otherUid)) {
+        _logPush('open', {'state': 'blocked', 'kind': 'chat'});
+        final live = navKey.currentState;
+        if (live == null) return false;
+        _showShell(live, target.shellIndex);
+        return true;
+      }
+      var otherName =
+          target.displayName.isEmpty ? 'Remdy' : target.displayName;
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(target.otherUid)
+            .get();
+        final n = (snap.data()?['name'] ?? '').toString().trim();
+        if (n.isNotEmpty) otherName = n;
+      } catch (_) {}
+      final live = navKey.currentState;
+      if (live == null) return false;
+      return _pushOverShell(
+        nav: live,
+        shellIndex: target.shellIndex,
+        page: ChatPage(
+          conversationId: target.conversationId,
+          otherUid: target.otherUid,
+          otherName: otherName,
         ),
       );
     }
+
+    return false;
   }
 }

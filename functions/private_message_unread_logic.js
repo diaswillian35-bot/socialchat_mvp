@@ -175,6 +175,82 @@ function simulateOncePerMessageUnread({
   return { unread, increments };
 }
 
+/**
+ * Nested unread writes for onPrivateMessageCreated.
+ * set(merge) with a dotted key stores a literal field "unread.<uid>"
+ * that the chat screen never clears. FieldPath("unread", uid) is the map.
+ * literal deletes remove that leftover field in the same update.
+ * The sender is forced to 0 and is not incremented.
+ */
+function buildDmUnreadUpdatePairs({ senderId, targetUids }) {
+  const sender = String(senderId || "").trim();
+  const steps = [];
+  const seen = new Set();
+  if (sender) {
+    steps.push({ op: "zero", uid: sender });
+    steps.push({ op: "deleteLiteral", literalKey: `unread.${sender}` });
+    seen.add(sender);
+  }
+  for (const raw of targetUids || []) {
+    const uid = String(raw || "").trim();
+    if (!uid || seen.has(uid)) continue;
+    seen.add(uid);
+    steps.push({ op: "increment", uid });
+    steps.push({ op: "deleteLiteral", literalKey: `unread.${uid}` });
+  }
+  return steps;
+}
+
+/** Second delivery of the same message must not build another +1. */
+function commitDmUnreadOnce({ senderId, targetUids, alreadyProcessed }) {
+  if (alreadyProcessed) return null;
+  const sender = String(senderId || "").trim();
+  if (!sender) return null;
+  const steps = buildDmUnreadUpdatePairs({ senderId: sender, targetUids });
+  return steps.length ? steps : null;
+}
+
+/**
+ * Nested map used when a conversation document is created.
+ * Keys are uid strings inside `unread`, never a top-level "unread.<uid>".
+ */
+function initialNestedUnread(uids) {
+  const unread = {};
+  for (const raw of uids || []) {
+    const uid = String(raw || "").trim();
+    if (!uid) continue;
+    unread[uid] = 0;
+  }
+  return unread;
+}
+
+/**
+ * Append FieldPath operations. `fieldPath("unread", uid)` is the nested map.
+ * `fieldPath("unread.<uid>")` deletes only the legacy literal field.
+ */
+function appendDmUnreadArgs(args, steps, adapters) {
+  if (!steps || !adapters) return args;
+  const { fieldPath, increment, deleteSentinel } = adapters;
+  for (const step of steps) {
+    if (step.op === "zero") {
+      args.push(fieldPath("unread", step.uid), 0);
+    } else if (step.op === "increment") {
+      args.push(fieldPath("unread", step.uid), increment(1));
+    } else if (step.op === "deleteLiteral") {
+      args.push(fieldPath(step.literalKey), deleteSentinel());
+    }
+  }
+  return args;
+}
+
+function firestoreDmUnreadAdapters(adminSdk) {
+  return {
+    fieldPath: (...parts) => new adminSdk.firestore.FieldPath(...parts),
+    increment: (n) => adminSdk.firestore.FieldValue.increment(n),
+    deleteSentinel: () => adminSdk.firestore.FieldValue.delete(),
+  };
+}
+
 const FIXTURES = {
   willian: "willian_free_br_uid",
   istela: "istela_master_ca_uid",
@@ -192,5 +268,10 @@ module.exports = {
   shouldSkipTriggerUnreadIncrement,
   sanitizeUnreadErrorCode,
   simulateOncePerMessageUnread,
+  buildDmUnreadUpdatePairs,
+  commitDmUnreadOnce,
+  initialNestedUnread,
+  appendDmUnreadArgs,
+  firestoreDmUnreadAdapters,
   FIXTURES,
 };

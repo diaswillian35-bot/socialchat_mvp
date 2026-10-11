@@ -184,6 +184,7 @@ class GroupDiscoveryService {
       return _fetchRegionDiscovery(
         uid: uid,
         countryCode: code,
+        cityKey: cityKey,
         userCityLatitude: userCityLatitude,
         userCityLongitude: userCityLongitude,
         pendingIds: pendingIds,
@@ -300,31 +301,80 @@ class GroupDiscoveryService {
   Future<GroupDiscoveryPage> _fetchRegionDiscovery({
     required String uid,
     required String countryCode,
+    required String cityKey,
     required num? userCityLatitude,
     required num? userCityLongitude,
     required Set<String> pendingIds,
     GroupDiscoveryCursor? startAfter,
     required int pageSize,
   }) async {
+    if (!GroupGeo.trustedCityCenter(userCityLatitude, userCityLongitude)) {
+      return const GroupDiscoveryPage(items: [], hasMore: false);
+    }
+
+    List<GroupDiscoveryItem> nearbyItems = const [];
+    Object? nearbyError;
+    var nearbyCapped = false;
+    try {
+      final nearby = await _readNearbyCityItems(
+        uid: uid,
+        countryCode: countryCode,
+        cityKey: cityKey,
+        userCityLatitude: userCityLatitude,
+        userCityLongitude: userCityLongitude,
+        pendingIds: pendingIds,
+      );
+      nearbyItems = nearby.items;
+      nearbyCapped = nearby.capped;
+    } catch (error) {
+      nearbyError = error;
+    }
+
+    GroupDiscoveryPage finish(GroupDiscoveryPage regional) {
+      if (nearbyError != null &&
+          regional.items.isEmpty &&
+          nearbyItems.isEmpty) {
+        throw nearbyError!;
+      }
+      final combined = GroupDiscoveryLogic.combineRegionTabItems(
+        regional: regional.items,
+        nearbyCities: nearbyItems,
+        limit: pageSize,
+      );
+      final dropped = regional.items.length + nearbyItems.length > combined.length;
+      return GroupDiscoveryPage(
+        items: combined,
+        hasMore: regional.hasMore || nearbyCapped || dropped,
+        cursor: regional.cursor,
+      );
+    }
+
     final batches = GroupGeo.geohashBatches(
       latitude: userCityLatitude,
       longitude: userCityLongitude,
     );
 
-    // Sem células (coords inválidas): fallback país+scope com continue.
     if (batches.isEmpty) {
-      return _fetchScopedDiscovery(
-        tab: GroupDiscoveryTab.region,
-        scope: 'region',
-        uid: uid,
-        countryCode: countryCode,
-        cityKey: '',
-        userCityLatitude: userCityLatitude,
-        userCityLongitude: userCityLongitude,
-        pendingIds: pendingIds,
-        startAfter: startAfter,
-        pageSize: pageSize,
-      );
+      try {
+        final regional = await _fetchScopedDiscovery(
+          tab: GroupDiscoveryTab.region,
+          scope: 'region',
+          uid: uid,
+          countryCode: countryCode,
+          cityKey: cityKey,
+          userCityLatitude: userCityLatitude,
+          userCityLongitude: userCityLongitude,
+          pendingIds: pendingIds,
+          startAfter: startAfter,
+          pageSize: pageSize,
+        );
+        return finish(regional);
+      } catch (error) {
+        if (nearbyItems.isNotEmpty) {
+          return finish(const GroupDiscoveryPage(items: [], hasMore: false));
+        }
+        throw nearbyError ?? error;
+      }
     }
 
     final batchCursors = Map<int, DocumentSnapshot<Map<String, dynamic>>>.from(
@@ -375,21 +425,33 @@ class GroupDiscoveryService {
           snap = await q.get();
         } on FirebaseException catch (e) {
           if (e.code == 'failed-precondition' || e.code == 'invalid-argument') {
-            // Índice ausente: uma rodada de fallback país+scope basta.
-            return _fetchScopedDiscovery(
-              tab: GroupDiscoveryTab.region,
-              scope: 'region',
-              uid: uid,
-              countryCode: countryCode,
-              cityKey: '',
-              userCityLatitude: userCityLatitude,
-              userCityLongitude: userCityLongitude,
-              pendingIds: pendingIds,
-              startAfter: startAfter,
-              pageSize: pageSize,
-            );
+            try {
+              final regional = await _fetchScopedDiscovery(
+                tab: GroupDiscoveryTab.region,
+                scope: 'region',
+                uid: uid,
+                countryCode: countryCode,
+                cityKey: cityKey,
+                userCityLatitude: userCityLatitude,
+                userCityLongitude: userCityLongitude,
+                pendingIds: pendingIds,
+                startAfter: startAfter,
+                pageSize: pageSize,
+              );
+              return finish(regional);
+            } catch (error) {
+              if (nearbyItems.isNotEmpty) {
+                return finish(
+                  const GroupDiscoveryPage(items: [], hasMore: false),
+                );
+              }
+              throw nearbyError ?? error;
+            }
           }
-          rethrow;
+          if (nearbyItems.isNotEmpty) {
+            return finish(const GroupDiscoveryPage(items: [], hasMore: false));
+          }
+          throw nearbyError ?? e;
         }
 
         docsRead += snap.docs.length;
@@ -424,7 +486,7 @@ class GroupDiscoveryService {
           tab: GroupDiscoveryTab.region,
           uid: uid,
           countryCode: countryCode,
-          cityKey: '',
+          cityKey: cityKey,
           userCityLatitude: userCityLatitude,
           userCityLongitude: userCityLongitude,
           pendingIds: pendingIds,
@@ -435,15 +497,52 @@ class GroupDiscoveryService {
       }
     }
 
-    return GroupDiscoveryPage(
-      items: visible.take(pageSize).toList(),
-      hasMore: anyBatchHasMore(),
-      cursor: GroupDiscoveryCursor(
-        batchDocuments: batchCursors,
-        batchExhausted: exhausted,
-        seenIds: seen,
+    return finish(
+      GroupDiscoveryPage(
+        items: visible.take(pageSize).toList(),
+        hasMore: anyBatchHasMore(),
+        cursor: GroupDiscoveryCursor(
+          batchDocuments: batchCursors,
+          batchExhausted: exhausted,
+          seenIds: seen,
+        ),
       ),
     );
+  }
+
+  /// Cidades do mesmo país, já limitadas. O Haversine de 50 km descarta o resto.
+  Future<_NearbyCityRead> _readNearbyCityItems({
+    required String uid,
+    required String countryCode,
+    required String cityKey,
+    required num? userCityLatitude,
+    required num? userCityLongitude,
+    required Set<String> pendingIds,
+  }) async {
+    final limit = GroupDiscoveryLogic.nearbyCityQueryLimit;
+    final snap = await _groups
+        .where('deleted', isEqualTo: false)
+        .where('countryCode', isEqualTo: countryCode)
+        .where('scope', isEqualTo: 'city')
+        .orderBy('updatedAt', descending: true)
+        .limit(limit)
+        .get();
+    final items = <GroupDiscoveryItem>[];
+    for (final doc in snap.docs) {
+      final item = _toDiscoveryItem(
+        doc: doc,
+        tab: GroupDiscoveryTab.region,
+        uid: uid,
+        countryCode: countryCode,
+        cityKey: cityKey,
+        userCityLatitude: userCityLatitude,
+        userCityLongitude: userCityLongitude,
+        pendingIds: pendingIds,
+      );
+      if (item == null || item.isMember) continue;
+      items.add(item);
+    }
+    return _NearbyCityRead(items, snap.docs.length >= limit);
   }
 
   GroupDiscoveryItem? _toDiscoveryItem({
@@ -452,6 +551,7 @@ class GroupDiscoveryService {
     required String uid,
     required String countryCode,
     required String cityKey,
+    String userPlaceId = '',
     required num? userCityLatitude,
     required num? userCityLongitude,
     required Set<String> pendingIds,
@@ -472,13 +572,16 @@ class GroupDiscoveryService {
           uid: uid,
           userCountryCode: countryCode,
           userCityKey: cityKey,
+          userPlaceId: userPlaceId,
         );
         break;
       case GroupDiscoveryTab.region:
-        matches = GroupDiscoveryLogic.matchesRegionDiscovery(
+        matches = GroupDiscoveryLogic.matchesRegionTab(
           data: data,
           uid: uid,
           userCountryCode: countryCode,
+          userCityKey: cityKey,
+          userPlaceId: userPlaceId,
           userCityLatitude: userCityLatitude,
           userCityLongitude: userCityLongitude,
         );
@@ -504,4 +607,11 @@ class GroupDiscoveryService {
       isPending: pendingIds.contains(doc.id),
     );
   }
+}
+
+class _NearbyCityRead {
+  const _NearbyCityRead(this.items, this.capped);
+
+  final List<GroupDiscoveryItem> items;
+  final bool capped;
 }

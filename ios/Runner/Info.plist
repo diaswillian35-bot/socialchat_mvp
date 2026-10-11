@@ -98,12 +98,12 @@
 		</dict>
 	</dict>
 	<key>UISupportedInterfaceOrientations</key>
-	<!-- iPhone: somente portrait (alinhado a AppOrientation.lockToPortraitUp). -->
+	<!-- iPhone: somente portrait. O iPad não herda esta máscara. -->
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
-	<!-- iPad: mantido multi-orientação nesta versão; não alterar sem análise de layout. -->
+	<!-- iPad: retrato e paisagem. AppOrientation.iosPreferred deve coincidir. -->
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>

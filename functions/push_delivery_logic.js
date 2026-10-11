@@ -230,6 +230,19 @@ function buildApnsMessageConfig(title, body, imageUrl, badge) {
 /**
  * Format a one-line sanitized summary for Cloud Logging.
  */
+function pushPolicyBlockCode(userData, kind) {
+  if (!userData) return "missing_user";
+  if (userData.notifEnabled === false) return "notif_disabled";
+  if (userData.ageVerificationStatus !== "verified") return "age_unverified";
+  if (kind === "chat" && userData.notifChat === false) return "chat_pref_off";
+  if (kind === "group" && userData.notifGroups === false) return "group_pref_off";
+  if (kind === "event" && userData.notifEvents === false) return "event_pref_off";
+  if (kind === "group_join_request" && userData.notifGroups === false) {
+    return "group_pref_off";
+  }
+  return null;
+}
+
 function formatPushPlatformLog(summary) {
   const s = summary || {};
   const part = (name, b) => {
@@ -257,6 +270,7 @@ module.exports = {
   collectPermanentInvalidTokens,
   shouldClearLegacyFcmToken,
   formatPushPlatformLog,
+  pushPolicyBlockCode,
   badgeForImmediateMessagePush,
   ANDROID_HIGH_IMPORTANCE_CHANNEL_ID,
   buildAndroidMessageConfig,

@@ -118,13 +118,15 @@ void main() {
       expect(group.contains("d['isOnline']"), isFalse);
     });
 
-    test('event share has link fallback when image fails', () {
+    test('event share keeps the public link and anchors the iPad popover', () {
       final src =
           File('lib/services/event_share_image_service.dart').readAsStringSync();
+      expect(src.contains('https://remdy.app/e/'), isTrue);
+      expect(src.contains('Share.shareXFiles('), isTrue);
       expect(src.contains('Share.share('), isTrue);
-      expect(src.contains('sharePositionOrigin'), isTrue);
-      expect(src.contains('image_share_failed'), isTrue);
-      expect(src.contains('canonicalPublicUrl'), isTrue);
+      expect(src.contains('sharePositionOrigin: origin'), isTrue);
+      expect(src.contains('EventShareOrigin.fromContext'), isTrue);
+      expect(src.contains('canonicalPublicUrl'), isFalse);
     });
 
     test('remi languages page uses AppTexts (not hardcoded English)', () {

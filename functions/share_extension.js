@@ -39,6 +39,12 @@ const {
   idempotencyDocId,
 } = require("./share_extension_logic");
 const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
+const {
+  appendDmUnreadArgs,
+  buildDmUnreadUpdatePairs,
+  buildServerUnreadApplied,
+  firestoreDmUnreadAdapters,
+} = require("./private_message_unread_logic");
 
 const db = () => admin.firestore();
 
@@ -509,19 +515,31 @@ const sendShareMessage = onCall(
           replyToType: "text",
           replyToIsMe: false,
           replyToImageUrl: "",
+          // Trigger sees this and does not +1 again.
+          serverUnreadApplied: buildServerUnreadApplied(resolvedOther),
         });
         const convRef = db().collection("conversations").doc(destinationId);
-        tx.set(
-          convRef,
-          {
-            lastMessage: parsed.text.slice(0, 200),
-            lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            [`unread.${resolvedOther}`]: admin.firestore.FieldValue.increment(1),
-            [`unread.${uid}`]: 0,
-          },
-          { merge: true },
+        const updateArgs = [
+          "lastMessage",
+          parsed.text.slice(0, 200),
+          "lastMessageType",
+          "text",
+          "lastMessageAt",
+          admin.firestore.FieldValue.serverTimestamp(),
+          "updatedAt",
+          admin.firestore.FieldValue.serverTimestamp(),
+          "hiddenFor",
+          admin.firestore.FieldValue.arrayRemove(uid, resolvedOther),
+        ];
+        appendDmUnreadArgs(
+          updateArgs,
+          buildDmUnreadUpdatePairs({
+            senderId: uid,
+            targetUids: [resolvedOther],
+          }),
+          firestoreDmUnreadAdapters(admin),
         );
+        tx.update(convRef, ...updateArgs);
         tx.set(idemRef, {
           uid,
           intentId,

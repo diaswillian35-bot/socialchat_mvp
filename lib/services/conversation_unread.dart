@@ -7,15 +7,36 @@ class ConversationUnread {
   ConversationUnread._();
 
   static int resolveMyUnread(Map<String, dynamic> data, String myUid) {
+    final uid = myUid.trim();
+    if (uid.isEmpty) return 0;
     final unreadRaw = data['unread'];
-    if (unreadRaw is Map && unreadRaw.containsKey(myUid)) {
-      return _asInt(unreadRaw[myUid]);
+    if (unreadRaw is Map && unreadRaw.containsKey(uid)) {
+      return _asInt(unreadRaw[uid]);
     }
+    // Production group writes used set(merge) with a dotted key, which stores
+    // a top-level field named "unread.<uid>" instead of nested unread.<uid>.
+    // An explicit nested 0 still wins; the literal field is only a fallback.
+    final literal = data['unread.$uid'];
+    if (literal != null) return _asInt(literal);
     final countRaw = data['unreadCount'];
-    if (countRaw is Map && countRaw.containsKey(myUid)) {
-      return _asInt(countRaw[myUid]);
+    if (countRaw is Map && countRaw.containsKey(uid)) {
+      return _asInt(countRaw[uid]);
     }
     return 0;
+  }
+
+  /// Red tab badge: number of group docs with unread for [uid]. Hidden groups
+  /// stay in this count; the list hides them separately.
+  static int groupTabBadgeCount(
+    Iterable<Map<String, dynamic>> groups,
+    String uid,
+  ) {
+    var total = 0;
+    for (final data in groups) {
+      if (data['deleted'] == true) continue;
+      if (resolveMyUnread(data, uid) > 0) total++;
+    }
+    return total;
   }
 
   static int _asInt(dynamic value) {
@@ -63,5 +84,42 @@ class ChatUnreadClearCoordinator {
     required bool viewingLatestMessages,
   }) {
     return pendingClearUnread && myUnread > 0 && viewingLatestMessages;
+  }
+}
+
+/// Reversed chat lists keep the latest messages at offset 0.
+/// A clear that waits for a scroll event never runs when the user opens the
+/// thread already at the bottom and then leaves.
+class VisibleUnreadClear {
+  VisibleUnreadClear._();
+
+  static const double latestOffset = 48;
+
+  static bool listAtLatest({
+    required bool hasClients,
+    required double offset,
+  }) {
+    if (!hasClients) return false;
+    return offset <= latestOffset;
+  }
+
+  /// Layout has not attached the list yet. Retry on the next frame.
+  static bool retryWhenLaidOut({
+    required bool pending,
+    required bool hasClients,
+  }) {
+    return pending && !hasClients;
+  }
+
+  /// Leaving an open thread that was showing the latest messages must persist
+  /// the clear. Scrolling up into history must not.
+  static bool flushOnExit({
+    required bool pendingOrUnread,
+    required bool hasClients,
+    required double offset,
+  }) {
+    if (!pendingOrUnread) return false;
+    if (!hasClients) return true;
+    return listAtLatest(hasClients: true, offset: offset);
   }
 }

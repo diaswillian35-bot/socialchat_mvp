@@ -169,6 +169,7 @@ void main() {
         expect(terms, isNot(contains('assinatura')));
         expect(terms, isNot(contains('subscri')));
         expect(terms, isNot(contains('abonnement')));
+        expect(terms, isNot(contains('remi')));
         expect(
           terms,
           anyOf(
@@ -192,6 +193,7 @@ void main() {
         ]) {
           expect(privacy.contains(banned), isFalse, reason: '$code $banned');
         }
+        expect(privacy.contains('remi'), isFalse, reason: '$code remi');
         expect(
           privacy,
           anyOf(contains('18'), contains('crian'), contains('enfant'), contains('niñ'), contains('teen')),
@@ -256,7 +258,7 @@ void main() {
       expect(delegate, contains('registerForRemoteNotifications'));
       expect(scene, contains('sceneDidBecomeActive'));
       expect(scene, contains('registerIfReady'));
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+35'));
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+36'));
     });
 
     test('safety surfaces stay reachable', () {

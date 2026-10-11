@@ -353,7 +353,7 @@ class _EventDetailPageState extends State<EventDetailPage>
           onParticipate: joined
               ? (canLeave ? _leaveEvent : null)
               : (canJoin ? _joinEvent : null),
-          onShare: _shareBusy ? null : () => _shareEvent(event),
+          onShare: _shareBusy ? null : (origin) => _shareEvent(event, origin),
           onCalendar: null,
           onDirections: null,
         );
@@ -553,24 +553,29 @@ class _EventDetailPageState extends State<EventDetailPage>
     }
   }
 
-  Future<void> _shareEvent(EventPresentation event) async {
+  Future<void> _shareEvent(
+    EventPresentation event,
+    BuildContext origin,
+  ) async {
     if (_shareBusy) return;
     setState(() => _shareBusy = true);
+    final shareOrigin = EventShareOrigin.fromContext(origin);
     try {
       final lang = Localizations.localeOf(context).languageCode;
       await EventShareImageService.shareEvent(
-        context: context,
+        context: origin,
         event: event,
         languageCode: lang,
       );
     } catch (e, st) {
-      // Último recurso: link HTTPS puro (serviço já tenta fallback interno).
+      // Último recurso: o mesmo link HTTPS. A âncora já foi lida do botão.
       debugPrint('shareEvent root cause: $e\n$st');
       try {
         final link = 'https://remdy.app/e/${event.id}';
         await Share.share(
           '${event.title}\n${AppTexts.t('events_share_text')}\n$link',
           subject: event.title,
+          sharePositionOrigin: shareOrigin,
         );
       } catch (e2, st2) {
         debugPrint('shareEvent link fallback failed: $e2\n$st2');

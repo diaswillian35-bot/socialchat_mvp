@@ -13,7 +13,33 @@ const {
   ANDROID_HIGH_IMPORTANCE_CHANNEL_ID,
   buildAndroidMessageConfig,
   buildApnsMessageConfig,
+  pushPolicyBlockCode,
 } = require("./push_delivery_logic");
+
+test("push skip reasons separate policy from a missing token", () => {
+  assert.equal(
+    pushPolicyBlockCode({ ageVerificationStatus: "pending" }, "chat"),
+    "age_unverified",
+  );
+  assert.equal(
+    pushPolicyBlockCode(
+      { ageVerificationStatus: "verified", notifChat: false },
+      "chat",
+    ),
+    "chat_pref_off",
+  );
+  assert.equal(
+    pushPolicyBlockCode({ ageVerificationStatus: "verified" }, "chat"),
+    null,
+  );
+  assert.equal(
+    pushPolicyBlockCode(
+      { ageVerificationStatus: "verified", notifEvents: false },
+      "event",
+    ),
+    "event_pref_off",
+  );
+});
 
 test("permanent registration failures are the only token deletions", () => {
   assert.equal(
@@ -79,7 +105,9 @@ test("DM, group, and event alerts do not wait on a full badge scan", () => {
     "function pushAllowed",
     "async function collectTokenEntriesForUid",
   );
-  assert.equal(allowed.includes('kind === "event" && userData.notifEvents === false'), true);
+  assert.equal(allowed.includes("pushPolicyBlockCode(userData, kind)"), true);
+  assert.equal(index.includes('tag: "push_targets"'), true);
+  assert.equal(index.includes("no tokens / pushAllowed blocked"), false);
 
   const dm = sourceSlice(
     index,

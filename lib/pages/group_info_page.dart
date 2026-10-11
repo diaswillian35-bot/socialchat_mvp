@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,6 +13,7 @@ import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/block_visibility.dart';
 import '../services/group_ban_service.dart';
+import '../services/group_create_flow.dart';
 import '../services/group_discovery_logic.dart';
 import '../services/group_hidden_prefs_service.dart';
 import '../services/group_lifecycle_service.dart';
@@ -23,6 +25,7 @@ import '../services/group_pending_join_badge_logic.dart';
 import '../services/international_chat_service.dart';
 import '../services/iso_country_names.dart';
 import '../widgets/blocked_uids_builder.dart';
+import '../widgets/group_city_picker.dart';
 import '../widgets/remdy_keyboard_caps.dart';
 import '../widgets/group_pending_request_row.dart';
 import '../widgets/international_premium_dialog.dart';
@@ -59,6 +62,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
 
   bool _loading = true;
   bool _saving = false;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _groupSub;
   String? _busyJoinRequestUid;
 
   Map<String, dynamic>? _groupData;
@@ -77,7 +81,21 @@ class _GroupInfoPageState extends State<GroupInfoPage>
   @override
   void initState() {
     super.initState();
+    _groupSub = _groupRef.snapshots().listen((snap) {
+      if (!mounted) return;
+      final data = snap.data() ?? {};
+      setState(() {
+        _groupData = data;
+        _groupCode = (data['inviteCode'] ?? '').toString().trim();
+      });
+    });
     _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _groupSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -508,6 +526,86 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _editName() async {
+    final t = AppTexts.current;
+    if (!_isOwner || _saving) return;
+    final controller = TextEditingController(
+      text: (_groupData?['name'] ?? '').toString(),
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(t.get('group_edit_name')),
+        content: TextField(
+          controller: controller,
+          textCapitalization: RemdyKeyboardCaps.words,
+          maxLength: 80,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t.get('save')),
+          ),
+        ],
+      ),
+    );
+    final name = controller.text.trim();
+    controller.dispose();
+    if (ok != true) return;
+    if (name.length < 3) {
+      _toast(t.get('group_edit_name_required'));
+      return;
+    }
+    await _saveSettings({'name': name});
+  }
+
+  Future<void> _editCity() async {
+    final t = AppTexts.current;
+    if (!_isOwner || _saving) return;
+    final current = GroupLocationNormalize.cityDisplayName(_groupData ?? {});
+    final iso = GroupLocationNormalize.countryCode(
+      _groupData?['countryCode'] ?? _groupData?['country'],
+    ).toUpperCase();
+    final picked = await showGroupCityPicker(
+      context: context,
+      countryIso2: iso.isEmpty ? 'CA' : iso,
+      initialText: current,
+    );
+    if (picked == null || !mounted) return;
+    final decision = GroupCreateFlow.resolveCity(
+      required: true,
+      typed: picked.display,
+      selectedPlaceId: picked.placeId,
+      selectedCityName: picked.cityName,
+      selectedStateName: picked.stateName,
+      selectedDisplay: picked.display,
+      suggestions: const [],
+      searched: false,
+    );
+    if (!decision.accepted) {
+      _toast(
+        '${t.get('field_pending')}: ${t.get(decision.messageKey ?? 'group_create_place_required')}',
+      );
+      return;
+    }
+    final scope = GroupLocationNormalize.scope(_groupData?['scope']);
+    await _saveSettings({
+      'scope': scope == 'region' ? 'region' : 'city',
+      'placeId': decision.placeId,
+      'city': decision.cityName,
+      'cityName': decision.cityName,
+      'stateName': decision.stateName,
+      'displayLocation': decision.display,
+      'countryCode': iso.toLowerCase(),
+      'country': (_groupData?['country'] ?? '').toString(),
+    });
   }
 
   Future<void> _editBio() async {
@@ -1022,6 +1120,22 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     }
   }
 
+  Widget _headerEdit(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: _saving ? null : onTap,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 13,
+          decoration: TextDecoration.underline,
+          decorationColor: Colors.white,
+        ),
+      ),
+    );
+  }
+
   Widget _groupHeader() {
     final t = AppTexts.current;
 
@@ -1129,6 +1243,23 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                     height: 1.3,
                   ),
                 ),
+                if (_isOwner || _isAdmin) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (_isOwner)
+                        _headerEdit(t.get('group_edit_name'), _editName),
+                      if (_isOwner)
+                        _headerEdit(t.get('group_edit_city'), _editCity),
+                      if (_isAdmin)
+                        _headerEdit(t.get('editBio'), _editBio),
+                      if (_isAdmin)
+                        _headerEdit(t.get('group_edit_cover'), _pickGroupPhoto),
+                    ],
+                  ),
+                ],
                 if (bio.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(

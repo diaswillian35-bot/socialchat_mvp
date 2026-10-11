@@ -1023,6 +1023,38 @@ class _ChatPageState extends State<ChatPage>
     ));
   }
 
+  /// The reversed list starts at the latest message. Waiting for a scroll
+  /// event left the badge up when the user only opened the thread.
+  void _scheduleClearAfterLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pendingClearUnread || _myUnread <= 0) return;
+      if (_isViewingLatestMessages() && _mayPersistReadState()) {
+        unawaited(_markAsRead(
+          clearUnread: true,
+          forceWatermark: true,
+          caller: 'layout',
+        ));
+        return;
+      }
+      if (!VisibleUnreadClear.retryWhenLaidOut(
+        pending: _pendingClearUnread,
+        hasClients: _scrollC.hasClients,
+      )) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pendingClearUnread) return;
+        if (_isViewingLatestMessages() && _mayPersistReadState()) {
+          unawaited(_markAsRead(
+            clearUnread: true,
+            forceWatermark: true,
+            caller: 'layout_retry',
+          ));
+        }
+      });
+    });
+  }
+
   /// Presence writes while the chat is open also advance the read watermark.
   /// Live QA showed peers writing typing/recording without ever persisting
   /// `lastReadAt` when markAsRead was skipped/failed.
@@ -1117,13 +1149,11 @@ class _ChatPageState extends State<ChatPage>
   void _onConversationSnapshot(DocumentSnapshot<Map<String, dynamic>> snap) {
     _conversationHydrated = true;
     final d = snap.data() ?? {};
+    final myUnread = ConversationUnread.resolveMyUnread(d, myUid);
     final unreadRaw = d['unread'];
-    var myUnread = 0;
     var peerUnread = 0;
     if (unreadRaw is Map) {
-      final mine = unreadRaw[myUid];
       final peer = unreadRaw[widget.otherUid];
-      myUnread = mine is int ? mine : (mine is num ? mine.toInt() : 0);
       peerUnread = peer is int ? peer : (peer is num ? peer.toInt() : 0);
     }
     final lastSender = (d['lastMessageBy'] ?? d['lastSenderId'] ?? '')
@@ -1154,6 +1184,7 @@ class _ChatPageState extends State<ChatPage>
           forceWatermark: true,
           caller: 'conv_snapshot',
         ));
+        _scheduleClearAfterLayout();
       } else {
         _scheduleReadWatermark();
       }
@@ -2179,6 +2210,7 @@ class _ChatPageState extends State<ChatPage>
           forceWatermark: true,
           caller: 'init_postframe',
         ));
+        _scheduleClearAfterLayout();
       } else {
         unawaited(_markAsRead(forceWatermark: true, caller: 'init_postframe'));
       }
@@ -2218,8 +2250,11 @@ class _ChatPageState extends State<ChatPage>
     if (_mayPersistReadOnExit() &&
         _isThisChatSurfaceActive() &&
         _conversationHydrated &&
-        _myUnread > 0 &&
-        _isViewingLatestMessages()) {
+        VisibleUnreadClear.flushOnExit(
+          pendingOrUnread: _pendingClearUnread || _myUnread > 0,
+          hasClients: _scrollC.hasClients,
+          offset: _scrollC.hasClients ? _scrollC.offset : 0,
+        )) {
       unawaited(_markAsRead(
         clearUnread: true,
         forceWatermark: true,

@@ -15,12 +15,15 @@ class PrivacyPage extends StatelessWidget {
   String _privacy() {
     final t = AppTexts.current;
     final purchases = RemdyLaunchAccess.showPremiumUi;
+    final showRemi = RemdyLaunchAccess.showRemiUi;
     final purposePremium = purchases
         ? '• ${t.get('privacy_purpose_5')}\n'
         : '';
     final sharingStores = purchases
         ? '• ${t.get('privacy_sharing_10')}\n• ${t.get('privacy_sharing_11')}\n'
         : '';
+    final remiContent = showRemi ? '• ${t.get('privacy_content_9')}\n' : '';
+    final remiSharing = showRemi ? '• ${t.get('privacy_sharing_12')}\n' : '';
     final sections = <String>[
       '''
 ${t.get('privacy_section_intro_title')}
@@ -56,7 +59,7 @@ ${t.get('privacy_section_content_intro')}
 • ${t.get('privacy_content_6')}
 • ${t.get('privacy_content_7')}
 • ${t.get('privacy_content_8')}
-• ${t.get('privacy_content_9')}''',
+$remiContent''',
       '''
 ${t.get('privacy_section_technical_title')}
 ${t.get('privacy_section_technical_intro')}
@@ -81,7 +84,8 @@ ${t.get('privacy_purchase_no_card')}''',
       '''
 ${t.get('privacy_section_login_title')}
 ${t.get('privacy_section_login_text')}''',
-      '''
+      if (showRemi)
+        '''
 ${t.get('privacy_section_remi_title')}
 ${t.get('privacy_section_remi_intro')}
 • ${t.get('privacy_remi_1')}
@@ -112,7 +116,7 @@ ${t.get('privacy_section_sharing_intro')}
 • ${t.get('privacy_sharing_7')}
 • ${t.get('privacy_sharing_8')}
 • ${t.get('privacy_sharing_9')}
-$sharingStores• ${t.get('privacy_sharing_12')}
+$sharingStores$remiSharing
 ${t.get('privacy_no_sell')}''',
       '''
 ${t.get('privacy_section_retention_title')}

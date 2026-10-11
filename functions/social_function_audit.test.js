@@ -61,6 +61,12 @@ test("essential and admin exceptions remain outside the social wrapper", () => {
 });
 
 test("automatic social push fan-out filters unverified recipients", () => {
-  assert.match(indexSource,
-    /function pushAllowed[\s\S]*ageVerificationStatus !== "verified"/);
+  assert.match(
+    fs.readFileSync("push_delivery_logic.js", "utf8"),
+    /function pushPolicyBlockCode[\s\S]*ageVerificationStatus !== "verified"/,
+  );
+  assert.match(
+    indexSource,
+    /function pushAllowed[\s\S]*pushPolicyBlockCode\(userData, kind\)/,
+  );
 });

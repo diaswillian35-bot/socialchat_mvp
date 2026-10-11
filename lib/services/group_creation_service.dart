@@ -20,8 +20,14 @@ class GroupCreationService {
       ...fields,
       'requestId': requestId,
     });
-    final data = Map<String, dynamic>.from(result.data as Map);
-    return data;
+    return readCallableData(result.data);
+  }
+
+  static Map<String, dynamic> readCallableData(dynamic data) {
+    if (data is Map) {
+      return data.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return <String, dynamic>{};
   }
 
   static String errorKey(FirebaseFunctionsException e) {
@@ -34,12 +40,28 @@ class GroupCreationService {
         final msg = (e.message ?? '').toLowerCase();
         if (msg.contains('name')) return 'group_edit_name_required';
         if (msg.contains('joinpolicy')) return 'group_edit_invalid_policy';
+        if (msg.contains('not a city') || msg.contains('invalid place')) {
+          return 'group_create_city_invalid';
+        }
+        if (msg.contains('country')) return 'group_create_city_country';
+        if (msg.contains('placeid') ||
+            msg.contains('place is not') ||
+            msg.contains('place required')) {
+          return 'group_create_place_required';
+        }
+        if (msg.contains('places')) return 'group_create_places_unavailable';
         if (msg.contains('location') ||
             msg.contains('scope') ||
             msg.contains('latitude') ||
             msg.contains('longitude')) {
           return 'group_edit_invalid_location';
         }
+        return 'group_create_error';
+      case 'failed-precondition':
+        final failed = (e.message ?? '').toLowerCase();
+        if (failed.contains('places')) return 'group_create_places_unavailable';
+        return 'group_create_error';
+      case 'resource-exhausted':
         return 'group_create_error';
       default:
         return 'group_create_error';

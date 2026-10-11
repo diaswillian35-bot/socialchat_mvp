@@ -44,7 +44,7 @@ void main() {
       directionsEnabled: true,
       onFavorite: onFavorite ?? () {},
       onParticipate: onParticipate ?? () {},
-      onShare: () {},
+      onShare: (_) {},
       onCalendar: () {},
       onDirections: () {},
     );

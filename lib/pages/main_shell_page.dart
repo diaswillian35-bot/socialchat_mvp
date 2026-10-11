@@ -17,6 +17,7 @@ import '../services/android_back_navigation.dart';
 import '../l10n/app_texts.dart';
 import '../widgets/keyboard_dismiss.dart';
 import '../services/app_badge_service.dart';
+import '../services/conversation_unread.dart';
 import '../services/unread_clear_audit.dart';
 import '../services/share_extension_session_service.dart';
 import '../services/group_pending_join_badge_service.dart';
@@ -88,6 +89,7 @@ void initState() {
       if (uid != null) {
         await PushService.init();
         await PushService.start(uid);
+        await PushService.flushPendingOpen();
       }
     });
   }
@@ -121,28 +123,7 @@ void initState() {
 
 
   int _readUnreadFromMap(Map<String, dynamic> data, String uid) {
-    final unreadRaw = data['unread'];
-
-
-    if (unreadRaw is Map<String, dynamic>) {
-      final value = unreadRaw[uid];
-      if (value is int) return value;
-      if (value is num) return value.toInt();
-      if (value is String) return int.tryParse(value) ?? 0;
-      return 0;
-    }
-
-
-    if (unreadRaw is Map) {
-      final value = unreadRaw[uid];
-      if (value is int) return value;
-      if (value is num) return value.toInt();
-      if (value is String) return int.tryParse(value) ?? 0;
-      return 0;
-    }
-
-
-    return 0;
+    return ConversationUnread.resolveMyUnread(data, uid);
   }
 
 

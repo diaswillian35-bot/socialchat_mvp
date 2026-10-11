@@ -320,6 +320,91 @@ void main() {
     );
   });
 
+  test('cached FCM token is deleted only after APNs is ready', () {
+    expect(
+      PushTokenSync.shouldDeleteCachedFcmToken(
+        storedEnvironment: null,
+        currentEnvironment: 'development',
+        apnsReady: false,
+      ),
+      isFalse,
+    );
+    expect(
+      PushTokenSync.shouldDeleteCachedFcmToken(
+        storedEnvironment: null,
+        currentEnvironment: 'development',
+        apnsReady: true,
+      ),
+      isTrue,
+    );
+    expect(
+      PushTokenSync.shouldDeleteCachedFcmToken(
+        storedEnvironment: 'development',
+        currentEnvironment: 'development',
+        apnsReady: true,
+      ),
+      isFalse,
+    );
+  });
+
+  test('a new client build refreshes registration once', () {
+    expect(
+      PushTokenSync.shouldRefreshRegistrationForBuild(
+        storedBuild: null,
+        currentBuild: PushTokenSync.clientBuild,
+      ),
+      isTrue,
+    );
+    expect(
+      PushTokenSync.shouldRefreshRegistrationForBuild(
+        storedBuild: '35',
+        currentBuild: '36',
+      ),
+      isTrue,
+    );
+    expect(
+      PushTokenSync.shouldRefreshRegistrationForBuild(
+        storedBuild: PushTokenSync.clientBuild,
+        currentBuild: PushTokenSync.clientBuild,
+      ),
+      isFalse,
+    );
+    expect(PushTokenSync.clientBuild, '36');
+  });
+
+  test('iOS sync retries are bounded', () {
+    expect(PushTokenSync.nextIosSyncDelay(0), const Duration(milliseconds: 500));
+    expect(PushTokenSync.nextIosSyncDelay(6), const Duration(seconds: 30));
+    expect(PushTokenSync.nextIosSyncDelay(7), isNull);
+    expect(PushTokenSync.iosSyncRetryDelays.length, 7);
+  });
+
+  test('logout removes only this iOS environment', () {
+    final remove = PushTokenSync.iosAssociationDocsToRemove(
+      environment: 'development',
+      docs: [
+        {'id': 'ios-dev', 'platform': 'ios', 'apsEnvironment': 'development'},
+        {'id': 'ios-prod', 'platform': 'ios', 'apsEnvironment': 'production'},
+        {'id': 'android', 'platform': 'android', 'apsEnvironment': ''},
+        {'id': 'ios-old', 'platform': 'ios', 'apsEnvironment': ''},
+      ],
+    );
+    expect(remove, ['ios-dev', 'ios-old']);
+  });
+
+  test('sync log redacts token-like values and masks uids', () {
+    const token = 'abcdefghijklmnopqrstuvwxyz0123456789TOKEN';
+    final line = PushTokenSync.formatPushSyncLog(
+      phase: 'fcm',
+      fields: {'state': 'received', 'leak': token},
+    );
+    expect(line.contains(token), isFalse);
+    expect(line.contains('leak=redacted'), isTrue);
+    expect(line.contains('phase=fcm'), isTrue);
+    expect(PushTokenSync.maskUid('DaBKgQfghbWTzx8BAzIV6XQHsgo1'), 'DaBKgQ…');
+    expect(PushTokenSync.maskUid(''), '-');
+  });
+
   test('logout and account deletion clear push tokens (source contract)', () {
     final home = File('lib/pages/home_page.dart').readAsStringSync();
     final shell = File('lib/pages/main_shell_page.dart').readAsStringSync();
@@ -337,5 +422,12 @@ void main() {
     expect(push.contains('iosTokenDocsToPrune'), isTrue);
     expect(push.contains('onTokenRefresh'), isTrue);
     expect(push.contains('_activeUid'), isTrue);
+    expect(push.contains('requestIosSync'), isTrue);
+    expect(push.contains("'state': 'unconfirmed'"), isTrue);
+    expect(push.contains("'state': 'confirmed'"), isTrue);
+    expect(push.contains('remdy/push_registration'), isTrue);
+    expect(push.contains('clientBuild'), isTrue);
+    expect(push.contains('build_refresh'), isTrue);
+    expect(push.contains('registeredBuildPrefsKey'), isTrue);
   });
 }

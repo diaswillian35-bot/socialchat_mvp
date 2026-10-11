@@ -8,6 +8,12 @@ class GroupGeo {
   GroupGeo._();
 
   static const double regionRadiusKm = 110;
+
+  /// Grupos de escopo cidade entram na aba Região quando o centro canônico
+  /// da cidade do grupo está a no máximo esta distância do centro da cidade
+  /// do usuário. Independente de cityKey e de divisão administrativa.
+  static const double nearbyCityRadiusKm = 50;
+
   static const double earthRadiusKm = 6371.0088;
   static const int geohashPrecision = 3;
 
@@ -22,6 +28,13 @@ class GroupGeo {
 
   static bool validCoordinates(num? latitude, num? longitude) =>
       validLatitude(latitude) && validLongitude(longitude);
+
+  /// Centro de cidade confiável. Rejeita null, fora de faixa e (0, 0).
+  static bool trustedCityCenter(num? latitude, num? longitude) {
+    if (!validCoordinates(latitude, longitude)) return false;
+    if (latitude!.abs() < 1e-6 && longitude!.abs() < 1e-6) return false;
+    return true;
+  }
 
   /// Distância ortodrômica (Haversine). O delta de longitude é normalizado,
   /// portanto funciona também ao cruzar a linha internacional de data.

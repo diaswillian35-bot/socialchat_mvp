@@ -23,6 +23,13 @@ const {
   sanitizeLinkPreview,
 } = require("./forward_message_logic");
 const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
+const {
+  appendDmUnreadArgs,
+  buildDmUnreadUpdatePairs,
+  buildServerUnreadApplied,
+  firestoreDmUnreadAdapters,
+  initialNestedUnread,
+} = require("./private_message_unread_logic");
 
 const db = () => admin.firestore();
 
@@ -201,7 +208,7 @@ async function findOrCreateDm(uid, otherUid, myData) {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastMessage: "",
-        unread: { [uid]: 0, [otherUid]: 0 },
+        unread: initialNestedUnread([uid, otherUid]),
       },
       { merge: true },
     );
@@ -285,14 +292,40 @@ function buildGroupPayload(uid, messageId, content) {
 }
 
 async function writeDm(uid, conversationId, otherUid, content) {
-  const msgRef = db()
-    .collection("conversations")
-    .doc(conversationId)
-    .collection("messages")
-    .doc();
+  const convRef = db().collection("conversations").doc(conversationId);
+  const msgRef = convRef.collection("messages").doc();
   const payload = buildDmPayload(uid, otherUid, content);
-  await msgRef.set(payload);
-  // Unread/lastMessage/push: onPrivateMessageCreated
+  payload.serverUnreadApplied = buildServerUnreadApplied(otherUid);
+  const preview =
+    content.type === "audio"
+      ? "🎤 Áudio"
+      : content.type === "image"
+        ? "📷 Foto"
+        : String(content.text || "").slice(0, 200);
+  const updateArgs = [
+    "lastMessage",
+    preview,
+    "lastMessageType",
+    content.type || "text",
+    "lastMessageAt",
+    admin.firestore.FieldValue.serverTimestamp(),
+    "updatedAt",
+    admin.firestore.FieldValue.serverTimestamp(),
+    "hiddenFor",
+    admin.firestore.FieldValue.arrayRemove(uid, otherUid),
+  ];
+  appendDmUnreadArgs(
+    updateArgs,
+    buildDmUnreadUpdatePairs({
+      senderId: uid,
+      targetUids: [otherUid],
+    }),
+    firestoreDmUnreadAdapters(admin),
+  );
+  const batch = db().batch();
+  batch.set(msgRef, payload);
+  batch.update(convRef, ...updateArgs);
+  await batch.commit();
   return { messageId: msgRef.id, path: msgRef.path };
 }
 

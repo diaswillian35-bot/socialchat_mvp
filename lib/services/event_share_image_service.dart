@@ -11,6 +11,62 @@ import '../l10n/app_texts.dart';
 import '../models/event_presentation.dart';
 import '../widgets/remdy_logo.dart';
 
+/// Âncora do popover de compartilhamento.
+///
+/// O retângulo do botão vem do [RenderBox]. Se ele não tiver tamanho, estiver
+/// fora da tela ou o contexto não tiver view, usa um ponto no centro da view.
+/// iPhone e Android aceitam `null`; o iPad precisa de um retângulo não vazio
+/// dentro da tela para o popover.
+class EventShareOrigin {
+  EventShareOrigin._();
+
+  static Rect? fromContext(BuildContext context) {
+    if (!context.mounted) return null;
+    Rect? button;
+    final object = context.findRenderObject();
+    if (object is RenderBox && object.attached && object.hasSize) {
+      final topLeft = object.localToGlobal(Offset.zero);
+      button = topLeft & object.size;
+    }
+    return resolve(
+      button: button,
+      viewSize: MediaQuery.maybeSizeOf(context),
+    );
+  }
+
+  static Rect? resolve({Rect? button, Size? viewSize}) {
+    final view = _viewRect(viewSize);
+    if (button != null && _usable(button)) {
+      if (view == null) return button;
+      final visible = button.intersect(view);
+      if (_usable(visible)) return visible;
+    }
+    return _centerAnchor(view);
+  }
+
+  static Rect? _viewRect(Size? size) {
+    if (size == null) return null;
+    if (!size.width.isFinite || !size.height.isFinite) return null;
+    if (size.width <= 0 || size.height <= 0) return null;
+    return Offset.zero & size;
+  }
+
+  static Rect? _centerAnchor(Rect? view) {
+    if (view == null) return null;
+    const side = 2.0;
+    return Rect.fromCenter(center: view.center, width: side, height: side);
+  }
+
+  static bool _usable(Rect rect) {
+    return rect.width > 0 &&
+        rect.height > 0 &&
+        rect.left.isFinite &&
+        rect.top.isFinite &&
+        rect.width.isFinite &&
+        rect.height.isFinite;
+  }
+}
+
 /// Gera imagem social localmente (≈1200×630) e abre o share sheet nativo.
 /// Sem upload Firebase — menor custo.
 class EventShareImageService {
@@ -24,6 +80,7 @@ class EventShareImageService {
     required EventPresentation event,
     required String languageCode,
   }) async {
+    final origin = EventShareOrigin.fromContext(context);
     final link = 'https://remdy.app/e/${event.id}';
     final text = '${event.title}\n'
         '${AppTexts.t('events_share_text')}\n'
@@ -46,6 +103,7 @@ class EventShareImageService {
         [XFile(file.path, mimeType: 'image/png', name: '${event.title}.png')],
         text: text,
         subject: event.title,
+        sharePositionOrigin: origin,
       );
 
       Future<void>.delayed(const Duration(minutes: 10), () async {
@@ -58,7 +116,11 @@ class EventShareImageService {
       debugPrint('EventShareImageService: image share failed: $e\n$st');
     }
 
-    await Share.share(text, subject: event.title);
+    await Share.share(
+      text,
+      subject: event.title,
+      sharePositionOrigin: origin,
+    );
   }
 
   static Future<Uint8List> generateSocialPng({

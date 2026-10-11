@@ -9,7 +9,15 @@ const CITY_PLACE_TYPES = new Set([
   "locality",
   "postal_town",
   "administrative_area_level_2",
+  "administrative_area_level_3",
+  "sublocality",
+  "sublocality_level_1",
+  "sublocality_level_2",
+  "neighborhood",
 ]);
+
+/** Bump when the selected place name must win over the parent locality. */
+const PLACE_PARSE_REVISION = 2;
 
 const REJECT_ONLY_TYPES = new Set([
   "country",
@@ -64,6 +72,12 @@ function parsePlaceDetailsResult(detailsResult, placeId) {
     componentByType(components, "locality") ||
     componentByType(components, "postal_town") ||
     componentByType(components, "administrative_area_level_2");
+  const selectedComponent =
+    componentByType(components, "sublocality_level_1") ||
+    componentByType(components, "sublocality") ||
+    componentByType(components, "neighborhood") ||
+    componentByType(components, "administrative_area_level_3");
+  const adminArea = componentByType(components, "administrative_area_level_1");
   const country = componentByType(components, "country");
 
   const geometry = detailsResult.geometry || {};
@@ -96,9 +110,29 @@ function parsePlaceDetailsResult(detailsResult, placeId) {
   )
     .toString()
     .trim();
-  const cityName = (
+  const parentLocality = (
     (locality && (locality.long_name || locality.longName)) ||
-    detailsResult.name ||
+    ""
+  )
+    .toString()
+    .trim();
+  const selectedComponentName = (
+    (selectedComponent &&
+      (selectedComponent.long_name || selectedComponent.longName)) ||
+    ""
+  )
+    .toString()
+    .trim();
+  const placeName = (detailsResult.name || "").toString().trim();
+  // The place the user picked. A sublocality named York stays York even when
+  // its parent locality is Toronto. A locality named Toronto stays Toronto.
+  const cityName = placeName || selectedComponentName || parentLocality;
+  const stateName = (
+    (adminArea &&
+      (adminArea.short_name ||
+        adminArea.shortName ||
+        adminArea.long_name ||
+        adminArea.longName)) ||
     ""
   )
     .toString()
@@ -113,13 +147,24 @@ function parsePlaceDetailsResult(detailsResult, placeId) {
   return {
     placeId: (placeId || detailsResult.place_id || "").toString().trim(),
     cityName,
+    parentLocality,
+    stateName,
     countryName,
     countryCode,
     latitude: lat,
     longitude: lng,
     types,
     isCityLike,
+    parseRevision: PLACE_PARSE_REVISION,
   };
+}
+
+function placesCacheIsCurrent(payload) {
+  return Boolean(
+    payload &&
+      payload.parseRevision === PLACE_PARSE_REVISION &&
+      payload.cityName,
+  );
 }
 
 /**
@@ -182,10 +227,12 @@ const PLACES_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 
 module.exports = {
   CITY_PLACE_TYPES,
+  PLACE_PARSE_REVISION,
   REGION_RADIUS_KM,
   PLACES_CACHE_TTL_MS,
   normalizeCountryCode,
   parsePlaceDetailsResult,
+  placesCacheIsCurrent,
   assertTrustedCityPlace,
   stripClientGeoTrust,
 };

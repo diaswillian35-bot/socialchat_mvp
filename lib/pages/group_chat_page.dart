@@ -19,6 +19,7 @@ import '../services/group_join_service.dart';
 import '../services/group_join_ui_logic.dart';
 import '../services/group_read_service.dart';
 import '../services/chat_read_guard.dart';
+import '../services/conversation_unread.dart';
 import '../services/message_delivery_status.dart';
 import '../services/premium_access_service.dart';
 import '../services/remdy_launch_access.dart';
@@ -364,8 +365,17 @@ class _GroupChatPageState extends State<GroupChatPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    AppNotificationState.instance.leaveGroupChat(widget.groupId);
     _markReadDebounce?.cancel();
+    final flush = _isMember &&
+        VisibleUnreadClear.flushOnExit(
+          pendingOrUnread: _pendingMarkGroupAsRead || _groupMyUnread > 0,
+          hasClients: _scrollC.hasClients,
+          offset: _scrollC.hasClients ? _scrollC.offset : 0,
+        );
+    if (flush) {
+      unawaited(GroupReadService.markAsRead(groupId: widget.groupId));
+    }
+    AppNotificationState.instance.leaveGroupChat(widget.groupId);
     _groupWatchSub?.cancel();
     _readsSub?.cancel();
     _typingDebounce?.cancel();
@@ -453,6 +463,7 @@ class _GroupChatPageState extends State<GroupChatPage>
   Timer? _markReadDebounce;
   bool _markReadInFlight = false;
   bool _pendingMarkGroupAsRead = false;
+  int _groupMyUnread = 0;
 
   bool _isViewingLatestGroupMessages() {
     if (!_scrollC.hasClients) return false;
@@ -492,12 +503,11 @@ class _GroupChatPageState extends State<GroupChatPage>
       }
       _markReadInFlight = true;
       try {
-        await _markGroupAsRead();
-        _pendingMarkGroupAsRead = false;
+        final cleared = await _markGroupAsRead();
+        _pendingMarkGroupAsRead = !cleared && _groupMyUnread > 0;
       } finally {
         _markReadInFlight = false;
         if (_pendingMarkGroupAsRead && mounted && _mayClearGroupUnread()) {
-          _pendingMarkGroupAsRead = false;
           _scheduleMarkGroupAsRead();
         }
       }
@@ -512,13 +522,32 @@ class _GroupChatPageState extends State<GroupChatPage>
 
   void _maybeMarkReadFromUnread(Map<String, dynamic>? data) {
     if (data == null || uid == null) return;
-    final unreadRaw = data['unread'];
-    var myUnread = 0;
-    if (unreadRaw is Map) {
-      final v = unreadRaw[uid];
-      myUnread = v is int ? v : (v is num ? v.toInt() : 0);
+    _groupMyUnread = ConversationUnread.resolveMyUnread(data, uid!);
+    if (_groupMyUnread > 0) {
+      _pendingMarkGroupAsRead = true;
+      _scheduleMarkGroupAsRead();
+      _scheduleGroupReadAfterLayout();
     }
-    if (myUnread > 0) _scheduleMarkGroupAsRead();
+  }
+
+  void _scheduleGroupReadAfterLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pendingMarkGroupAsRead) return;
+      if (_mayClearGroupUnread()) {
+        _scheduleMarkGroupAsRead();
+        return;
+      }
+      if (!VisibleUnreadClear.retryWhenLaidOut(
+        pending: _pendingMarkGroupAsRead,
+        hasClients: _scrollC.hasClients,
+      )) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pendingMarkGroupAsRead) return;
+        if (_mayClearGroupUnread()) _scheduleMarkGroupAsRead();
+      });
+    });
   }
 
   void _watchGroupDoc() {
@@ -891,7 +920,9 @@ class _GroupChatPageState extends State<GroupChatPage>
 
     if (_isMember && !_didInitialRead) {
       _didInitialRead = true;
+      _pendingMarkGroupAsRead = _groupMyUnread > 0 || _pendingMarkGroupAsRead;
       _scheduleMarkGroupAsRead();
+      _scheduleGroupReadAfterLayout();
     }
     if (_isMember) _ensureReadsListen();
 
@@ -1159,20 +1190,24 @@ class _GroupChatPageState extends State<GroupChatPage>
     }
   }
 
-  Future<void> _markGroupAsRead() async {
+  Future<bool> _markGroupAsRead() async {
     final myUid = uid;
-    if (myUid == null || !_isMember || _handledGroupUnavailable) return;
+    if (myUid == null || !_isMember || _handledGroupUnavailable) return false;
 
     try {
       await GroupReadService.markAsRead(groupId: widget.groupId);
+      _groupMyUnread = 0;
+      return true;
     } on FirebaseFunctionsException catch (e) {
       // Silencioso se perdeu acesso; evita toast invasivo no open.
       if (e.code == 'permission-denied' || e.code == 'failed-precondition') {
-        return;
+        return true;
       }
-      debugPrint('markGroupAsRead: ${e.code} ${e.message}');
+      debugPrint('markGroupAsRead: ${e.code}');
+      return false;
     } catch (e) {
-      debugPrint('markGroupAsRead error: $e');
+      debugPrint('markGroupAsRead error: ${e.runtimeType}');
+      return false;
     }
   }
 

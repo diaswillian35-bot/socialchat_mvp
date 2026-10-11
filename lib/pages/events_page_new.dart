@@ -6,6 +6,8 @@ import 'create_event_page.dart';
 import 'edit_profile_page.dart';
 import 'my_events_page.dart';
 import 'package:share_plus/share_plus.dart';
+
+import '../services/event_share_image_service.dart';
 import 'event_detail_page.dart';
 import '../l10n/app_texts.dart';
 import '../services/event_attendance_service.dart';
@@ -619,6 +621,7 @@ String _capitalize(String value) {
 
 
 void _shareEvent({
+  required BuildContext context,
   required String eventId,
   required String title,
   required String city,
@@ -636,7 +639,10 @@ ${AppTexts.t('events_share_text')}
 $link
 ''';
 
-  Share.share(text);
+  Share.share(
+    text,
+    sharePositionOrigin: EventShareOrigin.fromContext(context),
+  );
 }
 
 
@@ -869,30 +875,35 @@ SizedBox(
               ),
 
               const SizedBox(width: 8),
-              InkWell(
-  onTap: () {
-    _shareEvent(
-      eventId: eventId,
-      title: title,
-      city: city,
-      startAt: startAt,
-    );
-  },
-  borderRadius: BorderRadius.circular(999),
-  child: Container(
-    width: 34,
-    height: 34,
-    decoration: BoxDecoration(
-      color: const Color(0xFFF1F5F9),
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: const Icon(
-      Icons.ios_share_rounded,
-      size: 17,
-      color: _remdyBlue,
-    ),
-  ),
-),
+              Builder(
+                builder: (shareContext) {
+                  return InkWell(
+                    onTap: () {
+                      _shareEvent(
+                        context: shareContext,
+                        eventId: eventId,
+                        title: title,
+                        city: city,
+                        startAt: startAt,
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Icon(
+                        Icons.ios_share_rounded,
+                        size: 17,
+                        color: _remdyBlue,
+                      ),
+                    ),
+                  );
+                },
+              ),
 
 const SizedBox(width: 6),
 

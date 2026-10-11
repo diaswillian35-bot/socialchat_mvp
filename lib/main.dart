@@ -56,8 +56,9 @@ Future<void> main() async {
   tzdata.initializeTimeZones();
   EventTimezone.markReady();
 
-  // Vertical-only em celulares (antes de runApp; não altera o bootstrap Firebase).
-  await AppOrientation.lockToPortraitUp();
+  // iPhone: retrato via Info.plist. iPad: as quatro orientações do plist.
+  // Android continua só em retrato. Não trava o processo inteiro em portraitUp.
+  await AppOrientation.apply();
 
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   await PushService.init();

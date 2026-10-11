@@ -194,6 +194,7 @@ class _AuthGateState extends State<AuthGate> {
               ShareInService.pollNativePending();
               ShareExtensionSessionService.ensureSession();
               ShareExtensionIncomingService.consumePendingJobs();
+              PushService.flushPendingOpen();
             });
             return const MainShell();
           },

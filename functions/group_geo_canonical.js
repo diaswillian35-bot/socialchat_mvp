@@ -51,6 +51,16 @@ function encodeGroupGeohash(latitude, longitude, precision = 3) {
   return out;
 }
 
+function canonicalDisplayLocation(cityName, stateName, countryName, clientDisplay) {
+  const city = (cityName || "").toString().trim();
+  const sent = (clientDisplay || "").toString().trim();
+  const head = sent.split(",")[0].trim();
+  if (city && head && foldCityKey(head) === foldCityKey(city)) return sent;
+  return [city, (stateName || "").toString().trim(), (countryName || "").toString().trim()]
+    .filter(Boolean)
+    .join(", ");
+}
+
 function foldCityKey(value) {
   return (value || "")
     .toString()
@@ -120,9 +130,17 @@ function buildCanonicalGeoFields(scope, opts = {}) {
 
   const cityName = (place.cityName || "").toString().trim();
   const cityKey = foldCityKey(cityName);
-  const stateName = (opts.stateName || "").toString().trim();
-  const display =
-    (opts.displayLocation || "").toString().trim() || cityName;
+  const stateName = (
+    (place.stateName || "").toString().trim() ||
+    (opts.stateName || "").toString().trim()
+  );
+  const countryLabel = countryName || place.countryName || "";
+  const display = canonicalDisplayLocation(
+    cityName,
+    stateName,
+    countryLabel,
+    opts.displayLocation,
+  );
 
   if (scope === "city") {
     return {
@@ -199,6 +217,7 @@ function clientForgedRegionalGeo(client, canonical) {
 module.exports = {
   encodeGroupGeohash,
   foldCityKey,
+  canonicalDisplayLocation,
   buildCanonicalGeoFields,
   clientForgedRegionalGeo,
   REGION_RADIUS_KM,

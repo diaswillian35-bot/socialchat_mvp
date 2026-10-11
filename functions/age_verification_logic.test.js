@@ -27,7 +27,14 @@ test("rejects future, impossible, and excessively old dates", () => {
 });
 
 test("social push delivery requires verified age status", () => {
+  const policy = fs.readFileSync("push_delivery_logic.js", "utf8");
   const indexSource = fs.readFileSync("index.js", "utf8");
-  assert.match(indexSource,
-    /function pushAllowed[\s\S]*ageVerificationStatus !== "verified"/);
+  assert.match(
+    policy,
+    /function pushPolicyBlockCode[\s\S]*ageVerificationStatus !== "verified"/,
+  );
+  assert.match(
+    indexSource,
+    /function pushAllowed[\s\S]*pushPolicyBlockCode\(userData, kind\)/,
+  );
 });

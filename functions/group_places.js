@@ -3,6 +3,7 @@
 const {
   PLACES_CACHE_TTL_MS,
   parsePlaceDetailsResult,
+  placesCacheIsCurrent,
   assertTrustedCityPlace,
   normalizeCountryCode,
 } = require("./group_places_logic");
@@ -46,7 +47,11 @@ async function resolveTrustedCityPlace(opts) {
   if (cacheSnap.exists) {
     const cached = cacheSnap.data() || {};
     const cachedAt = Number(cached.cachedAtMs) || 0;
-    if (cachedAt && nowMs - cachedAt < PLACES_CACHE_TTL_MS && cached.payload) {
+    if (
+      cachedAt &&
+      nowMs - cachedAt < PLACES_CACHE_TTL_MS &&
+      placesCacheIsCurrent(cached.payload)
+    ) {
       const parsed = assertTrustedCityPlace(cached.payload, {
         expectedCountryCode,
       });

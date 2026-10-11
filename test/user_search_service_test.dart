@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:socialchat_mvp/services/international_chat_service.dart';
+import 'package:socialchat_mvp/services/remdy_launch_access.dart';
 import 'package:socialchat_mvp/services/user_search_service.dart';
 import 'package:socialchat_mvp/utils/user_search_normalize.dart';
 
@@ -193,14 +194,22 @@ void main() {
       );
     });
 
-    test('premium can start international', () {
+    test('free iOS launch blocks premium from opening another country', () {
+      expect(RemdyLaunchAccess.isFreeBrazilLaunch, isTrue);
       expect(
         InternationalChatService.needsPremiumToStartChat(
           senderData: {'countryCode': 'br', 'isPremium': true},
           recipientData: {'countryCode': 'ca'},
           conversationAlreadyExists: false,
         ),
-        false,
+        true,
+      );
+      expect(
+        InternationalChatService.canSendMessage(
+          senderData: {'countryCode': 'br', 'isPremium': true, 'isMaster': true},
+          recipientData: {'countryCode': 'ca'},
+        ),
+        isFalse,
       );
     });
 

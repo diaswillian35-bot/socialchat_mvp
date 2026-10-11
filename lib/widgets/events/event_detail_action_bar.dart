@@ -43,7 +43,7 @@ class EventDetailActionBar extends StatelessWidget {
 
   final VoidCallback? onFavorite;
   final VoidCallback? onParticipate;
-  final VoidCallback? onShare;
+  final void Function(BuildContext originContext)? onShare;
   final VoidCallback? onCalendar;
   final VoidCallback? onDirections;
 
@@ -81,7 +81,7 @@ class EventDetailActionBar extends StatelessWidget {
         highlighted: false,
         busy: shareBusy,
         enabled: onShare != null,
-        onTap: onShare,
+        onTapWithContext: onShare,
       ),
     ];
 
@@ -119,7 +119,8 @@ class _ActionChip extends StatelessWidget {
     required this.highlighted,
     required this.busy,
     required this.enabled,
-    required this.onTap,
+    this.onTap,
+    this.onTapWithContext,
     this.selected = false,
   });
 
@@ -130,6 +131,7 @@ class _ActionChip extends StatelessWidget {
   final bool busy;
   final bool enabled;
   final VoidCallback? onTap;
+  final void Function(BuildContext originContext)? onTapWithContext;
 
   @override
   Widget build(BuildContext context) {
@@ -149,14 +151,22 @@ class _ActionChip extends StatelessWidget {
 
     return Semantics(
       button: true,
-      enabled: enabled && !busy && onTap != null,
+      enabled: enabled && !busy && (onTap != null || onTapWithContext != null),
       label: label,
       selected: selected,
       child: Material(
         color: bg,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          onTap: (busy || onTap == null) ? null : onTap,
+          onTap: (busy || (onTap == null && onTapWithContext == null))
+              ? null
+              : () {
+                  if (onTapWithContext != null) {
+                    onTapWithContext!(context);
+                    return;
+                  }
+                  onTap?.call();
+                },
           borderRadius: BorderRadius.circular(14),
           child: Container(
             constraints: const BoxConstraints(minHeight: 64),

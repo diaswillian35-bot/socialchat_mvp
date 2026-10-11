@@ -10,8 +10,10 @@ import 'group_chat_page.dart';
 import 'hidden_groups_page.dart';
 import '../l10n/app_texts.dart';
 import '../widgets/remdy_keyboard_caps.dart';
+import '../services/conversation_unread.dart';
 import '../services/group_discovery_logic.dart';
 import '../services/group_discovery_service.dart';
+import '../services/group_geo.dart';
 import '../services/group_hidden_prefs_service.dart';
 import '../services/group_lifecycle_service.dart';
 import '../services/group_location_normalize.dart';
@@ -52,6 +54,7 @@ class GroupsListPageState extends State<GroupsListPage> {
 
   bool _showBanner = true;
   String _myCityKey = '';
+  String _myPlaceId = '';
   String _myCountryCode = '';
   double? _myCityLatitude;
   double? _myCityLongitude;
@@ -66,6 +69,10 @@ class GroupsListPageState extends State<GroupsListPage> {
   bool _isPremium = false;
 
   final GroupHiddenPrefsService _hiddenPrefs = GroupHiddenPrefsService();
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _memberUnreadSub;
+  final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
+      _discoverySubs = [];
+  final Set<GroupDiscoveryTab> _liveSeen = {};
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -93,9 +100,277 @@ class GroupsListPageState extends State<GroupsListPage> {
 
   @override
   void dispose() {
+    _memberUnreadSub?.cancel();
+    for (final sub in _discoverySubs) {
+      sub.cancel();
+    }
     _scrollC.dispose();
     _searchC.dispose();
     super.dispose();
+  }
+
+  /// Keeps the blue count on each group in sync with the same document the
+  /// red tab badge listens to. Opening this list does not mark anything read.
+  void _bindMemberUnread(String uid) {
+    _memberUnreadSub?.cancel();
+    _memberUnreadSub = FirebaseFirestore.instance
+        .collection('groups')
+        .where('members', arrayContains: uid)
+        .where('deleted', isEqualTo: false)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      final cache = _caches[GroupDiscoveryTab.mine]!;
+      final updates = <String, Map<String, dynamic>>{};
+      for (final doc in snap.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        data['id'] = doc.id;
+        updates[doc.id] = data;
+      }
+      final merged = GroupDiscoveryLogic.replaceMembershipSnapshot(
+        previous: cache.items,
+        updates: updates,
+      );
+      _publishLive(GroupDiscoveryTab.mine, merged, uid);
+    }, onError: (error) => _failTab(GroupDiscoveryTab.mine, error));
+  }
+
+  void _cancelDiscovery() {
+    for (final sub in _discoverySubs) {
+      sub.cancel();
+    }
+    _discoverySubs.clear();
+    _regionByQuery.clear();
+    _nearbyCityDocs = [];
+    _cityKeyDocs = [];
+  }
+
+  /// City, region and country lists follow the same documents the other
+  /// device writes. Membership stays on Mine, including a city that does not
+  /// match the profile.
+  void _bindDiscovery(String uid) {
+    _cancelDiscovery();
+    final country = GroupLocationNormalize.countryCode(_myCountryCode);
+    if (country.isEmpty) return;
+    final groups = FirebaseFirestore.instance.collection('groups');
+
+    if (_myCityKey.isNotEmpty) {
+      _discoverySubs.add(
+        groups
+            .where('deleted', isEqualTo: false)
+            .where('countryCode', isEqualTo: country)
+            .where('scope', isEqualTo: 'city')
+            .where('cityKey', isEqualTo: _myCityKey)
+            .orderBy('updatedAt', descending: true)
+            .limit(GroupDiscoveryLogic.pageSize)
+            .snapshots()
+            .listen(
+          (snap) {
+            _cityKeyDocs = [
+              for (final doc in snap.docs) {...doc.data(), 'id': doc.id},
+            ];
+            if (!mounted) return;
+            _publishCity(uid);
+          },
+          onError: (error) => _failTab(GroupDiscoveryTab.city, error),
+        ),
+      );
+    }
+
+    _discoverySubs.add(
+      groups
+          .where('deleted', isEqualTo: false)
+          .where('countryCode', isEqualTo: country)
+          .where('scope', isEqualTo: 'country')
+          .orderBy('updatedAt', descending: true)
+          .limit(GroupDiscoveryLogic.pageSize)
+          .snapshots()
+          .listen(
+        (snap) =>
+            _applyDiscoverySnapshot(GroupDiscoveryTab.country, snap, uid),
+        onError: (error) => _failTab(GroupDiscoveryTab.country, error),
+      ),
+    );
+
+    final batches = GroupGeo.geohashBatches(
+      latitude: _myCityLatitude,
+      longitude: _myCityLongitude,
+    );
+    _regionByQuery.clear();
+    for (final batch in batches) {
+      final key = batch.join(',');
+      _discoverySubs.add(
+        groups
+            .where('deleted', isEqualTo: false)
+            .where('countryCode', isEqualTo: country)
+            .where('scope', isEqualTo: 'region')
+            .where('regionCenterGeohash', whereIn: batch)
+            .orderBy('updatedAt', descending: true)
+            .limit(GroupDiscoveryLogic.pageSize)
+            .snapshots()
+            .listen(
+          (snap) {
+            _regionByQuery[key] = [
+              for (final doc in snap.docs) {...doc.data(), 'id': doc.id},
+            ];
+            if (!mounted) return;
+            _publishRegion(uid);
+          },
+          onError: (error) => _failTab(GroupDiscoveryTab.region, error),
+        ),
+      );
+    }
+
+    _discoverySubs.add(
+      groups
+          .where('deleted', isEqualTo: false)
+          .where('countryCode', isEqualTo: country)
+          .where('scope', isEqualTo: 'city')
+          .orderBy('updatedAt', descending: true)
+          .limit(GroupDiscoveryLogic.nearbyCityQueryLimit)
+          .snapshots()
+          .listen(
+        (snap) {
+          _nearbyCityDocs = [
+            for (final doc in snap.docs) {...doc.data(), 'id': doc.id},
+          ];
+          if (!mounted) return;
+          _publishCity(uid);
+          _publishRegion(uid);
+        },
+        onError: (error) {
+          _failTab(GroupDiscoveryTab.city, error);
+          _failTab(GroupDiscoveryTab.region, error);
+        },
+      ),
+    );
+  }
+
+  final Map<String, List<Map<String, dynamic>>> _regionByQuery = {};
+  List<Map<String, dynamic>> _nearbyCityDocs = [];
+  List<Map<String, dynamic>> _cityKeyDocs = [];
+
+  List<Map<String, dynamic>> _mergeDocs(
+    List<Map<String, dynamic>> first,
+    List<Map<String, dynamic>> second,
+  ) {
+    final seen = <String>{};
+    final out = <Map<String, dynamic>>[];
+    for (final data in [...first, ...second]) {
+      final id = (data['id'] ?? '').toString();
+      if (id.isEmpty || !seen.add(id)) continue;
+      out.add(data);
+    }
+    return out;
+  }
+
+  void _publishCity(String uid) {
+    _publishLive(
+      GroupDiscoveryTab.city,
+      GroupDiscoveryLogic.visibleDiscoveryFromDocs(
+        docs: _mergeDocs(_cityKeyDocs, _nearbyCityDocs),
+        tab: GroupDiscoveryTab.city,
+        uid: uid,
+        userCountryCode: _myCountryCode,
+        userCityKey: _myCityKey,
+        userPlaceId: _myPlaceId,
+        userCityLatitude: _myCityLatitude,
+        userCityLongitude: _myCityLongitude,
+        pendingIds: _pendingIds,
+      ),
+      uid,
+    );
+  }
+
+  void _publishRegion(String uid) {
+    final regional = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final list in _regionByQuery.values) {
+      for (final data in list) {
+        final id = (data['id'] ?? '').toString();
+        if (id.isEmpty || !seen.add(id)) continue;
+        regional.add(data);
+      }
+    }
+    final docs = <Map<String, dynamic>>[
+      ...regional,
+      for (final data in _nearbyCityDocs)
+        if (!seen.contains((data['id'] ?? '').toString())) data,
+    ];
+    _publishLive(
+      GroupDiscoveryTab.region,
+      GroupDiscoveryLogic.visibleDiscoveryFromDocs(
+        docs: docs,
+        tab: GroupDiscoveryTab.region,
+        uid: uid,
+        userCountryCode: _myCountryCode,
+        userCityKey: _myCityKey,
+        userPlaceId: _myPlaceId,
+        userCityLatitude: _myCityLatitude,
+        userCityLongitude: _myCityLongitude,
+        pendingIds: _pendingIds,
+      ),
+      uid,
+    );
+  }
+
+  void _applyDiscoverySnapshot(
+    GroupDiscoveryTab tab,
+    QuerySnapshot<Map<String, dynamic>> snap,
+    String uid,
+  ) {
+    if (!mounted) return;
+    final docs = <Map<String, dynamic>>[
+      for (final doc in snap.docs) {...doc.data(), 'id': doc.id},
+    ];
+    final items = GroupDiscoveryLogic.visibleDiscoveryFromDocs(
+      docs: docs,
+      tab: tab,
+      uid: uid,
+      userCountryCode: _myCountryCode,
+      userCityKey: _myCityKey,
+      userPlaceId: _myPlaceId,
+      userCityLatitude: _myCityLatitude,
+      userCityLongitude: _myCityLongitude,
+      pendingIds: _pendingIds,
+    );
+    _publishLive(tab, items, uid);
+  }
+
+  void _publishLive(
+    GroupDiscoveryTab tab,
+    List<GroupDiscoveryItem> items,
+    String uid,
+  ) {
+    if (!mounted) return;
+    final cache = _caches[tab]!;
+    _liveSeen.add(tab);
+    final changed = GroupDiscoveryLogic.listSurfaceChanged(
+      before: cache.items,
+      after: items,
+      uid: uid,
+    );
+    if (!changed && !cache.loading && cache.error == null && cache.loadedOnce) {
+      return;
+    }
+    setState(() {
+      if (changed) cache.items = items;
+      cache.loadedOnce = true;
+      cache.loading = false;
+      cache.error = null;
+    });
+  }
+
+  /// One tab can fail its index or permission check without clearing the
+  /// groups another tab already showed. Cached rows stay on screen.
+  void _failTab(GroupDiscoveryTab tab, Object error) {
+    if (!mounted) return;
+    final cache = _caches[tab]!;
+    setState(() {
+      cache.loading = false;
+      cache.loadedOnce = true;
+      cache.error = cache.items.isEmpty ? error : null;
+    });
   }
 
   Future<void> _loadProfile() async {
@@ -129,6 +404,7 @@ class GroupsListPageState extends State<GroupsListPage> {
         _myCityKey = GroupLocationNormalize.cityKey(
           data['cityKey'] ?? city,
         );
+        _myPlaceId = (data['placeId'] ?? '').toString().trim();
         _myCountryCode = code;
         _myCityLatitude = cityLat;
         _myCityLongitude = cityLng;
@@ -137,6 +413,8 @@ class GroupsListPageState extends State<GroupsListPage> {
         _hiddenIds = hidden;
         _profileLoaded = true;
       });
+      _bindMemberUnread(myUid);
+      _bindDiscovery(myUid);
       await _ensureTabLoaded(_tab, force: true);
     } catch (_) {
       if (mounted) {
@@ -152,6 +430,7 @@ class GroupsListPageState extends State<GroupsListPage> {
       uid: _uid ?? '',
       countryCode: _myCountryCode,
       cityKey: _myCityKey,
+      placeId: _myPlaceId,
       cityLatitude: _myCityLatitude,
       cityLongitude: _myCityLongitude,
       retryToken: _retryToken,
@@ -185,18 +464,21 @@ class GroupsListPageState extends State<GroupsListPage> {
       return;
     }
 
+    final live = _liveSeen.contains(tab);
     if (force) {
       // Evita spinner eterno / early-return quando um fetch anterior ficou preso.
       cache.loading = false;
-      cache.loadedOnce = false;
+      if (!live) cache.loadedOnce = false;
     }
 
     if (cache.cacheKey != key) {
-      cache.items = [];
+      if (!live) {
+        cache.items = [];
+        cache.loadedOnce = false;
+      }
       cache.cursor = null;
       cache.hasMore = true;
       cache.error = null;
-      cache.loadedOnce = false;
       cache.cacheKey = key;
     }
 
@@ -226,25 +508,33 @@ class GroupsListPageState extends State<GroupsListPage> {
 
     try {
       final page = await _fetchPage(tab, startAfter: null);
-      if (!mounted) return;
-      // Troca rápida de abas / retry: só aplica se a chave ainda for a mesma.
-      if (cache.cacheKey != key) return;
-
+      if (!mounted || cache.cacheKey != key) return;
+      final outcome = GroupDiscoveryLogic.completeListFetch(
+        liveSeen: _liveSeen.contains(tab),
+        failed: false,
+        hasItems: cache.items.isNotEmpty,
+      );
       setState(() {
-        cache.items = page.items;
-        cache.cursor = page.cursor;
-        cache.hasMore = page.hasMore;
-        cache.loading = false;
-        cache.loadedOnce = true;
-        cache.error = null;
+        if (outcome.applyRemotePage) {
+          cache.items = page.items;
+          cache.cursor = page.cursor;
+          cache.hasMore = page.hasMore;
+          cache.error = null;
+        }
+        cache.loading = outcome.loading;
+        cache.loadedOnce = outcome.loadedOnce;
       });
     } catch (e) {
-      if (!mounted) return;
-      if (cache.cacheKey != key) return;
+      if (!mounted || cache.cacheKey != key) return;
+      final outcome = GroupDiscoveryLogic.completeListFetch(
+        liveSeen: _liveSeen.contains(tab),
+        failed: true,
+        hasItems: cache.items.isNotEmpty,
+      );
       setState(() {
-        cache.loading = false;
-        cache.loadedOnce = true;
-        cache.error = e;
+        cache.loading = outcome.loading;
+        cache.loadedOnce = outcome.loadedOnce;
+        cache.error = outcome.showError ? e : null;
       });
     }
   }
@@ -869,13 +1159,7 @@ class GroupsListPageState extends State<GroupsListPage> {
   }
 
   int _readMyUnread(Map<String, dynamic> data, String myUid) {
-    final unreadRaw = data['unread'];
-    if (unreadRaw is Map && unreadRaw.containsKey(myUid)) {
-      final value = unreadRaw[myUid];
-      if (value is int) return value;
-      if (value is num) return value.toInt();
-    }
-    return 0;
+    return ConversationUnread.resolveMyUnread(data, myUid);
   }
 
   String _prettyCountry(String s) {
@@ -932,12 +1216,14 @@ class GroupsListPageState extends State<GroupsListPage> {
       final data = item.data;
       final name = (data['name'] ?? '').toString().toLowerCase();
       final bio = (data['bio'] ?? '').toString().toLowerCase();
-      final city =
-          (data['city'] ?? data['cityName'] ?? '').toString().toLowerCase();
+      final city = GroupLocationNormalize.cityDisplayName(data).toLowerCase();
+      final selected =
+          (data['displayLocation'] ?? '').toString().toLowerCase();
       final country = (data['country'] ?? '').toString().toLowerCase();
       return name.contains(q) ||
           bio.contains(q) ||
           city.contains(q) ||
+          selected.contains(q) ||
           country.contains(q);
     }).toList();
   }

@@ -1,16 +1,22 @@
-import 'dart:convert';
+import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/group_create_flow.dart';
 import '../services/group_creation_service.dart';
+import '../services/group_places_client.dart';
 import '../services/group_geo.dart';
+import '../services/group_settings_service.dart';
 import '../widgets/keyboard_dismiss.dart';
 import '../widgets/remdy_keyboard_caps.dart';
+import '../widgets/required_field.dart';
 import 'group_info_page.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 
 class CreateGroupPage extends StatefulWidget {
   const CreateGroupPage({super.key});
@@ -44,8 +50,14 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   final _bioC = TextEditingController();
 
   bool _loading = false;
-  bool _createdOnce = false;
+  bool _inFlight = false;
   String? _activeRequestId;
+  String? _boundSignature;
+  bool _cityReveal = false;
+  String _cityMessageKey = 'group_create_place_required';
+  XFile? _coverFile;
+  final _cityFocus = FocusNode();
+  final _cityAnchor = GlobalKey();
 
   String _selectedCountry = 'canada';
   String _cityName = '';
@@ -75,6 +87,12 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadProfileCity();
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
@@ -94,6 +112,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     _nameC.dispose();
     _cityC.dispose();
     _bioC.dispose();
+    _cityFocus.dispose();
     super.dispose();
   }
 
@@ -106,6 +125,115 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         margin: const EdgeInsets.all(12),
       ),
     );
+  }
+
+  String? _countryCodeForIso(String iso) {
+    final wanted = iso.trim().toUpperCase();
+    if (wanted.isEmpty) return null;
+    for (final country in _countries) {
+      if ((country['iso2'] ?? '').toUpperCase() == wanted) {
+        return country['code'];
+      }
+    }
+    return null;
+  }
+
+  Future<void> _loadProfileCity() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snap =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (!mounted) return;
+      final data = snap.data();
+      if (data == null) return;
+      if (_cityC.text.trim().isNotEmpty || _cityPlaceId.isNotEmpty) return;
+      final placeId = (data['placeId'] ?? '').toString().trim();
+      final cityName = (data['cityName'] ?? data['city'] ?? '').toString().trim();
+      final stateName = (data['stateName'] ?? '').toString().trim();
+      final display = (data['displayLocation'] ?? cityName).toString().trim();
+      final iso = (data['homeCountryCode'] ?? data['countryCode'] ?? '')
+          .toString()
+          .trim();
+      if (cityName.isEmpty && placeId.isEmpty) return;
+      final countryCode = _countryCodeForIso(iso);
+      final lat = data['cityLat'] ?? data['lat'];
+      final lng = data['cityLng'] ?? data['lng'];
+      setState(() {
+        if (countryCode != null) _selectedCountry = countryCode;
+        _cityName = cityName;
+        _stateName = stateName;
+        _displayLocation = display.isNotEmpty ? display : cityName;
+        _cityC.text = _displayLocation;
+        _cityPlaceId = placeId;
+        if (lat is num) _cityLatitude = lat.toDouble();
+        if (lng is num) _cityLongitude = lng.toDouble();
+      });
+    } catch (_) {}
+  }
+
+  void _applyCity({
+    required String placeId,
+    required String cityName,
+    required String stateName,
+    required String display,
+    double? latitude,
+    double? longitude,
+  }) {
+    _cityPlaceId = placeId;
+    _cityName = cityName;
+    _stateName = stateName;
+    _displayLocation = display;
+    _cityC.text = display.isNotEmpty ? display : cityName;
+    _cityLatitude = latitude;
+    _cityLongitude = longitude;
+    _cityReveal = false;
+  }
+
+  bool get _cityLooksInvalid {
+    if (_groupScope == 'country') return false;
+    return !GroupCreateFlow.resolveCity(
+      required: true,
+      typed: _cityC.text,
+      selectedPlaceId: _cityPlaceId,
+      selectedCityName: _cityName,
+      selectedStateName: _stateName,
+      selectedDisplay: _displayLocation,
+      suggestions: const [],
+      searched: false,
+    ).accepted;
+  }
+
+  Future<bool> _uploadCover(String groupId) async {
+    final file = _coverFile;
+    if (file == null) return true;
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? 'owner';
+      final ext = file.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('groups')
+          .child(groupId)
+          .child('avatar')
+          .child('group_avatar_$uid.$ext');
+      await ref.putFile(
+        File(file.path),
+        SettableMetadata(
+          contentType: ext == 'png' ? 'image/png' : 'image/jpeg',
+        ),
+      );
+      final url = await ref.getDownloadURL();
+      await GroupSettingsService.updateSettings(
+        groupId: groupId,
+        changes: {
+          'avatarUrl': url,
+          'avatarPath': ref.fullPath,
+        },
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   String _pretty(String s) {
@@ -155,75 +283,28 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
     final countryIso2 = _selectedCountryIso2();
 
-    final url = Uri.parse(
-      'https://maps.googleapis.com/maps/api/place/autocomplete/json'
-      '?input=${Uri.encodeComponent(q)}'
-      '&components=country:$countryIso2'
-      '&language=pt-BR'
-      '&key=$_googlePlacesApiKey',
+    final found = await GroupPlacesClient.search(
+      apiKey: _googlePlacesApiKey,
+      countryIso2: countryIso2,
+      input: q,
     );
-
-    final res = await http.get(url);
-    if (res.statusCode != 200) return [];
-
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final predictions = (data['predictions'] as List<dynamic>? ?? []);
-
-    return predictions
-        .map((p) {
-          final description = (p['description'] ?? '').toString();
-          final parts = description.split(',').map((e) => e.trim()).toList();
-
-          final cityName = parts.isNotEmpty ? parts[0] : '';
-          final stateName = parts.length >= 3 ? parts[parts.length - 2] : '';
-          final countryName = parts.isNotEmpty ? parts.last : '';
-
-          return _CitySuggestion(
-            cityName: cityName,
-            stateName: stateName,
-            countryName: countryName,
-            display: description,
-            placeId: (p['place_id'] ?? '').toString(),
-          );
-        })
-        .where((e) => e.cityName.isNotEmpty)
-        .toList();
+    return [
+      for (final item in found)
+        _CitySuggestion(
+          cityName: item.cityName,
+          stateName: item.stateName,
+          countryName: item.countryName,
+          display: item.display,
+          placeId: item.placeId,
+        ),
+    ];
   }
 
-  Future<Map<String, double>?> _getCityCoordinates(String placeId) async {
-    final id = placeId.trim();
-    if (id.isEmpty) return null;
-
-    final url = Uri.parse(
-      'https://maps.googleapis.com/maps/api/place/details/json'
-      '?place_id=${Uri.encodeComponent(id)}'
-      '&fields=geometry'
-      '&key=$_googlePlacesApiKey',
+  Future<Map<String, double>?> _getCityCoordinates(String placeId) {
+    return GroupPlacesClient.coordinates(
+      apiKey: _googlePlacesApiKey,
+      placeId: placeId,
     );
-
-    final res = await http.get(url);
-    if (res.statusCode != 200) return null;
-
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final result = data['result'];
-
-    if (result is! Map<String, dynamic>) return null;
-
-    final geometry = result['geometry'];
-    if (geometry is! Map<String, dynamic>) return null;
-
-    final location = geometry['location'];
-    if (location is! Map<String, dynamic>) return null;
-
-    final lat = location['lat'];
-    final lng = location['lng'];
-
-    if (lat is! num || lng is! num) return null;
-
-    return {
-      'latitude': lat.toDouble(),
-      'longitude': lng.toDouble(),
-    };
   }
 
   Future<_CitySuggestion?> _openCitySearch() async {
@@ -231,7 +312,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     List<_CitySuggestion> results = [];
     bool loading = false;
 
-    return showModalBottomSheet<_CitySuggestion>(
+    final picked = await showModalBottomSheet<_CitySuggestion>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -359,106 +440,239 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         );
       },
     );
+    final typed = searchC.text.trim();
+    searchC.dispose();
+    if (picked == null && typed.isNotEmpty && typed != _displayLocation.trim()) {
+      setState(() {
+        _cityC.text = typed;
+        _cityPlaceId = '';
+        _cityName = '';
+        _stateName = '';
+        _displayLocation = '';
+        _cityLatitude = null;
+        _cityLongitude = null;
+        _cityReveal = true;
+        _cityMessageKey = 'group_create_place_required';
+      });
+    }
+    return picked;
+  }
+
+  Future<void> _rejectCity(String messageKey) async {
+    setState(() {
+      _cityReveal = true;
+      _cityMessageKey = messageKey;
+    });
+    final anchor = _cityAnchor.currentContext;
+    if (anchor != null) {
+      await Scrollable.ensureVisible(
+        anchor,
+        alignment: 0.2,
+        duration: const Duration(milliseconds: 280),
+      );
+    }
+    _cityFocus.requestFocus();
+  }
+
+  Future<GroupCityDecision> _resolveCityForSubmit() async {
+    final preset = GroupCreateFlow.resolveCity(
+      required: _groupScope != 'country',
+      typed: _cityC.text,
+      selectedPlaceId: _cityPlaceId,
+      selectedCityName: _cityName,
+      selectedStateName: _stateName,
+      selectedDisplay: _displayLocation,
+      suggestions: const [],
+      searched: false,
+    );
+    if (preset.accepted || _groupScope == 'country') return preset;
+    if (_cityC.text.trim().isEmpty) return preset;
+    final found = await _searchCities(_cityC.text);
+    return GroupCreateFlow.resolveCity(
+      required: true,
+      typed: _cityC.text,
+      selectedPlaceId: '',
+      selectedCityName: '',
+      selectedStateName: '',
+      selectedDisplay: '',
+      suggestions: [
+        for (final item in found)
+          GroupCityCandidate(
+            cityName: item.cityName,
+            stateName: item.stateName,
+            countryName: item.countryName,
+            display: item.display,
+            placeId: item.placeId,
+          ),
+      ],
+      searched: true,
+    );
   }
 
   Future<void> _create() async {
-    if (_loading || _createdOnce) return;
+    if (!GroupCreateFlow.shouldStartSubmit(inFlight: _inFlight)) return;
+    _inFlight = true;
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
+      _inFlight = false;
       _toast(AppTexts.t('create_group_need_login'));
       return;
     }
 
     final name = _nameC.text.trim();
-    final city = _cityC.text.trim();
     final bio = _bioC.text.trim();
     final country = _selectedCountry.trim().toLowerCase();
 
-    if (name.isEmpty) return _toast(AppTexts.t('create_group_enter_name'));
+    if (name.isEmpty) {
+      _inFlight = false;
+      return _toast(AppTexts.t('create_group_enter_name'));
+    }
     if (name.length < 3) {
+      _inFlight = false;
       return _toast(AppTexts.t('create_group_name_too_short'));
     }
     if (name.length > 80) {
+      _inFlight = false;
       return _toast(AppTexts.t('group_edit_name_required'));
     }
     if (bio.length > 1000) {
-      return _toast(AppTexts.t('group_create_error'));
+      _inFlight = false;
+      return _toast(AppTexts.t('group_create_bio_too_long'));
     }
     if (country.isEmpty) {
+      _inFlight = false;
       return _toast(AppTexts.t('create_group_select_country'));
-    }
-    if (_groupScope != 'country' && city.isEmpty) {
-      return _toast(AppTexts.t('create_group_enter_city'));
-    }
-    if (_groupScope == 'region' &&
-        !GroupGeo.validCoordinates(_cityLatitude, _cityLongitude)) {
-      return _toast(AppTexts.t('create_group_region_coordinates_required'));
     }
 
     setState(() => _loading = true);
-    _activeRequestId ??= GroupCreationService.newRequestId();
-    final requestId = _activeRequestId!;
-
+    String? createdGroupId;
     try {
+      final cityDecision = await _resolveCityForSubmit();
+      if (!cityDecision.accepted) {
+        await _rejectCity(
+          cityDecision.messageKey ?? 'group_create_place_required',
+        );
+        return;
+      }
+      if (_groupScope != 'country') {
+        var latitude = _cityLatitude;
+        var longitude = _cityLongitude;
+        final samePlace = cityDecision.placeId == _cityPlaceId;
+        if (!samePlace ||
+            !GroupGeo.validCoordinates(latitude, longitude)) {
+          final coords = await _getCityCoordinates(cityDecision.placeId);
+          latitude = coords?['latitude'];
+          longitude = coords?['longitude'];
+        }
+        if (_groupScope == 'region' &&
+            !GroupGeo.validCoordinates(latitude, longitude)) {
+          _toast(AppTexts.t('create_group_region_coordinates_required'));
+          return;
+        }
+        setState(() {
+          _applyCity(
+            placeId: cityDecision.placeId,
+            cityName: cityDecision.cityName,
+            stateName: cityDecision.stateName,
+            display: cityDecision.display,
+            latitude: latitude,
+            longitude: longitude,
+          );
+        });
+      }
+
+      final signature = GroupCreateFlow.signature(
+        name: name,
+        scope: _groupScope,
+        placeId: _cityPlaceId,
+        country: country,
+        joinPolicy: _joinPolicy,
+      );
+      final requestId = GroupCreateFlow.requestIdFor(
+        currentId: _activeRequestId,
+        boundSignature: _boundSignature,
+        signature: signature,
+        mint: GroupCreationService.newRequestId,
+      );
+      _activeRequestId = requestId;
+      _boundSignature = signature;
+
       final groupCountryCode = _selectedCountryCode2();
-      final cityName = _cityName.isNotEmpty ? _cityName : city;
+      final cityName = _cityName.isNotEmpty ? _cityName : _cityC.text.trim();
       final isCountry = _groupScope == 'country';
       final isRegion = _groupScope == 'region';
       final regionGeohash =
           isRegion ? GroupGeo.geohash(_cityLatitude, _cityLongitude) : '';
 
+      final fields = <String, dynamic>{
+        'name': name,
+        'bio': bio,
+        'country': country,
+        'countryCode': groupCountryCode,
+        'scope': _groupScope,
+        'joinPolicy': _joinPolicy,
+      };
+      if (!isCountry) {
+        fields['city'] = cityName;
+        fields['cityName'] = cityName;
+        fields['stateName'] = _stateName;
+        fields['displayLocation'] =
+            _displayLocation.isNotEmpty ? _displayLocation : cityName;
+        fields['placeId'] = _cityPlaceId;
+        if (_cityLatitude != null) fields['latitude'] = _cityLatitude;
+        if (_cityLongitude != null) fields['longitude'] = _cityLongitude;
+      }
+      if (isRegion) {
+        fields['regionCenterCity'] = cityName;
+        fields['regionCenterCountryCode'] = groupCountryCode;
+        fields['regionCenterLat'] = _cityLatitude;
+        fields['regionCenterLng'] = _cityLongitude;
+        fields['regionRadiusKm'] = GroupGeo.regionRadiusKm;
+        fields['regionCenterGeohash'] = regionGeohash;
+      }
+
       final result = await GroupCreationService.createGroup(
         requestId: requestId,
-        fields: {
-          'name': name,
-          'bio': bio,
-          'country': country,
-          'countryCode': groupCountryCode,
-          'city': isCountry ? '' : cityName,
-          'cityName': isCountry ? '' : cityName,
-          'stateName': isCountry ? '' : _stateName,
-          'displayLocation': isCountry
-              ? country
-              : (_displayLocation.isNotEmpty ? _displayLocation : city),
-          'placeId': isCountry ? '' : _cityPlaceId,
-          'latitude': isCountry ? null : _cityLatitude,
-          'longitude': isCountry ? null : _cityLongitude,
-          'scope': _groupScope,
-          'regionKey': '',
-          'regionCenterCity': isRegion ? cityName : '',
-          'regionCenterCountryCode': isRegion ? groupCountryCode : '',
-          'regionCenterLat': isRegion ? _cityLatitude : null,
-          'regionCenterLng': isRegion ? _cityLongitude : null,
-          'regionRadiusKm': isRegion ? GroupGeo.regionRadiusKm : null,
-          'regionCenterGeohash': regionGeohash,
-          'joinPolicy': _joinPolicy,
-        },
+        fields: fields,
       );
 
-      final groupId = (result['groupId'] ?? '').toString().trim();
-      if (groupId.isEmpty) {
+      createdGroupId = (result['groupId'] ?? '').toString().trim();
+      if (createdGroupId.isEmpty) {
         throw Exception('missing groupId');
       }
 
-      _createdOnce = true;
+      final avatarOk = await _uploadCover(createdGroupId);
+      final finish = GroupCreateFlow.finish(
+        groupId: createdGroupId,
+        avatarFailed: !avatarOk,
+      );
       _activeRequestId = null;
-
+      _boundSignature = null;
       if (!mounted) return;
-
-      _toast(AppTexts.t('group_create_success'));
-
+      _toast(AppTexts.t(finish.toastKey));
       await Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => GroupInfoPage(groupId: groupId),
+          builder: (_) => GroupInfoPage(groupId: finish.groupId),
         ),
       );
     } on FirebaseFunctionsException catch (e) {
-      _toast(AppTexts.t(GroupCreationService.errorKey(e)));
+      if (createdGroupId == null) {
+        _toast(AppTexts.t(GroupCreationService.errorKey(e)));
+      }
     } catch (_) {
-      _toast(AppTexts.t('group_create_error'));
+      if (createdGroupId != null) {
+        final finish = GroupCreateFlow.finish(
+          groupId: createdGroupId,
+          avatarFailed: _coverFile != null,
+        );
+        _toast(AppTexts.t(finish.toastKey));
+      } else {
+        _toast(AppTexts.t('group_create_error'));
+      }
     } finally {
+      _inFlight = false;
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -589,38 +803,63 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                       _cityLongitude = null;
                       _cityPlaceId = '';
                       _cityC.clear();
+                      _cityReveal = false;
                     });
                   },
                 ),
                 const SizedBox(height: 12),
                 if (_groupScope != 'country')
-                  TextField(
-                    controller: _cityC,
-                    readOnly: true,
-                    textCapitalization: RemdyKeyboardCaps.none,
-                    textInputAction: TextInputAction.next,
-                    decoration: _dec(
-                      AppTexts.t('city'),
-                      hint: AppTexts.t('city_example'),
+                  KeyedSubtree(
+                    key: _cityAnchor,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _cityC,
+                          focusNode: _cityFocus,
+                          readOnly: true,
+                          textCapitalization: RemdyKeyboardCaps.none,
+                          textInputAction: TextInputAction.next,
+                          decoration: RequiredFieldChrome.apply(
+                            base: _dec(
+                              AppTexts.t('city'),
+                              hint: AppTexts.t('city_example'),
+                            ),
+                            pending: RequiredFieldChrome.reveal(
+                              invalid: _cityLooksInvalid,
+                              blurred: _cityReveal,
+                              submitAttempted: _cityReveal,
+                            ),
+                          ),
+                          onTap: () async {
+                            final result = await _openCitySearch();
+                            if (result == null) return;
+                            final coords =
+                                await _getCityCoordinates(result.placeId);
+                            if (!mounted) return;
+                            setState(() {
+                              _applyCity(
+                                placeId: result.placeId,
+                                cityName: result.cityName,
+                                stateName: result.stateName,
+                                display: result.display,
+                                latitude: coords?['latitude'],
+                                longitude: coords?['longitude'],
+                              );
+                            });
+                          },
+                        ),
+                        if (RequiredFieldChrome.reveal(
+                          invalid: _cityLooksInvalid,
+                          blurred: _cityReveal,
+                          submitAttempted: _cityReveal,
+                        ))
+                          RequiredPendingNotice(
+                            pendingLabel: AppTexts.t('field_pending'),
+                            message: AppTexts.t(_cityMessageKey),
+                          ),
+                      ],
                     ),
-                    onTap: () async {
-                      final result = await _openCitySearch();
-                      if (result == null) return;
-
-                      final coords = await _getCityCoordinates(result.placeId);
-
-                      setState(() {
-                        _cityName = result.cityName;
-                        _stateName = result.stateName;
-                        _displayLocation = result.display;
-                        _cityPlaceId = result.placeId;
-
-                        _cityLatitude = coords?['latitude'];
-                        _cityLongitude = coords?['longitude'];
-
-                        _cityC.text = result.display;
-                      });
-                    },
                   ),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -814,6 +1053,25 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                         ],
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _loading
+                      ? null
+                      : () async {
+                          final file = await ImagePicker().pickImage(
+                            source: ImageSource.gallery,
+                            imageQuality: 80,
+                          );
+                          if (file == null || !mounted) return;
+                          setState(() => _coverFile = file);
+                        },
+                  icon: const Icon(Icons.image_outlined),
+                  label: Text(
+                    _coverFile == null
+                        ? AppTexts.t('create_group_cover_optional')
+                        : AppTexts.t('create_group_cover_selected'),
                   ),
                 ),
                 const SizedBox(height: 12),

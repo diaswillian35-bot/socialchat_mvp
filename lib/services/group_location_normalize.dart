@@ -39,9 +39,41 @@ class GroupLocationNormalize {
     return 'unknown';
   }
 
+  /// Visible city. The saved selection in `displayLocation` wins when the
+  /// stored city was rewritten to a parent locality such as Toronto.
   static String cityDisplayName(Map<String, dynamic> data) {
-    final city = (data['city'] ?? data['cityName'] ?? '').toString().trim();
-    return city;
+    final stored = (data['city'] ?? data['cityName'] ?? '').toString().trim();
+    return selectedPlaceLabel(data, stored: stored);
+  }
+
+  static String selectedPlaceLabel(
+    Map<String, dynamic> data, {
+    required String stored,
+  }) {
+    final head = suggestionHead(data['displayLocation']);
+    if (head.isEmpty) return stored;
+    if (stored.isEmpty) return head;
+    if (cityKey(head) != cityKey(stored)) return head;
+    return stored;
+  }
+
+  /// Primeiro segmento da sugestão do Places. Não inclui a localidade-mãe.
+  static String suggestionHead(dynamic displayLocation) {
+    return (displayLocation ?? '').toString().split(',').first.trim();
+  }
+
+  /// Cidade usada na descoberta. A sugestão escolhida vence um cityKey que
+  /// gravou a localidade-mãe (York escolhido, cityKey toronto).
+  /// Sem sugestão, permanece o cityKey armazenado. Não infere cidade por
+  /// proximidade.
+  static String discoveryCityKey(Map<String, dynamic> data) {
+    final stored = cityKey(
+      data['cityKey'] ?? data['city'] ?? data['cityName'],
+    );
+    final selected = cityKey(suggestionHead(data['displayLocation']));
+    if (selected.isNotEmpty && selected != stored) return selected;
+    if (selected.isNotEmpty) return selected;
+    return stored;
   }
 
   static String _fold(String input) {

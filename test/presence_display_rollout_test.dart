@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -156,18 +157,37 @@ void main() {
       expect(src.contains('shouldAttemptNewPath'), isTrue);
     });
 
-    test('Rules locais permitem heartbeat; HEAD (publicado) não', () {
+    test('keep-alive canônico é connections; heartbeat separado segue negado', () {
+      // O timer de 45s renova presence/{uid}/connections/{id}.
+      // presence/{uid}/heartbeat é só um probe (no máximo 1 por sessão) e
+      // separateHeartbeatIsPrimary permanece false. As Rules publicadas e as
+      // locais são as mesmas: sem o nó heartbeat e sem escrita de cliente em
+      // presenceDisplayCounters. Abrir esses caminhos aqui seria uma escrita
+      // nova que a presença atual não usa.
       final local = File('database.rules.json').readAsStringSync();
-      expect(local.contains('"heartbeat"'), isTrue);
-      expect(local.contains('presenceDisplayCounters'), isTrue);
+      final rules = jsonDecode(local) as Map<String, dynamic>;
+      final root = rules['rules'] as Map<String, dynamic>;
+      expect(root['.write'], false);
+      expect(root.containsKey('presenceDisplayCounters'), isFalse);
 
-      // Simula rules publicadas (sem heartbeat / display) via git HEAD.
+      final presence = root['presence'] as Map<String, dynamic>;
+      final uid = presence[r'$uid'] as Map<String, dynamic>;
+      expect(uid.containsKey('heartbeat'), isFalse);
+      expect(uid.containsKey('.write'), isFalse);
+      final connection = ((uid['connections'] as Map)[r'$connectionId'] as Map);
+      expect(connection['.write'], 'auth != null && auth.uid == \$uid');
+      expect(connection['.validate'], 'newData.isNumber()');
+
+      final counters = root['presenceCounters'] as Map<String, dynamic>;
+      expect(counters['.write'], false);
+      final online = root['presenceOnline'] as Map<String, dynamic>;
+      final onlineUid = online[r'$uid'] as Map<String, dynamic>;
+      expect(onlineUid['.write'], false);
+
       final head = Process.runSync('git', ['show', 'HEAD:database.rules.json']);
       expect(head.exitCode, 0);
-      final published = head.stdout as String;
-      expect(published.contains('"heartbeat"'), isFalse);
-      expect(published.contains('presenceDisplayCounters'), isFalse);
-      // Logo: write em presence/{uid}/heartbeat nas Rules atuais = permission-denied.
+      expect(head.stdout, local);
+      expect(PresenceRtdbConfig.separateHeartbeatIsPrimary, isFalse);
     });
   });
 

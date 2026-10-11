@@ -8,12 +8,20 @@ class PushTokenSync {
 
   static const bundleIdIos = 'com.remdy.app';
 
+  /// Written on the token document so a rewrite is distinguishable from
+  /// an older registration. Keep in step with pubspec build number.
+  static const clientBuild = '36';
+
   /// Local label of the APNs environment last successfully registered.
   /// Never store the token itself.
   static const apsEnvironmentPrefsKey = 'push_aps_environment';
 
   /// UID that currently owns the device push registration. Not a token.
   static const pushOwnerUidPrefsKey = 'push_owner_uid';
+
+  /// Last client build that confirmed a Firestore token document.
+  /// An in-place update with a new build refreshes the registration once.
+  static const registeredBuildPrefsKey = 'push_registered_build';
 
   /// APNs environment implied by build mode.
   /// Release/TestFlight/App Store → production. Debug/Profile → development.
@@ -91,6 +99,53 @@ class PushTokenSync {
     return '${t.substring(0, 6)}…${t.substring(t.length - 4)} (len=${t.length})';
   }
 
+  /// Bounded waits after a cold start, resume, or APNs callback.
+  /// The last delay is the final try; a null next delay means stop.
+  static const List<Duration> iosSyncRetryDelays = <Duration>[
+    Duration(milliseconds: 500),
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 4),
+    Duration(seconds: 8),
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+  ];
+
+  /// Delay before the next attempt. [failedAttempts] is how many tries
+  /// already returned not-ready. Null means the budget is exhausted.
+  static Duration? nextIosSyncDelay(int failedAttempts) {
+    if (failedAttempts < 0 || failedAttempts >= iosSyncRetryDelays.length) {
+      return null;
+    }
+    return iosSyncRetryDelays[failedAttempts];
+  }
+
+  /// This install must mint a registration when no confirmed build is stored
+  /// or the stored build is older than this binary.
+  static bool shouldRefreshRegistrationForBuild({
+    required String? storedBuild,
+    required String currentBuild,
+  }) {
+    final current = currentBuild.trim();
+    if (current.isEmpty) return false;
+    return (storedBuild ?? '').trim() != current;
+  }
+
+  /// Delete the cached FCM token only once APNs is in hand and the stored
+  /// environment is missing or different. Deleting before APNs exists drops
+  /// the only registration and the short poll never writes a replacement.
+  static bool shouldDeleteCachedFcmToken({
+    required String? storedEnvironment,
+    required String currentEnvironment,
+    required bool apnsReady,
+  }) {
+    if (!apnsReady) return false;
+    return shouldRotateFcmToken(
+      storedEnvironment: storedEnvironment,
+      currentEnvironment: currentEnvironment,
+    );
+  }
+
   /// Cached FCM token must be discarded when its APNs environment is unknown
   /// or different from this build. Do not relabel the same token in place.
   static bool shouldRotateFcmToken({
@@ -127,6 +182,57 @@ class PushTokenSync {
     final current = currentUid.trim();
     if (previous.isEmpty || current.isEmpty) return false;
     return previous != current;
+  }
+
+  /// This device may remove only its own iOS registration.
+  /// Android docs and a different APNs environment stay.
+  static List<String> iosAssociationDocsToRemove({
+    required String environment,
+    required Iterable<Map<String, String?>> docs,
+  }) {
+    final env = environment.trim().toLowerCase();
+    final out = <String>[];
+    for (final d in docs) {
+      final id = (d['id'] ?? '').trim();
+      if (id.isEmpty) continue;
+      final platform = (d['platform'] ?? '').trim().toLowerCase();
+      if (platform == 'android') continue;
+      if (platform.isNotEmpty && platform != 'ios' && platform != 'unknown') {
+        continue;
+      }
+      final docEnv = (d['apsEnvironment'] ?? '').trim().toLowerCase();
+      if (docEnv.isEmpty || docEnv == env) out.add(id);
+    }
+    return out;
+  }
+
+  static String maskUid(String? uid) {
+    final value = (uid ?? '').trim();
+    if (value.isEmpty) return '-';
+    if (value.length < 8) return 'short';
+    return '${value.substring(0, 6)}…';
+  }
+
+  /// One safe line. Long unbroken values are redacted so a token cannot leak.
+  static String formatPushSyncLog({
+    required String phase,
+    Map<String, String> fields = const {},
+  }) {
+    final parts = <String>['RemdyPush', 'phase=$phase'];
+    for (final entry in fields.entries) {
+      parts.add('${entry.key}=${sanitizeLogField(entry.value)}');
+    }
+    return parts.join(' ');
+  }
+
+  static String sanitizeLogField(String? value) {
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return '-';
+    if (v.length >= 20 && !v.contains(' ') && !v.contains('=')) {
+      return 'redacted';
+    }
+    if (v.length > 48) return v.substring(0, 48);
+    return v;
   }
 
   static String bundleIdForPlatform(String platform) {
