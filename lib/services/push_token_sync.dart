@@ -10,7 +10,7 @@ class PushTokenSync {
 
   /// Written on the token document so a rewrite is distinguishable from
   /// an older registration. Keep in step with pubspec build number.
-  static const clientBuild = '36';
+  static const clientBuild = '37';
 
   /// Local label of the APNs environment last successfully registered.
   /// Never store the token itself.

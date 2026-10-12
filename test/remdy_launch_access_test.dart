@@ -209,8 +209,8 @@ void main() {
       expect(en, contains('"launch_content_unavailable"'));
     });
 
-    test('pubspec is 1.0.4+36', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+36'));
+    test('pubspec is 1.0.4+37', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+37'));
     });
   });
 }

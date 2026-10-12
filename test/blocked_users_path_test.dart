@@ -89,7 +89,7 @@ void main() {
     expect(AppTexts.current.get('blocked_users_title'), 'Blocked users');
   });
 
-  test('pubspec stays 1.0.4+36', () {
-    expect(source('pubspec.yaml'), contains('version: 1.0.4+36'));
+  test('pubspec stays 1.0.4+37', () {
+    expect(source('pubspec.yaml'), contains('version: 1.0.4+37'));
   });
 }

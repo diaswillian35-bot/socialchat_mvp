@@ -358,7 +358,7 @@ void main() {
     expect(
       PushTokenSync.shouldRefreshRegistrationForBuild(
         storedBuild: '35',
-        currentBuild: '36',
+        currentBuild: '37',
       ),
       isTrue,
     );
@@ -369,7 +369,7 @@ void main() {
       ),
       isFalse,
     );
-    expect(PushTokenSync.clientBuild, '36');
+    expect(PushTokenSync.clientBuild, '37');
   });
 
   test('iOS sync retries are bounded', () {

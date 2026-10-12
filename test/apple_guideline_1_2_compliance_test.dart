@@ -248,8 +248,8 @@ void main() {
   });
 
   group('Apple 1.2 — versioning', () {
-    test('ships 1.0.4+36 after 1.0.4 (34) still exposed Premium rewards', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+36'));
+    test('ships 1.0.4+37 after 1.0.4 (34) still exposed Premium rewards', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+37'));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+33')));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+32')));
       expect(source('pubspec.yaml'), isNot(contains('version: 1.0.4+31')));
