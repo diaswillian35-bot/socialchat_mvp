@@ -15,6 +15,7 @@ import 'email_verification_page.dart';
 import '../l10n/app_texts.dart';
 import '../widgets/keyboard_safe_body.dart';
 import '../widgets/keyboard_dismiss.dart';
+import '../widgets/password_visibility_button.dart';
 import '../widgets/remdy_keyboard_caps.dart';
 import 'terms_page.dart';
 import 'privacy_page.dart';
@@ -357,18 +358,19 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _forgotPassword() async {
-    final email = _emailC.text.trim().toLowerCase();
-
-    if (email.isEmpty) return _toast("Digite seu e-mail primeiro.");
-    if (!_isValidEmail(email)) return _toast("Digite um e-mail válido.");
-
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      _toast("Enviei um e-mail para redefinir sua senha.");
-    } on FirebaseAuthException catch (e) {
-      _toast(e.message ?? "Erro ao enviar e-mail.");
-    }
+  void _togglePassword(TextEditingController controller, bool hidden) {
+    PasswordFieldCursor.toggle(
+      controller: controller,
+      applyToggle: () {
+        setState(() {
+          if (identical(controller, _passC)) {
+            _hidePass = !hidden;
+          } else {
+            _hideConfirm = !hidden;
+          }
+        });
+      },
+    );
   }
 
   Future<void> _loginGoogle() async {
@@ -636,11 +638,11 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: InputDecoration(
                       labelText: t.get('password'),
                       border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        onPressed: () => setState(() => _hidePass = !_hidePass),
-                        icon: Icon(
-                          _hidePass ? Icons.visibility_off : Icons.visibility,
-                        ),
+                      suffixIcon: PasswordVisibilityButton(
+                        obscured: _hidePass,
+                        showLabel: t.get('password_show'),
+                        hideLabel: t.get('password_hide'),
+                        onPressed: () => _togglePassword(_passC, _hidePass),
                       ),
                     ),
                   ),
@@ -655,15 +657,12 @@ class _LoginPageState extends State<LoginPage> {
                       decoration: InputDecoration(
                         labelText: t.get('confirm_password'),
                         border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          onPressed: () => setState(
-                            () => _hideConfirm = !_hideConfirm,
-                          ),
-                          icon: Icon(
-                            _hideConfirm
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                          ),
+                        suffixIcon: PasswordVisibilityButton(
+                          obscured: _hideConfirm,
+                          showLabel: t.get('password_show'),
+                          hideLabel: t.get('password_hide'),
+                          onPressed: () =>
+                              _togglePassword(_confirmC, _hideConfirm),
                         ),
                       ),
                     ),

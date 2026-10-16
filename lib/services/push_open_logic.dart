@@ -7,6 +7,7 @@ class PushOpenTarget {
     this.otherUid = '',
     this.groupId = '',
     this.eventId = '',
+    this.placeId = '',
     this.actorUid = '',
     this.displayName = '',
     this.shellIndex = 0,
@@ -18,6 +19,7 @@ class PushOpenTarget {
   final String otherUid;
   final String groupId;
   final String eventId;
+  final String placeId;
   final String actorUid;
   final String displayName;
 
@@ -29,7 +31,7 @@ class PushOpenTarget {
   static const none = PushOpenTarget(kind: PushOpenKind.none, dedupeKey: '');
 }
 
-enum PushOpenKind { none, chat, groupChat, groupInfo, groupTab, event }
+enum PushOpenKind { none, chat, groupChat, groupInfo, groupTab, event, place }
 
 enum PushOpenSource { foregroundLocal, background, coldStart }
 
@@ -84,11 +86,11 @@ class PushOpenParser {
   }) {
     final type = (data['type'] ?? '').toString().trim();
     final conversationId = (data['conversationId'] ?? '').toString().trim();
-    final otherUid = (data['otherUid'] ?? data['senderId'] ?? '')
-        .toString()
-        .trim();
+    final otherUid =
+        (data['otherUid'] ?? data['senderId'] ?? '').toString().trim();
     final groupId = (data['groupId'] ?? '').toString().trim();
     final eventId = (data['eventId'] ?? '').toString().trim();
+    final placeId = (data['placeId'] ?? '').toString().trim();
     final actorUid = (data['senderId'] ??
             data['fromUid'] ??
             data['commentAuthorUid'] ??
@@ -96,13 +98,16 @@ class PushOpenParser {
             '')
         .toString()
         .trim();
-    final displayName = (data['otherName'] ?? data['groupName'] ?? '')
-        .toString()
-        .trim();
+    final displayName =
+        (data['otherName'] ?? data['groupName'] ?? '').toString().trim();
 
     PushOpenKind kind = PushOpenKind.none;
     var shellIndex = 0;
-    if (_isEvent(type)) {
+    if (type == 'place_review' || type == 'place_reply') {
+      if (!isSafeId(placeId)) return PushOpenTarget.none;
+      kind = PushOpenKind.place;
+      shellIndex = 4;
+    } else if (_isEvent(type)) {
       if (!isSafeId(eventId)) return PushOpenTarget.none;
       kind = PushOpenKind.event;
       shellIndex = 3;
@@ -131,7 +136,7 @@ class PushOpenParser {
     final mid = (messageId ?? '').trim();
     final dedupeKey = mid.isNotEmpty
         ? 'm:$mid'
-        : 't:$type|c:$conversationId|g:$groupId|e:$eventId|o:$otherUid';
+        : 't:$type|c:$conversationId|g:$groupId|e:$eventId|p:$placeId|o:$otherUid';
     return PushOpenTarget(
       kind: kind,
       dedupeKey: dedupeKey,
@@ -139,6 +144,7 @@ class PushOpenParser {
       otherUid: otherUid,
       groupId: groupId,
       eventId: eventId,
+      placeId: placeId,
       actorUid: isSafeId(actorUid) ? actorUid : '',
       displayName: displayName,
       shellIndex: shellIndex,
@@ -185,6 +191,7 @@ class PushOpenParser {
       'hasConversation': target.conversationId.isEmpty ? '0' : '1',
       'hasGroup': target.groupId.isEmpty ? '0' : '1',
       'hasEvent': target.eventId.isEmpty ? '0' : '1',
+      'hasPlace': target.placeId.isEmpty ? '0' : '1',
     };
   }
 }

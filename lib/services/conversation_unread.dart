@@ -13,11 +13,11 @@ class ConversationUnread {
     if (unreadRaw is Map && unreadRaw.containsKey(uid)) {
       return _asInt(unreadRaw[uid]);
     }
-    // Production group writes used set(merge) with a dotted key, which stores
-    // a top-level field named "unread.<uid>" instead of nested unread.<uid>.
+    // set(merge) with a dotted key stores a top-level field named
+    // "unread.<uid>" (or "unread. <uid>" when a space was interpolated).
     // An explicit nested 0 still wins; the literal field is only a fallback.
-    final literal = data['unread.$uid'];
-    if (literal != null) return _asInt(literal);
+    final literal = _literalUnread(data, uid);
+    if (literal != null) return literal;
     final countRaw = data['unreadCount'];
     if (countRaw is Map && countRaw.containsKey(uid)) {
       return _asInt(countRaw[uid]);
@@ -37,6 +37,14 @@ class ConversationUnread {
       if (resolveMyUnread(data, uid) > 0) total++;
     }
     return total;
+  }
+
+  static int? _literalUnread(Map<String, dynamic> data, String uid) {
+    for (final key in <String>['unread.$uid', 'unread. $uid']) {
+      if (!data.containsKey(key) || data[key] == null) continue;
+      return _asInt(data[key]);
+    }
+    return null;
   }
 
   static int _asInt(dynamic value) {

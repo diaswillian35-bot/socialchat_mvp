@@ -59,7 +59,8 @@ void main() {
 
   test('invalid payload does not become a route', () {
     expect(
-      PushOpenParser.parse({'type': 'chat', 'conversationId': conversation}).kind,
+      PushOpenParser.parse({'type': 'chat', 'conversationId': conversation})
+          .kind,
       PushOpenKind.none,
     );
     expect(
@@ -75,6 +76,22 @@ void main() {
     );
     expect(PushOpenParser.parse({'type': 'unknown'}).kind, PushOpenKind.none);
     expect(PushOpenParser.logFields(PushOpenTarget.none)['kind'], 'none');
+  });
+
+  test('avaliação e resposta de local abrem a ficha certa', () {
+    for (final type in ['place_review', 'place_reply']) {
+      final target = PushOpenParser.parse({
+        'type': type,
+        'placeId': 'plc_campo_mourao_1',
+      });
+      expect(target.kind, PushOpenKind.place);
+      expect(target.placeId, 'plc_campo_mourao_1');
+      expect(target.shellIndex, 4);
+    }
+    expect(
+      PushOpenParser.parse({'type': 'place_review'}).kind,
+      PushOpenKind.none,
+    );
   });
 
   test('local payload round-trips names without leaking into the log', () {

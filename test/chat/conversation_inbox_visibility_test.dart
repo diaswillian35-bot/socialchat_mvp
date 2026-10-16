@@ -104,8 +104,24 @@ void main() {
       expect(patch.containsKey('lastMessageAt'), isTrue);
       expect(patch.containsKey('updatedAt'), isTrue);
       expect(patch['unread.$me'], 0);
+      expect(patch.containsKey('unread.\$mom'), isFalse);
       expect(patch.containsKey('hiddenFor'), isTrue);
       expect(patch.containsKey('participants'), isFalse);
+    });
+
+    test('summary update writes the nested path and does not set a literal field', () {
+      final sources = [
+        File('lib/pages/chat_page.dart').readAsStringSync(),
+        File('lib/services/outgoing_text_message_service.dart').readAsStringSync(),
+        File('lib/services/outgoing_image_message_service.dart').readAsStringSync(),
+      ];
+      for (final source in sources) {
+        final at = source.indexOf('parentSummaryAfterRealMessage(');
+        expect(at, greaterThan(0));
+        final head = source.substring(at - 80, at);
+        expect(head.contains('update('), isTrue);
+        expect(head.contains('set('), isFalse);
+      }
     });
 
     test('list and send paths unhide parent hiddenFor, not message docs', () {

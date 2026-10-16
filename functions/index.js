@@ -161,6 +161,26 @@ exports.searchUsers = socialOnCall(
 const { fetchLinkPreview } = require("./link_preview");
 exports.fetchLinkPreview = fetchLinkPreview;
 
+// Locais build 38. Implementado localmente; não publicar enquanto a flag do
+// cliente estiver desligada e o pacote 38 não for autorizado.
+const placeActions = require("./place_actions");
+exports.submitPlaceReview = socialOnCall(
+  { region: "us-central1" },
+  placeActions.submitReviewHandler,
+);
+exports.replyPlaceReview = socialOnCall(
+  { region: "us-central1" },
+  placeActions.replyHandler,
+);
+exports.claimPlaceForAccount = socialOnCall(
+  { region: "us-central1" },
+  placeActions.claimHandler,
+);
+exports.listPlaceReviews = socialOnCall(
+  { region: "us-central1" },
+  placeActions.listReviewsHandler,
+);
+
 const {
   assertUserCanUseRemi,
   validateMessageText: remiValidateMessageText,
@@ -321,6 +341,8 @@ const {
   shouldSkipTriggerUnreadIncrement,
   sanitizeUnreadErrorCode,
   buildDmUnreadUpdatePairs,
+  buildDmLiteralDeleteSteps,
+  confirmDmUnreadAfterCommit,
   appendDmUnreadArgs,
   firestoreDmUnreadAdapters,
 } = require("./private_message_unread_logic");
@@ -795,11 +817,6 @@ exports.onPrivateMessageCreated = onDocumentCreated(
         targetUids,
       );
 
-      const unreadBefore = {};
-      for (const uid of targetUids) {
-        unreadBefore[uid] = unreadFromMap(conv.unread, uid);
-      }
-
       /** @type {'already_processed'|'callable_applied'|'trigger_applied'} */
       let mode = "trigger_applied";
 
@@ -808,6 +825,13 @@ exports.onPrivateMessageCreated = onDocumentCreated(
       mode = await db.runTransaction(async (tx) => {
         const processedSnap = await tx.get(processedRef);
         if (processedSnap.exists) {
+          const cleanup = [];
+          appendDmUnreadArgs(
+            cleanup,
+            buildDmLiteralDeleteSteps([senderId, ...targetUids]),
+            firestoreDmUnreadAdapters(admin),
+          );
+          if (cleanup.length) tx.update(convRef, ...cleanup);
           return "already_processed";
         }
 
@@ -824,7 +848,24 @@ exports.onPrivateMessageCreated = onDocumentCreated(
         };
 
         if (skipIncrement) {
-          tx.set(convRef, summaryPatch, { merge: true });
+          const skipArgs = [
+            "lastMessage",
+            summaryPatch.lastMessage,
+            "lastMessageType",
+            summaryPatch.lastMessageType,
+            "lastMessageAt",
+            summaryPatch.lastMessageAt,
+            "updatedAt",
+            summaryPatch.updatedAt,
+            "hiddenFor",
+            summaryPatch.hiddenFor,
+          ];
+          appendDmUnreadArgs(
+            skipArgs,
+            buildDmLiteralDeleteSteps([senderId, ...targetUids]),
+            firestoreDmUnreadAdapters(admin),
+          );
+          tx.update(convRef, ...skipArgs);
           tx.set(processedRef, {
             conversationId,
             messageId,
@@ -872,13 +913,10 @@ exports.onPrivateMessageCreated = onDocumentCreated(
 
       const afterSnap = await convRef.get();
       const afterData = afterSnap.data() || {};
-      const unreadAfter = {};
-      let unreadOk = true;
-      for (const uid of targetUids) {
-        const v = unreadFromMap(afterData.unread, uid);
-        unreadAfter[uid] = v;
-        if (v < 1) unreadOk = false;
-      }
+      const recipientUnread = targetUids.map((uid) =>
+        unreadFromMap(afterData.unread, uid),
+      );
+      const decision = confirmDmUnreadAfterCommit({ mode });
 
       console.log(
         JSON.stringify({
@@ -892,63 +930,13 @@ exports.onPrivateMessageCreated = onDocumentCreated(
             ? `${appliedMeta.recipientUid.slice(0, 6)}…`
             : null,
           skipIncrement,
-          unreadBefore,
-          unreadAfter,
-          unreadOk,
+          recipientUnread,
+          incrementAgain: decision.incrementAgain,
+          sendPush: decision.sendPush,
         }),
       );
 
-      if (!unreadOk) {
-        try {
-          const repairArgs = [];
-          for (const uid of targetUids) {
-            if (unreadFromMap(afterData.unread, uid) < 1) {
-              repairArgs.push(
-                new admin.firestore.FieldPath("unread", uid),
-                admin.firestore.FieldValue.increment(1),
-              );
-              repairArgs.push(
-                new admin.firestore.FieldPath(`unread.${uid}`),
-                admin.firestore.FieldValue.delete(),
-              );
-            }
-          }
-          if (repairArgs.length) {
-            await convRef.update(...repairArgs);
-          }
-          const repaired = (await convRef.get()).data() || {};
-          unreadOk = targetUids.every(
-            (uid) => unreadFromMap(repaired.unread, uid) >= 1,
-          );
-          console.log(
-            JSON.stringify({
-              tag: "dm_unread_repair",
-              conversationId,
-              messageId,
-              unreadOk,
-            }),
-          );
-        } catch (repairErr) {
-          console.error(
-            JSON.stringify({
-              tag: "dm_unread_repair_error",
-              conversationId,
-              code: sanitizeUnreadErrorCode(repairErr),
-            }),
-          );
-          unreadOk = false;
-        }
-      }
-
-      if (!unreadOk) {
-        console.error(
-          JSON.stringify({
-            tag: "dm_unread_failed_skip_push",
-            conversationId,
-            messageId,
-            code: "unread_not_confirmed",
-          }),
-        );
+      if (!decision.sendPush) {
         return;
       }
 

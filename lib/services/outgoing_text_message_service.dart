@@ -364,14 +364,13 @@ class OutgoingTextMessageService {
         throw StateError('conversation missing');
       }
       // Server owns peer unread (+1). Client only clears own counter.
-      tx.set(
+      tx.update(
         convDoc,
         ConversationInboxVisibility.parentSummaryAfterRealMessage(
           lastMessage: lastMessage,
           myUid: myUid,
           otherUid: otherUid,
         ),
-        SetOptions(merge: true),
       );
     });
   }

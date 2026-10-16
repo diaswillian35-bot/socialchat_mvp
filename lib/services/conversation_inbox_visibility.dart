@@ -42,6 +42,9 @@ class ConversationInboxVisibility {
     return FieldValue.arrayRemove(uids);
   }
 
+  /// Apply with [DocumentReference.update], never [DocumentReference.set].
+  /// `set(merge)` stores `unread.<uid>` as a literal field name. `update`
+  /// writes the nested map entry and leaves the other participant alone.
   static Map<String, dynamic> parentSummaryAfterRealMessage({
     required String lastMessage,
     required String myUid,

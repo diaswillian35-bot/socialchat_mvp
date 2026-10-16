@@ -154,13 +154,12 @@ class OutgoingImageMessageService {
         try {
           label = AppTexts.current.get('chat_photo_label');
         } catch (_) {}
-        await _db.collection('conversations').doc(conversationId).set(
+        await _db.collection('conversations').doc(conversationId).update(
           ConversationInboxVisibility.parentSummaryAfterRealMessage(
             lastMessage: label,
             myUid: uid,
             otherUid: otherUid,
           ),
-          SetOptions(merge: true),
         );
       } catch (e, st) {
         if (kDebugMode) debugPrint('ShareIn image DM summary: $e\n$st');

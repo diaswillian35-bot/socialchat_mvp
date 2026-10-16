@@ -7,6 +7,7 @@ const path = require("node:path");
 
 const {
   buildDmUnreadUpdatePairs,
+  confirmDmUnreadAfterCommit,
   commitDmUnreadOnce,
   initialNestedUnread,
   simulateOncePerMessageUnread,
@@ -19,15 +20,35 @@ test("dm unread steps nest the counter and delete the literal key", () => {
   });
   assert.deepEqual(
     steps.map((step) => step.op),
-    ["zero", "deleteLiteral", "increment", "deleteLiteral"],
+    [
+      "zero",
+      "deleteLiteral",
+      "deleteLiteral",
+      "increment",
+      "deleteLiteral",
+      "deleteLiteral",
+    ],
   );
   assert.equal(steps[0].uid, "sender");
-  assert.equal(steps[2].uid, "peer");
-  assert.equal(steps[3].literalKey, "unread.peer");
+  assert.equal(steps[1].literalKey, "unread.sender");
+  assert.equal(steps[2].literalKey, "unread. sender");
+  assert.equal(steps[3].uid, "peer");
+  assert.equal(steps[4].literalKey, "unread.peer");
+  assert.equal(steps[5].literalKey, "unread. peer");
   assert.equal(
     steps.some((step) => step.op === "increment" && step.uid === "sender"),
     false,
   );
+});
+
+test("a committed read of zero is not incremented again", () => {
+  for (const mode of ["trigger_applied", "callable_applied", "already_processed"]) {
+    const decision = confirmDmUnreadAfterCommit({ mode });
+    assert.equal(decision.incrementAgain, false);
+  }
+  assert.equal(confirmDmUnreadAfterCommit({ mode: "trigger_applied" }).sendPush, true);
+  assert.equal(confirmDmUnreadAfterCommit({ mode: "callable_applied" }).sendPush, true);
+  assert.equal(confirmDmUnreadAfterCommit({ mode: "already_processed" }).sendPush, false);
 });
 
 test("the same processed DM is not incremented twice", () => {
@@ -115,4 +136,8 @@ test("onPrivateMessageCreated does not set a dotted unread field", () => {
   assert.equal(slice.includes("buildDmUnreadUpdatePairs"), true);
   assert.equal(slice.includes("appendDmUnreadArgs"), true);
   assert.equal(slice.includes("processedSnap.exists"), true);
+  assert.equal(slice.includes("confirmDmUnreadAfterCommit"), true);
+  assert.equal(slice.includes("buildDmLiteralDeleteSteps"), true);
+  assert.equal(slice.includes("dm_unread_repair"), false);
+  assert.equal(slice.includes("incrementAgain"), true);
 });

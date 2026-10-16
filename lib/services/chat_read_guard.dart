@@ -28,8 +28,9 @@ class ChatReadGuard {
     return lifecycle == AppLifecycleState.resumed;
   }
 
-  /// Clearing `unread.{uid}` is stricter than a read watermark: only when the
-  /// user is actively viewing the latest messages in an open chat.
+  /// Clearing `unread.{uid}` happens when this chat is the open surface.
+  /// DM passes [requireViewingLatest] false so the badge zeros on open,
+  /// before the reversed list has laid out. Group keeps the default.
   ///
   /// [chatSurfaceActive] must match [AppNotificationState] for this chat —
   /// prevents clear after `leavePrivateChat` or with a stale mounted page.
@@ -42,6 +43,7 @@ class ChatReadGuard {
     required bool contentReady,
     bool chatSurfaceActive = true,
     bool tickerEnabled = true,
+    bool requireViewingLatest = true,
   }) {
     if (!contentReady) return false;
     if (!chatSurfaceActive) return false;
@@ -53,6 +55,7 @@ class ChatReadGuard {
     )) {
       return false;
     }
+    if (!requireViewingLatest) return true;
     return viewingLatestMessages;
   }
 }

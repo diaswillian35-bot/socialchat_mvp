@@ -903,11 +903,12 @@ class _ChatPageState extends State<ChatPage>
         ChatReadGuard.mayClearUnread(
           mounted: mounted,
           lifecycle: lifecycle,
-          routeIsCurrent: routeCurrent,
+          routeIsCurrent: routeCurrent || surfaceActive,
           viewingLatestMessages: viewing,
           contentReady: _conversationHydrated,
           chatSurfaceActive: surfaceActive,
           tickerEnabled: ticker,
+          requireViewingLatest: false,
         );
 
     final needUnread = ChatUnreadClearCoordinator.shouldWriteUnreadZero(
@@ -1377,14 +1378,13 @@ class _ChatPageState extends State<ChatPage>
       final snap = await tx.get(convDoc);
       // Server owns peer unread (+1). Client only clears own counter.
       // Never replace the whole unread map (races with onPrivateMessageCreated).
-      tx.set(
+      tx.update(
         convDoc,
         ConversationInboxVisibility.parentSummaryAfterRealMessage(
           lastMessage: lastMessage,
           myUid: myUid,
           otherUid: widget.otherUid,
         ),
-        SetOptions(merge: true),
       );
       // Touch snap so the transaction is not empty-read-only on some SDKs.
       if (!snap.exists) {
@@ -2224,10 +2224,10 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Resume alone never clears unread; clear only if a prior view still owes it
-    // and the user is looking at the latest messages.
+    // Returning to an open chat zeros the badge even if the list is not at
+    // offset 0 yet. Home never enters this state.
     if (state == AppLifecycleState.resumed && _mayPersistReadState()) {
-      if (_pendingClearUnread && _myUnread > 0 && _isViewingLatestMessages()) {
+      if ((_pendingClearUnread || _myUnread > 0) && _conversationHydrated) {
         unawaited(_markAsRead(
           clearUnread: true,
           forceWatermark: true,
@@ -2241,6 +2241,31 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
+  /// Back navigation often pops the route before [dispose], so the normal
+  /// clear bails on `routeIsCurrent`. This write does not touch [BuildContext].
+  Future<void> _persistOpenUnreadZero({required String caller}) async {
+    if (_myUnread <= 0) return;
+    UnreadClearAudit.logReadWrite(
+      caller: caller,
+      clearUnread: true,
+      uidMasked: UnreadClearAudit.maskUid(myUid),
+    );
+    try {
+      await ConversationReadWrite.commitClearUnread(
+        db: db,
+        conversationRef: convDoc,
+        presenceRef: _presenceRef.doc(myUid),
+        myUid: myUid,
+        clearUnread: true,
+      );
+      _myUnread = 0;
+      _pendingClearUnread = false;
+    } catch (e) {
+      debugPrint('Failed to mark conversation as read: $e');
+      _pendingClearUnread = true;
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -2250,16 +2275,8 @@ class _ChatPageState extends State<ChatPage>
     if (_mayPersistReadOnExit() &&
         _isThisChatSurfaceActive() &&
         _conversationHydrated &&
-        VisibleUnreadClear.flushOnExit(
-          pendingOrUnread: _pendingClearUnread || _myUnread > 0,
-          hasClients: _scrollC.hasClients,
-          offset: _scrollC.hasClients ? _scrollC.offset : 0,
-        )) {
-      unawaited(_markAsRead(
-        clearUnread: true,
-        forceWatermark: true,
-        caller: 'dispose',
-      ));
+        _myUnread > 0) {
+      unawaited(_persistOpenUnreadZero(caller: 'dispose'));
     }
 
     AppNotificationState.instance.leavePrivateChat(widget.conversationId);

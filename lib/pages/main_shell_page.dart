@@ -22,6 +22,10 @@ import '../services/unread_clear_audit.dart';
 import '../services/share_extension_session_service.dart';
 import '../services/group_pending_join_badge_service.dart';
 import '../services/group_pending_join_badge_logic.dart';
+import '../features/locais/locais_feature_flag.dart';
+import '../features/locais/locais_strings.dart';
+import '../features/locais/shell_pages.dart';
+import '../features/locais/ui/locais_list_page.dart';
 
 
 class MainShell extends StatefulWidget {
@@ -30,6 +34,7 @@ class MainShell extends StatefulWidget {
 
   static const int homeTabIndex = 0;
   static const int eventsTabIndex = 3;
+  static const int locaisTabIndex = MainShellDestinations.locaisTabIndex;
 
 
   @override
@@ -72,8 +77,10 @@ Future<void> _checkBannedUser() async {
 void initState() {
   super.initState();
 
-  _index = widget.initialIndex;
-  if (_index < 0 || _index > 3) _index = 0;
+  _index = MainShellDestinations.initialIndex(
+    widget.initialIndex,
+    locaisEnabled: LocaisFeatureFlag.isEnabled,
+  );
 
   _checkBannedUser();
 
@@ -162,7 +169,12 @@ void initState() {
   Future<void> _selectTab(int i) async {
     dismissAppKeyboard();
     if (!mounted) return;
-    if (i < 0 || i > 3) return;
+    if (!MainShellDestinations.canSelect(
+      i,
+      locaisEnabled: LocaisFeatureFlag.isEnabled,
+    )) {
+      return;
+    }
     setState(() => _index = i);
     PresenceDisplayHub.instance.setHomeVisible(i == 0);
 
@@ -223,14 +235,21 @@ Stream<int> _activeEventsStream() {
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
+    final locaisEnabled = LocaisFeatureFlag.isEnabled;
+    final visibleIndex = MainShellDestinations.initialIndex(
+      _index,
+      locaisEnabled: locaisEnabled,
+    );
 
 
-    final pages = <Widget>[
-      HomePage(onOpenEventsTab: () => _selectTab(MainShell.eventsTabIndex)),
-      const MessagesPage(),
-      GroupsListPage(key: _groupsListKey),
-      const EventsPage(),
-    ];
+    final pages = buildMainShellPages(
+      locaisEnabled: locaisEnabled,
+      home: HomePage(onOpenEventsTab: () => _selectTab(MainShell.eventsTabIndex)),
+      messages: const MessagesPage(),
+      groups: GroupsListPage(key: _groupsListKey),
+      events: const EventsPage(),
+      locais: const LocaisListPage(),
+    );
 
 
     return StreamBuilder<int>(
@@ -292,7 +311,7 @@ Stream<int> _activeEventsStream() {
       resizeToAvoidBottomInset: false,
       body: KeyboardDismissOnTap(
         child: IndexedStack(
-          index: _index,
+          index: visibleIndex,
           children: pages,
         ),
       ),
@@ -319,7 +338,7 @@ Stream<int> _activeEventsStream() {
           : null,
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: const Color(0xFFF1F5F9),
-        currentIndex: _index,
+        currentIndex: visibleIndex,
         onTap: _selectTab,
 
 
@@ -418,8 +437,12 @@ BottomNavigationBarItem(
   ),
   label: t.get('events'),
 ),
-
-
+          if (locaisEnabled)
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.storefront_outlined),
+              activeIcon: const Icon(Icons.storefront_rounded),
+              label: LocaisStrings.of(context).tabLabel,
+            ),
 
 
         ],

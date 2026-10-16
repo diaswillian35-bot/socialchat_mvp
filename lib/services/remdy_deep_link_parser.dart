@@ -5,6 +5,8 @@
 /// - Somente `/g/{code}` (e legado `/group?code=`) abrem prévia de grupo.
 /// - Código ausente/inválido nunca reaproveita o último ID.
 
+library remdy_deep_link_parser;
+
 enum RemdyDeepLinkKind {
   /// Landing / eventos web / caminho desconhecido — sem ação no app.
   none,
@@ -23,6 +25,9 @@ enum RemdyDeepLinkKind {
 
   /// `/portal-login/{sessionId}`
   portalLogin,
+
+  /// `/locais/{estado}/{cidade}/{slug}`
+  place,
 }
 
 class RemdyDeepLink {
@@ -32,6 +37,7 @@ class RemdyDeepLink {
     this.eventId,
     this.inviteRef,
     this.portalSessionId,
+    this.placeSlug,
     this.clearsPendingGroup = false,
   });
 
@@ -40,13 +46,13 @@ class RemdyDeepLink {
   final String? eventId;
   final String? inviteRef;
   final String? portalSessionId;
+  final String? placeSlug;
 
   /// Se true, descartar `pending_group_code` (raiz, inválido, outro destino).
   final bool clearsPendingGroup;
 
   bool get opensGroupPreview =>
-      kind == RemdyDeepLinkKind.groupInvite &&
-      (groupCode?.isNotEmpty ?? false);
+      kind == RemdyDeepLinkKind.groupInvite && (groupCode?.isNotEmpty ?? false);
 }
 
 class RemdyDeepLinkParser {
@@ -92,6 +98,17 @@ class RemdyDeepLinkParser {
     }
 
     final root = segments.first.toLowerCase();
+
+    if (root == 'locais' && segments.length >= 4) {
+      final slug = segments.last.toLowerCase();
+      if (_isValidPlaceSlug(slug)) {
+        return RemdyDeepLink(
+          kind: RemdyDeepLinkKind.place,
+          placeSlug: slug,
+          clearsPendingGroup: true,
+        );
+      }
+    }
 
     // /g/{code}
     if (root == 'g') {
@@ -215,5 +232,11 @@ class RemdyDeepLinkParser {
     // Códigos Remdy: alfanumérico curto; rejeita path lixo.
     if (code.length < 3 || code.length > 32) return false;
     return RegExp(r'^[A-Z0-9_-]+$').hasMatch(code);
+  }
+
+  static bool _isValidPlaceSlug(String slug) {
+    return slug.length >= 3 &&
+        slug.length <= 100 &&
+        RegExp(r'^[a-z0-9-]+$').hasMatch(slug);
   }
 }

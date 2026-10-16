@@ -109,6 +109,30 @@ void main() {
       );
     });
 
+    test('an open DM clears before the message list lays out', () {
+      expect(
+        ChatReadGuard.mayClearUnread(
+          mounted: true,
+          lifecycle: AppLifecycleState.resumed,
+          routeIsCurrent: true,
+          viewingLatestMessages: false,
+          contentReady: true,
+          requireViewingLatest: false,
+        ),
+        isTrue,
+      );
+      expect(
+        ChatReadGuard.mayClearUnread(
+          mounted: true,
+          lifecycle: AppLifecycleState.resumed,
+          routeIsCurrent: true,
+          viewingLatestMessages: false,
+          contentReady: true,
+        ),
+        isFalse,
+      );
+    });
+
     test('does not clear while content still loading', () {
       expect(
         ChatReadGuard.mayClearUnread(

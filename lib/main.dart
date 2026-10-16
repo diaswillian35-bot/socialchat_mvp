@@ -31,6 +31,8 @@ import 'services/share_extension_session_service.dart';
 import 'services/share_extension_destinations_service.dart';
 import 'services/share_extension_incoming_service.dart';
 import 'widgets/keyboard_dismiss.dart';
+import 'features/locais/locais_feature_flag.dart';
+import 'features/locais/ui/locais_deep_link_page.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'utils/event_timezone.dart';
 
@@ -309,6 +311,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           MaterialPageRoute(
             builder: (_) => PortalQrLoginApprovePage(sessionId: sessionId),
           ),
+        );
+        return;
+
+      case RemdyDeepLinkKind.place:
+        if (!LocaisFeatureFlag.isEnabled) return;
+        final slug = (parsed.placeSlug ?? '').trim();
+        if (slug.isEmpty) return;
+        nav.push(
+          MaterialPageRoute(builder: (_) => LocaisDeepLinkPage(slug: slug)),
         );
         return;
 

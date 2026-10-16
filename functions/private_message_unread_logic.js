@@ -182,13 +182,34 @@ function simulateOncePerMessageUnread({
  * literal deletes remove that leftover field in the same update.
  * The sender is forced to 0 and is not incremented.
  */
+/** Exact and space-prefixed leftovers from set(merge) dotted keys. */
+function literalUnreadFieldNames(uid) {
+  const id = String(uid || "").trim();
+  if (!id) return [];
+  return [`unread.${id}`, `unread. ${id}`];
+}
+
+function buildDmLiteralDeleteSteps(uids) {
+  const steps = [];
+  const seen = new Set();
+  for (const raw of uids || []) {
+    const uid = String(raw || "").trim();
+    if (!uid || seen.has(uid)) continue;
+    seen.add(uid);
+    for (const literalKey of literalUnreadFieldNames(uid)) {
+      steps.push({ op: "deleteLiteral", literalKey });
+    }
+  }
+  return steps;
+}
+
 function buildDmUnreadUpdatePairs({ senderId, targetUids }) {
   const sender = String(senderId || "").trim();
   const steps = [];
   const seen = new Set();
   if (sender) {
     steps.push({ op: "zero", uid: sender });
-    steps.push({ op: "deleteLiteral", literalKey: `unread.${sender}` });
+    steps.push(...buildDmLiteralDeleteSteps([sender]));
     seen.add(sender);
   }
   for (const raw of targetUids || []) {
@@ -196,9 +217,23 @@ function buildDmUnreadUpdatePairs({ senderId, targetUids }) {
     if (!uid || seen.has(uid)) continue;
     seen.add(uid);
     steps.push({ op: "increment", uid });
-    steps.push({ op: "deleteLiteral", literalKey: `unread.${uid}` });
+    steps.push(...buildDmLiteralDeleteSteps([uid]));
   }
   return steps;
+}
+
+/**
+ * A later read of 0 means the recipient already opened the chat.
+ * Never increment again after the transaction commits.
+ * Push only for the invocation that applied this message.
+ */
+function confirmDmUnreadAfterCommit({ mode }) {
+  const normalized = String(mode || "");
+  return {
+    incrementAgain: false,
+    sendPush:
+      normalized === "trigger_applied" || normalized === "callable_applied",
+  };
 }
 
 /** Second delivery of the same message must not build another +1. */
@@ -268,7 +303,10 @@ module.exports = {
   shouldSkipTriggerUnreadIncrement,
   sanitizeUnreadErrorCode,
   simulateOncePerMessageUnread,
+  literalUnreadFieldNames,
+  buildDmLiteralDeleteSteps,
   buildDmUnreadUpdatePairs,
+  confirmDmUnreadAfterCommit,
   commitDmUnreadOnce,
   initialNestedUnread,
   appendDmUnreadArgs,

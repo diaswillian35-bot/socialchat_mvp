@@ -18,6 +18,9 @@ import '../pages/group_chat_page.dart';
 import '../pages/group_info_page.dart';
 import '../pages/chat_page.dart';
 import '../pages/event_detail_page.dart';
+import '../features/locais/data/place_repository.dart';
+import '../features/locais/locais_feature_flag.dart';
+import '../features/locais/ui/locais_detail_page.dart';
 import 'age_access_service.dart';
 import 'app_notification_state.dart';
 import 'block_service.dart';
@@ -417,7 +420,8 @@ class PushService {
         'sound': settings.sound.name,
       });
     } catch (e) {
-      _logPush('error', {'source': 'permission', 'code': e.runtimeType.toString()});
+      _logPush(
+          'error', {'source': 'permission', 'code': e.runtimeType.toString()});
     }
 
     final status = settings?.authorizationStatus;
@@ -442,7 +446,8 @@ class PushService {
       previousUid: previousUid,
       currentUid: uid,
     )) {
-      await _removeIosAssociation(previousUid!, environment: storedEnv ?? currentEnv);
+      await _removeIosAssociation(previousUid!,
+          environment: storedEnv ?? currentEnv);
     }
 
     final apns = await _readApnsToken();
@@ -519,7 +524,8 @@ class PushService {
       final token = await FirebaseMessaging.instance.getAPNSToken();
       if ((token ?? '').trim().isNotEmpty) return token;
     } catch (e) {
-      _logPush('error', {'source': 'getAPNSToken', 'code': e.runtimeType.toString()});
+      _logPush('error',
+          {'source': 'getAPNSToken', 'code': e.runtimeType.toString()});
     }
     return null;
   }
@@ -568,7 +574,8 @@ class PushService {
         await col.doc(id).delete();
       }
       final left = await col.get();
-      final userRef = FirebaseFirestore.instance.collection('users').doc(trimmed);
+      final userRef =
+          FirebaseFirestore.instance.collection('users').doc(trimmed);
       final userSnap = await userRef.get();
       final legacy = (userSnap.data()?['fcmToken'] ?? '').toString().trim();
       final legacyRemoved = legacy.isNotEmpty && remove.contains(legacy);
@@ -632,7 +639,8 @@ class PushService {
             .collection('fcmTokens');
         final snap = await col.get();
         for (final d in snap.docs) {
-          final platform = (d.data()['platform'] ?? '').toString().toLowerCase();
+          final platform =
+              (d.data()['platform'] ?? '').toString().toLowerCase();
           if (platform == 'ios') continue;
           await d.reference.delete();
         }
@@ -885,6 +893,7 @@ class PushService {
     if (type.startsWith('event')) return 'event';
     if (type.startsWith('group')) return 'group';
     if (type == 'chat' || type == 'private') return 'chat';
+    if (type == 'place_review' || type == 'place_reply') return 'place';
     return 'unknown';
   }
 
@@ -979,6 +988,20 @@ class PushService {
   ) async {
     if (navKey.currentState == null) return false;
 
+    if (target.kind == PushOpenKind.place) {
+      if (!LocaisFeatureFlag.isEnabled) return false;
+      final live = navKey.currentState;
+      if (live == null) return false;
+      return _pushOverShell(
+        nav: live,
+        shellIndex: target.shellIndex,
+        page: LocaisDetailPage(
+          placeId: target.placeId,
+          repository: createPlaceRepository(),
+        ),
+      );
+    }
+
     if (target.kind == PushOpenKind.event) {
       if (target.actorUid.isNotEmpty &&
           BlockVisibility.hidesUid(target.actorUid)) {
@@ -1019,8 +1042,7 @@ class PushService {
 
     if (target.kind == PushOpenKind.groupChat ||
         target.kind == PushOpenKind.groupInfo) {
-      var groupName =
-          target.displayName.isEmpty ? 'Remdy' : target.displayName;
+      var groupName = target.displayName.isEmpty ? 'Remdy' : target.displayName;
       try {
         final snap = await FirebaseFirestore.instance
             .collection('groups')
@@ -1049,8 +1071,7 @@ class PushService {
         _showShell(live, target.shellIndex);
         return true;
       }
-      var otherName =
-          target.displayName.isEmpty ? 'Remdy' : target.displayName;
+      var otherName = target.displayName.isEmpty ? 'Remdy' : target.displayName;
       try {
         final snap = await FirebaseFirestore.instance
             .collection('users')

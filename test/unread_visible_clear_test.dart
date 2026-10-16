@@ -24,6 +24,17 @@ void main() {
       ConversationUnread.resolveMyUnread({'unread': {peer: 2}}, me),
       0,
     );
+    expect(
+      ConversationUnread.resolveMyUnread({'unread. $me': 4}, me),
+      4,
+    );
+    expect(
+      ConversationUnread.resolveMyUnread({
+        'unread': {me: 0},
+        'unread. $me': 4,
+      }, me),
+      0,
+    );
   });
 
   test('view clear writes nested zero without touching the peer', () {
@@ -117,7 +128,8 @@ void main() {
     final group = File('lib/pages/group_chat_page.dart').readAsStringSync();
     expect(chat, contains('ConversationUnread.resolveMyUnread'));
     expect(group, contains('ConversationUnread.resolveMyUnread'));
-    expect(chat, contains('VisibleUnreadClear.flushOnExit'));
+    expect(chat, contains('_persistOpenUnreadZero'));
+    expect(chat, contains('requireViewingLatest: false'));
     expect(group, contains('VisibleUnreadClear.flushOnExit'));
     expect(group, contains('_scheduleGroupReadAfterLayout'));
   });
