@@ -272,10 +272,38 @@ class LocaisStrings {
       );
 
   String get noReviews => _t(
-        pt: 'Ainda não há comentários.',
-        en: 'No comments yet.',
-        es: 'Todavía no hay comentarios.',
-        fr: 'Pas encore de commentaires.',
+        pt: 'Ainda sem avaliações',
+        en: 'No reviews yet',
+        es: 'Todavía sin reseñas',
+        fr: 'Pas encore d’avis',
+      );
+
+  String get postAnonymously => _t(
+        pt: 'Publicar como anônimo',
+        en: 'Post anonymously',
+        es: 'Publicar como anónimo',
+        fr: 'Publier anonymement',
+      );
+
+  String get anonymous => _t(
+        pt: 'Anônimo',
+        en: 'Anonymous',
+        es: 'Anónimo',
+        fr: 'Anonyme',
+      );
+
+  String get edited => _t(
+        pt: 'editada',
+        en: 'edited',
+        es: 'editada',
+        fr: 'modifié',
+      );
+
+  String reviewTotal(int count) => _t(
+        pt: count == 1 ? '1 avaliação' : '$count avaliações',
+        en: count == 1 ? '1 review' : '$count reviews',
+        es: count == 1 ? '1 reseña' : '$count reseñas',
+        fr: count == 1 ? '1 avis' : '$count avis',
       );
 
   String get ownerReply => _t(

@@ -146,6 +146,20 @@ class FirestorePlaceRepository implements PlaceRepository {
       );
       if (review != null) reviews.add(review);
     }
+    final summary = payload['summary'];
+    if (summary is Map) {
+      final counts = FirestorePlaceMapper.ratingCountsOf(summary);
+      final count = summary['count'];
+      final average = summary['average'];
+      return place.copyWith(
+        reviews: reviews,
+        ratingCounts: counts.isEmpty ? null : counts,
+        ratingCount: count is num && count > 0 ? count.toInt() : null,
+        rating: average is num && average > 0
+            ? average.toDouble().clamp(0, 5).toDouble()
+            : null,
+      );
+    }
     return place.copyWith(reviews: reviews);
   }
 

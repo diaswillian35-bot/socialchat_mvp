@@ -25,12 +25,14 @@ class PlaceActionsService {
     required String placeId,
     required int stars,
     required String comment,
+    bool anonymous = false,
   }) async {
     _guard();
     final result = await _functions.httpsCallable('submitPlaceReview').call({
       'placeId': placeId,
       'stars': stars,
       'comment': comment.trim(),
+      'anonymous': anonymous,
     });
     final data = Map<String, dynamic>.from(result.data as Map);
     return data['action']?.toString() ?? 'updated';

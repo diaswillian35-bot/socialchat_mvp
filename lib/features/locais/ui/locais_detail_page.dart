@@ -256,10 +256,10 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
             child: _menu(strings, place)),
         const SizedBox(height: 12),
       ],
-      // Avaliações: só leitura e só quando houver alguma. Escrever avaliação
+      // Avaliações: resumo + lista sempre visíveis (vazio: "Ainda sem avaliações"). Escrever avaliação
       // e o portal do comerciante ficam fora da tela do usuário (o time
       // Remdy cadastra e entrega as páginas aos donos pelo admin).
-      if (place.reviews.isNotEmpty) ...[
+      ...[
         _card(
             key: const Key('locais_detail_reviews_card'),
             child: _reviews(strings, place)),
@@ -619,33 +619,160 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
   }
 
   Widget _reviews(LocaisStrings strings, PlaceListing place) {
+    final summary = ReviewSummary.of(place);
     return Column(
       key: const Key('locais_detail_reviews'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle(strings.reviews),
+        _reviewSummary(strings, summary),
         if (_userWriteActionsEnabled) ...[
-          FilledButton.icon(
-            key: const Key('place_write_review'),
-            onPressed: () => _reviewDialog(strings, place),
-            icon: const Icon(Icons.star_outline_rounded),
-            label: Text(strings.writeReview),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('place_write_review'),
+              style: FilledButton.styleFrom(
+                backgroundColor: LocaisColors.navy,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(48, 46),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: () => _reviewDialog(strings, place),
+              icon: const Icon(Icons.star_outline_rounded),
+              label: Text(strings.writeReview),
+            ),
           ),
-          const SizedBox(height: 10),
         ],
+        const SizedBox(height: 12),
         if (place.reviews.isEmpty)
           Text(
             strings.noReviews,
-            style: const TextStyle(color: LocaisColors.muted),
+            key: const Key('locais_reviews_empty'),
+            style: const TextStyle(
+                color: LocaisColors.muted, fontWeight: FontWeight.w600),
           )
         else
-          for (final review in place.reviews) _review(strings, review),
+          for (var i = 0; i < place.reviews.length; i++) ...[
+            if (i > 0) const Divider(height: 24, color: LocaisColors.border),
+            _review(strings, place.reviews[i]),
+          ],
+      ],
+    );
+  }
+
+  static const Color _starColor = Color(0xFFF5B301);
+
+  Widget _stars(int filled, {double size = 16}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 1; i <= 5; i++)
+          Icon(
+            i <= filled ? Icons.star_rounded : Icons.star_outline_rounded,
+            size: size,
+            color: i <= filled ? _starColor : LocaisColors.border,
+          ),
+      ],
+    );
+  }
+
+  Widget _reviewSummary(LocaisStrings strings, ReviewSummary summary) {
+    final score = strings.ratingLine(summary.average, 0).split(' ').first;
+    return Row(
+      key: const Key('locais_reviews_summary'),
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 96,
+          child: Column(
+            children: [
+              Text(
+                summary.total == 0 ? '–' : score,
+                key: const Key('locais_reviews_average'),
+                style: const TextStyle(
+                  color: LocaisColors.navy,
+                  fontSize: 36,
+                  fontWeight: FontWeight.w900,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              _stars(summary.average.round(), size: 15),
+              const SizedBox(height: 4),
+              Text(
+                strings.reviewTotal(summary.total),
+                key: const Key('locais_reviews_total'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: LocaisColors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            children: [
+              for (var star = 5; star >= 1; star--)
+                Padding(
+                  key: Key('locais_reviews_bar_$star'),
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 26,
+                        child: Text(
+                          '$star★',
+                          style: const TextStyle(
+                            color: LocaisColors.navy,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: summary.fraction(star),
+                            minHeight: 8,
+                            backgroundColor: const Color(0xFFF1F2F6),
+                            valueColor:
+                                const AlwaysStoppedAnimation(_starColor),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 30,
+                        child: Text(
+                          '${summary.counts[star] ?? 0}',
+                          key: Key('locais_reviews_count_$star'),
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            color: LocaisColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
   Future<void> _reviewDialog(LocaisStrings strings, PlaceListing place) async {
     var stars = 0;
+    var anonymous = false;
     final comment = TextEditingController();
     await showDialog<void>(
         context: context,
@@ -674,6 +801,15 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                           labelText: strings.reviewComment,
                           errorText:
                               stars == 0 ? strings.requiredPending : null)),
+                  CheckboxListTile(
+                    key: const Key('place_review_anonymous'),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: anonymous,
+                    onChanged: (value) =>
+                        setDialogState(() => anonymous = value == true),
+                    title: Text(strings.postAnonymously),
+                  ),
                 ]),
                 actions: [
                   TextButton(
@@ -686,7 +822,8 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                               await widget.actions.submitReview(
                                   placeId: place.id,
                                   stars: stars,
-                                  comment: comment.text);
+                                  comment: comment.text,
+                                  anonymous: anonymous);
                               if (!dialogContext.mounted) return;
                               Navigator.pop(dialogContext);
                               if (!mounted) return;
@@ -702,73 +839,114 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
     comment.dispose();
   }
 
+  /// "2026-10-16T…" → "16/10/2026". Vazio se inválido.
+  static String _reviewDate(String iso) {
+    final date = DateTime.tryParse(iso);
+    if (date == null) return '';
+    final local = date.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(local.day)}/${two(local.month)}/${local.year}';
+  }
+
+  Widget _reviewAvatar(PlaceReview review) {
+    final url = review.anonymous ? null : review.authorPhotoUrl;
+    return CircleAvatar(
+      radius: 18,
+      backgroundColor: const Color(0xFFE7EBF5),
+      foregroundImage: url == null ? null : NetworkImage(url),
+      child: Icon(
+        review.anonymous ? Icons.person_off_outlined : Icons.person_rounded,
+        size: 20,
+        color: LocaisColors.navy,
+      ),
+    );
+  }
+
   Widget _review(LocaisStrings strings, PlaceReview review) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: LocaisColors.border),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    final date = _reviewDate(review.createdAt);
+    final name = review.anonymous ? strings.anonymous : review.authorName;
+    return Column(
+      key: Key('locais_review_${review.id}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _reviewAvatar(review),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      review.authorName,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: LocaisColors.navy,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const Icon(
-                    Icons.star_rounded,
-                    size: 16,
-                    color: Color(0xFFF5B301),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      _stars(review.rating, size: 14),
+                      if (date.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            review.editedAt == null
+                                ? date
+                                : '$date · ${strings.edited}',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: LocaisColors.muted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  Text('${review.rating}'),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(review.comment, style: const TextStyle(height: 1.35)),
-              if (review.ownerReply != null) ...[
-                const SizedBox(height: 10),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: LocaisColors.bg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          strings.ownerReply,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(review.ownerReply!.text),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-              if (_userWriteActionsEnabled && _canManage) ...[
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: () => _replyDialog(strings, review),
-                  icon: const Icon(Icons.reply_rounded),
-                  label: Text(strings.ownerReply),
-                ),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
-      ),
+        if (review.comment.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(review.comment, style: const TextStyle(height: 1.35)),
+        ],
+        if (review.ownerReply != null) ...[
+          const SizedBox(height: 10),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: LocaisColors.bg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    strings.ownerReply,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(review.ownerReply!.text),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (_userWriteActionsEnabled && _canManage) ...[
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => _replyDialog(strings, review),
+            icon: const Icon(Icons.reply_rounded),
+            label: Text(strings.ownerReply),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1061,4 +1239,39 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
       side: const BorderSide(color: LocaisColors.border),
     );
   }
+}
+
+/// Resumo de avaliações: usa o agregado do local (`rating.stars`) e, se
+/// faltar, calcula a partir das avaliações listadas.
+class ReviewSummary {
+  const ReviewSummary(this.average, this.total, this.counts);
+
+  final double average;
+  final int total;
+  final Map<int, int> counts;
+
+  factory ReviewSummary.of(PlaceListing place) {
+    final aggregate = place.ratingCounts;
+    final aggregateTotal = aggregate.values.fold<int>(0, (a, b) => a + b);
+    if (aggregateTotal > 0) {
+      final weighted =
+          aggregate.entries.fold<int>(0, (sum, e) => sum + e.key * e.value);
+      final average =
+          place.rating > 0 ? place.rating : weighted / aggregateTotal;
+      return ReviewSummary(average, aggregateTotal, aggregate);
+    }
+    final counts = {for (var s = 1; s <= 5; s++) s: 0};
+    for (final review in place.reviews) {
+      counts[review.rating] = (counts[review.rating] ?? 0) + 1;
+    }
+    final listed = place.reviews.length;
+    if (listed > 0) {
+      final sum = place.reviews.fold<int>(0, (a, r) => a + r.rating);
+      return ReviewSummary(sum / listed, listed, counts);
+    }
+    return ReviewSummary(0, 0, counts);
+  }
+
+  double fraction(int star) =>
+      total == 0 ? 0 : ((counts[star] ?? 0) / total).clamp(0, 1).toDouble();
 }

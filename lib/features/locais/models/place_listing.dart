@@ -230,6 +230,9 @@ class PlaceReview {
     required this.comment,
     required this.createdAt,
     this.ownerReply,
+    this.authorPhotoUrl,
+    this.anonymous = false,
+    this.editedAt,
   });
 
   final String id;
@@ -238,6 +241,11 @@ class PlaceReview {
   final String comment;
   final String createdAt;
   final PlaceOwnerReply? ownerReply;
+
+  /// Foto pública do autor (https). Nula quando anônimo.
+  final String? authorPhotoUrl;
+  final bool anonymous;
+  final String? editedAt;
 
   Map<String, dynamic> toPortalJson() => {
         'id': id,
@@ -365,6 +373,7 @@ class PlaceListing {
     required this.reviews,
     required this.upcomingEvents,
     this.menu = PlaceMenu.disabled,
+    this.ratingCounts = const {},
   });
 
   final String id;
@@ -383,17 +392,26 @@ class PlaceListing {
   final List<PlaceUpcomingEvent> upcomingEvents;
   final PlaceMenu menu;
 
+  /// Contagem por estrela (1..5) do agregado do local (`rating.stars`).
+  final Map<int, int> ratingCounts;
+
   PlacePhoto get cover => photos.first;
 
-  PlaceListing copyWith({List<PlaceReview>? reviews}) => PlaceListing(
+  PlaceListing copyWith({
+    List<PlaceReview>? reviews,
+    double? rating,
+    int? ratingCount,
+    Map<int, int>? ratingCounts,
+  }) =>
+      PlaceListing(
         id: id,
         slug: slug,
         name: name,
         category: category,
         description: description,
         photos: photos,
-        rating: rating,
-        ratingCount: ratingCount,
+        rating: rating ?? this.rating,
+        ratingCount: ratingCount ?? this.ratingCount,
         address: address,
         contact: contact,
         hours: hours,
@@ -401,6 +419,7 @@ class PlaceListing {
         reviews: reviews ?? this.reviews,
         upcomingEvents: upcomingEvents,
         menu: menu,
+        ratingCounts: ratingCounts ?? this.ratingCounts,
       );
 
   bool isOpenAt(DateTime instant) {

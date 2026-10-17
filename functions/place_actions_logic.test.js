@@ -4,7 +4,7 @@ const logic = require("./place_actions_logic");
 
 test("review accepts one canonical place/user payload and sanitizes html", () => {
   assert.deepEqual(logic.parseReviewInput({ placeId: "plc_123", stars: 5, comment: "<b>Ótimo</b>\u0000" }), {
-    ok: true, placeId: "plc_123", stars: 5, comment: "Ótimo",
+    ok: true, placeId: "plc_123", stars: 5, comment: "Ótimo", anonymous: false,
   });
   assert.equal(logic.parseReviewInput({ placeId: "x", stars: 6 }).ok, false);
 });
@@ -32,4 +32,31 @@ test("editing an approved review removes its old contribution while pending", ()
   assert.equal(result.rating.average, 5);
   assert.equal(result.rating.stars["4"], 0);
   assert.equal(logic.ratingAfterPendingEdit({}, { stars: 4, status: "pending" }), null);
+});
+
+test("review accepts the anonymous option", () => {
+  assert.equal(logic.parseReviewInput({ placeId: "plc_123", stars: 4, anonymous: true }).anonymous, true);
+  assert.equal(logic.parseReviewInput({ placeId: "plc_123", stars: 4, anonymous: "yes" }).anonymous, false);
+});
+
+test("anonymous author hides name and photo on write and read", () => {
+  const user = { displayName: "Maria Souza", photoUrl: "https://cdn.example/m.jpg" };
+  assert.deepEqual(logic.publicAuthor(user, {}, true), { authorDisplayName: "Anônimo", authorPhotoUrl: null });
+  assert.deepEqual(logic.publicAuthor(user, {}, false), { authorDisplayName: "Maria", authorPhotoUrl: "https://cdn.example/m.jpg" });
+  assert.equal(logic.publicAuthor({ photoUrl: "javascript:alert(1)" }, {}, false).authorPhotoUrl, null);
+  const row = logic.publicReviewRow({ anonymous: true, authorDisplayName: "Maria", authorPhotoUrl: "https://x/y.jpg", authorUid: "u1", stars: 5, status: "approved" });
+  assert.equal(row.authorDisplayName, "Anônimo");
+  assert.equal(row.authorPhotoUrl, null);
+  assert.equal("authorUid" in row, false);
+});
+
+test("rating summary exposes per-star counts", () => {
+  const s = logic.ratingSummaryOf({ rating: { average: 4.3, count: 3, stars: { "5": 2, "3": 1 } } });
+  assert.deepEqual(s, { average: 4.3, count: 3, ratingCounts: { "1": 0, "2": 0, "3": 1, "4": 0, "5": 2 } });
+  assert.deepEqual(logic.ratingSummaryOf({}).ratingCounts, { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 });
+});
+
+test("owner reply patch only touches ownerReply", () => {
+  const patch = logic.ownerReplyPatch(null, "Obrigado!", "2026-10-16T00:00:00.000Z");
+  assert.deepEqual(Object.keys(patch), ["ownerReply"]);
 });

@@ -25,6 +25,7 @@ class FirestorePlaceMapper {
         photos: photos,
         rating: rating.average,
         ratingCount: rating.count,
+        ratingCounts: ratingCountsOf(data['rating']),
         address: PlaceAddress(
           line1: _text(data['addressLine']),
           district: _text(data['district']),
@@ -67,14 +68,38 @@ class FirestorePlaceMapper {
     }
     final stars = _int(data['stars']);
     if (stars == null || stars < 1 || stars > 5) return null;
+    final anonymous = data['anonymous'] == true;
+    final photo = _text(data['authorPhotoUrl']);
+    final edited = _text(data['editedAtIso']);
     return PlaceReview(
       id: _text(data['publicId'], fallback: documentId),
-      authorName: _text(data['authorDisplayName'], fallback: 'Visitante'),
+      authorName: anonymous
+          ? anonymousAuthor
+          : _text(data['authorDisplayName'], fallback: 'Visitante'),
       rating: stars,
       comment: _text(data['comment']),
       createdAt: _text(data['createdAtIso']),
       ownerReply: _reply(data['ownerReply']),
+      anonymous: anonymous,
+      authorPhotoUrl: !anonymous && photo.startsWith('https://') ? photo : null,
+      editedAt: edited.isEmpty ? null : edited,
     );
+  }
+
+  static const String anonymousAuthor = 'Anônimo';
+
+  /// Lê `{ "1": n, ..., "5": n }` (place.rating.stars ou summary.ratingCounts).
+  static Map<int, int> ratingCountsOf(Object? raw) {
+    Object? source = raw;
+    if (raw is Map && raw['stars'] is Map) source = raw['stars'];
+    if (raw is Map && raw['ratingCounts'] is Map) source = raw['ratingCounts'];
+    if (source is! Map) return const {};
+    final result = <int, int>{};
+    for (var star = 1; star <= 5; star++) {
+      final value = _int(source['$star']) ?? 0;
+      result[star] = value < 0 ? 0 : value;
+    }
+    return result.values.any((v) => v > 0) ? result : const {};
   }
 
   static bool _isPublic(Map<String, dynamic> data) {

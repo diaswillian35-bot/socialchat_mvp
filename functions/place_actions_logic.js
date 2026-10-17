@@ -18,7 +18,8 @@ function parseReviewInput(data) {
   const comment = cleanText(data && data.comment, MAX_COMMENT);
   if (!/^[A-Za-z0-9_-]{3,80}$/.test(placeId)) return { ok: false, code: "place" };
   if (![1, 2, 3, 4, 5].includes(stars)) return { ok: false, code: "stars" };
-  return { ok: true, placeId, stars, comment };
+  const anonymous = !!(data && data.anonymous === true);
+  return { ok: true, placeId, stars, comment, anonymous };
 }
 
 function parseReplyInput(data) {
@@ -65,7 +66,78 @@ function ratingAfterPendingEdit(place, existing) {
   return { rating: { ...rating, average: count ? Math.round((sum / count) * 10) / 10 : 0, count, stars }, ratingSum: sum };
 }
 
+const ANONYMOUS_NAME = "Anônimo";
+
+function safeHttpsUrl(value) {
+  const text = String(value == null ? "" : value).trim().slice(0, 500);
+  return /^https:\/\/[^\s"'<>]+$/.test(text) ? text : null;
+}
+
+/// Identidade pública do autor. Anônimo: sem nome real e sem foto.
+function publicAuthor(user, token, anonymous) {
+  if (anonymous) return { authorDisplayName: ANONYMOUS_NAME, authorPhotoUrl: null };
+  const u = user || {};
+  const t = token || {};
+  const name = String(u.displayName || u.name || t.name || "Visitante").trim().split(/\s+/)[0].slice(0, 60) || "Visitante";
+  const photo = safeHttpsUrl(u.photoUrl || u.avatarUrl || t.picture);
+  return { authorDisplayName: name, authorPhotoUrl: photo };
+}
+
+/// Linha pública de uma avaliação (nunca expõe uid). Anônimo é mascarado
+/// também na leitura, mesmo que algum dado antigo tenha nome/foto.
+function publicReviewRow(row) {
+  const anonymous = row.anonymous === true;
+  return {
+    publicId: String(row.publicId || "").slice(0, 120),
+    authorDisplayName: anonymous ? ANONYMOUS_NAME : String(row.authorDisplayName || "Visitante").slice(0, 60),
+    authorPhotoUrl: anonymous ? null : safeHttpsUrl(row.authorPhotoUrl),
+    anonymous,
+    stars: Number(row.stars) || 0,
+    comment: String(row.comment || "").slice(0, 1500),
+    status: row.status,
+    ownerReply: row.ownerReply && typeof row.ownerReply === "object" ? {
+      text: String(row.ownerReply.text || "").slice(0, 800),
+      createdAtIso: String(row.ownerReply.createdAtIso || "").slice(0, 40),
+    } : null,
+    createdAtIso: String(row.createdAtIso || "").slice(0, 40),
+    editedAtIso: row.editedAtIso ? String(row.editedAtIso).slice(0, 40) : null,
+  };
+}
+
+/// Resumo agregado do local: média, total e contagem por estrela (1..5),
+/// lido de place.rating.stars (mantido pela moderação).
+function ratingSummaryOf(place) {
+  const rating = place && place.rating && typeof place.rating === "object" ? place.rating : {};
+  const raw = rating.stars && typeof rating.stars === "object" ? rating.stars : {};
+  const ratingCounts = {};
+  for (const key of ["1", "2", "3", "4", "5"]) ratingCounts[key] = Math.max(0, Math.floor(Number(raw[key]) || 0));
+  return {
+    average: Math.max(0, Math.min(5, Number(rating.average) || 0)),
+    count: Math.max(0, Math.floor(Number(rating.count) || 0)),
+    ratingCounts,
+  };
+}
+
+/// Patch do dono/gestor: só a resposta. Nunca altera estrelas, texto,
+/// autor ou status da avaliação.
+function ownerReplyPatch(existingReply, text, nowIso) {
+  return {
+    ownerReply: {
+      text,
+      authorRole: "owner",
+      createdAtIso: (existingReply && existingReply.createdAtIso) || nowIso,
+      updatedAtIso: nowIso,
+    },
+  };
+}
+
 module.exports = {
+  ANONYMOUS_NAME,
+  publicAuthor,
+  publicReviewRow,
+  ratingSummaryOf,
+  ownerReplyPatch,
+  safeHttpsUrl,
   MAX_COMMENT,
   MAX_REPLY,
   cleanText,

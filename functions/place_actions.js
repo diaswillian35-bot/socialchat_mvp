@@ -10,6 +10,10 @@ const {
   canManage,
   claimId,
   ratingAfterPendingEdit,
+  publicAuthor,
+  publicReviewRow,
+  ratingSummaryOf,
+  ownerReplyPatch,
 } = require("./place_actions_logic");
 
 function fail(code, message) {
@@ -51,6 +55,9 @@ async function submitReviewHandler(request, deps = {}) {
   const now = deps.now || new Date();
   const placeRef = db.collection("places").doc(parsed.placeId);
   const accessRef = placeRef.collection("private").doc("access");
+  // Uma avaliação por usuário por local: o id do documento é o uid do autor,
+  // então só o próprio autor cria/edita a dele. Ninguém mais (nem dono ou
+  // gestor) altera ou apaga a avaliação de outra pessoa.
   const reviewRef = placeRef.collection("reviews").doc(uid);
   const rateRef = db.collection("placeReviewRate").doc(uid);
   const userRef = db.collection("users").doc(uid);
@@ -72,7 +79,7 @@ async function submitReviewHandler(request, deps = {}) {
     action = current.exists ? "updated" : "created";
     const existing = current.data() || {};
     const publicId = String(existing.publicId || `rev_${reviewRef.id}`);
-    const displayName = String((userSnap.data() || {}).displayName || request.auth.token.name || "Visitante").trim().split(/\s+/)[0].slice(0, 60) || "Visitante";
+    const author = publicAuthor(userSnap.data(), request.auth.token, parsed.anonymous);
     tx.set(reviewRef, {
       contractVersion: "remdy.places.reviews.v1",
       publicId,
@@ -80,7 +87,10 @@ async function submitReviewHandler(request, deps = {}) {
       stars: parsed.stars,
       comment: parsed.comment,
       status: "pending",
-      authorDisplayName: displayName,
+      authorUid: uid,
+      authorDisplayName: author.authorDisplayName,
+      authorPhotoUrl: author.authorPhotoUrl,
+      anonymous: parsed.anonymous,
       primary: true,
       ownerReply: existing.ownerReply || null,
       createdAtIso: existing.createdAtIso || now.toISOString(),
@@ -117,7 +127,9 @@ async function replyHandler(request, deps = {}) {
   const review = reviews.docs[0];
   const data = review.data();
   if (data.status !== "approved" && data.status !== "published") fail("failed-precondition", "review_not_public");
-  await review.ref.set({ ownerReply: { text: parsed.text, authorRole: "owner", createdAtIso: data.ownerReply?.createdAtIso || now.toISOString(), updatedAtIso: now.toISOString() }, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  if (review.id === uid) fail("permission-denied", "cannot_reply_own_review");
+  // Só a resposta: estrelas, comentário, autor e status ficam intactos.
+  await review.ref.set({ ...ownerReplyPatch(data.ownerReply, parsed.text, now.toISOString()), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   const place = (await placeRef.get()).data() || {};
   await placePush(db, review.id, "Resposta do estabelecimento", `${String(place.name || "Local").slice(0, 80)} respondeu sua avaliação.`, parsed.placeId, "place_reply").catch(() => undefined);
   return { ok: true };
@@ -156,22 +168,10 @@ async function listReviewsHandler(request, deps = {}) {
   const placeRef = db.collection("places").doc(parsed.placeId);
   const place = (await placeRef.get()).data();
   if (!canReceiveReviews(place)) fail("not-found", "place_not_found");
-  const snap = await placeRef.collection("reviews").where("status", "in", ["approved", "published"]).limit(20).get();
-  return { reviews: snap.docs.map((doc) => {
-    const row = doc.data();
-    return {
-      publicId: String(row.publicId || "").slice(0, 120),
-      authorDisplayName: String(row.authorDisplayName || "Visitante").slice(0, 60),
-      stars: Number(row.stars) || 0,
-      comment: String(row.comment || "").slice(0, 1500),
-      status: row.status,
-      ownerReply: row.ownerReply && typeof row.ownerReply === "object" ? {
-        text: String(row.ownerReply.text || "").slice(0, 800),
-        createdAtIso: String(row.ownerReply.createdAtIso || "").slice(0, 40),
-      } : null,
-      createdAtIso: String(row.createdAtIso || "").slice(0, 40),
-    };
-  }) };
+  const snap = await placeRef.collection("reviews").where("status", "in", ["approved", "published"]).limit(50).get();
+  const reviews = snap.docs.map((doc) => publicReviewRow(doc.data()))
+    .sort((a, b) => String(b.createdAtIso).localeCompare(String(a.createdAtIso)));
+  return { reviews, summary: ratingSummaryOf(place) };
 }
 
 exports.submitReviewHandler = submitReviewHandler;
