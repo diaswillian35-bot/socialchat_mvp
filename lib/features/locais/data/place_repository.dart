@@ -122,11 +122,18 @@ class FirestorePlaceRepository implements PlaceRepository {
     if (!document.exists || data == null) return null;
     final place = FirestorePlaceMapper.tryParse(id, data);
     if (place == null) return null;
-    final callable = (_functionsOverride ??
-            FirebaseFunctions.instanceFor(region: 'us-central1'))
-        .httpsCallable('listPlaceReviews');
-    final response = await callable.call({'placeId': id});
-    final payload = Map<String, dynamic>.from(response.data as Map);
+    // Avaliações são opcionais: se a função não existir ou falhar, a ficha
+    // abre mesmo assim, sem avaliações.
+    final Map<String, dynamic> payload;
+    try {
+      final callable = (_functionsOverride ??
+              FirebaseFunctions.instanceFor(region: 'us-central1'))
+          .httpsCallable('listPlaceReviews');
+      final response = await callable.call({'placeId': id});
+      payload = Map<String, dynamic>.from(response.data as Map);
+    } catch (_) {
+      return place;
+    }
     final rawReviews =
         payload['reviews'] is List ? payload['reviews'] as List : const [];
     final reviews = <PlaceReview>[];
