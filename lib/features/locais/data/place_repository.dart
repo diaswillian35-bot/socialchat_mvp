@@ -94,6 +94,7 @@ class FirestorePlaceRepository implements PlaceRepository {
 
   Query<Map<String, dynamic>> get _publicQuery => _firestore
       .collection('places')
+      .where('schemaVersion', isEqualTo: 1)
       .where('moderationStatus', isEqualTo: 'published')
       .where('active', isEqualTo: true)
       .where('deleted', isEqualTo: false)
