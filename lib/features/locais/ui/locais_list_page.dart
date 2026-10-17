@@ -11,7 +11,6 @@ import 'locais_state_views.dart';
 import 'place_card.dart';
 import 'locais_detail_page.dart';
 
-
 /// Lista e mapa de Locais. Com a flag desligada não desenha conteúdo.
 class LocaisListPage extends StatefulWidget {
   const LocaisListPage({super.key, this.repository, this.clock});

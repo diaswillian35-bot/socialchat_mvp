@@ -19,12 +19,16 @@ class LocaisDetailPage extends StatefulWidget {
     required this.repository,
     this.clock,
     PlaceActionsService? actions,
+    this.launcher,
   }) : actions = actions ?? const PlaceActionsService();
 
   final String placeId;
   final PlaceRepository repository;
   final DateTime Function()? clock;
   final PlaceActionsService actions;
+
+  /// Abre links externos; injetável nos testes. Padrão: url_launcher.
+  final Future<bool> Function(Uri uri, LaunchMode mode)? launcher;
 
   @override
   State<LocaisDetailPage> createState() => _LocaisDetailPageState();
@@ -224,11 +228,8 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                onPressed: () => launchUrl(
-                  Uri.parse(
-                      'https://www.google.com/maps/dir/?api=1&destination=${place.address.latitude},${place.address.longitude}'),
-                  mode: LaunchMode.externalApplication,
-                ),
+                onPressed: () => _open(Uri.parse(
+                    'https://www.google.com/maps/dir/?api=1&destination=${place.address.latitude},${place.address.longitude}')),
                 icon: const Icon(Icons.directions_outlined),
                 label: Text(strings.route),
               ),
@@ -310,8 +311,8 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
           ),
         if (menu.pdfUrl != null)
           OutlinedButton.icon(
-            onPressed: () => launchUrl(Uri.parse(menu.pdfUrl!),
-                mode: LaunchMode.externalApplication),
+            key: const Key('locais_menu_pdf'),
+            onPressed: () => _open(Uri.parse(menu.pdfUrl!)),
             icon: const Icon(Icons.picture_as_pdf_outlined),
             label: Text(strings.menuPdf),
           ),
@@ -364,51 +365,172 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
 
   Widget _contacts(LocaisStrings strings, PlaceListing place) {
     final contact = place.contact;
+    final phone = contact.phone;
+    final whatsapp = contact.whatsapp;
+    final website = contact.website;
+    final instagram = contact.instagram;
+    final instagramUri = instagram == null ? null : _instagramUri(instagram);
+    final rows = <Widget>[
+      if (phone != null)
+        _actionRow(
+          key: const Key('locais_contact_phone'),
+          icon: Icons.phone_rounded,
+          label: strings.phone,
+          value: phone,
+          uri:
+              Uri(scheme: 'tel', path: phone.replaceAll(RegExp(r'[^\d+]'), '')),
+        ),
+      if (whatsapp != null)
+        _actionRow(
+          key: const Key('locais_contact_whatsapp'),
+          icon: Icons.chat_outlined,
+          label: 'WhatsApp',
+          value: whatsapp,
+          uri: Uri.https('wa.me', whatsapp.replaceAll(RegExp(r'\D'), '')),
+        ),
+      if (website != null)
+        _actionRow(
+          key: const Key('locais_contact_website'),
+          icon: Icons.language_rounded,
+          label: strings.website,
+          value: website.replaceFirst(RegExp(r'^https?://'), ''),
+          uri: Uri.parse(website),
+        ),
+      if (instagram != null && instagramUri != null)
+        _actionRow(
+          key: const Key('locais_contact_instagram'),
+          icon: Icons.alternate_email_rounded,
+          label: strings.instagram,
+          value: _instagramLabel(instagram),
+          uri: instagramUri,
+        ),
+    ];
     return Column(
       key: const Key('locais_detail_contact'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle(strings.contact),
-        if (contact.phone != null)
-          _actionRow(Icons.phone_rounded, strings.phone, contact.phone!,
-              Uri(scheme: 'tel', path: contact.phone)),
-        if (contact.whatsapp != null)
-          _actionRow(
-              Icons.chat_outlined,
-              'WhatsApp',
-              contact.whatsapp!,
-              Uri.https(
-                  'wa.me', contact.whatsapp!.replaceAll(RegExp(r'\D'), ''))),
-        if (contact.website != null)
-          _infoRow(Icons.language_rounded, strings.website, contact.website!),
-        if (contact.instagram != null)
-          _infoRow(
-            Icons.alternate_email_rounded,
-            strings.instagram,
-            contact.instagram!,
-          ),
-        if (contact.phone == null &&
-            contact.website == null &&
-            contact.instagram == null)
+        if (rows.isEmpty)
           Text(
             strings.emptyBody,
             style: const TextStyle(color: LocaisColors.muted),
-          ),
+          )
+        else
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const Divider(height: 1, color: LocaisColors.border),
+            rows[i],
+          ],
       ],
     );
   }
 
-  Widget _actionRow(IconData icon, String label, String value, Uri uri) {
+  /// Aceita URL https do Instagram ou @usuario / usuario.
+  static Uri? _instagramUri(String raw) {
+    final text = raw.trim();
+    final parsed = Uri.tryParse(text);
+    if (parsed != null && parsed.scheme == 'https' && parsed.host.isNotEmpty) {
+      return parsed;
+    }
+    final handle = text
+        .replaceFirst(RegExp(r'^(https?://)?(www\.)?instagram\.com/'), '')
+        .replaceFirst('@', '')
+        .split(RegExp(r'[/?#\s]'))
+        .first;
+    if (!RegExp(r'^[A-Za-z0-9._]{1,30}$').hasMatch(handle)) return null;
+    return Uri.https('www.instagram.com', '/$handle/');
+  }
+
+  static String _instagramLabel(String raw) {
+    final uri = _instagramUri(raw);
+    if (uri != null && uri.host.contains('instagram.com')) {
+      final parts = uri.pathSegments.where((part) => part.isNotEmpty);
+      if (parts.isNotEmpty) return '@${parts.first}';
+    }
+    return raw;
+  }
+
+  /// Abre fora do app. Se o app nativo não abrir, tenta o navegador padrão
+  /// e, se nada abrir, avisa o usuário (nunca falha em silêncio).
+  Future<void> _open(Uri uri) async {
+    final launch = widget.launcher ??
+        (Uri target, LaunchMode mode) => launchUrl(target, mode: mode);
+    var opened = false;
+    try {
+      opened = await launch(uri, LaunchMode.externalApplication);
+    } catch (_) {
+      opened = false;
+    }
+    if (!opened && (uri.scheme == 'https' || uri.scheme == 'http')) {
+      try {
+        opened = await launch(uri, LaunchMode.platformDefault);
+      } catch (_) {
+        opened = false;
+      }
+    }
+    if (!opened && mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(LocaisStrings.of(context).linkOpenFailed)),
+      );
+    }
+  }
+
+  /// Linha tocável no estilo das linhas de informação do evento: ícone navy,
+  /// rótulo, valor e seta, com área de toque inteira (InkWell na Material do
+  /// cartão).
+  Widget _actionRow({
+    required Key key,
+    required IconData icon,
+    required String label,
+    required String value,
+    required Uri uri,
+  }) {
     return Semantics(
       button: true,
       label: '$label, $value',
-      child: ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: Icon(icon, color: LocaisColors.navy),
-        title: Text(label),
-        subtitle: Text(value),
-        trailing: const Icon(Icons.open_in_new, size: 18),
-        onTap: () => launchUrl(uri, mode: LaunchMode.externalApplication),
+      excludeSemantics: true,
+      child: InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _open(uri),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 52),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: LocaisColors.navy),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          color: LocaisColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: LocaisColors.navy,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    color: LocaisColors.muted),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -890,22 +1012,6 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
           fontWeight: FontWeight.w900,
           color: LocaisColors.navy,
         ),
-      ),
-    );
-  }
-
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: LocaisColors.navy),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text('$label: $value', style: const TextStyle(height: 1.3)),
-          ),
-        ],
       ),
     );
   }

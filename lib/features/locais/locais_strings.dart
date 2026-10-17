@@ -192,6 +192,14 @@ class LocaisStrings {
         es: 'Dirección',
         fr: 'Adresse',
       );
+  String get linkOpenFailed => _t(
+        pt: 'Não foi possível abrir o link',
+        ptPt: 'Não foi possível abrir a ligação',
+        en: 'Could not open the link',
+        es: 'No se pudo abrir el enlace',
+        fr: "Impossible d'ouvrir le lien",
+      );
+
   String get route => _t(
       pt: 'Como chegar',
       ptPt: 'Como chegar',
