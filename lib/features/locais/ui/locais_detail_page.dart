@@ -37,6 +37,11 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
   int _photo = 0;
   bool _canManage = false;
 
+  /// Ações de escrita (avaliar, responder como dono, portal/reivindicar)
+  /// desligadas no app: dependem de funções ainda não publicadas e a gestão
+  /// dos locais é feita pelo time Remdy no admin.
+  static const bool _userWriteActionsEnabled = false;
+
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
 
   @override
@@ -198,11 +203,14 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
         const SizedBox(height: 16),
         _menu(strings, place),
         if (place.menu.enabled) const SizedBox(height: 16),
-        _reviews(strings, place),
-        const SizedBox(height: 16),
+        // Avaliações: só leitura e só quando houver alguma. Escrever avaliação
+        // e o portal do comerciante ficam fora da tela do usuário (o time
+        // Remdy cadastra e entrega as páginas aos donos pelo admin).
+        if (place.reviews.isNotEmpty) ...[
+          _reviews(strings, place),
+          const SizedBox(height: 16),
+        ],
         _events(strings, place),
-        const SizedBox(height: 16),
-        _merchant(strings, place),
       ],
     );
   }
@@ -428,13 +436,15 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle(strings.reviews),
-        FilledButton.icon(
-          key: const Key('place_write_review'),
-          onPressed: () => _reviewDialog(strings, place),
-          icon: const Icon(Icons.star_outline_rounded),
-          label: Text(strings.writeReview),
-        ),
-        const SizedBox(height: 10),
+        if (_userWriteActionsEnabled) ...[
+          FilledButton.icon(
+            key: const Key('place_write_review'),
+            onPressed: () => _reviewDialog(strings, place),
+            icon: const Icon(Icons.star_outline_rounded),
+            label: Text(strings.writeReview),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (place.reviews.isEmpty)
           Text(
             strings.noReviews,
@@ -559,7 +569,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                   ),
                 ),
               ],
-              if (_canManage) ...[
+              if (_userWriteActionsEnabled && _canManage) ...[
                 const SizedBox(height: 8),
                 TextButton.icon(
                   onPressed: () => _replyDialog(strings, review),
@@ -650,6 +660,8 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
     );
   }
 
+  // Mantido para reuso futuro (admin); não aparece para o usuário.
+  // ignore: unused_element
   Widget _merchant(LocaisStrings strings, PlaceListing place) {
     final portal = MerchantPortalPlan.portalUri(place.id);
     final link = MerchantPortalPlan.deepLinkUri(place.id);

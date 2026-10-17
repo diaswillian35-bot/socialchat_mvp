@@ -117,15 +117,11 @@ void main() {
     await see(const Key('locais_detail_events'));
     expect(find.textContaining('Noite de jazz'), findsOneWidget);
 
-    await see(const Key('merchant_portal_plan'));
-    expect(
-      find.textContaining('https://remdy.app/portal/locais/casa_do_sabor'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('https://remdy.app/l/casa_do_sabor'),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('merchant_portal_plan')), findsNothing);
+    expect(find.byKey(const Key('merchant_portal_button')), findsNothing);
+    expect(find.byKey(const Key('place_write_review')), findsNothing);
+    expect(find.textContaining('Reivindicar'), findsNothing);
+    expect(find.textContaining('remdy.app/portal'), findsNothing);
     expect(
       find.descendant(
         of: find.byType(LocaisDetailPage),
@@ -133,15 +129,6 @@ void main() {
       ),
       findsNothing,
     );
-
-    await tester.ensureVisible(find.byKey(const Key('merchant_portal_button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('merchant_portal_button')));
-    await tester.pumpAndSettle();
-    expect(find.text('Reivindicar este local'), findsWidgets);
-    expect(find.byType(TextField), findsNWidgets(2));
-    await tester.tap(find.text('Cancelar').last);
-    await tester.pumpAndSettle();
 
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
