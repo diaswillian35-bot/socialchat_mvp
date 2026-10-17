@@ -103,7 +103,8 @@ void main() {
 
     await see(const Key('locais_detail_photos'));
     await see(const Key('locais_detail_description'));
-    await see(const Key('locais_detail_map'));
+    expect(find.byKey(const Key('locais_detail_map')), findsNothing);
+    await see(const Key('locais_route_button'));
     await see(const Key('locais_detail_address'));
     expect(
       find.text('Rua das Flores, 120, Centro, Florianópolis, Santa Catarina'),
@@ -130,7 +131,7 @@ void main() {
       findsNothing,
     );
 
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
     await tester.pumpAndSettle();
     expect(find.byType(LocaisDetailPage), findsNothing);
     expect(find.byKey(const Key('place_card_casa_do_sabor')), findsOneWidget);

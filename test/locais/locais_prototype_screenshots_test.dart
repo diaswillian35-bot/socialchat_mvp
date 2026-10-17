@@ -20,18 +20,12 @@ void main() {
     return RepaintBoundary(key: const Key('locais_shot'), child: child);
   }
 
-  testWidgets('protótipo iPhone: lista, mapa, vazio, erro e detalhe', (
+  testWidgets('protótipo iPhone: lista, vazio, erro e detalhe', (
     tester,
   ) async {
     await pumpLocais(tester, frame(demoList()), size: const Size(390, 844));
     await shoot(tester, 'iphone_lista');
 
-    await tester.tap(find.byKey(const Key('locais_view_map')));
-    await tester.pumpAndSettle();
-    await shoot(tester, 'iphone_mapa');
-
-    await tester.tap(find.byKey(const Key('locais_view_list')));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('locais_search')), 'Antártica');
     await tester.pumpAndSettle();
     await shoot(tester, 'iphone_vazio');
@@ -62,6 +56,6 @@ void main() {
     await shoot(tester, 'android_lista');
 
     await pumpLocais(tester, frame(demoList()), size: const Size(1024, 768));
-    await shoot(tester, 'ipad_lista_mapa');
+    await shoot(tester, 'ipad_lista');
   });
 }

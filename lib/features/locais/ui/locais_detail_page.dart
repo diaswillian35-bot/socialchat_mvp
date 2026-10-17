@@ -7,8 +7,8 @@ import '../locais_feature_flag.dart';
 import '../locais_strings.dart';
 import '../logic/merchant_portal_plan.dart';
 import '../models/place_listing.dart';
+import '../../../widgets/events/event_detail_light_header.dart';
 import 'locais_layout.dart';
-import 'locais_map_view.dart';
 import 'locais_state_views.dart';
 import 'place_card.dart';
 
@@ -82,17 +82,19 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
       return const Scaffold(body: SizedBox.shrink(key: Key('locais_disabled')));
     }
     final strings = LocaisStrings.of(context);
+    final place = _place;
+    final showHeader = !_loading && !_failed && place != null;
     return Scaffold(
-      backgroundColor: LocaisColors.bg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: LocaisColors.navy,
-        elevation: 0,
-        title: Text(
-          _place?.name ?? strings.title,
-          key: const Key('locais_detail_title'),
-        ),
-      ),
+      // Mesmo padrão do detalhe de evento: fundo branco, sem AppBar; o
+      // título fica no cabeçalho com foto (EventDetailLightHeader).
+      backgroundColor: _eventBg,
+      appBar: showHeader
+          ? null
+          : AppBar(
+              backgroundColor: _eventBg,
+              foregroundColor: LocaisColors.navy,
+              elevation: 0,
+            ),
       body: _body(strings),
     );
   }
@@ -116,103 +118,156 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
     final wide = MediaQuery.sizeOf(context).width >= 700;
     return ListView(
       key: const Key('locais_detail_scroll'),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+      padding: EdgeInsets.zero,
       children: [
-        _photos(place, wide),
-        const SizedBox(height: 16),
-        Text(
-          strings.categoryName(place.category).toUpperCase(),
-          style: const TextStyle(
-            color: LocaisColors.logoBlue,
-            fontWeight: FontWeight.w800,
-            fontSize: 12,
+        EventDetailLightHeader(
+          key: const Key('locais_detail_title'),
+          title: place.name,
+          locationLine: '${place.address.city} · ${place.address.region}',
+          dateLine: '',
+          confirmed: false,
+          cancelled: false,
+          liked: false,
+          confirmedLabel: '',
+          cancelledLabel: '',
+          coverChild: _photos(place, wide),
+          onBack: () => Navigator.maybePop(context),
+          showLike: false,
+          pageBackground: _eventBg,
+          heroHeight: wide ? 340 : 280,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: _details(strings, place, open),
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          place.name,
-          style: const TextStyle(
-            color: LocaisColors.text,
-            fontSize: 26,
-            fontWeight: FontWeight.w900,
-            height: 1.15,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            const Icon(Icons.star_rounded, color: Color(0xFFF5B301)),
-            Text(
-              strings.ratingLine(place.rating, place.ratingCount),
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-            _pill(open ? strings.openNow : strings.closed, open),
-          ],
-        ),
-        const SizedBox(height: 18),
-        _section(
-          strings.description,
-          place.description,
-          key: const Key('locais_detail_description'),
-        ),
-        const SizedBox(height: 16),
-        _sectionTitle(strings.address),
-        SizedBox(
-          key: const Key('locais_detail_map'),
-          height: wide ? 240 : 180,
-          child: LocaisMapView(
-            places: [place],
-            strings: strings,
-            highlightId: place.id,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          place.address.singleLine,
-          key: const Key('locais_detail_address'),
-          style: const TextStyle(
-            color: LocaisColors.text,
-            height: 1.35,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        Text(
-          '${place.address.postalCode} · ${place.address.countryCode}',
-          style: const TextStyle(color: LocaisColors.muted),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          key: const Key('locais_route_button'),
-          onPressed: () => launchUrl(
-            Uri.parse(
-                'https://www.google.com/maps/dir/?api=1&destination=${place.address.latitude},${place.address.longitude}'),
-            mode: LaunchMode.externalApplication,
-          ),
-          icon: const Icon(Icons.directions_outlined),
-          label: Text(strings.route),
-        ),
-        const SizedBox(height: 16),
-        _contacts(strings, place),
-        const SizedBox(height: 16),
-        _hours(strings, place),
-        const SizedBox(height: 16),
-        _accessibility(strings, place),
-        const SizedBox(height: 16),
-        _menu(strings, place),
-        if (place.menu.enabled) const SizedBox(height: 16),
-        // Avaliações: só leitura e só quando houver alguma. Escrever avaliação
-        // e o portal do comerciante ficam fora da tela do usuário (o time
-        // Remdy cadastra e entrega as páginas aos donos pelo admin).
-        if (place.reviews.isNotEmpty) ...[
-          _reviews(strings, place),
-          const SizedBox(height: 16),
-        ],
-        _events(strings, place),
       ],
     );
+  }
+
+  static const Color _eventBg = Colors.white;
+
+  /// Cartão no padrão da aba "Sobre" do evento.
+  Widget _card({required Key key, required Widget child}) {
+    return Material(
+      key: key,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: LocaisColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(padding: const EdgeInsets.all(14), child: child),
+    );
+  }
+
+  List<Widget> _details(LocaisStrings strings, PlaceListing place, bool open) {
+    return [
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            strings.categoryName(place.category).toUpperCase(),
+            style: const TextStyle(
+              color: LocaisColors.navy,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+          const Icon(Icons.star_rounded, size: 18, color: Color(0xFFF5B301)),
+          Text(
+            strings.ratingLine(place.rating, place.ratingCount),
+            style: const TextStyle(
+                fontWeight: FontWeight.w700, color: LocaisColors.muted),
+          ),
+          _pill(open ? strings.openNow : strings.closed, open),
+        ],
+      ),
+      const SizedBox(height: 12),
+      _card(
+        key: const Key('locais_detail_description'),
+        child: _section(strings.description, place.description),
+      ),
+      const SizedBox(height: 12),
+      _card(
+        key: const Key('locais_detail_address_card'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(strings.address),
+            Text(
+              place.address.singleLine,
+              key: const Key('locais_detail_address'),
+              style: const TextStyle(
+                color: LocaisColors.text,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              '${place.address.postalCode} · ${place.address.countryCode}',
+              style: const TextStyle(color: LocaisColors.muted),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const Key('locais_route_button'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: LocaisColors.navy,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(48, 46),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () => launchUrl(
+                  Uri.parse(
+                      'https://www.google.com/maps/dir/?api=1&destination=${place.address.latitude},${place.address.longitude}'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                icon: const Icon(Icons.directions_outlined),
+                label: Text(strings.route),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _card(
+          key: const Key('locais_detail_contact_card'),
+          child: _contacts(strings, place)),
+      const SizedBox(height: 12),
+      _card(
+          key: const Key('locais_detail_hours_card'),
+          child: _hours(strings, place)),
+      const SizedBox(height: 12),
+      _card(
+          key: const Key('locais_detail_access_card'),
+          child: _accessibility(strings, place)),
+      const SizedBox(height: 12),
+      if (place.menu.enabled) ...[
+        _card(
+            key: const Key('locais_detail_menu_card'),
+            child: _menu(strings, place)),
+        const SizedBox(height: 12),
+      ],
+      // Avaliações: só leitura e só quando houver alguma. Escrever avaliação
+      // e o portal do comerciante ficam fora da tela do usuário (o time
+      // Remdy cadastra e entrega as páginas aos donos pelo admin).
+      if (place.reviews.isNotEmpty) ...[
+        _card(
+            key: const Key('locais_detail_reviews_card'),
+            child: _reviews(strings, place)),
+        const SizedBox(height: 12),
+      ],
+      _card(
+          key: const Key('locais_detail_events_card'),
+          child: _events(strings, place)),
+    ];
   }
 
   Widget _menu(LocaisStrings strings, PlaceListing place) {
@@ -268,44 +323,41 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
   }
 
   Widget _photos(PlaceListing place, bool wide) {
-    return Column(
+    return Stack(
       key: const Key('locais_detail_photos'),
+      fit: StackFit.expand,
       children: [
-        SizedBox(
-          height: wide ? 280 : 210,
-          child: PageView.builder(
-            itemCount: place.photos.length,
-            onPageChanged: (index) => setState(() => _photo = index),
-            itemBuilder: (context, index) {
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: PlaceCover(
-                  photo: place.photos[index],
-                  category: place.category,
-                ),
-              );
-            },
+        PageView.builder(
+          itemCount: place.photos.length,
+          onPageChanged: (index) => setState(() => _photo = index),
+          itemBuilder: (context, index) => PlaceCover(
+            photo: place.photos[index],
+            category: place.category,
           ),
         ),
-        if (place.photos.length > 1) ...[
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (var i = 0; i < place.photos.length; i++)
-                Container(
-                  width: 7,
-                  height: 7,
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color:
-                        i == _photo ? LocaisColors.navy : LocaisColors.border,
+        if (place.photos.length > 1)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 28,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 0; i < place.photos.length; i++)
+                  Container(
+                    width: 7,
+                    height: 7,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: i == _photo
+                          ? LocaisColors.navy
+                          : Colors.white.withValues(alpha: 0.8),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ],
       ],
     );
   }
@@ -815,9 +867,8 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
     );
   }
 
-  Widget _section(String title, String body, {required Key key}) {
+  Widget _section(String title, String body) {
     return Column(
-      key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle(title),
@@ -836,8 +887,8 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
         title,
         style: const TextStyle(
           fontSize: 16,
-          fontWeight: FontWeight.w800,
-          color: LocaisColors.text,
+          fontWeight: FontWeight.w900,
+          color: LocaisColors.navy,
         ),
       ),
     );

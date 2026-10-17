@@ -33,14 +33,8 @@ void main() {
     );
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byKey(const Key('locais_view_map')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('locais_map')), findsOneWidget);
-    expect(find.bySemanticsLabel(RegExp('Mapa com')), findsOneWidget);
-    expect(
-      tester.getSize(find.byKey(const Key('place_pin_casa_do_sabor'))).height,
-      greaterThanOrEqualTo(48),
-    );
+    expect(find.byKey(const Key('locais_view_map')), findsNothing);
+    expect(find.byKey(const Key('locais_map')), findsNothing);
     handle.dispose();
   });
 
@@ -56,15 +50,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '$size');
       expect(find.text('Locais'), findsWidgets);
-      if (LocaisLayout.splitMap(size.width)) {
-        expect(find.byKey(const Key('locais_split_map')), findsOneWidget);
-      } else {
-        expect(find.byKey(const Key('locais_split_map')), findsNothing);
-        expect(
-          find.byKey(const Key('place_card_casa_do_sabor')),
-          findsOneWidget,
-        );
-      }
+      expect(find.byKey(const Key('locais_split_map')), findsNothing);
+      expect(
+        find.byKey(const Key('place_card_casa_do_sabor')),
+        findsOneWidget,
+      );
     }
   });
 

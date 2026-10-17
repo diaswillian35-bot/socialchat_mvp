@@ -7,12 +7,10 @@ import '../locais_strings.dart';
 import '../logic/place_query.dart';
 import '../models/place_listing.dart';
 import 'locais_layout.dart';
-import 'locais_map_view.dart';
 import 'locais_state_views.dart';
 import 'place_card.dart';
 import 'locais_detail_page.dart';
 
-enum LocaisBrowseMode { list, map }
 
 /// Lista e mapa de Locais. Com a flag desligada não desenha conteúdo.
 class LocaisListPage extends StatefulWidget {
@@ -32,7 +30,6 @@ class _LocaisListPageState extends State<LocaisListPage> {
   PlaceRepository? _repository;
   List<PlaceListing> _catalog = const [];
   PlaceQuery _query = const PlaceQuery();
-  LocaisBrowseMode _mode = LocaisBrowseMode.list;
   bool _loading = true;
   bool _failed = false;
 
@@ -119,26 +116,7 @@ class _LocaisListPageState extends State<LocaisListPage> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final split = LocaisLayout.splitMap(constraints.maxWidth);
-            final results = _results(strings, visible, constraints.maxWidth);
-            if (!split) return results;
-            return Row(
-              children: [
-                Expanded(flex: 3, child: results),
-                Expanded(
-                  flex: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 12, 16, 12),
-                    child: LocaisMapView(
-                      key: const Key('locais_split_map'),
-                      places: visible,
-                      strings: strings,
-                      onSelect: _openDetail,
-                    ),
-                  ),
-                ),
-              ],
-            );
+            return _results(strings, visible, constraints.maxWidth);
           },
         ),
       ),
@@ -150,15 +128,13 @@ class _LocaisListPageState extends State<LocaisListPage> {
     List<PlaceListing> visible,
     double width,
   ) {
-    final split = LocaisLayout.splitMap(width);
-    final showMap = !split && _mode == LocaisBrowseMode.map;
     return CustomScrollView(
       key: const Key('locais_scroll'),
       slivers: [
         SliverToBoxAdapter(child: _header(strings)),
         SliverToBoxAdapter(child: _searchField(strings)),
         SliverToBoxAdapter(child: _categories(strings)),
-        SliverToBoxAdapter(child: _toolbar(strings, split)),
+        SliverToBoxAdapter(child: _toolbar(strings)),
         if (_loading)
           SliverFillRemaining(
             hasScrollBody: false,
@@ -171,21 +147,6 @@ class _LocaisListPageState extends State<LocaisListPage> {
               title: strings.errorTitle,
               retryLabel: strings.retry,
               onRetry: _load,
-            ),
-          )
-        else if (showMap)
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 460,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: LocaisMapView(
-                  key: const Key('locais_map'),
-                  places: visible,
-                  strings: strings,
-                  onSelect: _openDetail,
-                ),
-              ),
             ),
           )
         else if (visible.isEmpty)
@@ -314,7 +275,7 @@ class _LocaisListPageState extends State<LocaisListPage> {
     );
   }
 
-  Widget _toolbar(LocaisStrings strings, bool split) {
+  Widget _toolbar(LocaisStrings strings) {
     final filtering = _query.openNow ||
         _query.wheelchairEntrance ||
         _query.minRating != null ||
@@ -338,20 +299,6 @@ class _LocaisListPageState extends State<LocaisListPage> {
             icon: const Icon(Icons.tune_rounded, size: 18),
             label: Text(strings.filter),
           ),
-          if (!split) ...[
-            ChoiceChip(
-              key: const Key('locais_view_list'),
-              label: Text(strings.listView),
-              selected: _mode == LocaisBrowseMode.list,
-              onSelected: (_) => setState(() => _mode = LocaisBrowseMode.list),
-            ),
-            ChoiceChip(
-              key: const Key('locais_view_map'),
-              label: Text(strings.mapView),
-              selected: _mode == LocaisBrowseMode.map,
-              onSelected: (_) => setState(() => _mode = LocaisBrowseMode.map),
-            ),
-          ],
           if (filtering)
             TextButton(
               key: const Key('locais_clear_filters'),

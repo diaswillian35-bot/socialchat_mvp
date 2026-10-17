@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../remdy_logo.dart';
 
-
 /// Hero + cabeçalho do detalhe de evento no **tema claro** (mockup oficial).
 ///
 /// - Foto com [BoxFit.cover]
@@ -30,6 +29,7 @@ class EventDetailLightHeader extends StatelessWidget {
     this.onMenu,
     this.pageBackground = const Color(0xFFFFFFFF),
     this.heroHeight = 280,
+    this.showLike = true,
   });
 
   static const Color navy = Color(0xFF313A5F);
@@ -58,6 +58,9 @@ class EventDetailLightHeader extends StatelessWidget {
   final VoidCallback? onMenu;
   final Color pageBackground;
   final double heroHeight;
+
+  /// Oculta o coração (telas sem curtida, ex.: Locais).
+  final bool showLike;
 
   @override
   Widget build(BuildContext context) {
@@ -113,14 +116,15 @@ class EventDetailLightHeader extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                       ],
-                      _AdaptiveHeroButton(
-                        icon: liked
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
-                        iconColor:
-                            liked ? const Color(0xFFE11D48) : Colors.white,
-                        onTap: onLike,
-                      ),
+                      if (showLike)
+                        _AdaptiveHeroButton(
+                          icon: liked
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          iconColor:
+                              liked ? const Color(0xFFE11D48) : Colors.white,
+                          onTap: onLike,
+                        ),
                       if (onMenu != null) ...[
                         const SizedBox(width: 8),
                         _AdaptiveHeroButton(
