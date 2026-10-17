@@ -74,8 +74,19 @@ void main() {
     );
     expect(find.text('Demorou.'), findsOneWidget);
     expect(find.textContaining('/10/2026'), findsWidgets);
-    // Escrever avaliação continua desligado até publicar o backend.
-    expect(find.byKey(const Key('place_write_review')), findsNothing);
+    // "Avaliar este local" ligado; abre o diálogo com a opção anônima.
+    final write = find.byKey(const Key('place_write_review'));
+    expect(write, findsOneWidget);
+    await tester.ensureVisible(write);
+    await tester.pumpAndSettle();
+    await tester.tap(write);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('place_review_anonymous')), findsOneWidget);
+    expect(find.text('Publicar como anônimo'), findsOneWidget);
+    await tester.tap(find.text('Cancelar').last);
+    await tester.pumpAndSettle();
+    // Resposta do dono continua oculta.
+    expect(find.byIcon(Icons.reply_rounded), findsNothing);
   });
 
   testWidgets('sem agregado calcula pelas avaliações listadas', (

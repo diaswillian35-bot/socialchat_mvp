@@ -120,7 +120,7 @@ void main() {
 
     expect(find.byKey(const Key('merchant_portal_plan')), findsNothing);
     expect(find.byKey(const Key('merchant_portal_button')), findsNothing);
-    expect(find.byKey(const Key('place_write_review')), findsNothing);
+    expect(find.byKey(const Key('place_write_review')), findsOneWidget);
     expect(find.textContaining('Reivindicar'), findsNothing);
     expect(find.textContaining('remdy.app/portal'), findsNothing);
     expect(

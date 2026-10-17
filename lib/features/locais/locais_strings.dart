@@ -299,6 +299,41 @@ class LocaisStrings {
         fr: 'modifié',
       );
 
+  String reviewError(String code) {
+    switch (code) {
+      case 'age':
+        return _t(
+            pt: 'Para avaliar, confirme sua idade no seu perfil.',
+            en: 'To review, verify your age in your profile.',
+            es: 'Para evaluar, confirma tu edad en tu perfil.',
+            fr: 'Pour évaluer, confirmez votre âge dans votre profil.');
+      case 'owner':
+        return _t(
+            pt: 'Quem administra o local não pode avaliá-lo.',
+            en: 'Place managers cannot review their own place.',
+            es: 'Quien administra el lugar no puede evaluarlo.',
+            fr: 'Les gérants ne peuvent pas évaluer leur lieu.');
+      case 'rate':
+        return _t(
+            pt: 'Aguarde um pouco antes de enviar de novo.',
+            en: 'Please wait a moment before sending again.',
+            es: 'Espera un poco antes de enviar de nuevo.',
+            fr: 'Patientez un peu avant de renvoyer.');
+      case 'auth':
+        return _t(
+            pt: 'Entre na sua conta para avaliar.',
+            en: 'Sign in to review.',
+            es: 'Inicia sesión para evaluar.',
+            fr: 'Connectez-vous pour évaluer.');
+      default:
+        return _t(
+            pt: 'Não foi possível enviar a avaliação. Tente de novo.',
+            en: 'Could not send the review. Try again.',
+            es: 'No se pudo enviar la reseña. Inténtalo de nuevo.',
+            fr: 'Impossible d’envoyer l’avis. Réessayez.');
+    }
+  }
+
   String reviewTotal(int count) => _t(
         pt: count == 1 ? '1 avaliação' : '$count avaliações',
         en: count == 1 ? '1 review' : '$count reviews',

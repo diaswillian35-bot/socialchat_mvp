@@ -46,6 +46,10 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
   /// dos locais é feita pelo time Remdy no admin.
   static const bool _userWriteActionsEnabled = false;
 
+  /// "Avaliar este local": ligado (submitPlaceReview/listPlaceReviews
+  /// publicadas). Resposta do dono e reivindicação seguem desligadas.
+  static const bool _reviewWriteEnabled = true;
+
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
 
   @override
@@ -626,7 +630,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
       children: [
         _sectionTitle(strings.reviews),
         _reviewSummary(strings, summary),
-        if (_userWriteActionsEnabled) ...[
+        if (_reviewWriteEnabled) ...[
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -819,11 +823,20 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                       onPressed: stars == 0
                           ? null
                           : () async {
-                              await widget.actions.submitReview(
-                                  placeId: place.id,
-                                  stars: stars,
-                                  comment: comment.text,
-                                  anonymous: anonymous);
+                              try {
+                                await widget.actions.submitReview(
+                                    placeId: place.id,
+                                    stars: stars,
+                                    comment: comment.text,
+                                    anonymous: anonymous);
+                              } catch (error) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(strings.reviewError(
+                                            _reviewErrorCode(error)))));
+                                return;
+                              }
                               if (!dialogContext.mounted) return;
                               Navigator.pop(dialogContext);
                               if (!mounted) return;
@@ -837,6 +850,22 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
               ),
             ));
     comment.dispose();
+  }
+
+  /// Código curto do erro da função (FirebaseFunctionsException.message/code).
+  static String _reviewErrorCode(Object error) {
+    try {
+      final dynamic e = error;
+      final message = (e.message ?? '').toString();
+      final code = (e.code ?? '').toString();
+      if (message.contains('Adult age verification')) return 'age';
+      if (message.contains('owner_cannot_review')) return 'owner';
+      if (message.contains('review_rate') || code == 'resource-exhausted') {
+        return 'rate';
+      }
+      if (code == 'unauthenticated') return 'auth';
+    } catch (_) {}
+    return 'generic';
   }
 
   /// "2026-10-16T…" → "16/10/2026". Vazio se inválido.
