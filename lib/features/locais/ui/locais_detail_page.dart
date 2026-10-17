@@ -386,7 +386,8 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
           icon: Icons.chat_outlined,
           label: 'WhatsApp',
           value: whatsapp,
-          uri: Uri.https('wa.me', whatsapp.replaceAll(RegExp(r'\D'), '')),
+          uri: Uri.https(
+              'wa.me', _whatsappDigits(whatsapp, place.address.countryCode)),
         ),
       if (website != null)
         _actionRow(
@@ -422,6 +423,19 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
           ],
       ],
     );
+  }
+
+  /// wa.me exige o número com DDI. Números locais (sem DDI) recebem o do
+  /// país do local: BR → 55, CA/US → 1.
+  static String _whatsappDigits(String raw, String countryCode) {
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (raw.trim().startsWith('+')) return digits;
+    final cc = countryCode.toUpperCase();
+    if (cc == 'BR' && (digits.length == 10 || digits.length == 11)) {
+      return '55$digits';
+    }
+    if ((cc == 'CA' || cc == 'US') && digits.length == 10) return '1$digits';
+    return digits;
   }
 
   /// Aceita URL https do Instagram ou @usuario / usuario.
