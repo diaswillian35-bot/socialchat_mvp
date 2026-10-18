@@ -1541,5 +1541,9 @@
   "blocked_users_title": "Usuarios bloqueados",
   "blocked_users_empty": "No has bloqueado a nadie.",
   "blocked_users_unblock": "Desbloquear",
-  "blocked_users_unblocked": "Usuario desbloqueado."
+  "blocked_users_unblocked": "Usuario desbloqueado.",
+  "people_your_city": "Tu ciudad",
+  "people_your_region": "Tu región",
+  "people_nearby_cities": "Ciudades cercanas",
+  "people_other_subdivisions": "Otros estados, provincias y distritos"
 }
