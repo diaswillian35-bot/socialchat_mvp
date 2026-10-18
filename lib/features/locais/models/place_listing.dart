@@ -464,7 +464,7 @@ class PlaceListing {
       throw const PlaceContractException('slug');
     }
     final photosRaw = json['photos'];
-    if (photosRaw is! List || photosRaw.isEmpty) {
+    if (photosRaw is! List || photosRaw.isEmpty || photosRaw.length > 7) {
       throw const PlaceContractException('photos');
     }
     final rating = _reqDouble(json, 'rating');

@@ -977,6 +977,61 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // =========================
+    // LOCAIS — catálogo público somente-leitura no app.
+    // Todas as escritas, avaliações, respostas, reivindicações e denúncias
+    // passam por Cloud Functions. Dados privados só chegam ao dono/gestor.
+    // =========================
+    function publicPlace(data) {
+      return data.get('schemaVersion', 0) == 1
+        && data.get('moderationStatus', '') == 'published'
+        && data.get('active', false) == true
+        && data.get('deleted', false) == false;
+    }
+
+    function placeAccess(placeId) {
+      return get(/databases/$(database)/documents/places/$(placeId)/private/access);
+    }
+
+    function managesPlace(placeId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/places/$(placeId)/private/access)
+        && (
+          placeAccess(placeId).data.get('ownerUid', '') == uid()
+          || uid() in placeAccess(placeId).data.get('managerUids', [])
+        );
+    }
+
+    match /places/{placeId} {
+      allow read: if signedIn() && publicPlace(resource.data);
+      allow write: if false;
+
+      match /reviews/{reviewId} {
+        allow read, write: if false;
+      }
+
+      match /private/{documentId} {
+        allow read: if managesPlace(placeId);
+        allow write: if false;
+      }
+    }
+
+    match /placeClaims/{claimId} {
+      allow read, write: if false;
+    }
+
+    match /placeReports/{reportId} {
+      allow read, write: if false;
+    }
+
+    match /placeReviewRate/{uidValue} {
+      allow read, write: if false;
+    }
+
+    match /placeReportRate/{uidValue} {
+      allow read, write: if false;
+    }
+
     match /configCountries/{countryCode} {
       allow read: if signedIn();
       allow write: if false;

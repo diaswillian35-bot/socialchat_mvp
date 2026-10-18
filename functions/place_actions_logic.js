@@ -3,6 +3,13 @@
 const MAX_COMMENT = 1500;
 const MAX_REPLY = 800;
 const MAX_NOTE = 500;
+const REPORT_REASONS = new Set([
+  "incorrect_information",
+  "closed_or_missing",
+  "inappropriate_photo",
+  "fraud_or_impersonation",
+  "other",
+]);
 
 function cleanText(value, max) {
   return String(value == null ? "" : value)
@@ -39,6 +46,20 @@ function parseClaimInput(data) {
   if (!/^[A-Za-z0-9_-]{3,80}$/.test(placeId)) return { ok: false, code: "place" };
   if (phone.length < 6) return { ok: false, code: "phone" };
   return { ok: true, placeId, role, phone, note };
+}
+
+function parsePlaceReportInput(data) {
+  const placeId = cleanText(data && data.placeId, 80);
+  const reason = cleanText(data && data.reason, 40);
+  const details = cleanText(data && data.details, 800);
+  if (!/^[A-Za-z0-9_-]{3,80}$/.test(placeId)) return { ok: false, code: "place" };
+  if (!REPORT_REASONS.has(reason)) return { ok: false, code: "reason" };
+  if (reason === "other" && details.length < 5) return { ok: false, code: "details" };
+  return { ok: true, placeId, reason, details };
+}
+
+function placeReportId(placeId, uid) {
+  return `rpt_${placeId}_${uid}`.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 120);
 }
 
 function canReceiveReviews(place) {
@@ -144,8 +165,10 @@ module.exports = {
   parseReviewInput,
   parseReplyInput,
   parseClaimInput,
+  parsePlaceReportInput,
   canReceiveReviews,
   canManage,
   claimId,
+  placeReportId,
   ratingAfterPendingEdit,
 };

@@ -268,6 +268,47 @@ service firebase.storage {
       allow write, delete: if false;
     }
 
+    // LOCAIS — leitura dos arquivos publicados; upload de cardápio somente
+    // para dono/gestor já aprovado no documento privado de acesso.
+    function placeAccess(placeId) {
+      return firestore.get(
+        /databases/(default)/documents/places/$(placeId)/private/access
+      );
+    }
+
+    function canManagePlace(placeId) {
+      return signedIn()
+        && firestore.exists(
+          /databases/(default)/documents/places/$(placeId)/private/access
+        )
+        && (
+          placeAccess(placeId).data.get('ownerUid', '') == uid()
+          || uid() in placeAccess(placeId).data.get('managerUids', [])
+        );
+    }
+
+    function isPlaceMenuFile() {
+      return request.resource.contentType in [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/pdf'
+      ];
+    }
+
+    match /places/{placeId}/menu/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if canManagePlace(placeId)
+        && isPlaceMenuFile()
+        && underMb(15);
+      allow delete: if canManagePlace(placeId);
+    }
+
+    match /places/{placeId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write, delete: if false;
+    }
+
     // =========================
     // POSTS
     // Path: posts/{postId}/...

@@ -37,34 +37,76 @@ class PlaceCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final uri = Uri.tryParse((photo.url ?? '').trim());
+    final safeUrl = uri != null &&
+            uri.scheme == 'https' &&
+            uri.host.isNotEmpty &&
+            uri.userInfo.isEmpty
+        ? uri.toString()
+        : null;
     return Semantics(
       label: photo.alt,
       image: true,
+      excludeSemantics: true,
       child: SizedBox(
         width: width,
         height: height,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(photo.color),
-                Color(photo.color).withValues(alpha: 0.72),
-              ],
-            ),
-          ),
-          child: Center(
-            child: Icon(
-              placeCategoryIcon(category),
-              color: Colors.white,
-              size: height != null && height! < 80 ? 28 : 36,
-            ),
-          ),
-        ),
+        child: safeUrl == null
+            ? _placeholder()
+            : Image.network(
+                safeUrl,
+                key: Key('place_photo_${photo.id}'),
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.medium,
+                frameBuilder: (context, child, frame, synchronous) =>
+                    AnimatedOpacity(
+                  opacity: synchronous || frame != null ? 1 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  child: child,
+                ),
+                loadingBuilder: (context, child, progress) => progress == null
+                    ? child
+                    : Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _placeholder(),
+                          const Center(
+                            child: SizedBox.square(
+                              dimension: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                errorBuilder: (_, __, ___) => _placeholder(),
+              ),
       ),
     );
   }
+
+  Widget _placeholder() => DecoratedBox(
+        key: Key('place_photo_fallback_${photo.id}'),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(photo.color),
+              Color(photo.color).withValues(alpha: 0.72),
+            ],
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            placeCategoryIcon(category),
+            color: Colors.white,
+            size: height != null && height! < 80 ? 28 : 36,
+          ),
+        ),
+      );
 }
 
 class PlaceCard extends StatelessWidget {

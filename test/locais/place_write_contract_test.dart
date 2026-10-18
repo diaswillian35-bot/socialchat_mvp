@@ -9,6 +9,7 @@ void main() {
     expect(source, contains("httpsCallable('submitPlaceReview')"));
     expect(source, contains("httpsCallable('replyPlaceReview')"));
     expect(source, contains("httpsCallable('claimPlaceForAccount')"));
+    expect(source, contains("httpsCallable('reportPlace')"));
     expect(source, isNot(contains("collection('places')")));
   });
 

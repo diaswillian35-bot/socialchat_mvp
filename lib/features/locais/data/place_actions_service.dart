@@ -67,4 +67,17 @@ class PlaceActionsService {
     final data = Map<String, dynamic>.from(result.data as Map);
     return data['protocol']?.toString() ?? '';
   }
+
+  Future<void> reportPlace({
+    required String placeId,
+    required String reason,
+    required String details,
+  }) async {
+    _guard();
+    await _functions.httpsCallable('reportPlace').call({
+      'placeId': placeId,
+      'reason': reason,
+      'details': details.trim(),
+    });
+  }
 }

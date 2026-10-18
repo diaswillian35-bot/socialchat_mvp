@@ -11,7 +11,8 @@ import 'locais_state_views.dart';
 import 'place_card.dart';
 import 'locais_detail_page.dart';
 
-/// Lista e mapa de Locais. Com a flag desligada não desenha conteúdo.
+/// Lista de Locais. A rota é aberta no aplicativo de mapas externo; não há
+/// promessa de mapa interno enquanto o projeto não tiver um SDK configurado.
 class LocaisListPage extends StatefulWidget {
   const LocaisListPage({super.key, this.repository, this.clock});
 

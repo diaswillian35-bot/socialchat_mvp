@@ -20,6 +20,28 @@ test("claim id is stable per account and place", () => {
   assert.equal(logic.parseClaimInput({ placeId: "plc_123", phone: "123" }).ok, false);
 });
 
+test("place report accepts business reasons and is idempotent per account", () => {
+  const parsed = logic.parsePlaceReportInput({
+    placeId: "plc_123",
+    reason: "incorrect_information",
+    details: "O horário está incorreto",
+  });
+  assert.equal(parsed.ok, true);
+  assert.equal(
+    logic.placeReportId("plc_123", "uid.1"),
+    logic.placeReportId("plc_123", "uid.1"),
+  );
+});
+
+test("place report rejects social-comment reasons and requires other details", () => {
+  assert.equal(logic.parsePlaceReportInput({
+    placeId: "plc_123", reason: "harassment", details: "x",
+  }).ok, false);
+  assert.equal(logic.parsePlaceReportInput({
+    placeId: "plc_123", reason: "other", details: "x",
+  }).code, "details");
+});
+
 test("only public active places receive reviews", () => {
   assert.equal(logic.canReceiveReviews({ active: true, deleted: false, moderationStatus: "published" }), true);
   assert.equal(logic.canReceiveReviews({ active: true, moderationStatus: "pending" }), false);

@@ -136,10 +136,6 @@ class LocaisStrings {
         fr: 'Effacer les filtres',
       );
 
-  String get listView => _t(pt: 'Lista', en: 'List', es: 'Lista', fr: 'Liste');
-
-  String get mapView => _t(pt: 'Mapa', en: 'Map', es: 'Mapa', fr: 'Carte');
-
   String get loading => _t(
         pt: 'Carregando locais',
         ptPt: 'A carregar locais',
@@ -368,6 +364,12 @@ class LocaisStrings {
       fr: 'Avis envoyé à la modération.');
   String get requiredPending =>
       _t(pt: 'Pendente', en: 'Required', es: 'Pendiente', fr: 'Requis');
+  String get cancel => _t(
+      pt: 'Cancelar',
+      ptPt: 'Cancelar',
+      en: 'Cancel',
+      es: 'Cancelar',
+      fr: 'Annuler');
   String get claimPlace => _t(
       pt: 'Reivindicar este local',
       en: 'Claim this place',
@@ -388,6 +390,60 @@ class LocaisStrings {
       en: 'Claim sent for Remdy approval.',
       es: 'Solicitud enviada para aprobación de Remdy.',
       fr: 'Demande envoyée à Remdy pour approbation.');
+  String get reportPlace => _t(
+      pt: 'Denunciar informações deste local',
+      ptPt: 'Denunciar informações deste local',
+      en: 'Report this place listing',
+      es: 'Denunciar la información de este lugar',
+      fr: 'Signaler les informations de ce lieu');
+  String get reportReason =>
+      _t(pt: 'Motivo', en: 'Reason', es: 'Motivo', fr: 'Motif');
+  String get reportDetails => _t(
+      pt: 'Detalhes (opcional)',
+      en: 'Details (optional)',
+      es: 'Detalles (opcional)',
+      fr: 'Détails (facultatif)');
+  String get reportSent => _t(
+      pt: 'Denúncia enviada para análise da Remdy.',
+      en: 'Report sent for Remdy review.',
+      es: 'Denuncia enviada para revisión de Remdy.',
+      fr: 'Signalement envoyé à Remdy pour examen.');
+  String get reportError => _t(
+      pt: 'Não foi possível enviar a denúncia. Tente novamente.',
+      en: 'The report could not be sent. Try again.',
+      es: 'No se pudo enviar la denuncia. Inténtalo de nuevo.',
+      fr: 'Impossible d’envoyer le signalement. Réessayez.');
+  String reportReasonLabel(String reason) {
+    switch (reason) {
+      case 'incorrect_information':
+        return _t(
+            pt: 'Informação incorreta',
+            en: 'Incorrect information',
+            es: 'Información incorrecta',
+            fr: 'Informations incorrectes');
+      case 'closed_or_missing':
+        return _t(
+            pt: 'Local fechado ou não existe',
+            en: 'Closed or does not exist',
+            es: 'Está cerrado o no existe',
+            fr: 'Fermé ou inexistant');
+      case 'inappropriate_photo':
+        return _t(
+            pt: 'Foto inadequada',
+            en: 'Inappropriate photo',
+            es: 'Foto inapropiada',
+            fr: 'Photo inappropriée');
+      case 'fraud_or_impersonation':
+        return _t(
+            pt: 'Fraude ou representação falsa',
+            en: 'Fraud or impersonation',
+            es: 'Fraude o suplantación',
+            fr: 'Fraude ou usurpation');
+      default:
+        return _t(pt: 'Outro', en: 'Other', es: 'Otro', fr: 'Autre');
+    }
+  }
+
   String get menu =>
       _t(pt: 'Cardápio', ptPt: 'Menu', en: 'Menu', es: 'Menú', fr: 'Menu');
   String get menuPdf => _t(
@@ -401,6 +457,14 @@ class LocaisStrings {
       en: 'Prices and availability may change. Confirm with the place.',
       es: 'Los precios y la disponibilidad pueden cambiar. Confirme con el establecimiento.',
       fr: 'Les prix et la disponibilité peuvent changer. Confirmez auprès de l’établissement.');
+  String get openPhoto => _t(
+      pt: 'Ampliar foto',
+      ptPt: 'Ampliar fotografia',
+      en: 'View photo',
+      es: 'Ampliar foto',
+      fr: 'Agrandir la photo');
+  String get close =>
+      _t(pt: 'Fechar', en: 'Close', es: 'Cerrar', fr: 'Fermer');
   String get unavailable => _t(
       pt: 'Indisponível',
       en: 'Unavailable',

@@ -180,6 +180,10 @@ exports.listPlaceReviews = socialOnCall(
   { region: "us-central1" },
   placeActions.listReviewsHandler,
 );
+exports.reportPlace = socialOnCall(
+  { region: "us-central1" },
+  placeActions.reportPlaceHandler,
+);
 
 const {
   assertUserCanUseRemi,

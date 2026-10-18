@@ -6,9 +6,11 @@ const {
   parseReviewInput,
   parseReplyInput,
   parseClaimInput,
+  parsePlaceReportInput,
   canReceiveReviews,
   canManage,
   claimId,
+  placeReportId,
   ratingAfterPendingEdit,
   publicAuthor,
   publicReviewRow,
@@ -159,6 +161,50 @@ async function claimHandler(request, deps = {}) {
   return { ok: true, protocol, status: "pending" };
 }
 
+async function reportPlaceHandler(request, deps = {}) {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) fail("unauthenticated", "authentication_required");
+  const parsed = parsePlaceReportInput(request.data);
+  if (!parsed.ok) fail("invalid-argument", parsed.code);
+  const db = deps.db || admin.firestore();
+  const now = deps.now || new Date();
+  const placeRef = db.collection("places").doc(parsed.placeId);
+  const [placeSnap, rateSnap] = await Promise.all([
+    placeRef.get(),
+    db.collection("placeReportRate").doc(uid).get(),
+  ]);
+  if (!canReceiveReviews(placeSnap.data())) fail("not-found", "place_not_found");
+  const lastAt = Number(rateSnap.data()?.lastAtMs || 0);
+  if (lastAt && now.getTime() - lastAt < 30000) {
+    fail("resource-exhausted", "report_rate");
+  }
+  const id = placeReportId(parsed.placeId, uid);
+  const ref = db.collection("placeReports").doc(id);
+  const current = await ref.get();
+  if (current.exists && current.data()?.status === "pending") {
+    return { ok: true, status: "pending", duplicate: true };
+  }
+  const batch = db.batch();
+  batch.set(ref, {
+    id,
+    contractVersion: "remdy.places.reports.v1",
+    placeId: parsed.placeId,
+    reporterUid: uid,
+    reason: parsed.reason,
+    details: parsed.details,
+    status: "pending",
+    source: "app",
+    createdAtIso: now.toISOString(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  batch.set(db.collection("placeReportRate").doc(uid), {
+    lastAtMs: now.getTime(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await batch.commit();
+  return { ok: true, status: "pending", duplicate: false };
+}
+
 async function listReviewsHandler(request, deps = {}) {
   const uid = request.auth && request.auth.uid;
   if (!uid) fail("unauthenticated", "authentication_required");
@@ -178,3 +224,4 @@ exports.submitReviewHandler = submitReviewHandler;
 exports.replyHandler = replyHandler;
 exports.claimHandler = claimHandler;
 exports.listReviewsHandler = listReviewsHandler;
+exports.reportPlaceHandler = reportPlaceHandler;

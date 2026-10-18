@@ -1,8 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../locais_feature_flag.dart';
 import '../models/place_listing.dart';
+import '../../../services/group_geo.dart';
+import '../../../services/group_location_normalize.dart';
 import 'demo_places.dart';
 import 'firestore_place_mapper.dart';
 
@@ -97,14 +100,56 @@ class FirestorePlaceRepository implements PlaceRepository {
       .where('schemaVersion', isEqualTo: 1)
       .where('moderationStatus', isEqualTo: 'published')
       .where('active', isEqualTo: true)
-      .where('deleted', isEqualTo: false)
-      .limit(80);
+      .where('deleted', isEqualTo: false);
 
   @override
   Future<List<PlaceListing>> fetchCatalog() async {
-    final snapshot = await _publicQuery.get();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw const PlaceAccessBlocked();
+    final profile =
+        (await _firestore.collection('users').doc(uid).get()).data() ??
+            const {};
+    final cityKey = GroupLocationNormalize.cityKey(
+      profile['cityKey'] ?? profile['city'] ?? profile['cityName'],
+    );
+    final latRaw = profile['cityLat'] ?? profile['lat'] ?? profile['latitude'];
+    final lngRaw = profile['cityLng'] ?? profile['lng'] ?? profile['longitude'];
+    final latitude =
+        latRaw is num ? latRaw.toDouble() : double.tryParse('$latRaw');
+    final longitude =
+        lngRaw is num ? lngRaw.toDouble() : double.tryParse('$lngRaw');
+    if (cityKey.isEmpty && !GroupGeo.trustedCityCenter(latitude, longitude)) {
+      return const [];
+    }
+    final documents = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    if (cityKey.isNotEmpty) {
+      for (final doc
+          in await _paged(_publicQuery.where('cityKey', isEqualTo: cityKey))) {
+        documents[doc.id] = doc;
+      }
+    }
+    if (GroupGeo.trustedCityCenter(latitude, longitude)) {
+      for (final batch in GroupGeo.geohashBatches(
+        latitude: latitude,
+        longitude: longitude,
+        radiusKm: GroupGeo.regionRadiusKm,
+      )) {
+        for (final doc in await _paged(
+            _publicQuery.where('placeGeohash', whereIn: batch))) {
+          final data = doc.data();
+          if (GroupGeo.withinRegion(
+            userLat: latitude,
+            userLng: longitude,
+            centerLat: _number(data['latitude']),
+            centerLng: _number(data['longitude']),
+          )) {
+            documents[doc.id] = doc;
+          }
+        }
+      }
+    }
     final places = <PlaceListing>[];
-    for (final document in snapshot.docs) {
+    for (final document in documents.values) {
       final place = FirestorePlaceMapper.tryParse(document.id, document.data());
       if (place != null) places.add(place);
     }
@@ -113,6 +158,26 @@ class FirestorePlaceRepository implements PlaceRepository {
       return rating != 0 ? rating : a.name.compareTo(b.name);
     });
     return places;
+  }
+
+  static num? _number(Object? value) =>
+      value is num ? value : num.tryParse('$value');
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _paged(
+      Query<Map<String, dynamic>> query) async {
+    const pageSize = 40;
+    const maxPages = 5;
+    final result = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    QueryDocumentSnapshot<Map<String, dynamic>>? cursor;
+    for (var page = 0; page < maxPages; page++) {
+      var next = query.orderBy('updatedAt', descending: true).limit(pageSize);
+      if (cursor != null) next = next.startAfterDocument(cursor);
+      final snapshot = await next.get();
+      result.addAll(snapshot.docs);
+      if (snapshot.docs.length < pageSize) break;
+      cursor = snapshot.docs.last;
+    }
+    return result;
   }
 
   @override

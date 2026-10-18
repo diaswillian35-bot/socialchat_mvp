@@ -11,6 +11,7 @@ import '../../../widgets/events/event_detail_light_header.dart';
 import 'locais_layout.dart';
 import 'locais_state_views.dart';
 import 'place_card.dart';
+import 'place_photo_viewer.dart';
 
 class LocaisDetailPage extends StatefulWidget {
   const LocaisDetailPage({
@@ -44,7 +45,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
   /// Ações de escrita (avaliar, responder como dono, portal/reivindicar)
   /// desligadas no app: dependem de funções ainda não publicadas e a gestão
   /// dos locais é feita pelo time Remdy no admin.
-  static const bool _userWriteActionsEnabled = false;
+  static const bool _userWriteActionsEnabled = true;
 
   /// "Avaliar este local": ligado (submitPlaceReview/listPlaceReviews
   /// publicadas). Resposta do dono e reivindicação seguem desligadas.
@@ -272,6 +273,16 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
       _card(
           key: const Key('locais_detail_events_card'),
           child: _events(strings, place)),
+      const SizedBox(height: 12),
+      if (!_canManage) _merchant(strings, place),
+      if (!_canManage) const SizedBox(height: 12),
+      OutlinedButton.icon(
+        key: const Key('place_report_button'),
+        onPressed: () => _reportDialog(strings, place),
+        icon: const Icon(Icons.flag_outlined),
+        label: Text(strings.reportPlace),
+      ),
+      const SizedBox(height: 24),
     ];
   }
 
@@ -290,13 +301,32 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
               scrollDirection: Axis.horizontal,
               itemCount: menu.photoUrls.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, index) => ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(menu.photoUrls[index],
-                    width: 120,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox(
-                        width: 120, child: Icon(Icons.broken_image_outlined))),
+              itemBuilder: (context, index) => Semantics(
+                button: true,
+                label: strings.openPhoto,
+                child: GestureDetector(
+                  key: Key('locais_menu_photo_$index'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => showPlacePhotoViewer(
+                    context,
+                    photos: [
+                      for (final url in menu.photoUrls)
+                        PlaceViewerPhoto(
+                            url: placeSafeImageUrl(url), label: strings.menu),
+                    ],
+                    initialIndex: index,
+                    closeLabel: strings.close,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(menu.photoUrls[index],
+                        width: 120,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(
+                            width: 120,
+                            child: Icon(Icons.broken_image_outlined))),
+                  ),
+                ),
               ),
             ),
           ),
@@ -335,9 +365,23 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
         PageView.builder(
           itemCount: place.photos.length,
           onPageChanged: (index) => setState(() => _photo = index),
-          itemBuilder: (context, index) => PlaceCover(
-            photo: place.photos[index],
-            category: place.category,
+          itemBuilder: (context, index) => GestureDetector(
+            key: Key('locais_detail_photo_tap_$index'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showPlacePhotoViewer(
+              context,
+              photos: [
+                for (final photo in place.photos)
+                  PlaceViewerPhoto(
+                      url: placeSafeImageUrl(photo.url), label: photo.alt),
+              ],
+              initialIndex: index,
+              closeLabel: LocaisStrings.of(context).close,
+            ),
+            child: PlaceCover(
+              photo: place.photos[index],
+              category: place.category,
+            ),
           ),
         ),
         if (place.photos.length > 1)
@@ -782,6 +826,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
         context: context,
         builder: (dialogContext) => StatefulBuilder(
               builder: (context, setDialogState) => AlertDialog(
+                scrollable: true,
                 title: Text(strings.writeReview),
                 content: Column(mainAxisSize: MainAxisSize.min, children: [
                   Semantics(
@@ -818,7 +863,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancelar')),
+                      child: Text(strings.cancel)),
                   FilledButton(
                       onPressed: stars == 0
                           ? null
@@ -985,6 +1030,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
     await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
+              scrollable: true,
               title: Text(strings.ownerReply),
               content: TextField(
                   textCapitalization: TextCapitalization.sentences,
@@ -996,7 +1042,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Cancelar')),
+                    child: Text(strings.cancel)),
                 FilledButton(
                     onPressed: () async {
                       if (controller.text.trim().isEmpty) return;
@@ -1110,6 +1156,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
         context: context,
         builder: (dialogContext) => StatefulBuilder(
               builder: (context, setDialogState) => AlertDialog(
+                scrollable: true,
                 title: Text(strings.claimPlace),
                 content: Column(mainAxisSize: MainAxisSize.min, children: [
                   TextField(
@@ -1134,7 +1181,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancelar')),
+                      child: Text(strings.cancel)),
                   FilledButton(
                       onPressed: () async {
                         setDialogState(() => submitted = true);
@@ -1156,6 +1203,98 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
             ));
     phone.dispose();
     note.dispose();
+  }
+
+  Future<void> _reportDialog(LocaisStrings strings, PlaceListing place) async {
+    const reasons = [
+      'incorrect_information',
+      'closed_or_missing',
+      'inappropriate_photo',
+      'fraud_or_impersonation',
+      'other',
+    ];
+    var reason = reasons.first;
+    var submitted = false;
+    final details = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          scrollable: true,
+          title: Text(strings.reportPlace),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  key: const Key('place_report_reason'),
+                  initialValue: reason,
+                  decoration: InputDecoration(labelText: strings.reportReason),
+                  items: [
+                    for (final value in reasons)
+                      DropdownMenuItem(
+                        value: value,
+                        child: Text(strings.reportReasonLabel(value)),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => reason = value ?? reasons.first),
+                ),
+                TextField(
+                  key: const Key('place_report_details'),
+                  controller: details,
+                  textCapitalization: TextCapitalization.sentences,
+                  maxLength: 800,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    labelText: strings.reportDetails,
+                    errorText: submitted &&
+                            reason == 'other' &&
+                            details.text.trim().length < 5
+                        ? strings.requiredPending
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(strings.cancel),
+            ),
+            FilledButton(
+              key: const Key('place_report_submit'),
+              onPressed: () async {
+                setDialogState(() => submitted = true);
+                if (reason == 'other' && details.text.trim().length < 5) return;
+                try {
+                  await widget.actions.reportPlace(
+                    placeId: place.id,
+                    reason: reason,
+                    details: details.text,
+                  );
+                } catch (_) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(content: Text(strings.reportError)),
+                  );
+                  return;
+                }
+                if (!dialogContext.mounted) return;
+                Navigator.pop(dialogContext);
+                if (!mounted) return;
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(content: Text(strings.reportSent)),
+                );
+              },
+              child: Text(strings.reportPlace),
+            ),
+          ],
+        ),
+      ),
+    );
+    details.dispose();
   }
 
   // Mantém o roteiro do portal disponível para a futura central do comerciante.

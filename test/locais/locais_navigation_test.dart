@@ -118,11 +118,12 @@ void main() {
     await see(const Key('locais_detail_events'));
     expect(find.textContaining('Noite de jazz'), findsOneWidget);
 
-    expect(find.byKey(const Key('merchant_portal_plan')), findsNothing);
-    expect(find.byKey(const Key('merchant_portal_button')), findsNothing);
+    await see(const Key('merchant_portal_plan'));
+    await see(const Key('merchant_portal_button'));
+    await see(const Key('place_report_button'));
     expect(find.byKey(const Key('place_write_review')), findsOneWidget);
-    expect(find.textContaining('Reivindicar'), findsNothing);
-    expect(find.textContaining('remdy.app/portal'), findsNothing);
+    expect(find.textContaining('Reivindicar'), findsWidgets);
+    expect(find.textContaining('remdy.app/portal'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(LocaisDetailPage),
