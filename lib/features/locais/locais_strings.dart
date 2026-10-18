@@ -401,6 +401,14 @@ class LocaisStrings {
       en: 'Prices and availability may change. Confirm with the place.',
       es: 'Los precios y la disponibilidad pueden cambiar. Confirme con el establecimiento.',
       fr: 'Les prix et la disponibilité peuvent changer. Confirmez auprès de l’établissement.');
+  String get openPhoto => _t(
+      pt: 'Ampliar foto',
+      ptPt: 'Ampliar fotografia',
+      en: 'View photo',
+      es: 'Ampliar foto',
+      fr: 'Agrandir la photo');
+  String get close =>
+      _t(pt: 'Fechar', en: 'Close', es: 'Cerrar', fr: 'Fermer');
   String get unavailable => _t(
       pt: 'Indisponível',
       en: 'Unavailable',

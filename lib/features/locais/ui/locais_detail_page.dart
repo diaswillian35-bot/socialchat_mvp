@@ -11,6 +11,7 @@ import '../../../widgets/events/event_detail_light_header.dart';
 import 'locais_layout.dart';
 import 'locais_state_views.dart';
 import 'place_card.dart';
+import 'place_photo_viewer.dart';
 
 class LocaisDetailPage extends StatefulWidget {
   const LocaisDetailPage({
@@ -290,13 +291,32 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
               scrollDirection: Axis.horizontal,
               itemCount: menu.photoUrls.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, index) => ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(menu.photoUrls[index],
-                    width: 120,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox(
-                        width: 120, child: Icon(Icons.broken_image_outlined))),
+              itemBuilder: (context, index) => Semantics(
+                button: true,
+                label: strings.openPhoto,
+                child: GestureDetector(
+                  key: Key('locais_menu_photo_$index'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => showPlacePhotoViewer(
+                    context,
+                    photos: [
+                      for (final url in menu.photoUrls)
+                        PlaceViewerPhoto(
+                            url: placeSafeImageUrl(url), label: strings.menu),
+                    ],
+                    initialIndex: index,
+                    closeLabel: strings.close,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(menu.photoUrls[index],
+                        width: 120,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(
+                            width: 120,
+                            child: Icon(Icons.broken_image_outlined))),
+                  ),
+                ),
               ),
             ),
           ),
@@ -335,9 +355,23 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
         PageView.builder(
           itemCount: place.photos.length,
           onPageChanged: (index) => setState(() => _photo = index),
-          itemBuilder: (context, index) => PlaceCover(
-            photo: place.photos[index],
-            category: place.category,
+          itemBuilder: (context, index) => GestureDetector(
+            key: Key('locais_detail_photo_tap_$index'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showPlacePhotoViewer(
+              context,
+              photos: [
+                for (final photo in place.photos)
+                  PlaceViewerPhoto(
+                      url: placeSafeImageUrl(photo.url), label: photo.alt),
+              ],
+              initialIndex: index,
+              closeLabel: LocaisStrings.of(context).close,
+            ),
+            child: PlaceCover(
+              photo: place.photos[index],
+              category: place.category,
+            ),
           ),
         ),
         if (place.photos.length > 1)
