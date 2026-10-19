@@ -231,8 +231,6 @@
   "invite_step_3": "3) Depois que o cadastro for concluído, o convite é contado automaticamente.",
   "important": "Importante",
   "invite_important_text": "Somente cadastros válidos e concluídos contam para sua meta. No futuro, seu código de convite também pode ser substituído por um link direto de convite.",
-  "invite_share_title": "Entre comigo no Remdy",
-  "invite_share_description": "Conheça pessoas novas e pratique idiomas com usuários reais ao redor do mundo.",
   "invite_share_use_code": "Use meu código de convite:",
   "premium_in_setup_try_later": "Premium em configuração. Tente novamente mais tarde ✅",
   "premium_activated": "Premium ativado ✅",
@@ -1570,5 +1568,6 @@
   "hometown_hint": "De onde você é?",
   "hometown_helper": "Ajuda a encontrar pessoas da sua terra",
   "hometown_clear": "Remover cidade natal",
-  "hometown_choose_country": "País da sua cidade natal"
+  "hometown_choose_country": "País da sua cidade natal",
+  "invite_share_message": "Bora pro Remdy comigo? 👋\n\nLá você descobre eventos da cidade, conhece os melhores lugares (restaurantes, bares, pousadas) e faz amizades de verdade com gente perto de você.\n\nEntra pelo meu link: {link}"
 }

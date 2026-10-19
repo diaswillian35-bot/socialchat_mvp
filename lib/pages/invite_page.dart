@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/invite_share_text.dart';
 import '../services/invite_premium_service.dart';
 import '../services/remdy_launch_access.dart';
 
@@ -72,7 +73,7 @@ class _InvitePageState extends State<InvitePage> {
   }
 
   String _inviteLink() {
-    return 'https://remdy.app/invite?ref=${widget.inviteCode}';
+    return InviteShareText.link(widget.inviteCode);
   }
 
   String _currentRewardLabel(int rewardLevel, AppTexts t) {
@@ -118,18 +119,7 @@ class _InvitePageState extends State<InvitePage> {
     return t.get('invite_missing').replaceAll('{count}', '$missing');
   }
 
-  String _inviteMessage() {
-    final t = AppTexts.current;
-    final link = _inviteLink();
-
-    return '''
-🔥 ${t.get('invite_share_title')}
-
-${t.get('invite_share_description')}
-
-🚀 $link
-''';
-  }
+  String _inviteMessage() => InviteShareText.message(widget.inviteCode);
 
   @override
   Widget build(BuildContext context) {

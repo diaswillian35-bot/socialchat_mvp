@@ -232,8 +232,6 @@
   "invite_step_3": "3) After the registration is completed, the invite is counted automatically.",
   "important": "Important",
   "invite_important_text": "Only valid and completed registrations count toward your goal. In the future, your invite code can also be replaced by a direct invite link.",
-  "invite_share_title": "Join me on Remdy",
-  "invite_share_description": "Meet new people and practice languages with real users around the world.",
   "invite_share_use_code": "Use my invite code:",
   "premium_in_setup_try_later": "Premium is being set up. Please try again later ✅",
   "premium_activated": "Premium activated ✅",
@@ -1570,5 +1568,6 @@
   "hometown_hint": "Where are you from?",
   "hometown_helper": "Helps you find people from home",
   "hometown_clear": "Remove hometown",
-  "hometown_choose_country": "Hometown country"
+  "hometown_choose_country": "Hometown country",
+  "invite_share_message": "Come join me on Remdy! 👋\n\nDiscover events in your city, find the best places (restaurants, bars, inns) and make real friends with people near you.\n\nJoin with my link: {link}"
 }

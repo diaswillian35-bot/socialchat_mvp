@@ -1362,6 +1362,5 @@
   "hometown_helper": "Ajuda a encontrar pessoas da sua terra",
   "hometown_clear": "Remover terra natal",
   "hometown_choose_country": "País da sua terra natal",
-  "invite_share_title": "Junte-se a mim no Remdy",
-  "invite_share_description": "Conheça pessoas novas e pratique idiomas com utilizadores reais de todo o mundo."
+  "invite_share_message": "Vens comigo para o Remdy? 👋\n\nLá descobres eventos da tua cidade, conheces os melhores sítios (restaurantes, bares, alojamentos) e fazes amizades a sério com gente perto de ti.\n\nEntra pelo meu link: {link}"
 }

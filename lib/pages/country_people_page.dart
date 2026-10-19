@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
+import '../services/invite_share_text.dart';
 import '../services/event_share_image_service.dart' show EventShareOrigin;
 import '../services/people_country_hierarchy.dart';
 import '../services/people_country_view.dart';
@@ -316,14 +317,9 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
   }
 
   void _invite() {
-    final t = AppTexts.current;
     final code = (_viewerData?['inviteCode'] ?? '').toString().trim();
-    final link = code.isEmpty
-        ? 'https://remdy.app'
-        : 'https://remdy.app/invite?ref=$code';
     Share.share(
-      '${t.get('invite_share_title')}\n\n'
-      '${t.get('invite_share_description')}\n\n$link',
+      InviteShareText.message(code),
       sharePositionOrigin: EventShareOrigin.fromContext(context),
     );
   }
