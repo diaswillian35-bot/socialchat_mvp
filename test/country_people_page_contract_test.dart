@@ -15,13 +15,16 @@ void main() {
       () {
     expect(source, contains('PresenceOnlineSetBuilder'));
     expect(source, contains("PageStorageKey('country-state-"));
-    expect(source, contains("PageStorageKey('country-city-"));
+    expect(source, contains('CountryPeopleView.build'));
     expect(source, isNot(contains('people.length}')));
   });
 
   test('all country sections open by default', () {
-    expect(source, contains('bool initiallyExpanded = true'));
     expect(source, contains('people_other_cities_of_state'));
+    expect(source, contains('people_near_you_region'));
+    expect(source, contains('people_say_hi'));
+    expect(source, contains("'nearbyEnabled': value"));
+    expect(source, contains('Share.share'));
     expect(source, isNot(contains('nearbyCities')));
   });
 

@@ -11,6 +11,8 @@ import '../utils/user_search_normalize.dart';
 import '../services/user_search_service.dart';
 import '../services/profile_completed_at_policy.dart';
 import '../services/remdy_launch_access.dart';
+import '../services/people_country_view.dart' show HometownInfo;
+import '../widget/city_search_dialog.dart';
 
 import 'splash_page.dart';
 import 'login_page.dart';
@@ -55,6 +57,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
   double? _selectedLng;
 
   bool _nearbyEnabled = false;
+
+  // Cidade natal opcional ("Sou de...").
+  String _hometownCity = '';
+  String _hometownState = '';
+  String _hometownCountryCode = '';
+  String _hometownDisplay = '';
+  double? _hometownLat;
+  double? _hometownLng;
 
   bool _loading = true;
   bool _saving = false;
@@ -132,6 +142,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
           : double.tryParse((savedLng ?? '').toString());
 
       _nearbyEnabled = data['nearbyEnabled'] == true;
+
+      final hometown = HometownInfo.fromUserData(data);
+      _hometownCity = hometown?.city ?? '';
+      _hometownState = hometown?.subdivision ?? '';
+      _hometownCountryCode = hometown?.countryCode ?? '';
+      _hometownLat = hometown?.latitude;
+      _hometownLng = hometown?.longitude;
+      _hometownDisplay = (data['hometownDisplay'] ?? '').toString().trim();
+      if (_hometownDisplay.isEmpty && _hometownCity.isNotEmpty) {
+        _hometownDisplay = _hometownState.isEmpty
+            ? _hometownCity
+            : '$_hometownCity, $_hometownState';
+      }
 
       _countryLocked = data['countryLocked'] == true;
 
@@ -434,6 +457,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'cityLat': _selectedLat,
         'cityLng': _selectedLng,
         'nearbyEnabled': _nearbyEnabled,
+        ..._hometownPayload(),
         'countryLocked': finalLocked,
         'profileComplete': true,
         'updatedAt': now,
@@ -587,6 +611,124 @@ class _EditProfilePageState extends State<EditProfilePage> {
               color: const Color(0xFF6B7280),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Campos da cidade natal; vazio apaga (FieldValue.delete) no merge.
+  Map<String, dynamic> _hometownPayload() {
+    if (_hometownCity.trim().isEmpty || _hometownCountryCode.isEmpty) {
+      return {
+        'hometownCity': FieldValue.delete(),
+        'hometownState': FieldValue.delete(),
+        'hometownCountryCode': FieldValue.delete(),
+        'hometownKey': FieldValue.delete(),
+        'hometownDisplay': FieldValue.delete(),
+        'hometownLat': FieldValue.delete(),
+        'hometownLng': FieldValue.delete(),
+      };
+    }
+    return {
+      'hometownCity': _hometownCity.trim(),
+      'hometownState': _hometownState.trim(),
+      'hometownCountryCode': _hometownCountryCode,
+      'hometownKey': HometownInfo.keyFor(
+          _hometownCity, _hometownState, _hometownCountryCode),
+      'hometownDisplay': _hometownDisplay,
+      'hometownLat': _hometownLat ?? FieldValue.delete(),
+      'hometownLng': _hometownLng ?? FieldValue.delete(),
+    };
+  }
+
+  Future<void> _pickHometown() async {
+    final t = AppTexts.current;
+    final offered = _countries
+        .where((c) => RemdyLaunchAccess.isSignupCountryOffered(c.code))
+        .toList();
+    var country = _hometownCountryCode.isNotEmpty
+        ? _hometownCountryCode
+        : (_homeCountryCode.isNotEmpty ? _homeCountryCode : 'br');
+    if (offered.length > 1) {
+      final picked = await showModalBottomSheet<String>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                title: Text(t.get('hometown_choose_country'),
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+              ...offered.map((c) => ListTile(
+                    leading: Text(_flagEmoji(c.code),
+                        style: const TextStyle(fontSize: 20)),
+                    title: Text(c.name),
+                    trailing: c.code == country
+                        ? const Icon(Icons.check_circle,
+                            color: Color(0xFF264E9A))
+                        : null,
+                    onTap: () => Navigator.pop(ctx, c.code),
+                  )),
+            ],
+          ),
+        ),
+      );
+      if (picked == null || !mounted) return;
+      country = picked;
+    }
+    if (!mounted) return;
+    final result = await CitySearchDialog.open(
+      context: context,
+      countryCode: country,
+      googleApiKey: _googlePlacesApiKey,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _hometownCity = result.cityName;
+      _hometownState = result.stateName;
+      _hometownCountryCode = country;
+      _hometownDisplay = result.displayLocation;
+      _hometownLat = result.lat;
+      _hometownLng = result.lng;
+    });
+  }
+
+  Widget _hometownField() {
+    final t = AppTexts.current;
+    final has = _hometownCity.isNotEmpty;
+    return InkWell(
+      key: const ValueKey('edit-profile-hometown'),
+      onTap: _pickHometown,
+      borderRadius: BorderRadius.circular(6),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: t.get('hometown_label'),
+          helperText: t.get('hometown_helper'),
+          border: const OutlineInputBorder(),
+          suffixIcon: has
+              ? IconButton(
+                  tooltip: t.get('hometown_clear'),
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => setState(() {
+                    _hometownCity = '';
+                    _hometownState = '';
+                    _hometownCountryCode = '';
+                    _hometownDisplay = '';
+                    _hometownLat = null;
+                    _hometownLng = null;
+                  }),
+                )
+              : const Icon(Icons.home_outlined),
+        ),
+        child: Text(
+          has
+              ? '${_flagEmoji(_hometownCountryCode)} $_hometownDisplay'
+              : t.get('hometown_hint'),
+          style: TextStyle(
+            fontSize: 16,
+            color: has ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+          ),
         ),
       ),
     );
@@ -982,6 +1124,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   _countryField(),
                   const SizedBox(height: 12),
                   _cityField(),
+                  const SizedBox(height: 12),
+                  _hometownField(),
                   const SizedBox(height: 12),
                   _nearbyField(),
                   const SizedBox(height: 12),

@@ -14,6 +14,9 @@ class CountryPerson {
     this.latitude,
     this.longitude,
     this.online = false,
+    this.hometownCity = '',
+    this.hometownSubdivision = '',
+    this.hometownCountryCode = '',
   });
 
   final String uid;
@@ -24,6 +27,11 @@ class CountryPerson {
   final double? latitude;
   final double? longitude;
   final bool online;
+
+  /// Cidade natal opcional ("Sou de..."), vazia quando não informada.
+  final String hometownCity;
+  final String hometownSubdivision;
+  final String hometownCountryCode;
 }
 
 class CountryCityGroup {
@@ -102,9 +110,12 @@ class PeopleCountryHierarchy {
     required List<CountryPerson> people,
     required Map<String, dynamic>? viewer,
     double regionKm = defaultRegionKm,
+    String? countryCode,
   }) {
     final pageCountry =
-        people.isEmpty ? '' : people.first.countryCode.toLowerCase();
+        (countryCode ?? (people.isEmpty ? '' : people.first.countryCode))
+            .trim()
+            .toLowerCase();
     final viewerCountry = UserLocationScope.countryCodeFromUserData(viewer);
     final viewerCityRaw = UserLocationScope.cityNameFromUserData(viewer);
     final viewerCity =

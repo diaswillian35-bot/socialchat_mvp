@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
-import '../services/people_browse_grouping.dart';
+import '../services/event_share_image_service.dart' show EventShareOrigin;
 import '../services/people_country_hierarchy.dart';
+import '../services/people_country_view.dart';
 import '../services/presence_online_set.dart';
 import '../services/user_avatar_resolver.dart';
 import '../services/user_location_scope.dart';
@@ -39,11 +41,8 @@ class CountryPeoplePage extends StatefulWidget {
 
 class _CountryPeoplePageState extends State<CountryPeoplePage>
     with BlockedUidsListenable {
-  static const Color _bg = Color(0xFFF6F7FB);
-  static const Color _text = Color(0xFF111827);
-  static const Color _muted = Color(0xFF6B7280);
-  static const Color _primary = Color(0xFF313A5F);
-  static const Color _card = Colors.white;
+  /// Verde "online/aberto" da paleta Remdy (LocaisColors.open).
+  static const Color _online = Color(0xFF16A34A);
   static const int _pageSize = 40;
 
   final _searchC = TextEditingController();
@@ -58,6 +57,8 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> _docs = [];
   DocumentSnapshot<Map<String, dynamic>>? _lastDoc;
   Map<String, dynamic>? _viewerData;
+  String? _stateFilter;
+  bool _savingNearby = false;
 
   String get _myUid => FirebaseAuth.instance.currentUser?.uid ?? '';
   String get _code => widget.countryCode.trim().toLowerCase();
@@ -282,34 +283,107 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     );
   }
 
+  Future<void> _setNearby(bool value) async {
+    final uid = _myUid;
+    if (uid.isEmpty || _savingNearby) return;
+    final previous = _viewerData?['nearbyEnabled'] == true;
+    setState(() {
+      _savingNearby = true;
+      _viewerData = {...?_viewerData, 'nearbyEnabled': value};
+    });
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'nearbyEnabled': value,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      // Espelho público (mesmo campo que Editar perfil grava); melhor esforço.
+      unawaited(FirebaseFirestore.instance
+          .collection('publicUsers')
+          .doc(uid)
+          .set({'nearbyEnabled': value}, SetOptions(merge: true)).catchError(
+              (_) {}));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _viewerData = {...?_viewerData, 'nearbyEnabled': previous};
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppTexts.current.get('save_error'))),
+      );
+    } finally {
+      if (mounted) setState(() => _savingNearby = false);
+    }
+  }
+
+  void _invite() {
+    final t = AppTexts.current;
+    final code = (_viewerData?['inviteCode'] ?? '').toString().trim();
+    final link = code.isEmpty
+        ? 'https://remdy.app'
+        : 'https://remdy.app/invite?ref=$code';
+    Share.share(
+      '${t.get('invite_share_title')}\n\n'
+      '${t.get('invite_share_description')}\n\n$link',
+      sharePositionOrigin: EventShareOrigin.fromContext(context),
+    );
+  }
+
+  void _openProfile(String uid) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => PublicProfilePage(userUid: uid)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
+    final scheme = Theme.of(context).colorScheme;
+    final countLabel = _loading && _docs.isEmpty
+        ? ''
+        : t
+            .get(_docs.length == 1 ? 'people_count_one' : 'people_count_many')
+            .replaceAll('{count}', '${_docs.length}${_hasMore ? '+' : ''}');
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: scheme.surface,
       appBar: AppBar(
-        backgroundColor: _bg,
+        backgroundColor: scheme.surface,
         elevation: 0,
-        title: Text(
-          '${widget.flag} ${widget.countryName}',
-          style: const TextStyle(color: _text, fontWeight: FontWeight.w800),
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${widget.flag} ${widget.countryName}',
+              style: TextStyle(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20),
+            ),
+            if (countLabel.isNotEmpty)
+              Text(countLabel,
+                  style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+          ],
         ),
-        iconTheme: const IconThemeData(color: _muted),
+        iconTheme: IconThemeData(color: scheme.onSurfaceVariant),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: TextField(
               controller: _searchC,
               textCapitalization: RemdyKeyboardCaps.none,
               onChanged: _onSearchChanged,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: t.get('people_search_hint'),
+                hintText: t.get('people_country_search_hint'),
                 prefixIcon: const Icon(Icons.search_rounded),
                 filled: true,
-                fillColor: _card,
+                fillColor: scheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -320,6 +394,55 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
           ),
           Expanded(child: _buildBody(t)),
         ],
+      ),
+      bottomNavigationBar: _nearbyBar(t, scheme),
+    );
+  }
+
+  Widget _nearbyBar(AppTexts t, ColorScheme scheme) {
+    final on = _viewerData?['nearbyEnabled'] == true;
+    return SafeArea(
+      top: false,
+      child: Container(
+        key: const ValueKey('country-nearby-bar'),
+        margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: scheme.primary,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.location_on_rounded, color: scheme.onPrimary, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(t.get('show_people_near_me'),
+                      style: TextStyle(
+                          color: scheme.onPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14)),
+                  Text(
+                      t.get(on
+                          ? 'people_nearby_visible_caption'
+                          : 'people_nearby_hidden_caption'),
+                      style: TextStyle(
+                          color: scheme.onPrimary.withValues(alpha: 0.8),
+                          fontSize: 12)),
+                ],
+              ),
+            ),
+            Switch(
+              value: on,
+              onChanged: _savingNearby || _myUid.isEmpty ? null : _setNearby,
+              activeThumbColor: Colors.white,
+              activeTrackColor: _online,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -348,84 +471,135 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     }
 
     final visible = _docs.where((d) => _matchesQuery(d.data())).toList();
-    if (visible.isEmpty) {
-      return Center(child: Text(t.get('no_people_found')));
-    }
-
     return PresenceOnlineSetBuilder(
       uids: visible.map((doc) => doc.id).toSet(),
-      builder: (context, onlineUids) => _hierarchyList(t, visible, onlineUids),
+      builder: (context, onlineUids) => _content(t, visible, onlineUids),
     );
   }
 
-  Widget _hierarchyList(
+  CountryPerson _toPerson(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc, Set<String> online) {
+    final data = doc.data();
+    final coords = UserLocationScope.resolveCanonicalCoords(data);
+    return CountryPerson(
+      uid: doc.id,
+      name: (data['name'] ?? AppTexts.current.get('user')).toString(),
+      city: UserLocationScope.cityNameFromUserData(data),
+      subdivision: UserLocationScope.stateLabelFromUserData(data),
+      countryCode: _code,
+      latitude: coords?.latitude,
+      longitude: coords?.longitude,
+      online: online.contains(doc.id),
+      hometownCity: (data['hometownCity'] ?? '').toString(),
+      hometownSubdivision: (data['hometownState'] ?? '').toString(),
+      hometownCountryCode: (data['hometownCountryCode'] ?? '').toString(),
+    );
+  }
+
+  Widget _content(
     AppTexts t,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> visible,
     Set<String> onlineUids,
   ) {
+    final scheme = Theme.of(context).colorScheme;
     final docs = {for (final doc in visible) doc.id: doc};
-    final people = visible.map((doc) {
-      final data = doc.data();
-      final coords = UserLocationScope.resolveCanonicalCoords(data);
-      return CountryPerson(
-        uid: doc.id,
-        name: (data['name'] ?? t.get('user')).toString(),
-        city: UserLocationScope.cityNameFromUserData(data),
-        subdivision: UserLocationScope.stateLabelFromUserData(data),
-        countryCode: _code,
-        latitude: coords?.latitude,
-        longitude: coords?.longitude,
-        online: onlineUids.contains(doc.id),
-      );
-    }).toList();
+    final people = visible.map((d) => _toPerson(d, onlineUids)).toList();
     final searching = UserSearchNormalize.isQueryReady(_query);
+    final view = CountryPeopleView.build(
+      people: people,
+      viewer: _viewerData,
+      countryCode: _code,
+      stateFilter: searching ? null : _stateFilter,
+    );
     final children = <Widget>[];
-    if (searching) {
-      people.sort((a, b) {
-        if (a.online != b.online) return a.online ? -1 : 1;
-        final name = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        return name != 0 ? name : a.uid.compareTo(b.uid);
-      });
-      children.add(_sectionTitle(t.get('user_search_results')));
-      children.addAll(people.map((p) => _person(p, docs[p.uid]!, t)));
-    } else {
-      final hierarchy =
-          PeopleCountryHierarchy.build(people: people, viewer: _viewerData);
-      if (hierarchy.sameCity != null) {
-        children.add(_sectionTitle(t.get('people_your_city')));
-        children.add(_citySection(hierarchy.sameCity!.label,
-            hierarchy.sameCity!, docs));
-      }
-      if (hierarchy.region.isNotEmpty) {
-        children.add(_sectionTitle(t.get('people_your_region')));
-        children.addAll(hierarchy.region
-            .map((city) => _citySection(city.label, city, docs)));
-      }
-      final ownState = hierarchy.viewerSubdivision;
-      if (ownState != null && ownState.cities.isNotEmpty) {
-        children.add(_sectionTitle(t
-            .get('people_other_cities_of_state')
-            .replaceAll('{state}', ownState.label)));
-        children.addAll(ownState.cities
-            .map((city) => _citySection(city.label, city, docs)));
-      }
-      if (hierarchy.remaining.isNotEmpty) {
-        if (hierarchy.viewerLocated) {
-          children.add(_sectionTitle(t.get('people_other_subdivisions')));
-        }
-        children.addAll(hierarchy.remaining.map((state) => ExpansionTile(
-              key: PageStorageKey('country-state-${state.key}'),
-              initiallyExpanded: true,
-              title: Text(
-                  state.isOther ? t.get('people_state_other') : state.label,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, color: _text)),
-              children: state.cities
-                  .map((city) => _citySection(city.label, city, docs))
-                  .toList(),
-            )));
-      }
+
+    if (!searching && view.chips.length > 1) {
+      children.add(_chipsRow(t, scheme, view.chips));
     }
+
+    if (searching) {
+      if (people.isEmpty) {
+        children.add(Padding(
+          padding: const EdgeInsets.all(24),
+          child: Center(child: Text(t.get('no_people_found'))),
+        ));
+      } else {
+        children.add(_sectionTitle(scheme, t.get('user_search_results')));
+        final rows = [
+          ...view.nearby,
+          ...view.ownStateRows,
+          ...view.otherStates.expand((s) => s.rows),
+        ];
+        children.addAll(rows.map((r) => _personRow(t, scheme, r, docs)));
+      }
+    } else if (people.isEmpty) {
+      children.add(_emptyCard(
+          t,
+          scheme,
+          t
+              .get('people_country_empty_title')
+              .replaceAll('{place}', widget.countryName)));
+    } else {
+      if (view.common.isNotEmpty) {
+        children.add(_sectionTitle(scheme, t.get('people_in_common')));
+        children.add(SizedBox(
+          height: 150,
+          child: ListView.separated(
+            key: const PageStorageKey('country-common'),
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: view.common.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, i) => _commonCard(t, scheme, view.common[i], docs),
+          ),
+        ));
+      }
+      if (view.nearby.isNotEmpty) {
+        final city = view.referenceCity;
+        final title = view.referenceIsHometown
+            ? t.get('people_near_place').replaceAll('{city}', city)
+            : (city.isEmpty
+                ? t.get('people_near_you')
+                : t.get('people_near_you_region').replaceAll('{city}', city));
+        children.add(
+            _sectionTitle(scheme, title, trailing: '${view.nearby.length}'));
+        children.addAll(view.nearby.map((r) => _personRow(t, scheme, r, docs)));
+      }
+      if (view.ownStateRows.isNotEmpty) {
+        children.add(_sectionTitle(
+            scheme,
+            t
+                .get('people_other_cities_of_state')
+                .replaceAll('{prep}', ptStatePreposition(view.ownStateKey))
+                .replaceAll('{state}', view.ownStateLabel),
+            trailing: '${view.ownStateRows.length}'));
+        children.addAll(
+            view.ownStateRows.map((r) => _personRow(t, scheme, r, docs)));
+      }
+      for (final s in view.otherStates) {
+        children.add(_StateSection(
+          key: PageStorageKey('country-state-${s.key}'),
+          title: s.isOther ? t.get('people_state_other') : s.label,
+          countLabel: t
+              .get(
+                  s.rows.length == 1 ? 'people_count_one' : 'people_count_many')
+              .replaceAll('{count}', '${s.rows.length}'),
+          initiallyOpen: s.initiallyOpen,
+          children: s.rows.map((r) => _personRow(t, scheme, r, docs)).toList(),
+        ));
+      }
+      final place = view.hasReference && view.referenceCityEmpty
+          ? view.referenceCity
+          : '';
+      children.add(_emptyCard(
+        t,
+        scheme,
+        place.isNotEmpty
+            ? t.get('people_country_empty_title').replaceAll('{place}', place)
+            : t.get('people_invite_title'),
+      ));
+    }
+
     if (_loadingMore) {
       children.add(const Padding(
           padding: EdgeInsets.all(16),
@@ -442,134 +616,357 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
         children: children);
   }
 
-  Widget _sectionTitle(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w800, color: _text)),
+  Widget _chipsRow(
+      AppTexts t, ColorScheme scheme, List<CountryStateChip> chips) {
+    Widget chip(String? key, String label) {
+      final selected = (_stateFilter ?? '') == (key ?? '');
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          key: ValueKey('country-chip-${key ?? 'all'}'),
+          label: Text(label),
+          selected: selected,
+          showCheckmark: false,
+          onSelected: (_) => setState(() => _stateFilter = key),
+          selectedColor: scheme.primary,
+          backgroundColor: scheme.surfaceContainerHighest,
+          side: BorderSide.none,
+          shape: const StadiumBorder(),
+          labelStyle: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: selected ? scheme.onPrimary : scheme.onSurface,
+          ),
+        ),
       );
+    }
 
-  Widget _citySection(String title, CountryCityGroup city,
-      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      {bool initiallyExpanded = true}) {
-    return ExpansionTile(
-      key: PageStorageKey('country-city-${city.subdivisionKey}-${city.label}'),
-      initiallyExpanded: initiallyExpanded,
-      title: Text(title,
-          style: const TextStyle(fontWeight: FontWeight.w700, color: _primary)),
-      children: city.people
-          .map((p) => _person(p, docs[p.uid]!, AppTexts.current))
-          .toList(),
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+        children: [
+          chip(null, t.get('people_chip_all')),
+          ...chips.map((c) =>
+              chip(c.key, c.isOther ? t.get('people_state_other') : c.label)),
+        ],
+      ),
     );
   }
 
-  Widget _person(CountryPerson person,
-      QueryDocumentSnapshot<Map<String, dynamic>> doc, AppTexts t) {
-    final data = doc.data();
-    final profile = PeopleBrowseProfile(
-        uid: person.uid,
-        name: person.name,
-        city: person.city,
-        state: person.subdivision,
-        photoUrl: UserAvatarResolver.resolve(data),
-        countryCode: _code);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: _PersonTile(
-        profile: profile,
-        onProfile: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => PublicProfilePage(userUid: person.uid))),
-        onChat: () => _openChat(data, person.uid),
+  Widget _sectionTitle(ColorScheme scheme, String text, {String? trailing}) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(text,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface)),
+            ),
+            if (trailing != null)
+              Text(trailing,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurfaceVariant)),
+          ],
+        ),
+      );
+
+  String _reasonText(AppTexts t, CommonMatch m) {
+    switch (m.reason) {
+      case CommonReason.sameHometown:
+        return t
+            .get('people_reason_same_hometown')
+            .replaceAll('{city}', m.city);
+      case CommonReason.livesInYourHometown:
+        return t
+            .get('people_reason_lives_in_hometown')
+            .replaceAll('{city}', m.city);
+      case CommonReason.sameCity:
+        return t.get('people_reason_same_city').replaceAll('{city}', m.city);
+    }
+  }
+
+  Widget _commonCard(AppTexts t, ColorScheme scheme, CommonMatch m,
+      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final doc = docs[m.person.uid]!;
+    return SizedBox(
+      width: 128,
+      child: Material(
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _openProfile(m.person.uid),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Avatar(uid: m.person.uid, data: doc.data(), radius: 22),
+                const SizedBox(height: 8),
+                Text(m.person.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: scheme.onSurface,
+                        fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(_reasonText(t, m),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: scheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _personRow(AppTexts t, ColorScheme scheme, CountryPeopleRow r,
+      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final doc = docs[r.person.uid]!;
+    final km = r.distanceKm;
+    final parts = <String>[
+      if (r.cityLabel.isNotEmpty) r.cityLabel,
+      if (km != null) '${km < 1 ? 1 : km.round()} km',
+    ];
+    return InkWell(
+      key: ValueKey('country-person-${r.person.uid}'),
+      onTap: () => _openProfile(r.person.uid),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Row(
+          children: [
+            _Avatar(uid: r.person.uid, data: doc.data(), radius: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(r.person.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurface,
+                          fontSize: 15)),
+                  if (parts.isNotEmpty)
+                    Text(parts.join(' • '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
+                  if (r.isViewerHometown)
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(t.get('people_your_hometown_tag'),
+                          style: TextStyle(
+                              color: scheme.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: () => _openChat(doc.data(), r.person.uid),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: scheme.primary,
+                side: BorderSide(color: scheme.primary),
+                shape: const StadiumBorder(),
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              child: Text(t.get('people_say_hi'),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyCard(AppTexts t, ColorScheme scheme, String title) {
+    return Container(
+      key: const ValueKey('country-invite-card'),
+      margin: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outline),
+      ),
+      child: Column(
+        children: [
+          Text(title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: scheme.onSurface)),
+          const SizedBox(height: 4),
+          Text(t.get('people_invite_subtitle'),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _invite,
+            style: FilledButton.styleFrom(shape: const StadiumBorder()),
+            child: Text(t.get('people_invite_button')),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _PersonTile extends StatelessWidget {
-  const _PersonTile({
-    required this.profile,
-    required this.onProfile,
-    required this.onChat,
-  });
-
-  final PeopleBrowseProfile profile;
-  final VoidCallback onProfile;
-  final VoidCallback onChat;
-
-  static const Color _primary = Color(0xFF313A5F);
-  static const Color _text = Color(0xFF111827);
-  static const Color _muted = Color(0xFF6B7280);
-  static const Color _card = Colors.white;
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.uid, required this.data, required this.radius});
+  final String uid;
+  final Map<String, dynamic> data;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
-    final city = PeopleBrowseGrouping.displayCityUnderName(profile);
-    return Material(
-      color: _card,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onProfile,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Stack(
+    final scheme = Theme.of(context).colorScheme;
+    final url = UserAvatarResolver.resolve(data);
+    final name = (data['name'] ?? '').toString();
+    return Stack(
+      children: [
+        CircleAvatar(
+          radius: radius,
+          backgroundColor: scheme.primaryContainer,
+          backgroundImage: url.isNotEmpty ? NetworkImage(url) : null,
+          child: url.isEmpty
+              ? Text(UserAvatarResolver.initialFor(name),
+                  style: TextStyle(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: radius * 0.8))
+              : null,
+        ),
+        Positioned(right: 0, bottom: 0, child: OnlineDot(uid: uid)),
+      ],
+    );
+  }
+}
+
+/// Estado com cabeçalho "São Paulo • 2 pessoas ›"; abre/fecha ao tocar.
+class _StateSection extends StatefulWidget {
+  const _StateSection({
+    super.key,
+    required this.title,
+    required this.countLabel,
+    required this.initiallyOpen,
+    required this.children,
+  });
+  final String title;
+  final String countLabel;
+  final bool initiallyOpen;
+  final List<Widget> children;
+
+  @override
+  State<_StateSection> createState() => _StateSectionState();
+}
+
+class _StateSectionState extends State<_StateSection> {
+  late bool _open = (PageStorage.maybeOf(context)
+          ?.readState(context, identifier: widget.key) as bool?) ??
+      widget.initiallyOpen;
+
+  void _toggle() {
+    setState(() => _open = !_open);
+    PageStorage.maybeOf(context)
+        ?.writeState(context, _open, identifier: widget.key);
+  }
+
+  @override
+  void didUpdateWidget(covariant _StateSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initiallyOpen && !oldWidget.initiallyOpen) _open = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (_open) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: _toggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+              child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundColor: const Color(0xFFE5E7EB),
-                    backgroundImage: profile.photoUrl.isNotEmpty
-                        ? NetworkImage(profile.photoUrl)
-                        : null,
-                    child: profile.photoUrl.isEmpty
-                        ? const Icon(Icons.person, color: _muted)
-                        : null,
+                  Expanded(
+                    child: Text(widget.title,
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: scheme.onSurface)),
                   ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: OnlineDot(uid: profile.uid),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      profile.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: _text,
-                        fontSize: 15,
-                      ),
-                    ),
-                    if (city.isNotEmpty)
-                      Text(
-                        city,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _muted,
+                  Text(widget.countLabel,
+                      style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                  ],
+                          color: scheme.onSurfaceVariant)),
+                  Icon(Icons.expand_less_rounded,
+                      size: 18, color: scheme.onSurfaceVariant),
+                ],
+              ),
+            ),
+          ),
+          ...widget.children,
+        ],
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Material(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: _toggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(widget.title,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurface)),
                 ),
-              ),
-              IconButton(
-                onPressed: onChat,
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                color: _primary,
-              ),
-            ],
+                Text(widget.countLabel,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurfaceVariant)),
+                Icon(Icons.chevron_right_rounded,
+                    size: 18, color: scheme.onSurfaceVariant),
+              ],
+            ),
           ),
         ),
       ),
