@@ -288,29 +288,45 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     final uid = _myUid;
     if (uid.isEmpty || _savingNearby) return;
     final previous = _viewerData?['nearbyEnabled'] == true;
+    if (previous == value) return;
+    final messenger = ScaffoldMessenger.of(context);
+    // Otimista: o switch e a legenda mudam na hora.
     setState(() {
       _savingNearby = true;
       _viewerData = {...?_viewerData, 'nearbyEnabled': value};
     });
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'nearbyEnabled': value,
         'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      });
       // Espelho público (mesmo campo que Editar perfil grava); melhor esforço.
       unawaited(FirebaseFirestore.instance
           .collection('publicUsers')
           .doc(uid)
           .set({'nearbyEnabled': value}, SetOptions(merge: true)).catchError(
-              (_) {}));
-    } catch (_) {
+              (Object e) {
+        debugPrint('[CountryPeople] publicUsers nearbyEnabled: $e');
+      }));
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(AppTexts.current.get(value
+              ? 'people_nearby_now_visible'
+              : 'people_nearby_now_hidden')),
+        ));
+    } catch (e) {
+      debugPrint('[CountryPeople] users nearbyEnabled: $e');
       if (!mounted) return;
       setState(() {
         _viewerData = {...?_viewerData, 'nearbyEnabled': previous};
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppTexts.current.get('save_error'))),
-      );
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(AppTexts.current.get('save_error')),
+        ));
     } finally {
       if (mounted) setState(() => _savingNearby = false);
     }

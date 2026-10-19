@@ -753,7 +753,7 @@
   "type_2_letters_city": "Digite pelo menos 2 letras da cidade",
   "country_locked": "Seu país está travado.",
   "country_set_once": "Defina seu país UMA vez. Depois ficará travado.",
-  "show_people_near_me": "Mostrar pessoas perto de mim",
+  "show_people_near_me": "Aparecer para pessoas perto de mim",
   "nearby_profile_info": "Quando ativado, seu perfil pode aparecer para pessoas da sua cidade ou região.",
   "profile_saved": "Perfil salvo ✅",
   "login_required_save_profile": "Você precisa estar logado para salvar o perfil.",
@@ -1549,7 +1549,7 @@
   "people_count_many": "{count} pessoas",
   "people_country_search_hint": "Buscar pessoa ou cidade",
   "people_nearby_visible_caption": "Você aparece para quem está perto",
-  "people_nearby_hidden_caption": "Ative para aparecer para quem está perto",
+  "people_nearby_hidden_caption": "Você não aparece para quem está perto",
   "people_in_common": "Em comum com você",
   "people_near_place": "Perto de {city}",
   "people_near_you": "Perto de você",
@@ -1569,5 +1569,7 @@
   "hometown_helper": "Ajuda a encontrar pessoas da sua terra",
   "hometown_clear": "Remover cidade natal",
   "hometown_choose_country": "País da sua cidade natal",
-  "invite_share_message": "Bora pro Remdy comigo? 👋\n\nLá você descobre eventos da cidade, conhece os melhores lugares (restaurantes, bares, pousadas) e faz amizades de verdade com gente perto de você.\n\nEntra pelo meu link: {link}"
+  "invite_share_message": "Bora pro Remdy comigo? 👋\n\nLá você descobre eventos da cidade, conhece os melhores lugares (restaurantes, bares, pousadas) e faz amizades de verdade com gente perto de você.\n\nEntra pelo meu link: {link}",
+  "people_nearby_now_visible": "Pronto! Agora você aparece para quem está perto.",
+  "people_nearby_now_hidden": "Pronto! Você não aparece mais para quem está perto."
 }

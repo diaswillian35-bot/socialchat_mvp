@@ -24,6 +24,11 @@ void main() {
     expect(source, contains('people_near_you_region'));
     expect(source, contains('people_say_hi'));
     expect(source, contains("'nearbyEnabled': value"));
+    expect(source, contains("'updatedAt': FieldValue.serverTimestamp()"));
+    expect(source, contains('people_nearby_now_hidden'));
+    // Falha: volta o switch e mostra erro.
+    expect(source, contains("'nearbyEnabled': previous"));
+    expect(source, contains("get('save_error')"));
     expect(source, contains('Share.share'));
     expect(source, isNot(contains('nearbyCities')));
   });

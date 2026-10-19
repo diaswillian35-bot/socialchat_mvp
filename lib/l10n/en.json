@@ -751,7 +751,7 @@
   "type_2_letters_city": "Type at least 2 letters of the city",
   "country_locked": "Your country is locked.",
   "country_set_once": "Set your country once. After that, it will be locked.",
-  "show_people_near_me": "Show people near me",
+  "show_people_near_me": "Appear to people near me",
   "nearby_profile_info": "When enabled, your profile may appear to people in your city or region.",
   "profile_saved": "Profile saved ✅",
   "login_required_save_profile": "You need to be logged in to save your profile.",
@@ -1549,7 +1549,7 @@
   "people_count_many": "{count} people",
   "people_country_search_hint": "Search person or city",
   "people_nearby_visible_caption": "People near you can see you",
-  "people_nearby_hidden_caption": "Turn on to appear to people nearby",
+  "people_nearby_hidden_caption": "People near you can’t see you",
   "people_in_common": "In common with you",
   "people_near_place": "Near {city}",
   "people_near_you": "Near you",
@@ -1569,5 +1569,7 @@
   "hometown_helper": "Helps you find people from home",
   "hometown_clear": "Remove hometown",
   "hometown_choose_country": "Hometown country",
-  "invite_share_message": "Come join me on Remdy! 👋\n\nDiscover events in your city, find the best places (restaurants, bars, inns) and make real friends with people near you.\n\nJoin with my link: {link}"
+  "invite_share_message": "Come join me on Remdy! 👋\n\nDiscover events in your city, find the best places (restaurants, bars, inns) and make real friends with people near you.\n\nJoin with my link: {link}",
+  "people_nearby_now_visible": "Done! People near you can now see you.",
+  "people_nearby_now_hidden": "Done! People near you can no longer see you."
 }
