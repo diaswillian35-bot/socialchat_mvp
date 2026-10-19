@@ -1335,5 +1335,7 @@
   "people_your_city": "A sua cidade",
   "people_your_region": "A sua região",
   "people_nearby_cities": "Cidades próximas",
-  "people_other_subdivisions": "Outros estados, províncias e distritos"
+  "people_other_subdivisions": "Outros estados, províncias e distritos",
+  "people_other_cities_of_state": "Outras cidades de {state}",
+  "people_state_other": "Outros"
 }

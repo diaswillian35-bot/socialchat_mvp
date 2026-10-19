@@ -392,25 +392,32 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
       final hierarchy =
           PeopleCountryHierarchy.build(people: people, viewer: _viewerData);
       if (hierarchy.sameCity != null) {
-        children.add(_citySection(
-            t.get('people_your_city'), hierarchy.sameCity!, docs,
-            initiallyExpanded: true));
+        children.add(_sectionTitle(t.get('people_your_city')));
+        children.add(_citySection(hierarchy.sameCity!.label,
+            hierarchy.sameCity!, docs));
       }
       if (hierarchy.region.isNotEmpty) {
         children.add(_sectionTitle(t.get('people_your_region')));
-        children.addAll(hierarchy.region.map((city) =>
-            _citySection(city.label, city, docs, initiallyExpanded: true)));
+        children.addAll(hierarchy.region
+            .map((city) => _citySection(city.label, city, docs)));
       }
-      if (hierarchy.nearbyCities.isNotEmpty) {
-        children.add(_sectionTitle(t.get('people_nearby_cities')));
-        children.addAll(hierarchy.nearbyCities
+      final ownState = hierarchy.viewerSubdivision;
+      if (ownState != null && ownState.cities.isNotEmpty) {
+        children.add(_sectionTitle(t
+            .get('people_other_cities_of_state')
+            .replaceAll('{state}', ownState.label)));
+        children.addAll(ownState.cities
             .map((city) => _citySection(city.label, city, docs)));
       }
       if (hierarchy.remaining.isNotEmpty) {
-        children.add(_sectionTitle(t.get('people_other_subdivisions')));
+        if (hierarchy.viewerLocated) {
+          children.add(_sectionTitle(t.get('people_other_subdivisions')));
+        }
         children.addAll(hierarchy.remaining.map((state) => ExpansionTile(
-              key: PageStorageKey('country-state-${state.label}'),
-              title: Text(state.label,
+              key: PageStorageKey('country-state-${state.key}'),
+              initiallyExpanded: true,
+              title: Text(
+                  state.isOther ? t.get('people_state_other') : state.label,
                   style: const TextStyle(
                       fontWeight: FontWeight.w800, color: _text)),
               children: state.cities
@@ -444,9 +451,9 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
 
   Widget _citySection(String title, CountryCityGroup city,
       Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      {bool initiallyExpanded = false}) {
+      {bool initiallyExpanded = true}) {
     return ExpansionTile(
-      key: PageStorageKey('country-city-${city.label}'),
+      key: PageStorageKey('country-city-${city.subdivisionKey}-${city.label}'),
       initiallyExpanded: initiallyExpanded,
       title: Text(title,
           style: const TextStyle(fontWeight: FontWeight.w700, color: _primary)),

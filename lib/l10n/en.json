@@ -1544,5 +1544,7 @@
   "people_your_city": "Your city",
   "people_your_region": "Your region",
   "people_nearby_cities": "Nearby cities",
-  "people_other_subdivisions": "Other states, provinces and districts"
+  "people_other_subdivisions": "Other states, provinces and districts",
+  "people_other_cities_of_state": "Other cities in {state}",
+  "people_state_other": "Other"
 }

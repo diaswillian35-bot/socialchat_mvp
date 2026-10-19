@@ -19,9 +19,17 @@ void main() {
     expect(source, isNot(contains('people.length}')));
   });
 
+  test('all country sections open by default', () {
+    expect(source, contains('bool initiallyExpanded = true'));
+    expect(source, contains('people_other_cities_of_state'));
+    expect(source, isNot(contains('nearbyCities')));
+  });
+
   test('security and international chat paths remain wired', () {
     expect(source, contains('blockedUids.contains'));
     expect(source, contains("ageVerificationStatus'] != 'verified'"));
+    // Opt-in "Mostrar pessoas perto de mim" continua obrigatório.
+    expect(source, contains("data['nearbyEnabled'] != true"));
     expect(source, contains('InternationalChatService.canSendMessage'));
     expect(source, contains('BlockService.allowOpenPeer'));
   });

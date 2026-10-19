@@ -1543,5 +1543,7 @@
   "people_your_city": "Votre ville",
   "people_your_region": "Votre région",
   "people_nearby_cities": "Villes proches",
-  "people_other_subdivisions": "Autres États, provinces et districts"
+  "people_other_subdivisions": "Autres États, provinces et districts",
+  "people_other_cities_of_state": "Autres villes de {state}",
+  "people_state_other": "Autres"
 }
