@@ -823,7 +823,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                       child: Row(children: [
                         for (var i = 1; i <= 5; i++)
                           IconButton(
-                            tooltip: '$i',
+                            tooltip: strings.starTooltip(i),
                             onPressed: () => setDialogState(() => stars = i),
                             icon: Icon(
                                 i <= stars ? Icons.star : Icons.star_border,
@@ -852,7 +852,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancelar')),
+                      child: Text(strings.cancel)),
                   FilledButton(
                       onPressed: stars == 0
                           ? null
@@ -1030,7 +1030,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Cancelar')),
+                    child: Text(strings.cancel)),
                 FilledButton(
                     onPressed: () async {
                       if (controller.text.trim().isEmpty) return;
@@ -1168,7 +1168,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancelar')),
+                      child: Text(strings.cancel)),
                   FilledButton(
                       onPressed: () async {
                         setDialogState(() => submitted = true);

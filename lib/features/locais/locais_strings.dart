@@ -158,6 +158,7 @@ class LocaisStrings {
 
   String get emptyBody => _t(
         pt: 'Tente outra cidade, região ou filtro.',
+        ptPt: 'Experimente outra cidade, região ou filtro.',
         en: 'Try another city, region or filter.',
         es: 'Prueba otra ciudad, región o filtro.',
         fr: 'Essayez une autre ville, région ou un autre filtre.',
@@ -173,6 +174,7 @@ class LocaisStrings {
 
   String get retry => _t(
         pt: 'Tentar novamente',
+        ptPt: 'Tentar outra vez',
         en: 'Try again',
         es: 'Intentar de nuevo',
         fr: 'Réessayer',
@@ -218,7 +220,8 @@ class LocaisStrings {
   String get phone =>
       _t(pt: 'Telefone', en: 'Phone', es: 'Teléfono', fr: 'Téléphone');
 
-  String get website => _t(pt: 'Site', en: 'Website', es: 'Sitio', fr: 'Site');
+  String get website =>
+      _t(pt: 'Site', ptPt: 'Website', en: 'Website', es: 'Sitio', fr: 'Site');
 
   String get instagram => 'Instagram';
 
@@ -273,6 +276,7 @@ class LocaisStrings {
 
   String get noReviews => _t(
         pt: 'Ainda sem avaliações',
+        ptPt: 'Ainda não há avaliações',
         en: 'No reviews yet',
         es: 'Todavía sin reseñas',
         fr: 'Pas encore d’avis',
@@ -280,6 +284,7 @@ class LocaisStrings {
 
   String get postAnonymously => _t(
         pt: 'Publicar como anônimo',
+        ptPt: 'Publicar como anónimo',
         en: 'Post anonymously',
         es: 'Publicar como anónimo',
         fr: 'Publier anonymement',
@@ -287,6 +292,7 @@ class LocaisStrings {
 
   String get anonymous => _t(
         pt: 'Anônimo',
+        ptPt: 'Anónimo',
         en: 'Anonymous',
         es: 'Anónimo',
         fr: 'Anonyme',
@@ -304,6 +310,7 @@ class LocaisStrings {
       case 'age':
         return _t(
             pt: 'Para avaliar, confirme sua idade no seu perfil.',
+            ptPt: 'Para avaliar, confirme a sua idade no seu perfil.',
             en: 'To review, verify your age in your profile.',
             es: 'Para evaluar, confirma tu edad en tu perfil.',
             fr: 'Pour évaluer, confirmez votre âge dans votre profil.');
@@ -316,18 +323,21 @@ class LocaisStrings {
       case 'rate':
         return _t(
             pt: 'Aguarde um pouco antes de enviar de novo.',
+            ptPt: 'Aguarde um pouco antes de voltar a enviar.',
             en: 'Please wait a moment before sending again.',
             es: 'Espera un poco antes de enviar de nuevo.',
             fr: 'Patientez un peu avant de renvoyer.');
       case 'auth':
         return _t(
             pt: 'Entre na sua conta para avaliar.',
+            ptPt: 'Inicie sessão para avaliar.',
             en: 'Sign in to review.',
             es: 'Inicia sesión para evaluar.',
             fr: 'Connectez-vous pour évaluer.');
       default:
         return _t(
             pt: 'Não foi possível enviar a avaliação. Tente de novo.',
+            ptPt: 'Não foi possível enviar a avaliação. Tente outra vez.',
             en: 'Could not send the review. Try again.',
             es: 'No se pudo enviar la reseña. Inténtalo de nuevo.',
             fr: 'Impossible d’envoyer l’avis. Réessayez.');
@@ -363,6 +373,7 @@ class LocaisStrings {
       fr: 'Envoyer l’avis');
   String get reviewPending => _t(
       pt: 'Avaliação enviada para análise.',
+      ptPt: 'Avaliação enviada para revisão.',
       en: 'Review sent for moderation.',
       es: 'Evaluación enviada a moderación.',
       fr: 'Avis envoyé à la modération.');
@@ -375,11 +386,13 @@ class LocaisStrings {
       fr: 'Revendiquer ce lieu');
   String get claimPhone => _t(
       pt: 'Telefone de contato',
+      ptPt: 'Telefone de contacto',
       en: 'Contact phone',
       es: 'Teléfono de contacto',
       fr: 'Téléphone de contact');
   String get claimNote => _t(
       pt: 'Explique sua relação com o local',
+      ptPt: 'Explique a sua relação com o local',
       en: 'Explain your relationship with the place',
       es: 'Explique su relación con el lugar',
       fr: 'Expliquez votre lien avec le lieu');
@@ -407,8 +420,17 @@ class LocaisStrings {
       en: 'View photo',
       es: 'Ampliar foto',
       fr: 'Agrandir la photo');
-  String get close =>
-      _t(pt: 'Fechar', en: 'Close', es: 'Cerrar', fr: 'Fermer');
+  String get close => _t(pt: 'Fechar', en: 'Close', es: 'Cerrar', fr: 'Fermer');
+  String get cancel =>
+      _t(pt: 'Cancelar', en: 'Cancel', es: 'Cancelar', fr: 'Annuler');
+
+  /// Dica dos botões de estrela do formulário de avaliação.
+  String starTooltip(int n) => _t(
+        pt: n == 1 ? '1 estrela' : '$n estrelas',
+        en: n == 1 ? '1 star' : '$n stars',
+        es: n == 1 ? '1 estrella' : '$n estrellas',
+        fr: n == 1 ? '1 étoile' : '$n étoiles',
+      );
   String get unavailable => _t(
       pt: 'Indisponível',
       en: 'Unavailable',

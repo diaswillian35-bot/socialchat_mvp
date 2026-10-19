@@ -1571,5 +1571,8 @@
   "hometown_choose_country": "Hometown country",
   "invite_share_message": "Come join me on Remdy! 👋\n\nDiscover events in your city, find the best places (restaurants, bars, inns) and make real friends with people near you.\n\nJoin with my link: {link}",
   "people_nearby_now_visible": "Done! People near you can now see you.",
-  "people_nearby_now_hidden": "Done! People near you can no longer see you."
+  "people_nearby_now_hidden": "Done! People near you can no longer see you.",
+  "invite": "Invites",
+  "member_plural": "members",
+  "menu": "Menu"
 }

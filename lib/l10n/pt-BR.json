@@ -1571,5 +1571,8 @@
   "hometown_choose_country": "País da sua cidade natal",
   "invite_share_message": "Bora pro Remdy comigo? 👋\n\nLá você descobre eventos da cidade, conhece os melhores lugares (restaurantes, bares, pousadas) e faz amizades de verdade com gente perto de você.\n\nEntra pelo meu link: {link}",
   "people_nearby_now_visible": "Pronto! Agora você aparece para quem está perto.",
-  "people_nearby_now_hidden": "Pronto! Você não aparece mais para quem está perto."
+  "people_nearby_now_hidden": "Pronto! Você não aparece mais para quem está perto.",
+  "chat_user_is_premium": "Este usuário é Premium",
+  "error_prefix": "Erro:",
+  "my_events_cancelled_message": "Evento cancelado."
 }

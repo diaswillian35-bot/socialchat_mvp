@@ -497,9 +497,9 @@
   "invite_title": "Invita amigos",
   "invite_subtitle": "Invita amigos y desbloquea recompensas",
   "invite_current_reward": "Recompensa actual:",
-  "invite_next_goal": "Próxima meta:",
+  "invite_next_goal": "Siguiente objetivo:",
   "invite_missing": "Faltan {count} invitaciones para la próxima recompensa.",
-  "invite_rewards_title": "Metas de recompensa:",
+  "invite_rewards_title": "Objetivos de recompensa:",
   "invite_reward_3": "3 invitaciones = 1 día Premium",
   "invite_reward_15": "10 invitaciones = 7 días Premium",
   "invite_reward_30": "20 invitaciones = 30 días Premium",
@@ -715,7 +715,7 @@
   "chat_you_label": "Tú",
   "chat_premium_user": "Usuario Premium",
   "chat_account_muted": "Tu cuenta ha sido silenciada temporalmente.",
-  "chat_user_is_premium": "Este usuario es Premium,",
+  "chat_user_is_premium": "Este usuario es Premium",
   "event_detail_now": "ahora",
   "event_detail_minutes_ago": "minutos atrás",
   "event_detail_hours_ago": "horas atrás",
@@ -1572,5 +1572,7 @@
   "hometown_choose_country": "País de tu ciudad natal",
   "invite_share_message": "¿Te vienes a Remdy conmigo? 👋\n\nAllí descubres eventos de tu ciudad, conoces los mejores lugares (restaurantes, bares, posadas) y haces amistades de verdad con gente cerca de ti.\n\nEntra con mi enlace: {link}",
   "people_nearby_now_visible": "¡Listo! Ahora te ven quienes están cerca.",
-  "people_nearby_now_hidden": "¡Listo! Ya no te ven quienes están cerca."
+  "people_nearby_now_hidden": "¡Listo! Ya no te ven quienes están cerca.",
+  "chat_load_permission_denied": "No se pudo cargar esta conversación.",
+  "chat_load_permission_denied_hint": "Es posible que tu cuenta aún no tenga acceso o que haya que actualizar las reglas del servidor. Actualiza la pantalla o inténtalo de nuevo en unos instantes."
 }

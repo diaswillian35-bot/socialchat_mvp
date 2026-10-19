@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../data/countries_data.dart';
+import '../data/country_names_l10n.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../l10n/app_texts.dart';
@@ -192,6 +193,23 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return AppTexts.current.get('select');
   }
 
+  /// Nome do país no idioma do app (só exibição; o perfil grava o nome pt).
+  String _displayCountryName(CountryData c) {
+    final loc = AppTexts.current.locale;
+    final lang = loc.languageCode.toLowerCase();
+    final code = lang == 'pt'
+        ? ((loc.countryCode ?? '').toUpperCase() == 'PT' ? 'pt-PT' : 'pt-BR')
+        : lang;
+    return localizedCountryName(c.code, c.name, code);
+  }
+
+  String _displayCountryNameFromCode(String code) {
+    for (final c in _countries) {
+      if (c.code == code.toLowerCase()) return _displayCountryName(c);
+    }
+    return AppTexts.current.get('select');
+  }
+
   Future<void> _openCountrySheet() async {
     final t = AppTexts.current;
     if (_countryLocked) return;
@@ -209,10 +227,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 return false;
               }
               final name = _normalizeText(c.name);
+              final shown = _normalizeText(_displayCountryName(c));
               final code = _normalizeText(c.code);
 
               return query.isEmpty ||
                   name.contains(query) ||
+                  shown.contains(query) ||
                   name.startsWith(query) ||
                   code == query ||
                   code.contains(query);
@@ -319,7 +339,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                     vertical: 2,
                                   ),
                                   title: Text(
-                                    c.name,
+                                    _displayCountryName(c),
                                     style: TextStyle(
                                       fontWeight: isSelected
                                           ? FontWeight.w800
@@ -576,7 +596,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Widget _countryField() {
     final t = AppTexts.current;
-    final countryName = _countryNameFromCode(_homeCountryCode);
+    final countryName = _displayCountryNameFromCode(_homeCountryCode);
     final flag =
         _homeCountryCode.isEmpty ? '🏳️' : _flagEmoji(_homeCountryCode);
 
@@ -663,7 +683,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ...offered.map((c) => ListTile(
                     leading: Text(_flagEmoji(c.code),
                         style: const TextStyle(fontSize: 20)),
-                    title: Text(c.name),
+                    title: Text(_displayCountryName(c)),
                     trailing: c.code == country
                         ? const Icon(Icons.check_circle,
                             color: Color(0xFF264E9A))

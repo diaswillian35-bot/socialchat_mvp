@@ -1570,5 +1570,9 @@
   "hometown_choose_country": "Pays de votre ville natale",
   "invite_share_message": "Tu viens sur Remdy avec moi ? 👋\n\nTu y découvres les événements de ta ville, les meilleurs endroits (restaurants, bars, auberges) et tu te fais de vrais amis près de chez toi.\n\nRejoins-moi avec mon lien : {link}",
   "people_nearby_now_visible": "C’est fait ! Les personnes proches peuvent vous voir.",
-  "people_nearby_now_hidden": "C’est fait ! Les personnes proches ne vous voient plus."
+  "people_nearby_now_hidden": "C’est fait ! Les personnes proches ne vous voient plus.",
+  "chat_load_permission_denied": "Impossible de charger cette conversation.",
+  "chat_load_permission_denied_hint": "Votre compte n'a peut-être pas encore accès, ou les règles du serveur doivent être mises à jour. Actualisez l'écran ou réessayez dans un instant.",
+  "events_general": "Général",
+  "events_languages": "Langues"
 }

@@ -1364,5 +1364,13 @@
   "hometown_choose_country": "País da sua terra natal",
   "invite_share_message": "Vens comigo para o Remdy? 👋\n\nLá descobres eventos da tua cidade, conheces os melhores sítios (restaurantes, bares, alojamentos) e fazes amizades a sério com gente perto de ti.\n\nEntra pelo meu link: {link}",
   "people_nearby_now_visible": "Pronto! Agora aparece a quem está perto.",
-  "people_nearby_now_hidden": "Pronto! Já não aparece a quem está perto."
+  "people_nearby_now_hidden": "Pronto! Já não aparece a quem está perto.",
+  "chat_unavailable_blocked": "Chat indisponível (bloqueado).",
+  "error": "Erro",
+  "profile_no_longer_available": "Este perfil já não está disponível.",
+  "invite_code_copied": "Código de convite copiado.",
+  "invite": "Convites",
+  "menu": "Menu",
+  "chat_load_permission_denied": "Não foi possível carregar esta conversa.",
+  "chat_load_permission_denied_hint": "A sua conta pode ainda não ter acesso ou as regras do servidor precisam de ser atualizadas. Atualize o ecrã ou tente outra vez dentro de instantes."
 }
