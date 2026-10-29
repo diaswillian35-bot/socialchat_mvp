@@ -211,7 +211,8 @@ service cloud.firestore {
     }
 
     function canCreateInternationalConversation(parts) {
-      return isPremiumUser(uid());
+      // Conversas entre países liberadas e gratuitas.
+      return true;
     }
 
     function userDocData(userId) {
@@ -231,15 +232,14 @@ service cloud.firestore {
 
     function canSendMessageInConversation(cid) {
       let parts = partsFrom(conv(cid).data);
-      return (!isInternationalParticipants(parts) || isPremiumUser(uid()))
-        && !eitherDmBlocked(uid(), request.resource.data.toUid);
+      return !eitherDmBlocked(uid(), request.resource.data.toUid);
     }
 
     function isValidTextMessage() {
       return request.resource.data.type == 'text'
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 800;
+        && request.resource.data.text.size() <= 1500;
     }
 
     function isValidAudioMessage() {

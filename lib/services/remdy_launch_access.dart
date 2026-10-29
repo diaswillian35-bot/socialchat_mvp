@@ -161,7 +161,7 @@ class RemdyLaunchAccess {
     );
   }
 
-  /// DM: mesmo país aberto (BR↔BR ou CA↔CA). Nunca BR↔CA.
+  /// DM: liberado entre quaisquer países (BR↔CA etc.), gratuito.
   static bool canChatBetweenCountries({
     required String senderCountryCode,
     required String recipientCountryCode,
@@ -173,10 +173,10 @@ class RemdyLaunchAccess {
       final b = normalizeCountryCode(recipientCountryCode);
       return a.isNotEmpty && a == b;
     }
-    return canAccessCountryContent(
-      userHomeCountryCode: senderCountryCode,
-      targetCountryCode: recipientCountryCode,
-    );
+    // Conversas entre países liberadas e gratuitas (sem Premium).
+    final a = normalizeCountryCode(senderCountryCode);
+    final b = normalizeCountryCode(recipientCountryCode);
+    return a.isNotEmpty && b.isNotEmpty;
   }
 
   static String comingSoonTitle([AppTexts? texts]) {

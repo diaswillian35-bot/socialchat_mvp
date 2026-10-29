@@ -825,7 +825,7 @@
   "intl_chat_not_now": "Pas maintenant",
   "dm_quota_title": "Continuez cette conversation",
   "dm_quota_message": "Pour continuer à discuter avec {name}, abonnez-vous à Premium.",
-  "dm_quota_hint": "Les réponses Free utilisent une franchise de 300 caractères dans cette conversation. Texte uniquement.",
+  "dm_quota_hint": "Les réponses Free utilisent une franchise de 1 500 caractères dans cette conversation. Texte uniquement.",
   "dm_quota_person_fallback": "cette personne",
   "intl_chat_invite_open_error": "Impossible d'ouvrir les invitations.",
   "profile_no_longer_available": "Ce profil n'est plus disponible.",

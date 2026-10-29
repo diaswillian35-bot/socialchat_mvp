@@ -826,7 +826,7 @@
   "intl_chat_not_now": "Agora não",
   "dm_quota_title": "Continue esta conversa",
   "dm_quota_message": "Para continuar conversando com {nome}, assine o Premium.",
-  "dm_quota_hint": "Respostas Free usam uma franquia de 300 caracteres nesta conversa. Apenas texto.",
+  "dm_quota_hint": "Respostas Free usam uma franquia de 1500 caracteres nesta conversa. Apenas texto.",
   "dm_quota_person_fallback": "esta pessoa",
   "intl_chat_invite_open_error": "Não foi possível abrir convites.",
   "profile_no_longer_available": "Este perfil não está mais disponível.",

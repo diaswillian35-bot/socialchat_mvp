@@ -1266,7 +1266,7 @@
   "events_update_location": "Atualizar localização",
   "dm_quota_title": "Continue esta conversa",
   "dm_quota_message": "Para continuar a conversar com {nome}, subscreva o Premium.",
-  "dm_quota_hint": "Respostas Free usam uma franquia de 300 caracteres nesta conversa. Apenas texto.",
+  "dm_quota_hint": "Respostas Free usam uma franquia de 1500 caracteres nesta conversa. Apenas texto.",
   "dm_quota_person_fallback": "esta pessoa",
   "remi_choose_language_title": "Escolher idioma",
   "remi_choose_language_headline": "Que idioma quer praticar?",

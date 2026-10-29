@@ -10,9 +10,9 @@
  * Envios Free sob franquia: Callable sendDmMessage (não confiar no cliente).
  */
 
-const REPLY_QUOTA_LIMIT = 300;
+const REPLY_QUOTA_LIMIT = 1500;
 const REPLY_QUOTA_VERSION = 1;
-const MAX_TEXT_CODE_POINTS = 800;
+const MAX_TEXT_CODE_POINTS = 1500;
 const MIN_REQUEST_ID = 8;
 const MAX_REQUEST_ID = 128;
 const IDEMPOTENCY_TTL_MS = 7 * 24 * 60 * 60 * 1000;

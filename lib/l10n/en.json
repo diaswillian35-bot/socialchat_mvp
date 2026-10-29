@@ -825,7 +825,7 @@
   "intl_chat_not_now": "Not now",
   "dm_quota_title": "Continue this conversation",
   "dm_quota_message": "To continue chatting with {name}, subscribe to Premium.",
-  "dm_quota_hint": "Free replies use a 300-character allowance in this conversation. Text only.",
+  "dm_quota_hint": "Free replies use a 1,500-character allowance in this conversation. Text only.",
   "dm_quota_person_fallback": "this person",
   "intl_chat_invite_open_error": "Could not open invites.",
   "profile_no_longer_available": "This profile is no longer available.",

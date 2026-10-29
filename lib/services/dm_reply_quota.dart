@@ -14,7 +14,7 @@ class DmReplyQuota {
     this.enabled = true,
   });
 
-  static const int defaultLimit = 300;
+  static const int defaultLimit = 1500;
 
   final int used;
   final int limit;
