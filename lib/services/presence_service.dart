@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'explore_only.dart';
 import 'online_status.dart';
 import 'presence_diagnostics.dart';
 import 'presence_display_hub.dart';
@@ -325,6 +326,11 @@ class PresenceService with WidgetsBindingObserver {
   Future<void> start() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    // Modo "Só explorar": não publica presença no RTDB.
+    if (ExploreOnly.isOn) {
+      if (_started) await stop();
+      return;
+    }
 
     await _clearLegacyPersistedConnectionId();
 

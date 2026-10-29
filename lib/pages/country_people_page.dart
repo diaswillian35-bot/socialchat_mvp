@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../services/explore_only.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
@@ -196,6 +197,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     if (blockedUids.contains(d.id)) return false;
     final data = d.data();
     if (!InternationalChatService.isActiveAccount(data)) return false;
+    if (ExploreOnly.isExploreOnlyData(data)) return false;
     final code = InternationalChatService.readHomeCountryCode(data);
     if (code != _code) return false;
     if ((data['name'] ?? '').toString().trim().isEmpty) return false;
@@ -268,6 +270,11 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
         await InternationalPremiumDialog.showStart(context);
         return;
       }
+    }
+    if (!await InternationalChatService.conversationExists(_myUid, otherUid) &&
+        mounted &&
+        await ExploreOnly.blocksNewChat(context, otherUid)) {
+      return;
     }
     final convoId = await InternationalChatService.getOrCreateConversation(
         _myUid, otherUid);

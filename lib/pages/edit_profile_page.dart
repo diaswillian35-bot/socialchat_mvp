@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/explore_only.dart';
+import '../services/presence_service.dart';
 import '../data/countries_data.dart';
 import '../data/country_names_l10n.dart';
 import 'dart:convert';
@@ -58,6 +61,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   double? _selectedLng;
 
   bool _nearbyEnabled = false;
+  bool _exploreOnly = false;
 
   // Cidade natal opcional ("Sou de...").
   String _hometownCity = '';
@@ -143,6 +147,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           : double.tryParse((savedLng ?? '').toString());
 
       _nearbyEnabled = data['nearbyEnabled'] == true;
+      _exploreOnly = data['exploreOnly'] == true;
 
       final hometown = HometownInfo.fromUserData(data);
       _hometownCity = hometown?.city ?? '';
@@ -477,6 +482,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'cityLat': _selectedLat,
         'cityLng': _selectedLng,
         'nearbyEnabled': _nearbyEnabled,
+        'exploreOnly': _exploreOnly,
         ..._hometownPayload(),
         'countryLocked': finalLocked,
         'profileComplete': true,
@@ -513,10 +519,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'lng': _selectedLng,
         'location': _displayLocation,
         'nearbyEnabled': _nearbyEnabled,
+        'exploreOnly': _exploreOnly,
         'about': about,
         'languages': languages,
         'nativeLanguage': languages,
-        'isOnline': true,
+        // Modo "Só explorar": não se anuncia online.
+        if (!_exploreOnly) 'isOnline': true,
         'lastSeenAt': now,
         'email': email,
         'photoUrl': photoUrl,
@@ -539,6 +547,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
       }
 
       await _publicDoc(uid).set(publicPayload, SetOptions(merge: true));
+
+      // Modo "Só explorar": liga/desliga a publicação de presença no RTDB.
+      ExploreOnly.instance.setLocal(_exploreOnly);
+      if (_exploreOnly) {
+        await PresenceService.instance.stop();
+      } else {
+        unawaited(PresenceService.instance.start());
+      }
 
       if (!mounted) return;
 
@@ -784,6 +800,47 @@ class _EditProfilePageState extends State<EditProfilePage> {
             padding: EdgeInsets.only(bottom: 6),
             child: Text(
               AppTexts.current.get('nearby_profile_info'),
+              style: TextStyle(
+                fontSize: 12,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _exploreOnlyField() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFD1D5DB)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _exploreOnly,
+            onChanged: (value) {
+              setState(() {
+                _exploreOnly = value;
+              });
+            },
+            title: Text(
+              AppTexts.current.get('explore_only_title'),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF111827),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              AppTexts.current.get('explore_only_info'),
               style: TextStyle(
                 fontSize: 12,
                 color: Color(0xFF6B7280),
@@ -1148,6 +1205,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   _hometownField(),
                   const SizedBox(height: 12),
                   _nearbyField(),
+                  const SizedBox(height: 12),
+                  _exploreOnlyField(),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _nameC,

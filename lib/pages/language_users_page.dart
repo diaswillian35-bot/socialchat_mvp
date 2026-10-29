@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 
+import '../services/explore_only.dart';
 import 'chat_page.dart';
 import 'public_profile_page.dart';
 import '../l10n/app_texts.dart';
@@ -97,6 +98,16 @@ class LanguageUsersPage extends StatelessWidget {
         }
         return;
       }
+    }
+
+    final myUidForCheck = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (!await InternationalChatService.conversationExists(
+          myUidForCheck,
+          otherUid,
+        ) &&
+        context.mounted &&
+        await ExploreOnly.blocksNewChat(context, otherUid)) {
+      return;
     }
 
     String convoId = '';
@@ -204,6 +215,7 @@ class LanguageUsersPage extends StatelessWidget {
           final filtered = docs.where((d) {
             if (d.id == _myUid) return false;
             if (blocked.contains(d.id)) return false;
+            if (ExploreOnly.isExploreOnlyData(d.data())) return false;
             return InternationalChatService.readHomeCountryCode(d.data()) == code;
           }).toList();
 

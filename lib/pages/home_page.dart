@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../services/admin_access.dart';
 import '../pages/system_inbox_page.dart';
 
 import 'country_people_page.dart';
@@ -80,11 +81,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AdminAccess.instance.addListener(_onAdminChanged);
+  }
+
+  void _onAdminChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    AdminAccess.instance.removeListener(_onAdminChanged);
     super.dispose();
   }
 
@@ -959,13 +966,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 16),
               HomeDiscoverSection(
-                countryCode: homeCode,
+                countryCode: AdminAccess.effectiveCountry(homeCode),
                 city: userCity.isEmpty ? null : userCity,
                 onOpenEventsTab: widget.onOpenEventsTab,
               ),
               const SizedBox(height: 16),
               HomeNearbyUsersSection(
-                countryCode: homeCode,
+                countryCode: AdminAccess.effectiveCountry(homeCode),
                 countryName: userCountryName,
                 city: userCity.isEmpty ? null : userCity,
                 state: userState.isEmpty ? null : userState,

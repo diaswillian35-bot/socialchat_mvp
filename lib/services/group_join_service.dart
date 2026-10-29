@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'admin_access.dart';
 import 'group_ban_service.dart';
 
 /// Resultado de uma tentativa de entrada em grupo.
@@ -285,6 +286,12 @@ class GroupJoinService {
           groupId: groupId,
           groupName: (peekData['name'] ?? peekData['title'] ?? '').toString(),
         );
+      }
+
+      // Administrador total: entra em qualquer grupo sem aprovação
+      // (joinOpenGroup valida o token no servidor; ban continua valendo).
+      if (AdminAccess.isAdmin) {
+        return _joinOpenViaCallable(groupId);
       }
 
       if (peekPolicy == 'inviteOnly') {

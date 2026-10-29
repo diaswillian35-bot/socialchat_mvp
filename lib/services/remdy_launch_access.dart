@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'admin_access.dart';
 import '../l10n/app_texts.dart';
 
 /// Configuração central do lançamento gratuito (Brasil + Canadá).
@@ -129,6 +130,8 @@ class RemdyLaunchAccess {
   }) {
     final home = normalizeCountryCode(userHomeCountryCode);
     final target = normalizeCountryCode(targetCountryCode);
+    // Administrador total: todos os países (não afeta DMs).
+    if (AdminAccess.isAdmin) return target.isNotEmpty;
     if (home.isEmpty || target.isEmpty) return false;
     if (!isCountryOpen(home) || !isCountryOpen(target)) return false;
     return home == target;
@@ -141,7 +144,7 @@ class RemdyLaunchAccess {
     required String? userHomeCountryCode,
     required String? groupCountryCode,
   }) {
-    if (!isFreeBrazilLaunch) return true;
+    if (!isFreeBrazilLaunch || AdminAccess.isAdmin) return true;
     return canAccessCountryContent(
       userHomeCountryCode: userHomeCountryCode,
       targetCountryCode: groupCountryCode,

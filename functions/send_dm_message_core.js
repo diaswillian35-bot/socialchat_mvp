@@ -136,6 +136,13 @@ async function executeSendDmMessage(db, uid, data) {
     if (accountBlocked(otherData)) {
       throw new HttpsError("failed-precondition", "Peer unavailable.");
     }
+    // Modo "Só explorar": ninguém inicia conversa nova com quem está nele.
+    // (conversa já existente continua). Sem exceção de administrador.
+    if (otherData.exploreOnly === true && !String(conv.lastMessage || "").trim()) {
+      throw new HttpsError("permission-denied", "Peer is explore-only.", {
+        reason: "explore-only",
+      });
+    }
 
     if (isEitherBlockedFromUserSnaps(senderData, otherData, uid, otherUid)) {
       throw new HttpsError("permission-denied", "Not allowed.");

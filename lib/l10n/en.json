@@ -1574,5 +1574,13 @@
   "people_nearby_now_hidden": "Done! People near you can no longer see you.",
   "invite": "Invites",
   "member_plural": "members",
-  "menu": "Menu"
+  "menu": "Menu",
+  "admin_mode_title": "Admin mode",
+  "admin_mode_subtitle": "You see people, groups, events and places from every country and can join any group without approval.",
+  "admin_mode_my_country": "My country (profile)",
+  "admin_mode_dm_note": "Private conversations remain restricted to their participants.",
+  "admin_mode_applied": "Admin mode country updated.",
+  "explore_only_title": "Explore only",
+  "explore_only_info": "Use Places, Events and Groups without appearing in Meet People, online lists or searches. No one can start a conversation with you, and you won't see who is online.",
+  "explore_only_no_chat": "This person is in Explore only mode and doesn't accept new conversations."
 }

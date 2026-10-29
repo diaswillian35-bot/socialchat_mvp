@@ -135,6 +135,8 @@ function isSearchableAccount(userData) {
   if (userData.accountDeleted === true) return false;
   if (isAccountDisabled(userData)) return false;
   if (userData.profileComplete !== true) return false;
+  // Modo "Só explorar": fora de todas as buscas.
+  if (userData.exploreOnly === true) return false;
   const name = (userData.name || "").toString().trim();
   if (name.length < MIN_QUERY_LENGTH) return false;
   return true;

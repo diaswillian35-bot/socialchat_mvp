@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../services/explore_only.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/block_visibility.dart';
@@ -1075,6 +1076,9 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       final snap = await convRef.get();
 
       if (!snap.exists) {
+        if (mounted && await ExploreOnly.blocksNewChat(context, otherUid)) {
+          return;
+        }
         final myData = await InternationalChatService.fetchUserData(myUid);
         final otherData =
             await InternationalChatService.fetchUserData(otherUid);

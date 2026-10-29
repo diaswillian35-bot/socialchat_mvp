@@ -85,6 +85,8 @@ class UserLocationScope {
 
   /// Pode aparecer em Home / Ver todos / descoberta.
   static bool isDiscoverableProfile(Map<String, dynamic>? data) {
+    // Modo "Só explorar": fora de Conheça Pessoas / perto / novos na cidade.
+    if (data != null && data['exploreOnly'] == true) return false;
     return hasCompleteProfileLocation(data);
   }
 

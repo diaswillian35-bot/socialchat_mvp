@@ -1574,5 +1574,13 @@
   "people_nearby_now_visible": "¡Listo! Ahora te ven quienes están cerca.",
   "people_nearby_now_hidden": "¡Listo! Ya no te ven quienes están cerca.",
   "chat_load_permission_denied": "No se pudo cargar esta conversación.",
-  "chat_load_permission_denied_hint": "Es posible que tu cuenta aún no tenga acceso o que haya que actualizar las reglas del servidor. Actualiza la pantalla o inténtalo de nuevo en unos instantes."
+  "chat_load_permission_denied_hint": "Es posible que tu cuenta aún no tenga acceso o que haya que actualizar las reglas del servidor. Actualiza la pantalla o inténtalo de nuevo en unos instantes.",
+  "admin_mode_title": "Modo administrador",
+  "admin_mode_subtitle": "Ves personas, grupos, eventos y lugares de todos los países y puedes entrar en cualquier grupo sin aprobación.",
+  "admin_mode_my_country": "Mi país (perfil)",
+  "admin_mode_dm_note": "Las conversaciones privadas siguen restringidas a sus participantes.",
+  "admin_mode_applied": "País del modo administrador actualizado.",
+  "explore_only_title": "Solo explorar",
+  "explore_only_info": "Usa Lugares, Eventos y Grupos sin aparecer en Conoce personas, en la lista de conectados ni en las búsquedas. Nadie podrá iniciar una conversación contigo y tampoco verás quién está conectado.",
+  "explore_only_no_chat": "Esta persona está en modo Solo explorar y no recibe nuevas conversaciones."
 }

@@ -1574,5 +1574,13 @@
   "people_nearby_now_hidden": "Pronto! Você não aparece mais para quem está perto.",
   "chat_user_is_premium": "Este usuário é Premium",
   "error_prefix": "Erro:",
-  "my_events_cancelled_message": "Evento cancelado."
+  "my_events_cancelled_message": "Evento cancelado.",
+  "admin_mode_title": "Modo administrador",
+  "admin_mode_subtitle": "Você vê pessoas, grupos, eventos e locais de todos os países e entra em qualquer grupo sem aprovação.",
+  "admin_mode_my_country": "Meu país (perfil)",
+  "admin_mode_dm_note": "Conversas privadas continuam restritas aos participantes.",
+  "admin_mode_applied": "País do modo administrador atualizado.",
+  "explore_only_title": "Só explorar",
+  "explore_only_info": "Use Locais, Eventos e Grupos sem aparecer em Conheça Pessoas, na lista de online nem nas buscas. Ninguém poderá iniciar conversa com você e você também não verá quem está online.",
+  "explore_only_no_chat": "Esta pessoa está no modo Só explorar e não recebe novas conversas."
 }

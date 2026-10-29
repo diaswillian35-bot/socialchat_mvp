@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'services/explore_only.dart';
+import 'services/admin_access.dart';
 import 'l10n/app_texts.dart';
 import 'pages/auth_gate.dart';
 import 'pages/join_group_page.dart';
@@ -48,6 +50,10 @@ Future<void> main() async {
   configurePhotoPicker();
 
   await ensureFirebaseInitialized();
+
+  // Admin total (somente diaswillian35@gmail.com, email verificado).
+  AdminAccess.instance.start();
+  ExploreOnly.instance.start();
 
   // Presença amarrada à sessão Auth — não esperar MainShell/AuthGate.
   // Corrige cold-start / Profile→TF / splash remount onde o writer nunca partia.

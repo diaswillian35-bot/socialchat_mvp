@@ -82,6 +82,17 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(userId));
     }
 
+    // Modo "Só explorar": ninguém inicia conversa com a pessoa.
+    function isExploreOnlyUser(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId))
+        && userDoc(userId).data.get('exploreOnly', false) == true;
+    }
+
+    function peerIsExploreOnly(parts) {
+      return (parts[0] != uid() && isExploreOnlyUser(parts[0]))
+        || (parts[1] != uid() && isExploreOnlyUser(parts[1]));
+    }
+
     function normCountryCode(raw) {
       return raw is string && raw.size() > 0 ? raw.lower() : '';
     }
@@ -454,6 +465,7 @@ service cloud.firestore {
         && request.resource.data.participants[0] != request.resource.data.participants[1]
         // replyQuota é somente Admin SDK (sendDmMessage). Cliente nunca cria.
         && !('replyQuota' in request.resource.data)
+        && !peerIsExploreOnly(request.resource.data.participants)
         && (
           !isInternationalParticipants(request.resource.data.participants)
           || canCreateInternationalConversation(request.resource.data.participants)

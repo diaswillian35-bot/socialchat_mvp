@@ -1372,5 +1372,10 @@
   "invite": "Convites",
   "menu": "Menu",
   "chat_load_permission_denied": "Não foi possível carregar esta conversa.",
-  "chat_load_permission_denied_hint": "A sua conta pode ainda não ter acesso ou as regras do servidor precisam de ser atualizadas. Atualize o ecrã ou tente outra vez dentro de instantes."
+  "chat_load_permission_denied_hint": "A sua conta pode ainda não ter acesso ou as regras do servidor precisam de ser atualizadas. Atualize o ecrã ou tente outra vez dentro de instantes.",
+  "admin_mode_subtitle": "Vê pessoas, grupos, eventos e locais de todos os países e entra em qualquer grupo sem aprovação.",
+  "admin_mode_applied": "País do modo de administrador atualizado.",
+  "admin_mode_title": "Modo de administrador",
+  "explore_only_info": "Use Locais, Eventos e Grupos sem aparecer em Conheça Pessoas, na lista de online nem nas pesquisas. Ninguém poderá iniciar uma conversa consigo e também não verá quem está online.",
+  "explore_only_no_chat": "Esta pessoa está no modo Só explorar e não recebe novas conversas."
 }

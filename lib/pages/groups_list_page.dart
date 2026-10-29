@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/admin_access.dart';
 import 'create_group_page.dart';
 import 'group_chat_page.dart';
 import 'hidden_groups_page.dart';
@@ -80,6 +81,7 @@ class GroupsListPageState extends State<GroupsListPage> {
   void initState() {
     super.initState();
     _scrollC.addListener(_onScroll);
+    AdminAccess.instance.addListener(_onAdminChanged);
     _loadProfile();
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted) setState(() => _showBanner = false);
@@ -100,6 +102,7 @@ class GroupsListPageState extends State<GroupsListPage> {
 
   @override
   void dispose() {
+    AdminAccess.instance.removeListener(_onAdminChanged);
     _memberUnreadSub?.cancel();
     for (final sub in _discoverySubs) {
       sub.cancel();
@@ -373,6 +376,10 @@ class GroupsListPageState extends State<GroupsListPage> {
     });
   }
 
+  void _onAdminChanged() {
+    if (mounted) _loadProfile();
+  }
+
   Future<void> _loadProfile() async {
     final myUid = _uid;
     if (myUid == null) {
@@ -400,12 +407,15 @@ class GroupsListPageState extends State<GroupsListPage> {
       final hidden = await _hiddenPrefs.loadHiddenIds(myUid);
 
       if (!mounted) return;
+      // Modo administrador: país escolhido; cidade do perfil só no próprio país.
+      final viewCode = AdminAccess.effectiveCountry(code);
+      final sameCountry = viewCode == code;
       setState(() {
-        _myCityKey = GroupLocationNormalize.cityKey(
-          data['cityKey'] ?? city,
-        );
+        _myCityKey = sameCountry
+            ? GroupLocationNormalize.cityKey(data['cityKey'] ?? city)
+            : '';
         _myPlaceId = (data['placeId'] ?? '').toString().trim();
-        _myCountryCode = code;
+        _myCountryCode = viewCode;
         _myCityLatitude = cityLat;
         _myCityLongitude = cityLng;
         _isPremium = PremiumAccessService.isPremiumActiveFromData(data);

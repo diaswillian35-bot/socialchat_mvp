@@ -564,7 +564,7 @@
   "lesson_coffee_shop": "Café",
   "lesson_job_interview": "Entretien d'embauche",
   "lesson_introductions": "Présentations",
-  "lesson_meeting_people": "Rencontrer des personnes",
+  "lesson_meeting_people": "Rencontrez des personnes",
   "lesson_daily_life": "Vie quotidienne",
   "remi_speaking": "Lecture...",
   "remi_thinking": "Remi réfléchit...",
@@ -1574,5 +1574,13 @@
   "chat_load_permission_denied": "Impossible de charger cette conversation.",
   "chat_load_permission_denied_hint": "Votre compte n'a peut-être pas encore accès, ou les règles du serveur doivent être mises à jour. Actualisez l'écran ou réessayez dans un instant.",
   "events_general": "Général",
-  "events_languages": "Langues"
+  "events_languages": "Langues",
+  "admin_mode_title": "Mode administrateur",
+  "admin_mode_subtitle": "Vous voyez les personnes, groupes, événements et lieux de tous les pays et pouvez rejoindre n’importe quel groupe sans approbation.",
+  "admin_mode_my_country": "Mon pays (profil)",
+  "admin_mode_dm_note": "Les conversations privées restent réservées à leurs participants.",
+  "admin_mode_applied": "Pays du mode administrateur mis à jour.",
+  "explore_only_title": "Explorer seulement",
+  "explore_only_info": "Utilisez Lieux, Événements et Groupes sans apparaître dans Rencontrez des personnes, les listes en ligne ni les recherches. Personne ne pourra démarrer une conversation avec vous et vous ne verrez pas qui est en ligne.",
+  "explore_only_no_chat": "Cette personne est en mode Explorer seulement et n’accepte pas de nouvelles conversations."
 }

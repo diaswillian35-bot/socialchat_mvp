@@ -8,6 +8,7 @@ const { defineSecret } = require("firebase-functions/params");
 
 const admin = require("firebase-admin");
 const { validateOpenJoin } = require("./group_open_join_logic");
+const { isSuperAdminAuth } = require("./super_admin");
 const {
   shouldNotifyJoinRequest,
   resolveJoinRequestAdminUids,
@@ -1748,6 +1749,7 @@ exports.joinOpenGroup = socialOnCall({ region: "us-central1" }, async (request) 
         banExists: banSnap.exists,
         banData: banSnap.data() || {},
         uid,
+        isSuperAdmin: isSuperAdminAuth(request.auth),
       });
 
       if (decision.error) {

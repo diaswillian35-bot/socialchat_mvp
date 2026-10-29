@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'admin_access.dart';
 import '../models/event_presentation.dart';
 import 'block_visibility.dart';
 import 'events_discover_feed_logic.dart';
@@ -27,10 +28,12 @@ class EventsDiscoverFeedService {
 
     final userSnap = await _db.collection('users').doc(uid).get();
     final user = userSnap.data() ?? const <String, dynamic>{};
-    final country = (user['homeCountryCode'] ?? user['countryCode'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
+    final country = AdminAccess.effectiveCountry(
+      (user['homeCountryCode'] ?? user['countryCode'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase(),
+    );
     final city = (user['cityName'] ?? user['city'] ?? '').toString().trim();
     final cityKey = city.toLowerCase();
     final lat = _asDouble(user['lat']);

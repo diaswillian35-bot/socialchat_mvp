@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/admin_access.dart';
+import '../widgets/admin_mode_sheet.dart';
 import '../l10n/app_texts.dart';
 import '../pages/system_inbox_page.dart';
 import '../pages/delete_account_page.dart';
@@ -240,6 +242,15 @@ Stream<int> _unreadSystemCount() {
                   title: t.get('profile'),
                   onTap: () => _open(context, widget.profilePage),
                 ),
+                if (AdminAccess.isAdmin) ...[
+                  const Divider(height: 1),
+                  _item(
+                    context: context,
+                    icon: Icons.admin_panel_settings_rounded,
+                    title: t.get('admin_mode_title'),
+                    onTap: () => AdminModeSheet.show(context),
+                  ),
+                ],
                 if (RemdyLaunchAccess.showInviteRewards) ...[
                   const Divider(height: 1),
                   _item(

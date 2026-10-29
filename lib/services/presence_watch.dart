@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 
+import 'explore_only.dart';
 import 'presence_rtdb_config.dart';
 import 'presence_session_state.dart';
 import 'presence_subscription_hub.dart';
@@ -19,11 +20,16 @@ class PresenceWatch {
 
   /// Bolinha / UID — tri-estado (online / offline / unavailable).
   static Stream<PresenceReadStatus> watchStatus(String uid) {
+    // Modo "Só explorar": quem está nele não vê quem está online.
+    if (ExploreOnly.isOn) {
+      return Stream<PresenceReadStatus>.value(PresenceReadStatus.offline);
+    }
     return PresenceSubscriptionHub.instance.watchStatus(uid);
   }
 
   /// Compat: só emite quando o status é confirmado (filtra unavailable).
   static Stream<bool> watchIsOnline(String uid) {
+    if (ExploreOnly.isOn) return Stream<bool>.value(false);
     return PresenceSubscriptionHub.instance.watchIsOnline(uid);
   }
 
@@ -33,6 +39,7 @@ class PresenceWatch {
     Set<String>? excludeUids,
     int? maxWatches,
   }) {
+    if (ExploreOnly.isOn) return Stream<int>.value(0);
     final max = maxWatches ?? PresenceRtdbConfig.maxGroupPresenceWatches;
     final only = <String>{};
     for (final u in uids) {
@@ -84,10 +91,12 @@ class PresenceWatch {
   }
 
   static Stream<int> watchCountryOnlineCount(String countryCode) {
+    if (ExploreOnly.isOn) return Stream<int>.value(0);
     return PresenceDisplayHub.instance.watchCountry(countryCode);
   }
 
   static Stream<int> watchWorldOnlineCount({String? excludeCountryCode}) {
+    if (ExploreOnly.isOn) return Stream<int>.value(0);
     return PresenceDisplayHub.instance.watchWorld(
       excludeCountryCode: excludeCountryCode,
     );

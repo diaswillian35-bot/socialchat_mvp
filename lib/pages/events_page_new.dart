@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/admin_access.dart';
 import 'create_event_page.dart';
 import 'edit_profile_page.dart';
 import 'my_events_page.dart';
@@ -65,9 +66,14 @@ class _EventsPageState extends State<EventsPage> {
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
+  void _onAdminChanged() {
+    if (mounted) setState(() => _feedEpoch++);
+  }
+
   @override
   void initState() {
     super.initState();
+    AdminAccess.instance.addListener(_onAdminChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final id = (widget.openEventId ?? '').trim();
       if (id.isEmpty || _openedDeepEvent || !mounted) return;
@@ -78,6 +84,7 @@ class _EventsPageState extends State<EventsPage> {
 
 @override
 void dispose() {
+  AdminAccess.instance.removeListener(_onAdminChanged);
   _searchC.dispose();
   _searchFocus.dispose();
   super.dispose();
@@ -1744,8 +1751,10 @@ Widget build(BuildContext context) {
 
                 final userData = userSnap.data?.data() ?? {};
 
-                final myCountry = EventsCountryScope.normalizeCountryCode(
-                  userData['homeCountryCode'] ?? userData['countryCode'],
+                final myCountry = AdminAccess.effectiveCountry(
+                  EventsCountryScope.normalizeCountryCode(
+                    userData['homeCountryCode'] ?? userData['countryCode'],
+                  ),
                 );
 
                 final myCity = (userData['cityName'] ??

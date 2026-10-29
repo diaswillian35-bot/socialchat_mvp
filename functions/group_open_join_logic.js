@@ -66,6 +66,7 @@ function validateOpenJoin({
   banData,
   uid,
   nowMillis = Date.now(),
+  isSuperAdmin = false,
 }) {
   if (!userExists || !uid) {
     return { error: "failed-precondition", reason: "user-unavailable" };
@@ -83,7 +84,8 @@ function validateOpenJoin({
   if (groupData?.isActive === false) {
     return { error: "failed-precondition", reason: "group-inactive" };
   }
-  if (normalizeJoinPolicy(groupData?.joinPolicy) !== "open") {
+  // Administrador total: entra sem aprovação (approval/inviteOnly).
+  if (!isSuperAdmin && normalizeJoinPolicy(groupData?.joinPolicy) !== "open") {
     return { error: "failed-precondition", reason: "group-not-open" };
   }
 
@@ -93,6 +95,7 @@ function validateOpenJoin({
   }
 
   if (
+    !isSuperAdmin &&
     isInternational(groupData, userData) &&
     !isPremiumActive(userData, nowMillis)
   ) {
@@ -114,7 +117,11 @@ function validateOpenJoin({
   const maxMembers = Number.isInteger(groupData?.maxMembers)
     ? groupData.maxMembers
     : 0;
-  if (maxMembers > 0 && originalMembers.length >= maxMembers) {
+  if (
+    !isSuperAdmin &&
+    maxMembers > 0 &&
+    originalMembers.length >= maxMembers
+  ) {
     return { error: "resource-exhausted", reason: "group-full" };
   }
 
