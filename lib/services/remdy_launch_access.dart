@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -7,7 +5,7 @@ import '../l10n/app_texts.dart';
 
 /// Configuração central do lançamento gratuito (Brasil + Canadá).
 ///
-/// Ativo **somente no iOS**. Android permanece com o fluxo Premium atual.
+/// Ativo no iOS e no Android (mesmo comportamento nas duas plataformas).
 /// Para reativar compras/internacionais no iOS: `freeBrazilLaunchEnabled = false`.
 class RemdyLaunchAccess {
   RemdyLaunchAccess._();
@@ -21,16 +19,11 @@ class RemdyLaunchAccess {
   /// Alias legado (Brasil). Preferir [freeCountryCodes] / [isCountryOpen].
   static const String freeCountryCode = 'br';
 
-  /// iOS (+ testes na VM). Android permanece no fluxo Premium atual.
+  /// iOS e Android (+ testes na VM). Mesmo fluxo gratuito nas duas plataformas.
   static bool get isFreeBrazilLaunch {
     if (!freeBrazilLaunchEnabled) return false;
     if (kIsWeb) return false;
-    try {
-      if (Platform.isAndroid) return false;
-      return true;
-    } catch (_) {
-      return true;
-    }
+    return true;
   }
 
   /// RevenueCat / UI de assinatura.
