@@ -55,7 +55,7 @@ void main() {
           recipientCountryCode: 'ca',
           premiumActive: false,
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         RemdyLaunchAccess.canChatBetweenCountries(
@@ -63,7 +63,7 @@ void main() {
           recipientCountryCode: 'ca',
           premiumActive: true,
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         RemdyLaunchAccess.canAccessCountryContent(
@@ -96,7 +96,7 @@ void main() {
           senderData: br,
           recipientData: ca,
         ),
-        isFalse,
+        isTrue,
       );
     });
 
@@ -117,7 +117,7 @@ void main() {
       final dialog = source('lib/widgets/international_premium_dialog.dart');
       final premium = source('lib/pages/premium_page.dart');
 
-      expect(home, contains('canAccessCountryContent'));
+      expect(home, contains('canBrowseCountryPeople'));
       expect(home, contains('isFreeBrazilLaunch'));
       expect(home, contains("t.get('world')"));
       expect(home, contains("code: 'CA'"));

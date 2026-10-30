@@ -14,8 +14,8 @@ void main() {
       );
       expect(q.enabled, isTrue);
       expect(q.used, 0);
-      expect(q.limit, 300);
-      expect(q.remaining, 300);
+      expect(q.limit, 1500);
+      expect(q.remaining, 1500);
       expect(q.exhausted, isFalse);
       expect(q.freeUid, freeUid);
     });
@@ -27,8 +27,8 @@ void main() {
         myUid: freeUid,
       );
       expect(q.draftExceeds('Oi'), isFalse);
-      expect(q.draftExceeds('a' * 300), isFalse);
-      expect(q.draftExceeds('a' * 301), isTrue);
+      expect(q.draftExceeds('a' * 1500), isFalse);
+      expect(q.draftExceeds('a' * 1501), isTrue);
     });
 
     test('callable snapshot overrides absent Firestore quota', () {
@@ -61,7 +61,7 @@ void main() {
         myUid: freeUid,
       );
       expect(q.used, 42);
-      expect(q.remaining, 258);
+      expect(q.remaining, 1458); // limit antigo 300 passa a 1500
       expect(q.exhausted, isFalse);
     });
 

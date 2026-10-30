@@ -85,7 +85,7 @@ void main() {
           senderData: {'countryCode': 'br', 'isPremium': false},
           recipientData: {'countryCode': 'ca'},
         ),
-        false,
+        true,
       );
     });
 
@@ -96,7 +96,7 @@ void main() {
           senderData: {'countryCode': 'br', 'isPremium': true},
           recipientData: {'countryCode': 'ca'},
         ),
-        false,
+        true,
       );
       expect(
         InternationalChatService.canSendMessage(
@@ -107,7 +107,7 @@ void main() {
           },
           recipientData: {'homeCountryCode': 'ca'},
         ),
-        false,
+        true,
       );
     });
   });

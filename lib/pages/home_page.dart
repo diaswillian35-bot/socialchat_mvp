@@ -385,7 +385,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     required String homeCountryCode,
   }) {
     // Acesso só ao país canônico do perfil (homeCountryCode).
-    if (!RemdyLaunchAccess.canAccessCountryContent(
+    if (!RemdyLaunchAccess.canBrowseCountryPeople(
       userHomeCountryCode: homeCountryCode,
       targetCountryCode: item.code,
     )) {
@@ -401,6 +401,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           countryCode: item.code,
           countryName: item.name,
           flag: item.flag,
+          viewerCountryCode: homeCountryCode,
         ),
       ),
     );
@@ -533,7 +534,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         bool canOpenCountry(_Country item) {
           if (RemdyLaunchAccess.isFreeBrazilLaunch) {
-            return RemdyLaunchAccess.canAccessCountryContent(
+            return RemdyLaunchAccess.canBrowseCountryPeople(
               userHomeCountryCode: homeCode,
               targetCountryCode: item.code,
             );
@@ -853,7 +854,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                   bool canOpenCountry(_Country item) {
                     if (RemdyLaunchAccess.isFreeBrazilLaunch) {
-                      return RemdyLaunchAccess.canAccessCountryContent(
+                      return RemdyLaunchAccess.canBrowseCountryPeople(
                         userHomeCountryCode: homeCode,
                         targetCountryCode: item.code,
                       );

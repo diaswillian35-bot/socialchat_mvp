@@ -9,14 +9,14 @@ class PublishCtaCard extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.onTap,
+    this.onTap,
     this.padding = const EdgeInsets.fromLTRB(16, 8, 16, 4),
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final EdgeInsetsGeometry padding;
 
   static const Color _text = Color(0xFF111827);
@@ -44,7 +44,9 @@ class PublishCtaCard extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w700, color: _text),
           ),
           subtitle: Text(subtitle, style: const TextStyle(color: _muted)),
-          trailing: const Icon(Icons.chevron_right_rounded, color: _blue),
+          trailing: onTap == null
+              ? null
+              : const Icon(Icons.chevron_right_rounded, color: _blue),
         ),
       ),
     );

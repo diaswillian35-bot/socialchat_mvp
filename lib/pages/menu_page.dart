@@ -221,6 +221,16 @@ Stream<int> _unreadSystemCount() {
                           fontSize: 12,
                         ),
                       ),
+                      if (RemdyLaunchAccess.isFreeBrazilLaunch)
+                        Text(
+                          t.get('launch_all_free'),
+                          key: const Key('menu_launch_all_free'),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
                     ],
                   ),
                 ),

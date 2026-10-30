@@ -367,7 +367,7 @@ void main() {
           recipientCountryCode: 'ca',
           premiumActive: true,
         ),
-        isFalse,
+        isTrue,
       );
     });
 
@@ -433,7 +433,7 @@ void main() {
       expect(home, contains("t.get('world')"));
       expect(home, isNot(contains('world_coming_soon')));
       expect(home, contains('showUnavailable'));
-      expect(home, contains('canAccessCountryContent'));
+      expect(home, contains('canBrowseCountryPeople'));
       expect(home, contains('isFreeBrazilLaunch'));
       expect(pt, contains('"world": "Mundo"'));
       expect(pt, contains('"world_coming_soon": "Mundo (Em breve)"'));

@@ -1631,5 +1631,11 @@
   "place_cta_title": "Own a business? List your place for free",
   "place_cta_subtitle": "Restaurant, bar, café or lodging",
   "event_cta_title": "Hosting an event? Promote it for free",
-  "event_cta_subtitle": "Create your event and invite people"
+  "event_cta_subtitle": "Create your event and invite people",
+  "launch_free_chat_banner_title": "Launch",
+  "launch_free_chat_banner_br": "Chatting with people from Canada and Portugal is free for a limited time",
+  "launch_free_chat_banner_ca": "Chatting with people from Brazil and Portugal is free for a limited time",
+  "launch_free_chat_banner_pt": "Chatting with people from Brazil and Canada is free for a limited time",
+  "launch_free_chat_banner": "Chatting with people from other countries is free for a limited time",
+  "launch_all_free": "Everything free during launch"
 }

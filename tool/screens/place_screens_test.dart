@@ -144,4 +144,48 @@ void main() {
     ));
     await _shot(tester, '8_eventos_card');
   });
+
+  testWidgets('avisos do lançamento', (tester) async {
+    // Faixa em "Conheça Pessoas" (usuário BR abrindo Canadá): mesmo card,
+    // com o AppBar/busca da página (a lista real depende do Firebase).
+    await _pump(tester, Scaffold(
+      appBar: AppBar(title: const Text('🇨🇦 Canadá', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20))),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: TextField(decoration: InputDecoration(
+            hintText: AppTexts.t('people_country_search_hint'),
+            prefixIcon: const Icon(Icons.search_rounded), filled: true,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+          )),
+        ),
+        PublishCtaCard(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          icon: Icons.celebration_outlined,
+          title: AppTexts.t('launch_free_chat_banner_title'),
+          subtitle: AppTexts.t('launch_free_chat_banner_br'),
+        ),
+      ]),
+    ));
+    await _shot(tester, '9_pessoas_faixa_lancamento');
+    // Menu: linha abaixo de "Conta gratuita", mesmo estilo de texto.
+    await _pump(tester, Scaffold(body: SafeArea(child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: const Color(0xFF313A5F), borderRadius: BorderRadius.circular(20)),
+        child: Row(children: [
+          const CircleAvatar(radius: 28, child: Text('W')),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Willian', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+            const SizedBox(height: 4),
+            for (final k in ['free_account', 'launch_all_free'])
+              Text(AppTexts.t(k), style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontWeight: FontWeight.w700, fontSize: 12)),
+          ]),
+        ]),
+      ),
+    ))));
+    await _shot(tester, '10_menu_tudo_liberado');
+  });
 }

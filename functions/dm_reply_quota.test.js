@@ -28,7 +28,7 @@ test("countCodePoints: emoji single and zwj family", () => {
   assert.equal(q.countCodePoints(family + family), n * 2);
 });
 
-test("0/300 1/300 299/300 300/300", () => {
+test("0/1500 1/1500 1499/1500 1500/1500", () => {
   const base = {
     senderUid: "free1",
     senderData: { homeCountryCode: "br", isPremium: false },
@@ -36,7 +36,7 @@ test("0/300 1/300 299/300 300/300", () => {
   };
   const a0 = q.authorizeFreeTextSend({
     ...base,
-    existingQuota: { freeUid: "free1", used: 0, limit: 300, enabled: true },
+    existingQuota: { freeUid: "free1", used: 0, limit: 1500, enabled: true },
     text: "x",
   });
   assert.equal(a0.ok, true);
@@ -45,15 +45,15 @@ test("0/300 1/300 299/300 300/300", () => {
 
   const a299 = q.authorizeFreeTextSend({
     ...base,
-    existingQuota: { freeUid: "free1", used: 299, limit: 300, enabled: true },
+    existingQuota: { freeUid: "free1", used: 1499, limit: 1500, enabled: true },
     text: "y",
   });
   assert.equal(a299.ok, true);
-  assert.equal(a299.quotaAfter.used, 300);
+  assert.equal(a299.quotaAfter.used, 1500);
 
   const a300 = q.authorizeFreeTextSend({
     ...base,
-    existingQuota: { freeUid: "free1", used: 300, limit: 300, enabled: true },
+    existingQuota: { freeUid: "free1", used: 1500, limit: 1500, enabled: true },
     text: "z",
   });
   assert.equal(a300.ok, false);
@@ -66,7 +66,7 @@ test("message exceeding remaining balance", () => {
     senderUid: "free1",
     senderData: { homeCountryCode: "br" },
     recipientData: { homeCountryCode: "us", isPremium: true },
-    existingQuota: { freeUid: "free1", used: 298, limit: 300, enabled: true },
+    existingQuota: { freeUid: "free1", used: 1498, limit: 1500, enabled: true },
     text: "abcd", // 4 > 2 remaining
   });
   assert.equal(r.ok, false);
@@ -160,7 +160,7 @@ test("Premium↔Premium and Free↔Free same country", () => {
     ),
     true,
   );
-  // Free intl sem peer Premium e sem quota → sem franquia
+  // Lançamento: Free intl sem peer Premium também usa a Callable (cota 1500)
   assert.equal(
     q.requiresReplyQuotaCallable(
       { homeCountryCode: "br" },
@@ -168,20 +168,39 @@ test("Premium↔Premium and Free↔Free same country", () => {
       null,
       "free1",
     ),
-    false,
+    true,
   );
 });
 
-test("Free intl without Premium peer is denied (not franchise)", () => {
+test("Free intl sem Premium: liberado com cota de 1500 (lançamento)", () => {
   const r = q.authorizeFreeTextSend({
     senderUid: "free1",
     senderData: { homeCountryCode: "br" },
-    recipientData: { homeCountryCode: "us", isPremium: false },
+    recipientData: { homeCountryCode: "ca", isPremium: false },
     existingQuota: null,
     text: "oi",
   });
-  assert.equal(r.ok, false);
-  assert.equal(r.code, "premium-required");
+  assert.equal(r.ok, true);
+  assert.equal(r.quotaAfter.limit, 1500);
+  assert.equal(r.quotaAfter.used, 2);
+});
+
+test("admin total: cota ilimitada (sem consumo, mesmo esgotada)", () => {
+  const r = q.authorizeFreeTextSend({
+    senderUid: "adm",
+    senderData: { homeCountryCode: "br" },
+    recipientData: { homeCountryCode: "ca" },
+    existingQuota: { freeUid: "adm", used: 1500, limit: 1500 },
+    text: "x".repeat(5000),
+    senderIsAdmin: true,
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.mode, "unlimited_admin");
+  assert.equal(r.consume, 0);
+});
+
+test("conversa antiga com limit=300 passa a valer 1500", () => {
+  assert.equal(q.readReplyQuota({ freeUid: "f", used: 300, limit: 300 }).limit, 1500);
 });
 
 test("same-country Free unlimited (no quota path)", () => {
@@ -197,7 +216,7 @@ test("same-country Free unlimited (no quota path)", () => {
   assert.equal(r.consume, 0);
 });
 
-test("concurrency serialized: used=299 two sends of 1 — only one accepted", () => {
+test("concurrency serialized: used=1499 two sends of 1 — only one accepted", () => {
   const base = {
     senderUid: "free1",
     senderData: { homeCountryCode: "br" },
@@ -207,14 +226,14 @@ test("concurrency serialized: used=299 two sends of 1 — only one accepted", ()
   // Concurrent reads would both see 299; commits serialize:
   const { used, outcomes } = q.commitSerializedFreeTexts({
     ...base,
-    initialUsed: 299,
+    initialUsed: 1499,
     texts: ["a", "b"],
   });
   assert.equal(outcomes[0].ok, true);
-  assert.equal(outcomes[0].quotaAfter.used, 300);
+  assert.equal(outcomes[0].quotaAfter.used, 1500);
   assert.equal(outcomes[1].ok, false);
   assert.equal(outcomes[1].code, "quota-exceeded");
-  assert.equal(used, 300);
+  assert.equal(used, 1500);
 });
 
 test("idempotent requestId validation stable for retries", () => {
@@ -259,7 +278,7 @@ test("lazy init quota when missing", () => {
   });
   assert.equal(r.ok, true);
   assert.equal(r.quotaAfter.used, 3);
-  assert.equal(r.quotaAfter.limit, 300);
+  assert.equal(r.quotaAfter.limit, 1500);
   assert.equal(r.quotaAfter.freeUid, "free1");
   assert.equal(r.quotaAfter.initiatorUid, "prem1");
 });
@@ -275,3 +294,24 @@ test("firstPublicName", () => {
 });
 
 console.log("dm_reply_quota.test.js: all assertions registered");
+
+test("cota desligada (padrão do servidor): entre países livre, sem limite", () => {
+  const r = q.authorizeFreeTextSend({
+    senderUid: "free1",
+    senderData: { homeCountryCode: "br" },
+    recipientData: { homeCountryCode: "pt" },
+    existingQuota: { freeUid: "free1", used: 1500, limit: 1500 },
+    text: "x".repeat(4000),
+    quotaEnabled: false,
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.mode, "free_launch_unlimited");
+  assert.equal(r.consume, 0);
+});
+
+test("config appConfig/dmQuota: ausente = desligada", () => {
+  const { parseDmQuotaConfig } = require("./dm_quota_config");
+  assert.deepEqual(parseDmQuotaConfig(null), { enabled: false, limit: 1500 });
+  assert.deepEqual(parseDmQuotaConfig({ enabled: true, limit: 900 }), { enabled: true, limit: 900 });
+  assert.equal(parseDmQuotaConfig({ enabled: "true" }).enabled, false);
+});

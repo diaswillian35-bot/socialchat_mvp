@@ -40,6 +40,24 @@ class AdminAccess extends ChangeNotifier {
     return verified && adminEmails.contains(e);
   }
 
+  /// Regra pura (testável) a partir do usuário do Firebase Auth.
+  /// Login Google: o e-mail do provedor google.com já é verificado pelo
+  /// Google, mesmo quando `emailVerified` da conta ainda não refletiu.
+  static bool isAdminUser({
+    required String? email,
+    required bool emailVerified,
+    List<MapEntry<String, String?>> providers = const [],
+  }) {
+    if (isAdminEmail(email: email, verified: emailVerified)) return true;
+    for (final p in providers) {
+      if (p.key == 'google.com' &&
+          isAdminEmail(email: p.value, verified: true)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// País efetivo para consultas de descoberta (grupos/eventos/pessoas).
   /// Para não-admin devolve sempre [ownCountry].
   static String effectiveCountry(String ownCountry) {
@@ -56,10 +74,18 @@ class AdminAccess extends ChangeNotifier {
   Future<void> _refresh(User? user) async {
     var admin = false;
     if (user != null) {
-      admin = isAdminEmail(email: user.email, verified: user.emailVerified);
+      admin = isAdminUser(
+        email: user.email,
+        emailVerified: user.emailVerified,
+        providers: [
+          for (final p in user.providerData)
+            MapEntry(p.providerId, p.email),
+        ],
+      );
       if (!admin) {
         try {
-          final token = await user.getIdTokenResult();
+          // Token novo: pega claim `admin` recém-definido.
+          final token = await user.getIdTokenResult(true);
           admin = token.claims?['admin'] == true;
         } catch (_) {}
       }

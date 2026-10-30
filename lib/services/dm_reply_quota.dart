@@ -1,4 +1,5 @@
-/// Franquia de resposta Free em DM internacional (300 Unicode scalar values).
+/// Cota de texto em DM entre países (1500 Unicode scalar values por conversa;
+/// admin total sem cota).
 ///
 /// Contagem canônica alinhada a `functions/international_dm_policy.js`:
 /// **code points** (`String.runes.length`), não UTF-16 (`length`) nem UTF-8.
@@ -41,7 +42,8 @@ class DmReplyQuota {
     final limit = raw['limit'] is int
         ? raw['limit'] as int
         : int.tryParse('${raw['limit']}') ?? defaultLimit;
-    final safeLimit = limit < 1 ? defaultLimit : limit;
+    // Conversas antigas gravaram limit=300: vale sempre pelo menos 1500.
+    final safeLimit = limit < defaultLimit ? defaultLimit : limit;
     // Resposta da Callable pode omitir freeUid; ainda assim sincroniza used/limit.
     final enabled = raw['enabled'] != false &&
         (freeUid.isNotEmpty || raw.containsKey('used') || raw.containsKey('remaining'));
@@ -70,7 +72,7 @@ class DmReplyQuota {
   bool draftExceeds(String draft) => countCodePoints(draft) > remaining;
 
   /// Franquia efetiva na UI quando replyQuota ainda não existe no Firestore.
-  /// Ausência no servidor = 300 disponíveis para o Free (não zero).
+  /// Ausência no servidor = 1500 disponíveis (não zero).
   static DmReplyQuota effectiveForConversation({
     required bool usesReplyQuota,
     required Map<String, dynamic>? replyQuotaRaw,

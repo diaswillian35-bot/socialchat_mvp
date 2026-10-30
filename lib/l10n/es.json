@@ -1631,5 +1631,11 @@
   "place_cta_title": "¿Tienes un negocio? Registra tu local gratis",
   "place_cta_subtitle": "Restaurante, bar, café u hospedaje",
   "event_cta_title": "¿Vas a hacer un evento? Difúndelo gratis",
-  "event_cta_subtitle": "Crea tu evento e invita a la gente"
+  "event_cta_subtitle": "Crea tu evento e invita a la gente",
+  "launch_free_chat_banner_title": "Lanzamiento",
+  "launch_free_chat_banner_br": "Conversar con personas de Canadá y Portugal es gratis por tiempo limitado",
+  "launch_free_chat_banner_ca": "Conversar con personas de Brasil y Portugal es gratis por tiempo limitado",
+  "launch_free_chat_banner_pt": "Conversar con personas de Brasil y Canadá es gratis por tiempo limitado",
+  "launch_free_chat_banner": "Conversar con personas de otros países es gratis por tiempo limitado",
+  "launch_all_free": "Todo gratis durante el lanzamiento"
 }

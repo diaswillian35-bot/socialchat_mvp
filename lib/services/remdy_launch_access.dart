@@ -137,6 +137,22 @@ class RemdyLaunchAccess {
     return home == target;
   }
 
+  /// "Conheça Pessoas": todos os usuários abrem Brasil, Canadá e Portugal
+  /// (conversa entre países liberada). Grupos/eventos seguem
+  /// [canAccessCountryContent].
+  static const Set<String> peopleCountryCodes = {'br', 'ca', 'pt'};
+
+  static bool canBrowseCountryPeople({
+    required String? userHomeCountryCode,
+    required String? targetCountryCode,
+  }) {
+    final target = normalizeCountryCode(targetCountryCode);
+    if (target.isEmpty) return false;
+    if (AdminAccess.isAdmin) return true;
+    if (!isFreeBrazilLaunch) return true;
+    return peopleCountryCodes.contains(target);
+  }
+
   /// Grupos no lançamento gratuito: mesmo país aberto apenas.
   /// `isPremium` / `isMaster` / `premiumUntil` / grupo `world` **não**
   /// ignoram este bloqueio. Fora do lançamento, retorna true (legado Android).

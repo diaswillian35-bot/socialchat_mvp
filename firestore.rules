@@ -246,11 +246,27 @@ service cloud.firestore {
       return !eitherDmBlocked(uid(), request.resource.data.toUid);
     }
 
+    // Admin total do app (b39): e-mail verificado do Willian ou claim `admin`.
+    // Nunca dá acesso a DMs de terceiros: só remove o limite de texto do admin
+    // nas conversas em que ele já é participante.
+    function isRemdySuperAdmin() {
+      return request.auth != null
+        && (
+          request.auth.token.get('admin', false) == true
+          || (
+            request.auth.token.get('email', '') == 'diaswillian35@gmail.com'
+            && request.auth.token.get('email_verified', false) == true
+          )
+        );
+    }
+
     function isValidTextMessage() {
       return request.resource.data.type == 'text'
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 1500;
+        // 1500 por mensagem para todos; admin total sem limite prático.
+        && (request.resource.data.text.size() <= 1500
+          || (isRemdySuperAdmin() && request.resource.data.text.size() <= 20000));
     }
 
     function isValidAudioMessage() {
@@ -990,6 +1006,13 @@ service cloud.firestore {
     }
 
     match /configCountries/{countryCode} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Config do app (ex. appConfig/dmQuota {enabled,limit}: cota de DM entre
+    // países, DESLIGADA por padrão). Só leitura; escrita só Admin SDK/console.
+    match /appConfig/{docId} {
       allow read: if signedIn();
       allow write: if false;
     }

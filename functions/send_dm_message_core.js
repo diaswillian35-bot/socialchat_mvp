@@ -14,6 +14,7 @@ const {
 } = require("./dm_reply_quota");
 const { isObjectionableText } = require("./objectionable_content_filter");
 const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
+const { readDmQuotaConfig } = require("./dm_quota_config");
 
 function asUidList(raw) {
   if (!Array.isArray(raw)) return [];
@@ -44,7 +45,9 @@ function accountBlocked(userData = {}) {
  * @param {string} uid
  * @param {object} data conversationId, text, requestId, otherUid?, messageId?, reply*
  */
-async function executeSendDmMessage(db, uid, data) {
+async function executeSendDmMessage(db, uid, data, opts = {}) {
+  const senderIsAdmin = opts.senderIsAdmin === true;
+  const quotaConfig = opts.quotaConfig || (await readDmQuotaConfig(db));
   const conversationId = String(data.conversationId || "").trim();
   const text = data.text == null ? "" : String(data.text);
   if (isObjectionableText(text)) {
@@ -158,6 +161,8 @@ async function executeSendDmMessage(db, uid, data) {
       text,
       messageType: "text",
       recipientUid: otherUid,
+      senderIsAdmin,
+      quotaEnabled: quotaConfig.enabled,
     });
 
     if (!authz.ok) {

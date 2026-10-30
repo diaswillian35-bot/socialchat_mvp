@@ -31,7 +31,16 @@ void main() {
 
   test('regras de DM não têm exceção de admin', () {
     final rules = File('firestore.rules').readAsStringSync();
-    expect(rules.contains('diaswillian35'), isFalse);
+    // Admin só aparece para liberar tamanho de texto do próprio admin; nunca
+    // em leitura/listagem (DMs de terceiros continuam fechadas).
+    for (final line in rules.split('\n')) {
+      if (RegExp(r'allow (read|get|list)').hasMatch(line)) {
+        expect(line.contains('isRemdySuperAdmin'), isFalse, reason: line);
+        expect(line.contains('diaswillian35'), isFalse, reason: line);
+      }
+    }
+    final uses = 'isRemdySuperAdmin()'.allMatches(rules).length;
+    expect(uses, 2, reason: 'definição + isValidTextMessage');
     expect(File('functions/super_admin.js').existsSync(), isTrue);
     final dm = File('functions/index.js').readAsStringSync();
     final start = dm.indexOf('exports.sendDmMessage');

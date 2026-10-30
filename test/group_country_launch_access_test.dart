@@ -139,14 +139,14 @@ void main() {
           },
           recipientData: {'homeCountryCode': 'ca'},
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         InternationalChatService.canSendMessage(
           senderData: {'homeCountryCode': 'ca', 'isPremium': true},
           recipientData: {'homeCountryCode': 'br'},
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         InternationalChatService.canSendMessage(

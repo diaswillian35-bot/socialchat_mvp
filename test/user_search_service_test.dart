@@ -179,7 +179,7 @@ void main() {
           recipientData: {'countryCode': 'ca'},
           conversationAlreadyExists: false,
         ),
-        true,
+        false,
       );
     });
 
@@ -202,14 +202,14 @@ void main() {
           recipientData: {'countryCode': 'ca'},
           conversationAlreadyExists: false,
         ),
-        true,
+        false,
       );
       expect(
         InternationalChatService.canSendMessage(
           senderData: {'countryCode': 'br', 'isPremium': true, 'isMaster': true},
           recipientData: {'countryCode': 'ca'},
         ),
-        isFalse,
+        isTrue,
       );
     });
 

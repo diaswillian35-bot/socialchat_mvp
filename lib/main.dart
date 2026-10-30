@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'services/dm_quota_config.dart';
 import 'services/explore_only.dart';
 import 'services/admin_access.dart';
 import 'l10n/app_texts.dart';
@@ -53,6 +54,7 @@ Future<void> main() async {
 
   // Admin total (somente diaswillian35@gmail.com, email verificado).
   AdminAccess.instance.start();
+  unawaited(DmQuotaConfig.load());
   ExploreOnly.instance.start();
 
   // Presença amarrada à sessão Auth — não esperar MainShell/AuthGate.

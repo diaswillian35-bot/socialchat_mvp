@@ -19,6 +19,8 @@ import 'package:socialchat_mvp/services/objectionable_content_filter.dart';
 import 'package:socialchat_mvp/widget/audio_bubble.dart';
 import 'package:socialchat_mvp/widgets/blocked_uids_builder.dart';
 
+import '../services/dm_quota_config.dart';
+import '../services/admin_access.dart';
 import '../l10n/app_texts.dart';
 import '../widgets/chat_composer_text.dart';
 import '../widgets/remdy_keyboard_caps.dart';
@@ -173,7 +175,9 @@ class _ChatPageState extends State<ChatPage>
   DmReplyQuota? _quotaFromCallable;
   int _draftCodePoints = 0;
 
-  bool get _usesReplyQuota => DmSendPath.requiresCallable(
+  // Admin total: cota ilimitada (sem franquia; envio direto como mesmo país).
+  // Cota só se ligada no servidor (appConfig/dmQuota; padrão desligada).
+  bool get _usesReplyQuota => DmQuotaConfig.enabled && !AdminAccess.isAdmin && DmSendPath.requiresCallable(
         senderIsPremium: _isPremium,
         senderData: _scopeMyData,
         recipientData: _scopeOtherData,

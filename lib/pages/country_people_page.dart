@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../services/remdy_launch_access.dart';
+import '../widgets/publish_cta_card.dart';
 import '../services/explore_only.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
@@ -31,11 +33,34 @@ class CountryPeoplePage extends StatefulWidget {
     required this.countryCode,
     required this.countryName,
     required this.flag,
+    this.viewerCountryCode = '',
   });
 
   final String countryCode;
   final String countryName;
   final String flag;
+
+  /// País de casa de quem está vendo (faixa do lançamento em país de fora).
+  final String viewerCountryCode;
+
+  /// Chave da faixa "conversar com pessoas de ... está grátis", ou null
+  /// quando é o próprio país.
+  static String? launchBannerKey({
+    required String viewerCountryCode,
+    required String targetCountryCode,
+  }) {
+    final v = viewerCountryCode.trim().toLowerCase();
+    final c = targetCountryCode.trim().toLowerCase();
+    if (c.isEmpty || v == c) return null;
+    switch (v) {
+      case 'br':
+      case 'ca':
+      case 'pt':
+        return 'launch_free_chat_banner_$v';
+      default:
+        return 'launch_free_chat_banner';
+    }
+  }
 
   @override
   State<CountryPeoplePage> createState() => _CountryPeoplePageState();
@@ -354,6 +379,13 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     );
   }
 
+  String? get _launchBannerKey => RemdyLaunchAccess.isFreeBrazilLaunch
+      ? CountryPeoplePage.launchBannerKey(
+          viewerCountryCode: widget.viewerCountryCode,
+          targetCountryCode: widget.countryCode,
+        )
+      : null;
+
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
@@ -411,6 +443,14 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
               ),
             ),
           ),
+          if (_launchBannerKey != null)
+            PublishCtaCard(
+              key: const Key('people_launch_free_banner'),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              icon: Icons.celebration_outlined,
+              title: t.get('launch_free_chat_banner_title'),
+              subtitle: t.get(_launchBannerKey!),
+            ),
           Expanded(child: _buildBody(t)),
         ],
       ),

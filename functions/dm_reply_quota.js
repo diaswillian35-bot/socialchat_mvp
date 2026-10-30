@@ -12,6 +12,7 @@
 
 const REPLY_QUOTA_LIMIT = 1500;
 const REPLY_QUOTA_VERSION = 1;
+const FREE_INTERNATIONAL_CHAT = true;
 const MAX_TEXT_CODE_POINTS = 1500;
 const MIN_REQUEST_ID = 8;
 const MAX_REQUEST_ID = 128;
@@ -91,6 +92,9 @@ function requiresReplyQuotaCallable(
   senderUid,
   nowMs = Date.now(),
 ) {
+  if (FREE_INTERNATIONAL_CHAT) {
+    return !isPremiumUser(senderData, nowMs) && isInternational(senderData, recipientData);
+  }
   return isPremiumInitiatedReplyFranchise({
     senderUid: senderUid || "",
     senderData,
@@ -104,7 +108,10 @@ function readReplyQuota(raw) {
   if (!raw || typeof raw !== "object") return null;
   const freeUid = String(raw.freeUid || "").trim();
   if (!freeUid) return null;
-  const limit = Number.isFinite(raw.limit) ? Math.floor(raw.limit) : REPLY_QUOTA_LIMIT;
+  // Conversas antigas gravaram limit=300: vale sempre o maior (1500).
+  const limit = Number.isFinite(raw.limit)
+    ? Math.max(Math.floor(raw.limit), REPLY_QUOTA_LIMIT)
+    : REPLY_QUOTA_LIMIT;
   const used = Number.isFinite(raw.used) ? Math.max(0, Math.floor(raw.used)) : 0;
   return {
     version: Number.isFinite(raw.version) ? raw.version : REPLY_QUOTA_VERSION,
@@ -171,16 +178,30 @@ function authorizeFreeTextSend({
   messageType = "text",
   recipientUid = "",
   nowMs = Date.now(),
+  senderIsAdmin = false,
+  // appConfig/dmQuota.enabled (padrão desligado no servidor; ver dm_quota_config.js).
+  quotaEnabled = true,
 }) {
+  // Admin total (diaswillian35@gmail.com verificado / claim admin): sem cota.
+  if (senderIsAdmin === true) {
+    return { ok: true, mode: "unlimited_admin", consume: 0 };
+  }
   if (isPremiumUser(senderData, nowMs)) {
     return { ok: true, mode: "unlimited_premium", consume: 0 };
+  }
+  // Lançamento: cota desligada → conversa entre países livre e sem limite.
+  if (quotaEnabled !== true) {
+    return { ok: true, mode: "free_launch_unlimited", consume: 0 };
   }
 
   if (!isInternational(senderData, recipientData)) {
     return { ok: true, mode: "same_country_free", consume: 0 };
   }
 
+  // Lançamento gratuito: conversas entre países liberadas para todos, com a
+  // cota de 1500 caracteres por conversa. Desligar para voltar a exigir Premium.
   if (
+    !FREE_INTERNATIONAL_CHAT &&
     !isPremiumInitiatedReplyFranchise({
       senderUid,
       senderData,
@@ -284,6 +305,7 @@ function firstPublicName(fullName, fallback = "esta pessoa") {
 module.exports = {
   REPLY_QUOTA_LIMIT,
   REPLY_QUOTA_VERSION,
+  FREE_INTERNATIONAL_CHAT,
   MAX_TEXT_CODE_POINTS,
   IDEMPOTENCY_TTL_MS,
   countCodePoints,

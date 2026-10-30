@@ -5,6 +5,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { executeSendDmMessage } = require("./send_dm_message_core");
 const { assertVerifiedAdult } = require("./social_age_guard");
+const { isSuperAdminAuth } = require("./super_admin");
 
 const sendDmMessage = onCall({ region: "us-central1" }, async (request) => {
   await assertVerifiedAdult(request, {
@@ -18,6 +19,8 @@ const sendDmMessage = onCall({ region: "us-central1" }, async (request) => {
       admin.firestore(),
       request.auth.uid,
       request.data || {},
+      // Admin total: cota ilimitada (continua exigindo participação na DM).
+      { senderIsAdmin: isSuperAdminAuth(request.auth) },
     );
   } catch (e) {
     if (e instanceof HttpsError) throw e;

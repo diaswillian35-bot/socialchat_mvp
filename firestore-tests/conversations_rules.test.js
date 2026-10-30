@@ -91,10 +91,10 @@ describe("conversations rules regression (hasOnly + replyQuota)", () => {
     );
   });
 
-  it("rejects Free creating international conversation", async () => {
+  it("allows Free creating international conversation (b39: chat entre países liberado, 61ca07b)", async () => {
     await seedIntlPremiumFree();
     const db = authed("free1");
-    await assertFails(
+    await assertSucceeds(
       db.doc("conversations/free1_prem1").set({
         participants: ["free1", "prem1"],
         pairKey: "free1_prem1",
@@ -213,7 +213,7 @@ describe("conversations rules regression (hasOnly + replyQuota)", () => {
     );
   });
 
-  it("rejects Free international message create (client path)", async () => {
+  it("allows Free international message create (client path) (b39: chat entre países liberado, 61ca07b)", async () => {
     await seedIntlPremiumFree();
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().doc("conversations/c_intl").set({
@@ -222,7 +222,7 @@ describe("conversations rules regression (hasOnly + replyQuota)", () => {
       });
     });
     const db = authed("free1");
-    await assertFails(
+    await assertSucceeds(
       db.doc("conversations/c_intl/messages/m1").set({
         type: "text",
         text: "should fail",

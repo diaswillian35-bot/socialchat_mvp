@@ -73,7 +73,7 @@ void main() {
       expect(home, contains("t.get('world')"));
       expect(home, isNot(contains('world_coming_soon')));
       expect(home, contains('showUnavailable'));
-      expect(home, contains('canAccessCountryContent'));
+      expect(home, contains('canBrowseCountryPeople'));
       expect(home, contains('return c.code.isNotEmpty && c.name.isNotEmpty;'));
       expect(
         RemdyLaunchAccess.canAccessCountryContent(
