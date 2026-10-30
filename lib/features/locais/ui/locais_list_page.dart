@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/app_texts.dart';
+import 'place_editor_page.dart';
 import '../../../widgets/remdy_logo.dart';
 import '../data/place_repository.dart';
 import '../locais_feature_flag.dart';
@@ -112,6 +114,20 @@ class _LocaisListPageState extends State<LocaisListPage> {
     final visible = _visible;
     return Scaffold(
       backgroundColor: LocaisColors.bg,
+      // Mesmo botão da aba Eventos (criar evento).
+      floatingActionButton: FloatingActionButton(
+        key: const Key('locais_add_place_fab'),
+        heroTag: null,
+        backgroundColor: LocaisColors.navy,
+        tooltip: AppTexts.t('place_add_title'),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PlaceEditorPage()),
+          );
+        },
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {

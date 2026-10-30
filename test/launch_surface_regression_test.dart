@@ -258,7 +258,7 @@ void main() {
       expect(delegate, contains('registerForRemoteNotifications'));
       expect(scene, contains('sceneDidBecomeActive'));
       expect(scene, contains('registerIfReady'));
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+38'));
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+39'));
     });
 
     test('safety surfaces stay reachable', () {

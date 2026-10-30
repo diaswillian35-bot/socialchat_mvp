@@ -177,8 +177,8 @@ void main() {
           contains('showComingSoon'));
     });
 
-    test('pubspec stays 1.0.4+38', () {
-      expect(source('pubspec.yaml'), contains('version: 1.0.4+38'));
+    test('pubspec stays 1.0.4+39', () {
+      expect(source('pubspec.yaml'), contains('version: 1.0.4+39'));
     });
   });
 }

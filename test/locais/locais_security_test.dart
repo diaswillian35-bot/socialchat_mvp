@@ -19,7 +19,7 @@ void main() {
     LocaisFeatureFlag.resetDebugOverride();
     expect(LocaisFeatureFlag.isEnabled, isFalse);
     final pubspec = File('pubspec.yaml').readAsStringSync();
-    expect(pubspec.contains('version: 1.0.4+38'), isTrue);
+    expect(pubspec.contains('version: 1.0.4+39'), isTrue);
   });
 
   test('Locais entra apenas no shell e no roteador atrás da flag', () {

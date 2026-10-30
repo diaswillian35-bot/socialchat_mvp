@@ -1377,5 +1377,14 @@
   "admin_mode_applied": "País do modo de administrador atualizado.",
   "admin_mode_title": "Modo de administrador",
   "explore_only_info": "Use Locais, Eventos e Grupos sem aparecer em Conheça Pessoas, na lista de online nem nas pesquisas. Ninguém poderá iniciar uma conversa consigo e também não verá quem está online.",
-  "explore_only_no_chat": "Esta pessoa está no modo Só explorar e não recebe novas conversas."
+  "explore_only_no_chat": "Esta pessoa está no modo Só explorar e não recebe novas conversas.",
+  "place_address_hint": "Rua, número, freguesia",
+  "place_review_notice": "O local fica em análise e só aparece para todos depois de aprovado pela equipa Remdy.",
+  "place_submit_error": "Não foi possível guardar o local. Tente novamente.",
+  "place_saved": "Local guardado.",
+  "place_mine_empty": "Ainda não registou nenhum local.",
+  "place_err_too_many": "Já tem demasiados locais em análise. Aguarde a aprovação.",
+  "place_err_city": "Escolha a cidade do local.",
+  "place_err_name": "Indique o nome do local.",
+  "place_hours_hint": "Ex.: Seg a sex, 11h às 23h"
 }

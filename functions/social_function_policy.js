@@ -38,7 +38,8 @@ for (const name of [
   "updateEvent", "registerEventView", "cancelEvent", "archiveEvent",
   "restoreEvent", "duplicateEvent", "deleteEventPermanently",
   "submitPlaceReview", "replyPlaceReview", "claimPlaceForAccount",
-  "listPlaceReviews",
+  "listPlaceReviews", "submitPlace", "updateMyPlace", "getMyPlace",
+  "listMyPlaces", "listPendingPlaces", "moderatePlace",
 ]) {
   entries[name] = ["adult", "User-initiated social operation; verified adult required."];
 }

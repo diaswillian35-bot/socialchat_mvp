@@ -182,6 +182,33 @@ exports.listPlaceReviews = socialOnCall(
   placeActions.listReviewsHandler,
 );
 
+// "Adicionar local" (app): local nasce pending; admin total aprova/recusa.
+const placeSubmissions = require("./place_submissions");
+exports.submitPlace = socialOnCall(
+  { region: "us-central1" },
+  placeSubmissions.submitPlaceHandler,
+);
+exports.updateMyPlace = socialOnCall(
+  { region: "us-central1" },
+  placeSubmissions.updateMyPlaceHandler,
+);
+exports.getMyPlace = socialOnCall(
+  { region: "us-central1" },
+  placeSubmissions.getMyPlaceHandler,
+);
+exports.listMyPlaces = socialOnCall(
+  { region: "us-central1" },
+  placeSubmissions.listMyPlacesHandler,
+);
+exports.listPendingPlaces = socialOnCall(
+  { region: "us-central1" },
+  placeSubmissions.listPendingPlacesHandler,
+);
+exports.moderatePlace = socialOnCall(
+  { region: "us-central1" },
+  placeSubmissions.moderatePlaceHandler,
+);
+
 const {
   assertUserCanUseRemi,
   validateMessageText: remiValidateMessageText,

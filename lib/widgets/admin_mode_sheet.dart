@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../features/locais/ui/place_submissions_page.dart';
 import '../data/country_names_l10n.dart';
 import '../l10n/app_texts.dart';
 import '../services/admin_access.dart';
@@ -58,6 +59,22 @@ class AdminModeSheet {
                 title: Text(t.get('admin_mode_title')),
                 subtitle: Text(t.get('admin_mode_subtitle')),
               ),
+              ListTile(
+                leading: const Icon(Icons.storefront),
+                title: Text(t.get('place_pending_title')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const PlaceSubmissionsPage(adminPending: true),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1),
               option(sheetContext, '', t.get('admin_mode_my_country')),
               for (final code in AdminAccess.viewableCountries)
                 option(

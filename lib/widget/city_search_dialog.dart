@@ -23,6 +23,21 @@ class CitySearchResult {
 }
 
 class CitySearchDialog {
+  static const String _defaultGoogleKey =
+      'AIzaSyCCu5KXXT2tSqL4kqwjDX6ySv49lqyCLs0';
+
+  /// Mesma busca de cidade do perfil, com a chave já configurada no app.
+  static Future<CitySearchResult?> openDefault({
+    required BuildContext context,
+    required String countryCode,
+  }) {
+    return open(
+      context: context,
+      countryCode: countryCode,
+      googleApiKey: _defaultGoogleKey,
+    );
+  }
+
   static Future<CitySearchResult?> open({
     required BuildContext context,
     required String countryCode,
