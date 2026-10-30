@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:socialchat_mvp/widgets/common_carousel.dart';
+import 'package:socialchat_mvp/pages/country_people_page.dart';
 import 'package:socialchat_mvp/l10n/app_texts.dart';
 import 'package:socialchat_mvp/pages/welcome_choice_page.dart';
 import 'package:socialchat_mvp/services/explore_only.dart';
@@ -88,6 +89,9 @@ CountryPerson _p(String uid, String city, List<String> interests,
       countryCode: 'br',
       interests: interests,
     );
+
+var _rid = 0;
+String rowsId() => '${_rid++}';
 
 void main() {
   final ptBr = _load('pt-BR');
@@ -444,6 +448,102 @@ void main() {
     });
   });
 
+  group('Estados agrupados por cidade (t341u)', () {
+    CountryPerson g(String uid, String city, double lat, double lng,
+            {String state = 'PR'}) =>
+        CountryPerson(
+            uid: uid,
+            name: uid,
+            city: city,
+            subdivision: state,
+            countryCode: 'br',
+            latitude: lat,
+            longitude: lng);
+    test('cidades do estado por distância e cidade do usuário em Perto', () {
+      final viewer = {
+        'homeCountryCode': 'br',
+        'cityName': 'Navegantes',
+        'stateName': 'SC',
+        'cityLat': -26.89,
+        'cityLng': -48.65,
+      };
+      final people = [
+        g('nav', 'Navegantes', -26.89, -48.65, state: 'SC'),
+        g('cwb1', 'Curitiba', -25.43, -49.27),
+        g('cm1', 'Campo Mourão', -24.04, -52.38),
+        g('cm2', 'Campo Mourão', -24.04, -52.38),
+        g('mga', 'Maringá', -23.42, -51.94),
+      ];
+      final v = CountryPeopleView.build(
+          people: people, viewer: viewer, countryCode: 'br');
+      expect(v.nearby.map((r) => r.person.uid), contains('nav'));
+      final pr = v.otherStates.firstWhere((s) => s.key == 'PR');
+      expect(pr.cities.map((c) => c.label),
+          ['Curitiba', 'Campo Mourão', 'Maringá']);
+      expect(pr.cities[1].rows.length, 2);
+    });
+    test('agrupamento mantém a ordem e o limite é 5', () {
+      expect(CountryCitySection.previewCount, 5);
+      final rows = [
+        for (final c in ['A', 'B', 'A'])
+          CountryPeopleRow(
+              person: CountryPerson(
+                  uid: c + rowsId(),
+                  name: c,
+                  city: c,
+                  subdivision: 'PR',
+                  countryCode: 'br'),
+              cityLabel: c),
+      ];
+      final gs = CountryCitySection.group(rows);
+      expect(gs.map((c) => c.label), ['A', 'B']);
+      expect(gs.first.rows.length, 2);
+    });
+    testWidgets('cidade fechada; abre; mostra 5 e Ver todas', (tester) async {
+      await tester.pumpWidget(_app(Scaffold(
+          body: ListView(children: [
+        PeopleStateSection(
+          key: const PageStorageKey('c'),
+          title: 'Campo Mourão · 7',
+          countLabel: '',
+          initiallyOpen: false,
+          children: [
+            PeopleCityList(
+                total: 7,
+                seeAllLabel: 'Ver todas (7)',
+                rows: [for (var i = 0; i < 7; i++) Text('p$i')]),
+          ],
+        ),
+      ]))));
+      expect(find.text('p0'), findsNothing);
+      await tester.tap(find.text('Campo Mourão · 7'));
+      await tester.pump();
+      expect(find.text('p4'), findsOneWidget);
+      expect(find.text('p5'), findsNothing);
+      await tester.tap(find.text('Ver todas (7)'));
+      await tester.pump();
+      expect(find.text('p6'), findsOneWidget);
+    });
+    test('hiddenFromLists esconde das listas (reversível)', () {
+      for (final f in [
+        'lib/pages/country_people_page.dart',
+        'lib/pages/language_users_page.dart',
+        'lib/services/user_location_scope.dart',
+        'lib/services/new_user_policy.dart',
+        'functions/user_search.js',
+        'functions/interest_match_logic.js',
+      ]) {
+        expect(_src(f).contains('hiddenFromLists'), isTrue, reason: f);
+      }
+    });
+    test('textos nos 5 idiomas', () {
+      for (final l in ['pt-BR', 'en', 'es', 'fr']) {
+        expect(_load(l)['people_city_header'], contains('{city}'));
+        expect(_load(l)['people_city_see_all'], contains('{count}'));
+      }
+    });
+  });
+
   group('screenshots', () {
     setUpAll(_fonts);
     testWidgets('20 em comum carrossel', (tester) async {
@@ -516,6 +616,67 @@ void main() {
         ]),
       )));
       await _shot(tester, '20_em_comum_carrossel');
+    });
+    testWidgets('21 estado por cidade', (tester) async {
+      tester.view.physicalSize = const Size(390 * 2, 640 * 2);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final t = AppTexts.current;
+      Widget person(String n, String c) => ListTile(
+          leading: CircleAvatar(child: Text(n[0])),
+          title: Text(n, style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(c));
+      String h(String c, int n) => t
+          .get('people_city_header')
+          .replaceAll('{city}', c)
+          .replaceAll('{count}', '$n');
+      await tester.pumpWidget(_app(Scaffold(
+        appBar: AppBar(title: const Text('🇧🇷 Brasil')),
+        body: ListView(children: [
+          PeopleStateSection(
+            title: 'Paraná',
+            countLabel: t.get('people_count_many').replaceAll('{count}', '9'),
+            initiallyOpen: true,
+            children: [
+              PeopleStateSection(
+                key: const PageStorageKey('cm'),
+                title: h('Campo Mourão', 6),
+                countLabel: '',
+                initiallyOpen: true,
+                children: [
+                  PeopleCityList(
+                      total: 6,
+                      seeAllLabel: t
+                          .get('people_city_see_all')
+                          .replaceAll('{count}', '6'),
+                      rows: [
+                        for (final n in [
+                          'Ana',
+                          'Bruno',
+                          'Gabriel',
+                          'Matheus',
+                          'Viviane',
+                          'Carla'
+                        ])
+                          person(n, 'Campo Mourão')
+                      ]),
+                ],
+              ),
+              PeopleStateSection(
+                  title: h('Sarandi', 1),
+                  countLabel: '',
+                  initiallyOpen: false,
+                  children: const []),
+              PeopleStateSection(
+                  title: h('Irati', 1),
+                  countLabel: '',
+                  initiallyOpen: false,
+                  children: const []),
+            ],
+          ),
+        ]),
+      )));
+      await _shot(tester, '21_estado_por_cidade');
     });
     testWidgets('13 pessoas switch', (tester) async {
       tester.view.physicalSize = const Size(390 * 2, 844 * 2);

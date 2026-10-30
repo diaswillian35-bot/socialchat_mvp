@@ -62,6 +62,7 @@ class NewUserPolicy {
     if (!_isActive(data)) return false;
     // Modo "Só explorar": fora de "novos usuários na cidade".
     if (data['exploreOnly'] == true) return false;
+    if (data['hiddenFromLists'] == true) return false;
     if (data['ageVerificationStatus'] != 'verified') return false;
     if (data['profileComplete'] != true) return false;
     if (data['nearbyEnabled'] != true) return false;

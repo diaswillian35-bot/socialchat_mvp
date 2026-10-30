@@ -225,6 +225,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     final data = d.data();
     if (!InternationalChatService.isActiveAccount(data)) return false;
     if (ExploreOnly.isExploreOnlyData(data)) return false;
+    if (data['hiddenFromLists'] == true) return false;
     final code = InternationalChatService.readHomeCountryCode(data);
     if (code != _code) return false;
     if ((data['name'] ?? '').toString().trim().isEmpty) return false;
@@ -582,11 +583,11 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
                 .replaceAll('{prep}', ptStatePreposition(view.ownStateKey))
                 .replaceAll('{state}', view.ownStateLabel),
             trailing: '${view.ownStateRows.length}'));
-        children.addAll(
-            view.ownStateRows.map((r) => _personRow(t, scheme, r, docs)));
+        children.addAll(_cityGroups(t, scheme, 'own',
+            CountryCitySection.group(view.ownStateRows), docs));
       }
       for (final s in view.otherStates) {
-        children.add(_StateSection(
+        children.add(PeopleStateSection(
           key: PageStorageKey('country-state-${s.key}'),
           title: s.isOther ? t.get('people_state_other') : s.label,
           countLabel: t
@@ -594,7 +595,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
                   s.rows.length == 1 ? 'people_count_one' : 'people_count_many')
               .replaceAll('{count}', '${s.rows.length}'),
           initiallyOpen: s.initiallyOpen,
-          children: s.rows.map((r) => _personRow(t, scheme, r, docs)).toList(),
+          children: _cityGroups(t, scheme, s.key, s.cities, docs),
         ));
       }
       final place = view.hasReference && view.referenceCityEmpty
@@ -700,6 +701,38 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
             .get('people_reason_short_hometown')
             .replaceAll('{city}', m.city);
     }
+  }
+
+  /// Cidades do estado: cabeçalho "Cidade · N" fechado (mesmo estilo das
+  /// linhas de estado), até 5 pessoas e "Ver todas".
+  List<Widget> _cityGroups(
+      AppTexts t,
+      ColorScheme scheme,
+      String stateKey,
+      List<CountryCitySection> cities,
+      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    return [
+      for (final c in cities)
+        PeopleStateSection(
+          key: PageStorageKey('country-city-$stateKey-${c.label}'),
+          title: t
+              .get('people_city_header')
+              .replaceAll('{city}', c.label)
+              .replaceAll('{count}', '${c.rows.length}'),
+          countLabel: '',
+          initiallyOpen: false,
+          children: [
+            PeopleCityList(
+              key: PageStorageKey('country-city-all-$stateKey-${c.label}'),
+              total: c.rows.length,
+              seeAllLabel: t
+                  .get('people_city_see_all')
+                  .replaceAll('{count}', '${c.rows.length}'),
+              rows: c.rows.map((r) => _personRow(t, scheme, r, docs)).toList(),
+            ),
+          ],
+        ),
+    ];
   }
 
   Widget _personRow(AppTexts t, ColorScheme scheme, CountryPeopleRow r,
@@ -841,8 +874,57 @@ class _Avatar extends StatelessWidget {
 }
 
 /// Estado com cabeçalho "São Paulo • 2 pessoas ›"; abre/fecha ao tocar.
-class _StateSection extends StatefulWidget {
-  const _StateSection({
+/// Até [CountryCitySection.previewCount] pessoas e o botão "Ver todas".
+class PeopleCityList extends StatefulWidget {
+  const PeopleCityList({
+    super.key,
+    required this.total,
+    required this.seeAllLabel,
+    required this.rows,
+  });
+  final int total;
+  final String seeAllLabel;
+  final List<Widget> rows;
+
+  @override
+  State<PeopleCityList> createState() => PeopleCityListState();
+}
+
+class PeopleCityListState extends State<PeopleCityList> {
+  late bool _all = (PageStorage.maybeOf(context)
+          ?.readState(context, identifier: widget.key) as bool?) ??
+      false;
+
+  @override
+  Widget build(BuildContext context) {
+    final limit = CountryCitySection.previewCount;
+    final showAll = _all || widget.rows.length <= limit;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ...(showAll ? widget.rows : widget.rows.take(limit)),
+        if (!showAll)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: TextButton(
+                onPressed: () {
+                  setState(() => _all = true);
+                  PageStorage.maybeOf(context)
+                      ?.writeState(context, true, identifier: widget.key);
+                },
+                child: Text(widget.seeAllLabel),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class PeopleStateSection extends StatefulWidget {
+  const PeopleStateSection({
     super.key,
     required this.title,
     required this.countLabel,
@@ -855,10 +937,10 @@ class _StateSection extends StatefulWidget {
   final List<Widget> children;
 
   @override
-  State<_StateSection> createState() => _StateSectionState();
+  State<PeopleStateSection> createState() => PeopleStateSectionState();
 }
 
-class _StateSectionState extends State<_StateSection> {
+class PeopleStateSectionState extends State<PeopleStateSection> {
   late bool _open = (PageStorage.maybeOf(context)
           ?.readState(context, identifier: widget.key) as bool?) ??
       widget.initiallyOpen;
@@ -870,7 +952,7 @@ class _StateSectionState extends State<_StateSection> {
   }
 
   @override
-  void didUpdateWidget(covariant _StateSection oldWidget) {
+  void didUpdateWidget(covariant PeopleStateSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initiallyOpen && !oldWidget.initiallyOpen) _open = true;
   }

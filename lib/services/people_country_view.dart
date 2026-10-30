@@ -146,6 +146,40 @@ class CountryStateSection {
   final List<CountryPeopleRow> rows;
   final bool initiallyOpen;
   bool get isOther => key == PeopleCountryHierarchy.otherKey;
+
+  /// Pessoas do estado agrupadas por cidade, na ordem das linhas (que já vêm
+  /// por distância do usuário; sem referência, por nome da cidade).
+  List<CountryCitySection> get cities => CountryCitySection.group(rows);
+}
+
+/// Cidade dentro de um estado ("Cidade · N"), começa fechada.
+class CountryCitySection {
+  const CountryCitySection({required this.label, required this.rows});
+  final String label;
+  final List<CountryPeopleRow> rows;
+
+  /// Máximo de pessoas por cidade antes do "Ver todas".
+  static const int previewCount = 5;
+
+  static List<CountryCitySection> group(List<CountryPeopleRow> rows) {
+    final order = <String>[];
+    final byKey = <String, List<CountryPeopleRow>>{};
+    final labels = <String, String>{};
+    for (final r in rows) {
+      final label =
+          PeopleCountryHierarchy.cleanCity(r.person.city, r.person.countryCode);
+      final k = UserSearchNormalize.normalize(label);
+      if (!byKey.containsKey(k)) {
+        order.add(k);
+        labels[k] = label.isEmpty ? '—' : label;
+      }
+      byKey.putIfAbsent(k, () => <CountryPeopleRow>[]).add(r);
+    }
+    return [
+      for (final k in order)
+        CountryCitySection(label: labels[k]!, rows: byKey[k]!)
+    ];
+  }
 }
 
 class CountryStateChip {

@@ -1687,5 +1687,7 @@
   "profile_photo_required": "Ajoutez une photo de profil pour continuer.",
   "people_reason_short_interest": "Aime {interest}",
   "people_reason_short_same_city": "Vit à {city}",
-  "people_reason_short_hometown": "De {city}"
+  "people_reason_short_hometown": "De {city}",
+  "people_city_header": "{city} · {count}",
+  "people_city_see_all": "Tout voir ({count})"
 }

@@ -216,6 +216,7 @@ class LanguageUsersPage extends StatelessWidget {
             if (d.id == _myUid) return false;
             if (blocked.contains(d.id)) return false;
             if (ExploreOnly.isExploreOnlyData(d.data())) return false;
+            if (d.data()['hiddenFromLists'] == true) return false;
             return InternationalChatService.readHomeCountryCode(d.data()) == code;
           }).toList();
 
