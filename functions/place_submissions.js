@@ -169,7 +169,10 @@ async function listPendingPlacesHandler(request) {
 async function moderatePlaceHandler(request) {
   requireSuperAdmin(request);
   const placeId = placeIdOf(request.data);
-  const patch = moderationPatch(String((request.data || {}).decision || ""));
+  const patch = moderationPatch(
+    String((request.data || {}).decision || ""),
+    (request.data || {}).reason,
+  );
   if (!patch) throw new HttpsError("invalid-argument", "Invalid decision.");
   const ref = admin.firestore().collection("places").doc(placeId);
   const snap = await ref.get();

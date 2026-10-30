@@ -8,6 +8,8 @@ import 'package:share_plus/share_plus.dart';
 import '../services/remdy_launch_access.dart';
 import '../widgets/publish_cta_card.dart';
 import '../services/explore_only.dart';
+import '../services/user_interests.dart';
+import '../widgets/explore_only_bar.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
@@ -68,8 +70,6 @@ class CountryPeoplePage extends StatefulWidget {
 
 class _CountryPeoplePageState extends State<CountryPeoplePage>
     with BlockedUidsListenable {
-  /// Verde "online/aberto" da paleta Remdy (LocaisColors.open).
-  static const Color _online = Color(0xFF16A34A);
   static const int _pageSize = 40;
 
   final _searchC = TextEditingController();
@@ -316,43 +316,33 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     );
   }
 
-  Future<void> _setNearby(bool value) async {
+  /// Barra de baixo: "Não quero conhecer ninguém, só usar o app".
+  /// Mesma lógica do Editar perfil (users + publicUsers, presença).
+  Future<void> _setExploreOnly(bool value) async {
     final uid = _myUid;
     if (uid.isEmpty || _savingNearby) return;
-    final previous = _viewerData?['nearbyEnabled'] == true;
+    final previous = _viewerData?['exploreOnly'] == true;
     if (previous == value) return;
     final messenger = ScaffoldMessenger.of(context);
-    // Otimista: o switch e a legenda mudam na hora.
     setState(() {
       _savingNearby = true;
-      _viewerData = {...?_viewerData, 'nearbyEnabled': value};
+      _viewerData = {...?_viewerData, 'exploreOnly': value};
     });
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'nearbyEnabled': value,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      // Espelho público (mesmo campo que Editar perfil grava); melhor esforço.
-      unawaited(FirebaseFirestore.instance
-          .collection('publicUsers')
-          .doc(uid)
-          .set({'nearbyEnabled': value}, SetOptions(merge: true)).catchError(
-              (Object e) {
-        debugPrint('[CountryPeople] publicUsers nearbyEnabled: $e');
-      }));
+      await ExploreOnly.setMode(uid, value);
       if (!mounted) return;
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
           content: Text(AppTexts.current.get(value
-              ? 'people_nearby_now_visible'
-              : 'people_nearby_now_hidden')),
+              ? 'people_explore_only_now_on'
+              : 'people_explore_only_now_off')),
         ));
     } catch (e) {
-      debugPrint('[CountryPeople] users nearbyEnabled: $e');
+      debugPrint('[CountryPeople] exploreOnly: $e');
       if (!mounted) return;
       setState(() {
-        _viewerData = {...?_viewerData, 'nearbyEnabled': previous};
+        _viewerData = {...?_viewerData, 'exploreOnly': previous};
       });
       messenger
         ..hideCurrentSnackBar()
@@ -454,54 +444,10 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
           Expanded(child: _buildBody(t)),
         ],
       ),
-      bottomNavigationBar: _nearbyBar(t, scheme),
-    );
-  }
-
-  Widget _nearbyBar(AppTexts t, ColorScheme scheme) {
-    final on = _viewerData?['nearbyEnabled'] == true;
-    return SafeArea(
-      top: false,
-      child: Container(
-        key: const ValueKey('country-nearby-bar'),
-        margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-        padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-        decoration: BoxDecoration(
-          color: scheme.primary,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.location_on_rounded, color: scheme.onPrimary, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(t.get('show_people_near_me'),
-                      style: TextStyle(
-                          color: scheme.onPrimary,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14)),
-                  Text(
-                      t.get(on
-                          ? 'people_nearby_visible_caption'
-                          : 'people_nearby_hidden_caption'),
-                      style: TextStyle(
-                          color: scheme.onPrimary.withValues(alpha: 0.8),
-                          fontSize: 12)),
-                ],
-              ),
-            ),
-            Switch(
-              value: on,
-              onChanged: _savingNearby || _myUid.isEmpty ? null : _setNearby,
-              activeThumbColor: Colors.white,
-              activeTrackColor: _online,
-            ),
-          ],
-        ),
+      bottomNavigationBar: ExploreOnlyBar(
+        value: _viewerData?['exploreOnly'] == true,
+        onChanged:
+            _savingNearby || _myUid.isEmpty ? null : _setExploreOnly,
       ),
     );
   }
@@ -552,6 +498,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
       hometownCity: (data['hometownCity'] ?? '').toString(),
       hometownSubdivision: (data['hometownState'] ?? '').toString(),
       hometownCountryCode: (data['hometownCountryCode'] ?? '').toString(),
+      interests: UserInterests.fromUserData(data),
     );
   }
 
@@ -747,6 +694,8 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
             .replaceAll('{city}', m.city);
       case CommonReason.sameCity:
         return t.get('people_reason_same_city').replaceAll('{city}', m.city);
+      case CommonReason.sharedInterests:
+        return UserInterests.reasonText(m.interests, t);
     }
   }
 

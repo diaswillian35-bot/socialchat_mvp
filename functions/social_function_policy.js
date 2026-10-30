@@ -21,6 +21,8 @@ const entries = {
     "Push when pending status is re-requested after reject/approve (client update path).",
   ],
   onEventUpdated: ["trigger", "Automatic moderation/push; recipients are age-filtered."],
+  onPublicUserInterestsWritten: ["trigger", "Interest-match push; recipients are age-filtered (pushPolicyBlockCode)."],
+  onPlaceModerated: ["trigger", "Owner push after place moderation; recipient is age-filtered."],
 };
 
 for (const name of [

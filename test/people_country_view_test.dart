@@ -63,21 +63,21 @@ void main() {
     expect(v.nearby.first.distanceKm, isNull); // mesma cidade: sem km
     expect(v.nearby[1].distanceKm!.round(), inInclusiveRange(1, 3));
     expect(v.ownStateLabel, 'Santa Catarina');
-    expect(uids(v.ownStateRows), ['floripa']);
+    // floripa (mesma cidade natal) está em "Em comum" e não se repete.
+    expect(uids(v.ownStateRows), isEmpty);
     expect(v.otherStates.map((s) => s.key).toList(),
         ['PR', 'SP', 'ES', PeopleCountryHierarchy.otherKey]);
     expect(v.otherStates.first.label, 'Paraná');
     expect(v.otherStates.first.initiallyOpen, isTrue);
     expect(v.otherStates.skip(1).every((s) => !s.initiallyOpen), isTrue);
-    expect(uids(v.otherStates.first.rows), ['cwb', 'cm']);
+    expect(uids(v.otherStates.first.rows), ['cwb']);
   });
 
   test('cidade natal: tag e motivos reais em "Em comum com você"', () {
     final v = CountryPeopleView.build(
         people: people, viewer: navegantesViewer(), countryCode: 'br');
-    final cmRow =
-        v.otherStates.first.rows.firstWhere((r) => r.person.uid == 'cm');
-    expect(cmRow.isViewerHometown, isTrue);
+    // cm aparece em "Em comum" e não se repete nos estados.
+    expect(uids(v.otherStates.first.rows), isNot(contains('cm')));
     expect(
         v.otherStates.first.rows
             .firstWhere((r) => r.person.uid == 'cwb')
@@ -86,7 +86,9 @@ void main() {
     final reasons = {for (final m in v.common) m.person.uid: m.reason};
     expect(reasons['floripa'], CommonReason.sameHometown);
     expect(reasons['cm'], CommonReason.livesInYourHometown);
-    expect(reasons['nav'], CommonReason.sameCity);
+    // Mesma cidade fica em "Perto de você" (não em "Em comum").
+    expect(reasons.containsKey('nav'), isFalse);
+    expect(uids(v.nearby).first, 'nav');
     expect(reasons.containsKey('itj'), isFalse);
     expect(v.common.first.person.uid, 'floripa');
   });
@@ -144,8 +146,9 @@ void main() {
     expect(v.hasReference, isTrue);
     expect(v.referenceIsHometown, isTrue);
     expect(v.referenceCity, 'Campo Mourão');
-    expect(uids(v.nearby).first, 'cm');
-    expect(v.nearby.first.isViewerHometown, isTrue);
+    // cm mora na cidade natal: vai para "Em comum" e não se repete.
+    expect(v.common.map((m) => m.person.uid), contains('cm'));
+    expect(uids(v.nearby), isNot(contains('cm')));
     expect(v.ownStateLabel, 'Paraná');
     expect(uids(v.ownStateRows), ['cwb']);
     expect(v.otherStates.first.key, 'SC');

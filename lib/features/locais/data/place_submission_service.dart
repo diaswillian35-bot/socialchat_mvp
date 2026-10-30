@@ -208,9 +208,14 @@ class PlaceSubmissionService {
 
   static Future<List<PlaceDraft>> listPending() => _list('listPendingPlaces');
 
-  static Future<void> moderate(String placeId, {required bool approve}) =>
+  /// [reason]: motivo da recusa (gravado em places.moderationReason e
+  /// enviado no push ao dono). O painel web exige; o app pode omitir.
+  static Future<void> moderate(String placeId,
+          {required bool approve, String? reason}) =>
       _call('moderatePlace', {
         'placeId': placeId,
         'decision': approve ? 'approve' : 'reject',
+        if (!approve && (reason ?? '').trim().isNotEmpty)
+          'reason': reason!.trim(),
       });
 }

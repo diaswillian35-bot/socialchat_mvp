@@ -31,7 +31,17 @@ class PushOpenTarget {
   static const none = PushOpenTarget(kind: PushOpenKind.none, dedupeKey: '');
 }
 
-enum PushOpenKind { none, chat, groupChat, groupInfo, groupTab, event, place }
+enum PushOpenKind {
+  none,
+  chat,
+  groupChat,
+  groupInfo,
+  groupTab,
+  event,
+  place,
+  profile,
+  myPlaces
+}
 
 enum PushOpenSource { foregroundLocal, background, coldStart }
 
@@ -103,7 +113,13 @@ class PushOpenParser {
 
     PushOpenKind kind = PushOpenKind.none;
     var shellIndex = 0;
-    if (type == 'place_review' || type == 'place_reply') {
+    if (type == 'place_rejected') {
+      // Local recusado: abre "Meus locais" (motivo aparece lá e no push).
+      kind = PushOpenKind.myPlaces;
+      shellIndex = 4;
+    } else if (type == 'place_review' ||
+        type == 'place_reply' ||
+        type == 'place_approved') {
       if (!isSafeId(placeId)) return PushOpenTarget.none;
       kind = PushOpenKind.place;
       shellIndex = 4;
@@ -129,6 +145,10 @@ class PushOpenParser {
       }
       kind = PushOpenKind.chat;
       shellIndex = 1;
+    } else if (type == 'interest_match') {
+      if (!isSafeId(otherUid)) return PushOpenTarget.none;
+      kind = PushOpenKind.profile;
+      shellIndex = 0;
     } else {
       return PushOpenTarget.none;
     }

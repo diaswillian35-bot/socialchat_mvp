@@ -1,6 +1,7 @@
 import 'brazil_states.dart';
 import 'group_geo.dart';
 import 'people_country_hierarchy.dart';
+import 'user_interests.dart';
 import 'user_location_scope.dart';
 import '../utils/user_search_normalize.dart';
 
@@ -95,16 +96,27 @@ bool sameHometownPlace(String keyA, String keyB) {
   return a[1].isEmpty || b[1].isEmpty || a[1] == b[1];
 }
 
-enum CommonReason { sameHometown, livesInYourHometown, sameCity }
+enum CommonReason {
+  sameHometown,
+  livesInYourHometown,
+  sameCity,
+  sharedInterests
+}
 
 class CommonMatch {
   const CommonMatch(
-      {required this.person, required this.reason, required this.city});
+      {required this.person,
+      required this.reason,
+      required this.city,
+      this.interests = const []});
   final CountryPerson person;
   final CommonReason reason;
 
   /// Cidade citada no motivo (ex.: "Campo Mourão").
   final String city;
+
+  /// Interesses em comum (chaves), quando [reason] é sharedInterests.
+  final List<String> interests;
 }
 
 class CountryPeopleRow {
@@ -301,48 +313,66 @@ class CountryPeopleView {
       ));
     }
 
-    // Em comum com você: só dados reais do perfil.
+    // Em comum com você: interesses marcados (lista fixa; "Sobre mim" não
+    // entra) de qualquer cidade do país, do maior nº de iguais ao menor.
+    // Depois, cidade natal. Quem aparece aqui não se repete abaixo.
     final common = <CommonMatch>[];
     if (!filteredSingle) {
-      final viewerCity = ref != null && !ref.isHometown
-          ? UserSearchNormalize.normalize(
-              PeopleCountryHierarchy.cleanCity(ref.city, cc))
-          : '';
+      final viewerInterests = UserInterests.fromUserData(viewer);
+      final byInterest = <CommonMatch>[];
+      final byHometown = <CommonMatch>[];
       for (final p in people) {
+        final shared = UserInterests.common(viewerInterests, p.interests);
+        if (shared.isNotEmpty) {
+          byInterest.add(CommonMatch(
+              person: p,
+              reason: CommonReason.sharedInterests,
+              city: '',
+              interests: shared));
+          continue;
+        }
         final pHome = HometownInfo.keyFor(
             p.hometownCity, p.hometownSubdivision, p.hometownCountryCode);
         if (sameHometownPlace(hometownKey, pHome)) {
-          common.add(CommonMatch(
+          byHometown.add(CommonMatch(
               person: p,
               reason: CommonReason.sameHometown,
               city: hometown!.city));
         } else if (livesInViewerHometown(p)) {
-          common.add(CommonMatch(
+          byHometown.add(CommonMatch(
               person: p,
               reason: CommonReason.livesInYourHometown,
               city: hometown!.city));
-        } else if (viewerCity.isNotEmpty &&
-            UserSearchNormalize.normalize(
-                    PeopleCountryHierarchy.cleanCity(p.city, p.countryCode)) ==
-                viewerCity &&
-            (h.sameCity?.people.any((x) => x.uid == p.uid) ?? false)) {
-          common.add(CommonMatch(
-              person: p,
-              reason: CommonReason.sameCity,
-              city: PeopleCountryHierarchy.cleanCity(p.city, p.countryCode)));
         }
       }
-      common.sort((a, b) {
-        final r = a.reason.index.compareTo(b.reason.index);
-        if (r != 0) return r;
+      int tie(CommonMatch a, CommonMatch b) {
         if (a.person.online != b.person.online) return a.person.online ? -1 : 1;
         return a.person.name
             .toLowerCase()
             .compareTo(b.person.name.toLowerCase());
+      }
+
+      byInterest.sort((a, b) {
+        final c = b.interests.length.compareTo(a.interests.length);
+        return c != 0 ? c : tie(a, b);
       });
+      byHometown.sort((a, b) {
+        final r = a.reason.index.compareTo(b.reason.index);
+        return r != 0 ? r : tie(a, b);
+      });
+      common
+        ..addAll(byInterest)
+        ..addAll(byHometown);
       if (common.length > maxCommon) {
         common.removeRange(maxCommon, common.length);
       }
+      final shown = common.map((m) => m.person.uid).toSet();
+      nearby.removeWhere((r) => shown.contains(r.person.uid));
+      ownRows.removeWhere((r) => shown.contains(r.person.uid));
+      for (final sec in others) {
+        sec.rows.removeWhere((r) => shown.contains(r.person.uid));
+      }
+      others.removeWhere((sec) => sec.rows.isEmpty);
     }
 
     final refCityNorm = ref == null

@@ -4,6 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/explore_only.dart';
 import '../services/presence_service.dart';
+import '../services/user_interests.dart';
+import '../services/profile_about.dart';
+import '../services/profile_photo.dart';
+import '../widgets/profile_photo_picker.dart';
+import '../widgets/interest_chips.dart';
 import '../data/countries_data.dart';
 import '../data/country_names_l10n.dart';
 import 'dart:convert';
@@ -62,6 +67,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   bool _nearbyEnabled = false;
   bool _exploreOnly = false;
+  List<String> _interests = const [];
+  String _photoUrl = '';
+  bool _photoBusy = false;
+  bool _photoMissing = false;
 
   // Cidade natal opcional ("Sou de...").
   String _hometownCity = '';
@@ -148,6 +157,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       _nearbyEnabled = data['nearbyEnabled'] == true;
       _exploreOnly = data['exploreOnly'] == true;
+      _interests = UserInterests.fromUserData(data);
+      _photoUrl = ProfilePhoto.urlFromData(data);
+      if (_photoUrl.isEmpty) {
+        final authPhoto =
+            (FirebaseAuth.instance.currentUser?.photoURL ?? '').trim();
+        if (authPhoto.startsWith('http')) _photoUrl = authPhoto;
+      }
 
       final hometown = HometownInfo.fromUserData(data);
       _hometownCity = hometown?.city ?? '';
@@ -408,11 +424,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       final name = _nameC.text.trim();
       final languages = _languagesC.text.trim();
-      final about = _aboutC.text.trim();
+      final about = ProfileAbout.clamp(_aboutC.text);
 
       final authUser = FirebaseAuth.instance.currentUser;
       final email = authUser?.email ?? '';
-      final photoUrl = authUser?.photoURL ?? '';
+      // Foto de perfil obrigatória (cadastro e completar perfil).
+      final photoUrl = _photoUrl.trim();
+      if (photoUrl.isEmpty) {
+        setState(() {
+          _photoMissing = true;
+          _err = AppTexts.current.get('profile_photo_required');
+        });
+        return;
+      }
 
       final now = FieldValue.serverTimestamp();
 
@@ -483,6 +507,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'cityLng': _selectedLng,
         'nearbyEnabled': _nearbyEnabled,
         'exploreOnly': _exploreOnly,
+        UserInterests.field: UserInterests.sanitize(_interests),
         ..._hometownPayload(),
         'countryLocked': finalLocked,
         'profileComplete': true,
@@ -520,6 +545,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'location': _displayLocation,
         'nearbyEnabled': _nearbyEnabled,
         'exploreOnly': _exploreOnly,
+        UserInterests.field: UserInterests.sanitize(_interests),
         'about': about,
         'languages': languages,
         'nativeLanguage': languages,
@@ -770,6 +796,30 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
+  Future<void> _pickPhoto() async {
+    final uid = _myUid;
+    if (uid == null || _photoBusy) return;
+    setState(() => _photoBusy = true);
+    try {
+      final url = await ProfilePhoto.pickAndUpload(uid);
+      if (url != null && mounted) {
+        setState(() {
+          _photoUrl = url;
+          _photoMissing = false;
+          if (_err == AppTexts.current.get('profile_photo_required')) {
+            _err = null;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _err = '${AppTexts.current.get('save_error')}: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _photoBusy = false);
+    }
+  }
+
   Widget _nearbyField() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -782,14 +832,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
         children: [
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            value: _nearbyEnabled,
+            // "Não aparecer na minha cidade" = nearbyEnabled false.
+            value: !_nearbyEnabled,
             onChanged: (value) {
               setState(() {
-                _nearbyEnabled = value;
+                _nearbyEnabled = !value;
               });
             },
             title: Text(
-              AppTexts.current.get('show_people_near_me'),
+              AppTexts.current.get('menu_hide_in_city'),
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF111827),
@@ -799,7 +850,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           Padding(
             padding: EdgeInsets.only(bottom: 6),
             child: Text(
-              AppTexts.current.get('nearby_profile_info'),
+              AppTexts.current.get('hide_in_city_info'),
               style: TextStyle(
                 fontSize: 12,
                 color: Color(0xFF6B7280),
@@ -1198,6 +1249,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
               key: _formKey,
               child: Column(
                 children: [
+                  Center(
+                    child: ProfilePhotoPicker(
+                      photoUrl: _photoUrl,
+                      busy: _photoBusy,
+                      showError: _photoMissing,
+                      onPick: _pickPhoto,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   _countryField(),
                   const SizedBox(height: 12),
                   _cityField(),
@@ -1207,6 +1267,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   _nearbyField(),
                   const SizedBox(height: 12),
                   _exploreOnlyField(),
+                  const SizedBox(height: 12),
+                  InterestChips(
+                    selected: _interests,
+                    onChanged: (v) => setState(() => _interests = v),
+                  ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _nameC,
@@ -1230,6 +1295,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     controller: _aboutC,
                     textCapitalization: RemdyKeyboardCaps.sentences,
                     maxLines: 4,
+                    maxLength: ProfileAbout.maxLength,
                     decoration: _deco(
                       t.get('about_you'),
                       hint: t.get('about_you_hint'),

@@ -17,6 +17,7 @@ class CountryPerson {
     this.hometownCity = '',
     this.hometownSubdivision = '',
     this.hometownCountryCode = '',
+    this.interests = const [],
   });
 
   final String uid;
@@ -32,6 +33,9 @@ class CountryPerson {
   final String hometownCity;
   final String hometownSubdivision;
   final String hometownCountryCode;
+
+  /// Chaves de interesses (users.interests).
+  final List<String> interests;
 }
 
 class CountryCityGroup {

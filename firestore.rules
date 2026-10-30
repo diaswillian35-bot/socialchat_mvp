@@ -298,19 +298,32 @@ service cloud.firestore {
     // =========================
     // USERS
     // =========================
+    // Perfil: interesses (lista, máx. 20), Sobre mim (texto, máx. 300),
+    // flags booleanas novas. Em update, só valida o que mudou.
+    function profileExtrasOk(isUpdate) {
+      let d = request.resource.data;
+      let ch = isUpdate ? d.diff(resource.data).affectedKeys() : d.keys();
+      return (!ch.hasAny(['interests']) || (d.interests is list && d.interests.size() <= 20))
+        && (!ch.hasAny(['about']) || (d.about is string && d.about.size() <= 300))
+        && (!ch.hasAny(['welcomeChoiceDone']) || d.welcomeChoiceDone is bool)
+        && (!ch.hasAny(['interestPushEnabled']) || d.interestPushEnabled is bool);
+    }
+
     match /users/{userId} {
       allow read: if (authenticated() && uid() == userId) || signedIn();
 
       // Create: defaults ok; não permitir auto-concessão Premium/convite.
       allow create: if authenticated()
         && uid() == userId
-        && isUserCreatePremiumSafe();
+        && isUserCreatePremiumSafe()
+        && profileExtrasOk(false);
 
       // Update: perfil ok; Premium/admin protegidos; homeCountryCode só 1ª definição ou mesmo valor.
       allow update: if signedIn()
         && uid() == userId
         && premiumInviteFieldsUnchanged()
         && homeCountryCodeChangeAllowed()
+        && profileExtrasOk(true)
         && (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['blocked'])
           || (
@@ -363,10 +376,12 @@ service cloud.firestore {
       // isOnline:false no agregado (offline do agregado = Cloud Function / TTL).
       allow create: if signedIn()
         && uid() == userId
-        && !request.resource.data.keys().hasAny(['dateOfBirth', 'age']);
+        && !request.resource.data.keys().hasAny(['dateOfBirth', 'age'])
+        && profileExtrasOk(false);
       allow update: if signedIn()
         && uid() == userId
         && !request.resource.data.keys().hasAny(['dateOfBirth', 'age'])
+        && profileExtrasOk(true)
         && (
           !('isOnline' in request.resource.data.diff(resource.data).affectedKeys())
           || request.resource.data.isOnline == true

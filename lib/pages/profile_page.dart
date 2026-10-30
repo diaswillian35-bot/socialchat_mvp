@@ -1,3 +1,6 @@
+import '../services/profile_about.dart';
+import '../services/user_interests.dart';
+import '../widgets/interest_chips.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -29,6 +32,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final _nameC = TextEditingController();
   final _cityC = TextEditingController();
   final _aboutC = TextEditingController();
+  List<String> _interests = const [];
   String _stateName = '';
   String _cityName = '';
   String _displayLocation = '';
@@ -120,6 +124,7 @@ class _ProfilePageState extends State<ProfilePage> {
               : (data['city'] ?? '').toString());
 
       _aboutC.text = (data['about'] ?? '').toString();
+      _interests = UserInterests.fromUserData(data);
 
       _photoUrl = (data['photoUrl'] ?? '').toString();
       _isPremium = PremiumAccessService.isPremiumActiveFromData(data);
@@ -288,7 +293,8 @@ class _ProfilePageState extends State<ProfilePage> {
         'placeId': _placeId,
 
         'country': _countryName,
-        'about': about,
+        'about': ProfileAbout.clamp(about),
+        UserInterests.field: UserInterests.sanitize(_interests),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -303,6 +309,8 @@ class _ProfilePageState extends State<ProfilePage> {
           'city': _cityName.isNotEmpty ? _cityName : city,
           'state': _stateName,
           'country': _countryName,
+          'about': ProfileAbout.clamp(about),
+          UserInterests.field: UserInterests.sanitize(_interests),
           'updatedAt': FieldValue.serverTimestamp(),
           ...PublicUserSearchFields.build(
             name: name,
@@ -644,10 +652,17 @@ class _ProfilePageState extends State<ProfilePage> {
               controller: _aboutC,
               textCapitalization: RemdyKeyboardCaps.sentences,
               maxLines: 4,
+              maxLength: ProfileAbout.maxLength,
               decoration: _inputDeco(
                 AppTexts.current.get('about_you'),
                 helper: AppTexts.current.get('about_you_helper'),
               ),
+            ),
+
+            const SizedBox(height: 18),
+            InterestChips(
+              selected: _interests,
+              onChanged: (v) => setState(() => _interests = v),
             ),
 
             const SizedBox(height: 18),

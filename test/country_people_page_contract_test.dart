@@ -23,11 +23,11 @@ void main() {
     expect(source, contains('people_other_cities_of_state'));
     expect(source, contains('people_near_you_region'));
     expect(source, contains('people_say_hi'));
-    expect(source, contains("'nearbyEnabled': value"));
-    expect(source, contains("'updatedAt': FieldValue.serverTimestamp()"));
-    expect(source, contains('people_nearby_now_hidden'));
+    // Barra de baixo: switch Só explorar (mesma lógica do Editar perfil).
+    expect(source, contains('ExploreOnly.setMode(uid, value)'));
+    expect(source, contains('people_explore_only_now_on'));
     // Falha: volta o switch e mostra erro.
-    expect(source, contains("'nearbyEnabled': previous"));
+    expect(source, contains("'exploreOnly': previous"));
     expect(source, contains("get('save_error')"));
     expect(source, contains('Share.share'));
     expect(source, isNot(contains('nearbyCities')));

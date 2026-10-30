@@ -17,10 +17,12 @@ import '../pages/main_shell_page.dart';
 import '../pages/group_chat_page.dart';
 import '../pages/group_info_page.dart';
 import '../pages/chat_page.dart';
+import '../pages/public_profile_page.dart';
 import '../pages/event_detail_page.dart';
 import '../features/locais/data/place_repository.dart';
 import '../features/locais/locais_feature_flag.dart';
 import '../features/locais/ui/locais_detail_page.dart';
+import '../features/locais/ui/place_submissions_page.dart';
 import 'age_access_service.dart';
 import 'app_notification_state.dart';
 import 'block_service.dart';
@@ -988,6 +990,17 @@ class PushService {
   ) async {
     if (navKey.currentState == null) return false;
 
+    if (target.kind == PushOpenKind.myPlaces) {
+      if (!LocaisFeatureFlag.isEnabled) return false;
+      final live = navKey.currentState;
+      if (live == null) return false;
+      return _pushOverShell(
+        nav: live,
+        shellIndex: target.shellIndex,
+        page: const PlaceSubmissionsPage(adminPending: false),
+      );
+    }
+
     if (target.kind == PushOpenKind.place) {
       if (!LocaisFeatureFlag.isEnabled) return false;
       final live = navKey.currentState;
@@ -1060,6 +1073,21 @@ class PushService {
         nav: live,
         shellIndex: target.shellIndex,
         page: page,
+      );
+    }
+
+    if (target.kind == PushOpenKind.profile) {
+      // Push "interesses em comum": abre o perfil público.
+      final live = navKey.currentState;
+      if (live == null) return false;
+      if (!await BlockService.allowOpenPeer(target.otherUid)) {
+        _showShell(live, target.shellIndex);
+        return true;
+      }
+      return _pushOverShell(
+        nav: live,
+        shellIndex: target.shellIndex,
+        page: PublicProfilePage(userUid: target.otherUid),
       );
     }
 

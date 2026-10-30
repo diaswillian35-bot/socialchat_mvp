@@ -1,3 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart' as menu_fs;
+import 'package:firebase_auth/firebase_auth.dart' as menu_auth;
+import '../services/nearby_visibility.dart';
+import '../services/interest_push_pref.dart';
+import '../widgets/hide_in_city_tile.dart';
 
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -73,6 +78,87 @@ class MenuPage extends StatefulWidget {
 }
 
 class _MenuPageState extends State<MenuPage> {
+  // Configurações: "Não aparecer na minha cidade" e avisos de interesses.
+  bool _hideInCity = false;
+  bool _interestPush = true;
+  bool _savingPrefs = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  String get _prefsUid {
+    try {
+      return menu_auth.FirebaseAuth.instance.currentUser?.uid ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> _loadPrefs() async {
+    final uid = _prefsUid;
+    if (uid.isEmpty) return;
+    try {
+      final data = (await menu_fs.FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get())
+          .data();
+      if (!mounted) return;
+      setState(() {
+        _hideInCity = NearbyVisibility.hideInCityFromData(data);
+        _interestPush = InterestPushPref.enabledFromData(data);
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _savePref(
+      bool value, bool previous, void Function(bool) apply,
+      Future<void> Function(String uid) save, String? doneKey) async {
+    final uid = _prefsUid;
+    if (uid.isEmpty || _savingPrefs) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _savingPrefs = true;
+      apply(value);
+    });
+    try {
+      await save(uid);
+      if (doneKey != null && mounted) {
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(AppTexts.current.get(doneKey))));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => apply(previous));
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+            SnackBar(content: Text(AppTexts.current.get('save_error'))));
+    } finally {
+      if (mounted) setState(() => _savingPrefs = false);
+    }
+  }
+
+  void _setHideInCity(bool v) => _savePref(
+        v,
+        _hideInCity,
+        (x) => _hideInCity = x,
+        (uid) => NearbyVisibility.saveHideInCity(uid, v),
+        v ? 'menu_hide_in_city_now_on' : 'menu_hide_in_city_now_off',
+      );
+
+  void _setInterestPush(bool v) => _savePref(
+        v,
+        _interestPush,
+        (x) => _interestPush = x,
+        (uid) => InterestPushPref.save(uid, v),
+        null,
+      );
+
   String _loadedLocaleCode = '';
 
   static const Color _bg = Colors.white;
@@ -292,6 +378,24 @@ Stream<int> _unreadSystemCount() {
                   icon: Icons.notifications,
                   title: t.get('notifications'),
                   onTap: () => _open(context, widget.notificationsPage),
+                ),
+                const Divider(height: 1),
+                MenuSwitchTile(
+                  tileKey: const Key('menu_hide_in_city'),
+                  switchKey: const Key('menu_hide_in_city_switch'),
+                  icon: Icons.location_off_rounded,
+                  title: t.get('menu_hide_in_city'),
+                  value: _hideInCity,
+                  onChanged: _savingPrefs ? null : _setHideInCity,
+                ),
+                const Divider(height: 1),
+                MenuSwitchTile(
+                  tileKey: const Key('menu_interest_push'),
+                  switchKey: const Key('menu_interest_push_switch'),
+                  icon: Icons.favorite_border_rounded,
+                  title: t.get('menu_interest_push'),
+                  value: _interestPush,
+                  onChanged: _savingPrefs ? null : _setInterestPush,
                 ),
                 const Divider(height: 1),
                 _item(

@@ -23,6 +23,10 @@ import 'age_verification_page.dart';
 import '../services/age_verification.dart';
 import '../services/block_visibility.dart';
 import '../services/google_sign_in_service.dart';
+import '../services/welcome_choice.dart';
+import 'welcome_choice_page.dart';
+import 'edit_profile_page.dart';
+import '../services/profile_photo.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -37,6 +41,9 @@ class _AuthGateState extends State<AuthGate> {
 
   /// Evita remount do MainShell a cada rebuild do FutureBuilder.
   String? _cachedUid;
+
+  /// Já escolheu na tela de boas-vindas nesta sessão.
+  final Set<String> _welcomeDone = {};
   Future<DocumentSnapshot<Map<String, dynamic>>>? _userDocFuture;
 
   Future<DocumentSnapshot<Map<String, dynamic>>> _userDoc(String uid) {
@@ -181,6 +188,20 @@ class _AuthGateState extends State<AuthGate> {
             }
             if (!AgeVerification.isVerified(userSnap.data?.data())) {
               return const AgeVerificationPage();
+            }
+            // Conta antiga sem foto: completar perfil antes da Home.
+            if (ProfilePhoto.needsPhoto(userSnap.data?.data())) {
+              return const EditProfilePage();
+            }
+            if (WelcomeChoice.needsChoice(userSnap.data?.data()) &&
+                !_welcomeDone.contains(user.uid)) {
+              return WelcomeChoicePage(
+                onChoose: (exploreOnly) async {
+                  await WelcomeChoice.complete(user.uid,
+                      exploreOnly: exploreOnly);
+                  if (mounted) setState(() => _welcomeDone.add(user.uid));
+                },
+              );
             }
             BlockVisibility.attach(user.uid);
             WidgetsBinding.instance.addPostFrameCallback((_) {

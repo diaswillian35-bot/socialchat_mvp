@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/profile_photo.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'email_verification_page.dart';
@@ -80,6 +81,12 @@ class _SplashPageState extends State<SplashPage> {
 
       // Se não completou perfil => EditProfilePage
       if (!profileComplete) {
+        _replace(const EditProfilePage());
+        return;
+      }
+
+      // Foto de perfil obrigatória (inclusive contas antigas e admin).
+      if (ProfilePhoto.needsPhoto(data)) {
         _replace(const EditProfilePage());
         return;
       }

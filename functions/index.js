@@ -6221,3 +6221,108 @@ exports.deleteEventPermanently = socialOnCall({ region: "us-central1" }, async (
   await ref.delete();
   return { success: true, eventId, alreadyDeleted: false };
 });
+
+// =========================
+// PUSH "INTERESSES EM COMUM" (publicUsers.interests)
+// =========================
+const interestMatch = require("./interest_match_logic");
+
+exports.onPublicUserInterestsWritten = onDocumentWritten(
+  { document: "publicUsers/{uid}", region: "us-central1" },
+  async (event) => {
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    if (!interestMatch.shouldTrigger(before, after)) return;
+    const subjectUid = event.params.uid;
+    const db = admin.firestore();
+    const subjectSnap = await db.collection("users").doc(subjectUid).get();
+    const subject = subjectSnap.data();
+    // Nunca avisar sobre quem está em Só explorar ou oculto.
+    if (!interestMatch.isVisibleActive(subject)) return;
+    const interests = interestMatch.sanitizeInterests(subject.interests || after.interests);
+    if (!interests.length) return;
+    subject.interests = interests;
+
+    // array-contains-any usa só índice de campo único (sem índice composto novo).
+    const q = await db
+      .collection("publicUsers")
+      .where("interests", "array-contains-any", interests.slice(0, interestMatch.ARRAY_CONTAINS_ANY_MAX))
+      .limit(interestMatch.CANDIDATE_QUERY_LIMIT)
+      .get();
+    const uids = q.docs.map((d) => d.id).filter((id) => id !== subjectUid);
+    const candidates = [];
+    for (let i = 0; i < uids.length; i += 100) {
+      const refs = uids.slice(i, i + 100).map((id) => db.collection("users").doc(id));
+      const snaps = refs.length ? await db.getAll(...refs) : [];
+      for (const s of snaps) if (s.exists) candidates.push({ uid: s.id, data: s.data() });
+    }
+    const picked = interestMatch.pickRecipients({ subjectUid, subject, candidates });
+    const now = Date.now();
+    let sent = 0;
+    for (const r of picked) {
+      const ref = db.collection("users").doc(r.uid).collection("private").doc("interestPush");
+      // Controle no servidor: no máximo 1 por dia por destinatário.
+      const ok = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const last = snap.exists ? snap.get("lastInterestPushAt") : null;
+        const lastMs = last && typeof last.toMillis === "function" ? last.toMillis() : undefined;
+        if (!interestMatch.canReceive(r.data, now, lastMs)) return false;
+        tx.set(ref, { lastInterestPushAt: admin.firestore.Timestamp.fromMillis(now), lastAboutUid: subjectUid }, { merge: true });
+        return true;
+      });
+      if (!ok) continue;
+      const { title, body } = interestMatch.formatPush(interestMatch.langOf(r.data), subject.name, r.shared);
+      try {
+        await sendPushToUids({
+          uids: [r.uid],
+          title,
+          body,
+          data: { type: "interest_match", otherUid: subjectUid },
+          prefKey: "interest_match",
+        });
+        sent += 1;
+      } catch (e) {
+        console.error("onPublicUserInterestsWritten push:", e);
+      }
+    }
+    console.log(`onPublicUserInterestsWritten subject=${subjectUid} picked=${picked.length} sent=${sent}`);
+  },
+);
+
+// =========================
+// PUSH AO DONO: resultado da moderação do local (moderatePlace / painel web)
+// =========================
+const placeModerationPush = require("./place_moderation_push_logic");
+
+exports.onPlaceModerated = onDocumentUpdated(
+  { document: "places/{placeId}", region: "us-central1" },
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    const outcome = placeModerationPush.moderationOutcome(before, after);
+    if (!outcome) return;
+    const placeId = event.params.placeId;
+    const db = admin.firestore();
+    const access = await db.doc(`places/${placeId}/private/access`).get();
+    const ownerUid = placeModerationPush.ownerUidOf(after, access.exists ? access.data() : null);
+    if (!ownerUid) return;
+    const owner = (await db.collection("users").doc(ownerUid).get()).data() || {};
+    const { title, body } = placeModerationPush.formatModerationPush(
+      placeModerationPush.langOf(owner),
+      outcome,
+      after.name,
+      after.moderationReason,
+    );
+    try {
+      await sendPushToUids({
+        uids: [ownerUid],
+        title,
+        body,
+        data: placeModerationPush.pushData(outcome, placeId),
+        prefKey: "place_moderation",
+      });
+    } catch (e) {
+      console.error("onPlaceModerated push:", e);
+    }
+  },
+);

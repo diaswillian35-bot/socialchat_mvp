@@ -127,12 +127,14 @@ function canEditPlace({ uid, isSuperAdmin, placeData, accessData }) {
 }
 
 /** Patch de moderação (admin). */
-function moderationPatch(decision) {
+function moderationPatch(decision, reason) {
   if (decision === "approve") {
-    return { moderationStatus: "published", status: "approved", active: true };
+    return { moderationStatus: "published", status: "approved", active: true, moderationReason: "" };
   }
   if (decision === "reject") {
-    return { moderationStatus: "rejected", status: "rejected", active: false };
+    // Motivo da recusa (opcional no app antigo; o painel web exige).
+    const r = String(reason == null ? "" : reason).replace(/\s+/g, " ").trim().slice(0, 300);
+    return { moderationStatus: "rejected", status: "rejected", active: false, moderationReason: r };
   }
   return null;
 }

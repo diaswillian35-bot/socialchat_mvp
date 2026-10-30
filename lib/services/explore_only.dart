@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import 'presence_service.dart';
 
 /// Modo "Só explorar" (users/{uid}.exploreOnly, espelhado em publicUsers).
 ///
@@ -72,6 +73,17 @@ class ExploreOnly extends ChangeNotifier {
         .doc(uid)
         .set({field: value, 'updatedAt': now}, SetOptions(merge: true));
     instance._set(value);
+  }
+
+  /// Liga/desliga o modo (users + publicUsers) e para/retoma a presença,
+  /// igual ao Editar perfil.
+  static Future<void> setMode(String uid, bool value) async {
+    await save(uid, value);
+    if (value) {
+      await PresenceService.instance.stop();
+    } else {
+      unawaited(PresenceService.instance.start());
+    }
   }
 
   /// true (e avisa com SnackBar) se [otherUid] está no modo Só explorar e
