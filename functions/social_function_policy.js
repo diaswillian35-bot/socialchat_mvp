@@ -23,6 +23,7 @@ const entries = {
   onEventUpdated: ["trigger", "Automatic moderation/push; recipients are age-filtered."],
   onPublicUserInterestsWritten: ["trigger", "Interest-match push; recipients are age-filtered (pushPolicyBlockCode)."],
   onPlaceModerated: ["trigger", "Owner push after place moderation; recipient is age-filtered."],
+  onPlacePendingNotifyAdmins: ["trigger", "Admin-only push when a place enters review; no private data."],
 };
 
 for (const name of [

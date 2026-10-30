@@ -6326,3 +6326,39 @@ exports.onPlaceModerated = onDocumentUpdated(
     }
   },
 );
+
+// Aviso aos admins: local novo/reenviado em análise. Só título, cidade e país.
+const placeAdminNotice = require("./place_admin_notice_logic");
+exports.onPlacePendingNotifyAdmins = onDocumentWritten(
+  { document: "places/{placeId}", region: "us-central1" },
+  async (event) => {
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    if (!placeAdminNotice.shouldNotify(before, after)) return;
+    const placeId = event.params.placeId;
+    const db = admin.firestore();
+    const snap = await db.collection("admins").limit(200).get();
+    const uids = placeAdminNotice.adminUidsFrom(
+      snap.docs.map((d) => ({ id: d.id, data: d.data() })),
+    );
+    if (uids.length === 0) return;
+    for (const uid of uids) {
+      const u = (await db.collection("users").doc(uid).get()).data() || {};
+      const { title, body } = placeAdminNotice.formatNotice(
+        placeAdminNotice.langOf(u),
+        after,
+      );
+      try {
+        await sendPushToUids({
+          uids: [uid],
+          title,
+          body,
+          data: placeAdminNotice.pushData(placeId, after),
+          prefKey: "place_moderation",
+        });
+      } catch (e) {
+        console.error("onPlacePendingNotifyAdmins push:", e);
+      }
+    }
+  },
+);
