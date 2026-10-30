@@ -16,10 +16,11 @@ void main() {
     AppTexts.loadFromMap(map, const Locale('pt', 'BR'));
   });
 
-  testWidgets('FAB "Adicionar local" na aba Locais', (tester) async {
+  testWidgets('aba Locais sem FAB; entrada só pelo card do topo', (tester) async {
     await pumpLocais(tester, demoList());
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('locais_add_place_fab')), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byKey(const Key('locais_add_place_card')), findsOneWidget);
   });
 
   testWidgets('card "Cadastre seu local grátis" abre Adicionar local', (

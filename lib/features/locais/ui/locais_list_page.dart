@@ -115,15 +115,7 @@ class _LocaisListPageState extends State<LocaisListPage> {
     final visible = _visible;
     return Scaffold(
       backgroundColor: LocaisColors.bg,
-      // Mesmo botão da aba Eventos (criar evento).
-      floatingActionButton: FloatingActionButton(
-        key: const Key('locais_add_place_fab'),
-        heroTag: null,
-        backgroundColor: LocaisColors.navy,
-        tooltip: AppTexts.t('place_add_title'),
-        onPressed: _openAddPlace,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      // Entrada para cadastrar local: card do topo (sem FAB '+').
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {

@@ -1725,19 +1725,7 @@ Widget build(BuildContext context) {
 
   return Scaffold(
     backgroundColor: _bg,
-    floatingActionButton: FloatingActionButton(
-      heroTag: null,
-      backgroundColor: _remdyBlue,
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const CreateEventPage(),
-          ),
-        );
-      },
-      child: const Icon(Icons.add, color: Colors.white),
-    ),
+    // Entrada para criar evento: card do topo (sem FAB '+').
     body: SafeArea(
       child: uid == null
           ? Center(

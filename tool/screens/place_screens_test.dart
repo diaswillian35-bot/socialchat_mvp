@@ -141,9 +141,6 @@ void main() {
           onTap: () {},
         ),
       ])),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF313A5F), onPressed: () {},
-        child: const Icon(Icons.add, color: Colors.white)),
     ));
     await _shot(tester, '8_eventos_card');
   });
