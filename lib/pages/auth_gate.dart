@@ -42,7 +42,7 @@ class _AuthGateState extends State<AuthGate> {
   /// Evita remount do MainShell a cada rebuild do FutureBuilder.
   String? _cachedUid;
 
-  /// Já escolheu na tela de boas-vindas nesta sessão.
+  /// Pop-up de boas-vindas já mostrado nesta sessão.
   final Set<String> _welcomeDone = {};
   Future<DocumentSnapshot<Map<String, dynamic>>>? _userDocFuture;
 
@@ -193,16 +193,6 @@ class _AuthGateState extends State<AuthGate> {
             if (ProfilePhoto.needsPhoto(userSnap.data?.data())) {
               return const EditProfilePage();
             }
-            if (WelcomeChoice.needsChoice(userSnap.data?.data()) &&
-                !_welcomeDone.contains(user.uid)) {
-              return WelcomeChoicePage(
-                onChoose: (exploreOnly) async {
-                  await WelcomeChoice.complete(user.uid,
-                      exploreOnly: exploreOnly);
-                  if (mounted) setState(() => _welcomeDone.add(user.uid));
-                },
-              );
-            }
             BlockVisibility.attach(user.uid);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               // Garante writer mesmo se MainShell ainda não montou.
@@ -216,6 +206,20 @@ class _AuthGateState extends State<AuthGate> {
               ShareExtensionSessionService.ensureSession();
               ShareExtensionIncomingService.consumePendingJobs();
               PushService.flushPendingOpen();
+              // Boas-vindas (1x): pop-up sobre a Home, depois do gate da
+              // foto de perfil e do perfil completo.
+              if (WelcomeChoice.needsChoice(userSnap.data?.data()) &&
+                  _welcomeDone.add(user.uid)) {
+                final ctx = PushService.navKey.currentContext;
+                if (ctx != null) {
+                  WelcomeChoiceDialog.show(
+                    ctx,
+                    onChoose: (exploreOnly) => WelcomeChoice.complete(
+                        user.uid,
+                        exploreOnly: exploreOnly),
+                  );
+                }
+              }
             });
             return const MainShell();
           },

@@ -48,6 +48,7 @@ dependencies:
   timezone: ^0.9.4
   flutter_tts: ^4.2.5
   firebase_database: ^11.3.10
+  in_app_review: ^2.0.12
  
 
 dev_dependencies:

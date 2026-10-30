@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'app_review_prompt.dart';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -76,6 +77,8 @@ class EventManagementService {
 
     final callable = _functions.httpsCallable('createEvent');
     final result = await callable.call(payload);
+    // Momento positivo: evento criado.
+    AppReviewPrompt.instance.onEventCreated();
     return Map<String, dynamic>.from(result.data as Map);
   }
 

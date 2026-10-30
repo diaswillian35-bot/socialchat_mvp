@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'app_review_prompt.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -92,7 +93,10 @@ class OutgoingTextMessageService {
     if (request.target == OutgoingTextSendTarget.conversation) {
       return _sendDm(uid: uid, request: request, text: text);
     }
-    return _sendGroup(uid: uid, request: request, text: text);
+    final groupResult =
+        await _sendGroup(uid: uid, request: request, text: text);
+    if (groupResult.ok) AppReviewPrompt.instance.onMessageSent();
+    return groupResult;
   }
 
   Future<OutgoingTextSendResult> _sendDm({

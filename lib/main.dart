@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'services/app_review_prompt.dart';
 
 import 'package:app_links/app_links.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -79,6 +80,7 @@ Future<void> main() async {
 
   await AppTexts.load(deviceLocale);
 
+  AppReviewPrompt.instance.recordLaunch();
   runApp(const MyApp());
 }
 

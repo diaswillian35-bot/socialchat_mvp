@@ -206,36 +206,45 @@ void main() {
       expect(WelcomeChoice.needsChoice({'profileComplete': false}), isFalse);
       expect(WelcomeChoice.needsChoice(null), isFalse);
     });
-    testWidgets('aparece uma vez e ativa o modo Só explorar', (tester) async {
-      // Simula o AuthGate: o doc ganha welcomeChoiceDone e exploreOnly.
+    testWidgets('pop-up aparece uma vez, sem foto, e ativa o modo',
+        (tester) async {
       final doc = <String, dynamic>{'profileComplete': true};
       var shows = 0;
-      Widget gate() => StatefulBuilder(builder: (context, setState) {
-            if (!WelcomeChoice.needsChoice(doc)) {
-              return const Scaffold(body: Text('HOME'));
-            }
-            shows++;
-            return WelcomeChoicePage(onChoose: (explore) async {
-              setState(() {
-                doc[ExploreOnly.field] = explore;
-                doc[WelcomeChoice.field] = true;
-              });
-            });
-          });
-      await tester.pumpWidget(_app(gate()));
-      expect(find.text('Só explorar locais e eventos'), findsOneWidget);
+      Future<void> maybeShow(BuildContext ctx) async {
+        if (!WelcomeChoice.needsChoice(doc)) return;
+        shows++;
+        await WelcomeChoiceDialog.show(ctx, onChoose: (explore) async {
+          doc[ExploreOnly.field] = explore;
+          doc[WelcomeChoice.field] = true;
+        });
+      }
+
+      await tester.pumpWidget(_app(Scaffold(
+          body: Builder(
+              builder: (ctx) => TextButton(
+                  onPressed: () => maybeShow(ctx),
+                  child: const Text('HOME'))))));
+      await tester.tap(find.text('HOME'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('welcome_choice_dialog')), findsOneWidget);
+      expect(find.byType(Image), findsNothing);
       expect(find.text('Tudo grátis no lançamento'), findsOneWidget);
       await tester.tap(find.byKey(const Key('welcome_explore_only')));
       await tester.pumpAndSettle();
-      expect(find.text('HOME'), findsOneWidget);
+      expect(find.byKey(const Key('welcome_choice_dialog')), findsNothing);
       expect(doc['exploreOnly'], isTrue);
-      await tester.pumpWidget(_app(gate()));
-      expect(find.text('HOME'), findsOneWidget);
+      await tester.tap(find.text('HOME'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('welcome_choice_dialog')), findsNothing);
       expect(shows, 1);
     });
     test('AuthGate grava via WelcomeChoice.complete', () {
       final s = _src('lib/pages/auth_gate.dart');
       expect(s.contains('WelcomeChoice.needsChoice'), isTrue);
+      expect(s.contains('WelcomeChoiceDialog.show'), isTrue);
+      // Ordem: foto obrigatória (gate) antes do pop-up.
+      expect(s.indexOf('ProfilePhoto.needsPhoto'),
+          lessThan(s.indexOf('WelcomeChoiceDialog.show')));
       expect(s.contains('WelcomeChoice.complete'), isTrue);
       expect(
           _src('lib/services/welcome_choice.dart')
@@ -446,8 +455,18 @@ void main() {
       tester.view.physicalSize = const Size(390 * 2, 844 * 2);
       tester.view.devicePixelRatio = 2;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(_app(WelcomeChoicePage(onChoose: (_) async {})));
-      await _shot(tester, '15_boas_vindas');
+      await tester.pumpWidget(RepaintBoundary(
+          key: const Key('shot_full'),
+          child: _app(Scaffold(
+              backgroundColor: const Color(0xFFF6F7FB),
+              body: Builder(builder: (ctx) {
+                WidgetsBinding.instance.addPostFrameCallback((_) =>
+                    WelcomeChoiceDialog.show(ctx, onChoose: (_) async {}));
+                return const SizedBox.expand();
+              })))));
+      await tester.pumpAndSettle();
+      await expectLater(find.byKey(const Key('shot_full')),
+          matchesGoldenFile('goldens/15_boas_vindas.png'));
     });
     testWidgets('16 interesses', (tester) async {
       tester.view.physicalSize = const Size(390 * 2, 600 * 2);

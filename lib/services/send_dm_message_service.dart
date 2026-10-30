@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'app_review_prompt.dart';
 import 'package:flutter/foundation.dart';
 
 import 'dm_reply_quota.dart';
@@ -61,6 +62,10 @@ class SendDmMessageService {
       DmReplyQuota? quota;
       if (rqRaw is Map) {
         quota = DmReplyQuota.fromMap(Map<String, dynamic>.from(rqRaw));
+      }
+      if (data['ok'] == true && data['idempotentReplay'] != true) {
+        // Momento positivo: pedido oficial de avaliação (regras no serviço).
+        AppReviewPrompt.instance.onMessageSent();
       }
       return SendDmMessageResult(
         ok: data['ok'] == true,

@@ -1,21 +1,34 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
-import '../widgets/remdy_logo.dart';
 
-/// Boas-vindas do 1º acesso: "Quero conhecer pessoas" ou
-/// "Só explorar locais e eventos" (liga o modo Só explorar).
-class WelcomeChoicePage extends StatefulWidget {
-  const WelcomeChoicePage({super.key, required this.onChoose});
+/// Pop-up de boas-vindas do 1º acesso (sobre a Home, sem foto/logo):
+/// "Quero conhecer pessoas" ou "Só explorar locais e eventos" (liga o modo
+/// Só explorar). Fecha depois da escolha.
+class WelcomeChoiceDialog extends StatefulWidget {
+  const WelcomeChoiceDialog({super.key, required this.onChoose});
+
+  /// Mostra uma vez (quem chama confere welcomeChoiceDone). Sem fechar
+  /// tocando fora: a pessoa escolhe uma das opções.
+  static Future<void> show(
+    BuildContext context, {
+    required Future<void> Function(bool exploreOnly) onChoose,
+  }) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => WelcomeChoiceDialog(onChoose: onChoose),
+    );
+  }
 
   /// Recebe exploreOnly (true = Só explorar).
   final Future<void> Function(bool exploreOnly) onChoose;
 
   @override
-  State<WelcomeChoicePage> createState() => _WelcomeChoicePageState();
+  State<WelcomeChoiceDialog> createState() => _WelcomeChoiceDialogState();
 }
 
-class _WelcomeChoicePageState extends State<WelcomeChoicePage> {
+class _WelcomeChoiceDialogState extends State<WelcomeChoiceDialog> {
   static const Color _remdyBlue = Color(0xFF313A5F);
   static const Color _text = Color(0xFF111827);
   static const Color _muted = Color(0xFF6B7280);
@@ -28,6 +41,7 @@ class _WelcomeChoicePageState extends State<WelcomeChoicePage> {
     setState(() => _busy = true);
     try {
       await widget.onChoose(exploreOnly);
+      if (mounted) Navigator.of(context).pop();
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -91,42 +105,41 @@ class _WelcomeChoicePageState extends State<WelcomeChoicePage> {
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
-    return Scaffold(
-      key: const Key('welcome_choice_page'),
+    return Dialog(
+      key: const Key('welcome_choice_dialog'),
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Center(child: RemdyLogo()),
-            const SizedBox(height: 18),
             Text(t.get('welcome_title'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                    color: _text, fontWeight: FontWeight.w900, fontSize: 22)),
+                    color: _text, fontWeight: FontWeight.w900, fontSize: 20)),
             const SizedBox(height: 6),
             Text(t.get('welcome_subtitle'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     color: _muted, fontWeight: FontWeight.w600, fontSize: 14)),
-            const SizedBox(height: 12),
-            Center(
-              child: Container(
-                key: const Key('welcome_launch_free'),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF16A34A).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(t.get('welcome_launch_free'),
-                    style: const TextStyle(
-                        color: Color(0xFF16A34A),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11)),
+            const SizedBox(height: 10),
+            Container(
+              key: const Key('welcome_launch_free'),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF16A34A).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
               ),
+              child: Text(t.get('welcome_launch_free'),
+                  style: const TextStyle(
+                      color: Color(0xFF16A34A),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11)),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             _option(
               key: const Key('welcome_meet_people'),
               icon: Icons.people_alt_rounded,
@@ -134,7 +147,7 @@ class _WelcomeChoicePageState extends State<WelcomeChoicePage> {
               info: t.get('welcome_meet_info'),
               exploreOnly: false,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             _option(
               key: const Key('welcome_explore_only'),
               icon: Icons.explore_rounded,
@@ -142,14 +155,14 @@ class _WelcomeChoicePageState extends State<WelcomeChoicePage> {
               info: t.get('welcome_explore_info'),
               exploreOnly: true,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Text(t.get('welcome_change_later'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     color: _muted, fontWeight: FontWeight.w600, fontSize: 12)),
             if (_busy) ...[
-              const SizedBox(height: 14),
-              const Center(child: CircularProgressIndicator()),
+              const SizedBox(height: 12),
+              const CircularProgressIndicator(),
             ],
           ],
         ),
