@@ -196,6 +196,9 @@ class CountryPeopleView {
   final List<CountryStateChip> chips;
 
   static const int maxCommon = 12;
+
+  /// Mínimo de pessoas em "Em comum" antes de completar com a mesma cidade.
+  static const int minCommonFill = 6;
   static const int abroadOpenStates = 2;
 
   static String stateKeyOf(CountryPerson p) =>
@@ -288,7 +291,9 @@ class CountryPeopleView {
 
     final nearby = <CountryPeopleRow>[
       if (h.sameCity != null)
-        ...h.sameCity!.people.map((p) => row(p, showDistance: false)),
+        ...h.sameCity!.people
+            .where((p) => !p.hideInCity)
+            .map((p) => row(p, showDistance: false)),
     ];
     final regionRows = h.region.expand((g) => g.people).map(row).toList();
     _stableSortByKm(regionRows);
@@ -321,6 +326,11 @@ class CountryPeopleView {
       final viewerInterests = UserInterests.fromUserData(viewer);
       final byInterest = <CommonMatch>[];
       final byHometown = <CommonMatch>[];
+      final bySameCity = <CommonMatch>[];
+      final sameCityUids = {
+        for (final p in h.sameCity?.people ?? const <CountryPerson>[])
+          if (!p.hideInCity) p.uid
+      };
       for (final p in people) {
         final shared = UserInterests.common(viewerInterests, p.interests);
         if (shared.isNotEmpty) {
@@ -343,6 +353,11 @@ class CountryPeopleView {
               person: p,
               reason: CommonReason.livesInYourHometown,
               city: hometown!.city));
+        } else if (sameCityUids.contains(p.uid)) {
+          bySameCity.add(CommonMatch(
+              person: p,
+              reason: CommonReason.sameCity,
+              city: PeopleCountryHierarchy.cleanCity(p.city, p.countryCode)));
         }
       }
       int tie(CommonMatch a, CommonMatch b) {
@@ -363,10 +378,20 @@ class CountryPeopleView {
       common
         ..addAll(byInterest)
         ..addAll(byHometown);
+      // Depois, a mesma cidade (como antes do build 39), completando até
+      // [minCommonFill] para a seção nunca ficar vazia quando há alguém.
+      if (common.length < minCommonFill) {
+        bySameCity.sort(tie);
+        common.addAll(bySameCity.take(minCommonFill - common.length));
+      }
       if (common.length > maxCommon) {
         common.removeRange(maxCommon, common.length);
       }
-      final shown = common.map((m) => m.person.uid).toSet();
+      // Mesma cidade continua também em "Perto de você" (é só um atalho).
+      final shown = common
+          .where((m) => m.reason != CommonReason.sameCity)
+          .map((m) => m.person.uid)
+          .toSet();
       nearby.removeWhere((r) => shown.contains(r.person.uid));
       ownRows.removeWhere((r) => shown.contains(r.person.uid));
       for (final sec in others) {

@@ -86,8 +86,8 @@ void main() {
     final reasons = {for (final m in v.common) m.person.uid: m.reason};
     expect(reasons['floripa'], CommonReason.sameHometown);
     expect(reasons['cm'], CommonReason.livesInYourHometown);
-    // Mesma cidade fica em "Perto de você" (não em "Em comum").
-    expect(reasons.containsKey('nav'), isFalse);
+    // Mesma cidade completa "Em comum" e continua em "Perto de você".
+    expect(reasons['nav'], CommonReason.sameCity);
     expect(uids(v.nearby).first, 'nav');
     expect(reasons.containsKey('itj'), isFalse);
     expect(v.common.first.person.uid, 'floripa');

@@ -18,6 +18,7 @@ class CountryPerson {
     this.hometownSubdivision = '',
     this.hometownCountryCode = '',
     this.interests = const [],
+    this.hideInCity = false,
   });
 
   final String uid;
@@ -36,6 +37,9 @@ class CountryPerson {
 
   /// Chaves de interesses (users.interests).
   final List<String> interests;
+
+  /// "Não aparecer na minha cidade": some de "Perto de você"/mesma cidade.
+  final bool hideInCity;
 }
 
 class CountryCityGroup {

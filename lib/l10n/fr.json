@@ -1684,5 +1684,8 @@
   "interest_cars": "voitures",
   "profile_photo_add": "Ajoutez votre photo de profil (obligatoire)",
   "profile_photo_change": "Touchez pour changer la photo",
-  "profile_photo_required": "Ajoutez une photo de profil pour continuer."
+  "profile_photo_required": "Ajoutez une photo de profil pour continuer.",
+  "people_reason_short_interest": "Aime {interest}",
+  "people_reason_short_same_city": "Vit à {city}",
+  "people_reason_short_hometown": "De {city}"
 }

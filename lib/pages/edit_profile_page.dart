@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/nearby_visibility.dart';
 import '../services/explore_only.dart';
 import '../services/presence_service.dart';
 import '../services/user_interests.dart';
@@ -66,6 +67,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   double? _selectedLng;
 
   bool _nearbyEnabled = false;
+  bool _hideInCity = false;
   bool _exploreOnly = false;
   List<String> _interests = const [];
   String _photoUrl = '';
@@ -156,6 +158,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           : double.tryParse((savedLng ?? '').toString());
 
       _nearbyEnabled = data['nearbyEnabled'] == true;
+      _hideInCity = NearbyVisibility.hideInCityFromData(data);
       _exploreOnly = data['exploreOnly'] == true;
       _interests = UserInterests.fromUserData(data);
       _photoUrl = ProfilePhoto.urlFromData(data);
@@ -506,6 +509,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'cityLat': _selectedLat,
         'cityLng': _selectedLng,
         'nearbyEnabled': _nearbyEnabled,
+        ...NearbyVisibility.payloadForHide(_hideInCity),
         'exploreOnly': _exploreOnly,
         UserInterests.field: UserInterests.sanitize(_interests),
         ..._hometownPayload(),
@@ -544,6 +548,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'lng': _selectedLng,
         'location': _displayLocation,
         'nearbyEnabled': _nearbyEnabled,
+        ...NearbyVisibility.payloadForHide(_hideInCity),
         'exploreOnly': _exploreOnly,
         UserInterests.field: UserInterests.sanitize(_interests),
         'about': about,
@@ -832,11 +837,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
         children: [
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            // "Não aparecer na minha cidade" = nearbyEnabled false.
-            value: !_nearbyEnabled,
+            // "Não aparecer na minha cidade" = hideInCity (ausente = visível).
+            value: _hideInCity,
             onChanged: (value) {
               setState(() {
-                _nearbyEnabled = !value;
+                _hideInCity = value;
               });
             },
             title: Text(

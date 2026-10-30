@@ -90,6 +90,15 @@ class UserInterests {
         .replaceAll('{count}', '${shared.length - 1}');
   }
 
+  /// Motivo curto para o carrossel ("Curte carros").
+  static String shortReasonText(List<String> shared, [AppTexts? t]) {
+    final tx = t ?? AppTexts.current;
+    if (shared.isEmpty) return '';
+    return tx
+        .get('people_reason_short_interest')
+        .replaceAll('{interest}', label(shared.first, tx));
+  }
+
   /// Grava em users e publicUsers.
   static Future<void> save(String uid, List<String> interests) async {
     final clean = sanitize(interests);

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:socialchat_mvp/widgets/common_carousel.dart';
 import 'package:socialchat_mvp/l10n/app_texts.dart';
 import 'package:socialchat_mvp/pages/welcome_choice_page.dart';
 import 'package:socialchat_mvp/services/explore_only.dart';
@@ -164,12 +165,13 @@ void main() {
   });
 
   group('switch Não aparecer na minha cidade (Menu)', () {
-    test('lógica invertida de nearbyEnabled', () {
-      expect(NearbyVisibility.payloadForHide(true), {'nearbyEnabled': false});
-      expect(NearbyVisibility.payloadForHide(false), {'nearbyEnabled': true});
-      expect(NearbyVisibility.hideInCityFromData({'nearbyEnabled': true}),
+    test('hideInCity próprio: ausente = visível; nearbyEnabled não conta', () {
+      expect(NearbyVisibility.payloadForHide(true), {'hideInCity': true});
+      expect(NearbyVisibility.payloadForHide(false), {'hideInCity': false});
+      expect(NearbyVisibility.hideInCityFromData({}), isFalse);
+      expect(NearbyVisibility.hideInCityFromData({'nearbyEnabled': false}),
           isFalse);
-      expect(NearbyVisibility.hideInCityFromData({}), isTrue);
+      expect(NearbyVisibility.hideInCityFromData({'hideInCity': true}), isTrue);
       expect(InterestPushPref.enabledFromData({}), isTrue);
       expect(InterestPushPref.enabledFromData({'interestPushEnabled': false}),
           isFalse);
@@ -302,9 +304,14 @@ void main() {
       ];
       final v = CountryPeopleView.build(
           people: people, viewer: viewer, countryCode: 'br');
-      expect(v.common.map((m) => m.person.uid), ['tres', 'dois', 'um']);
-      expect(v.common.every((m) => m.reason == CommonReason.sharedInterests),
+      // Interesses primeiro; depois completa com a mesma cidade.
+      expect(v.common.map((m) => m.person.uid), ['tres', 'dois', 'um', 'nada']);
+      expect(
+          v.common
+              .take(3)
+              .every((m) => m.reason == CommonReason.sharedInterests),
           isTrue);
+      expect(v.common.last.reason, CommonReason.sameCity);
       final below = {
         ...v.nearby.map((r) => r.person.uid),
         ...v.ownStateRows.map((r) => r.person.uid),
@@ -365,8 +372,151 @@ void main() {
     });
   });
 
+  group('Em comum: carrossel e nunca vazio (t335u/t336u)', () {
+    final viewer = {
+      'homeCountryCode': 'br',
+      'cityName': 'Campo Mourão',
+      'stateName': 'PR',
+    };
+    test('sem interesses: completa com a mesma cidade', () {
+      final v = CountryPeopleView.build(people: [
+        _p('a', 'Campo Mourão', []),
+        _p('b', 'Campo Mourão', []),
+        _p('c', 'Curitiba', []),
+      ], viewer: viewer, countryCode: 'br');
+      expect(v.common.map((m) => m.person.uid).toSet(), {'a', 'b'});
+      expect(v.common.every((m) => m.reason == CommonReason.sameCity), isTrue);
+      // Continua também em "Perto de você".
+      expect(v.nearby.map((r) => r.person.uid), containsAll(['a', 'b']));
+    });
+    test('hideInCity some da mesma cidade e do Em comum', () {
+      final v = CountryPeopleView.build(people: [
+        _p('a', 'Campo Mourão', []),
+        const CountryPerson(
+            uid: 'h',
+            name: 'h',
+            city: 'Campo Mourão',
+            subdivision: 'PR',
+            countryCode: 'br',
+            hideInCity: true),
+      ], viewer: viewer, countryCode: 'br');
+      expect(v.common.map((m) => m.person.uid), ['a']);
+      expect(v.nearby.map((r) => r.person.uid), isNot(contains('h')));
+    });
+    test('textos curtos nos 5 idiomas', () {
+      for (final l in ['pt-BR', 'en', 'es', 'fr']) {
+        final m = _load(l);
+        for (final k in [
+          'people_reason_short_interest',
+          'people_reason_short_same_city',
+          'people_reason_short_hometown'
+        ]) {
+          expect(m[k], isA<String>(), reason: '$l $k');
+        }
+      }
+      expect(_load('pt-PT')['people_reason_short_interest'],
+          'Gosta de {interest}');
+      expect(UserInterests.shortReasonText(['cars']), 'Curte carros');
+    });
+    test('lista do país não exige nearbyEnabled', () {
+      final s = _src('lib/pages/country_people_page.dart');
+      expect(s.contains("data['nearbyEnabled'] != true"), isFalse);
+      expect(s.contains('CommonCarousel('), isTrue);
+    });
+    testWidgets('carrossel mais baixo que os cards antigos', (tester) async {
+      await tester.pumpWidget(_app(Scaffold(
+          body: CommonCarousel(items: [
+        for (final n in ['Ana Ribeiro', 'Matheus Matiuci'])
+          CommonCarouselItem(
+              uid: n,
+              name: n,
+              reason: 'Curte carros',
+              avatar: const CircleAvatar(radius: 28)),
+      ]))));
+      expect(commonCarouselHeight, lessThan(150));
+      expect(
+          tester
+              .getSize(find.byKey(const ValueKey('country-common-carousel')))
+              .height,
+          commonCarouselHeight);
+      expect(find.text('Ana'), findsOneWidget);
+      expect(find.text('Curte carros'), findsNWidgets(2));
+    });
+  });
+
   group('screenshots', () {
     setUpAll(_fonts);
+    testWidgets('20 em comum carrossel', (tester) async {
+      tester.view.physicalSize = const Size(390 * 2, 260 * 2);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final t = AppTexts.current;
+      const colors = [
+        Color(0xFF6366F1),
+        Color(0xFF10B981),
+        Color(0xFFF59E0B),
+        Color(0xFFEF4444),
+        Color(0xFF0EA5E9),
+        Color(0xFF8B5CF6)
+      ];
+      final ppl = [
+        [
+          'Ana Ribeiro',
+          UserInterests.shortReasonText(['cars'])
+        ],
+        [
+          'Matheus Matiuci',
+          UserInterests.shortReasonText(['music'])
+        ],
+        [
+          'Gabriel P.',
+          t
+              .get('people_reason_short_same_city')
+              .replaceAll('{city}', 'Campo Mourão')
+        ],
+        [
+          'Viviane',
+          t
+              .get('people_reason_short_same_city')
+              .replaceAll('{city}', 'Campo Mourão')
+        ],
+        [
+          'Bruno Assis',
+          t
+              .get('people_reason_short_same_city')
+              .replaceAll('{city}', 'Campo Mourão')
+        ],
+        [
+          'Gabrielly',
+          t.get('people_reason_short_hometown').replaceAll('{city}', 'Sarandi')
+        ],
+      ];
+      await tester.pumpWidget(_app(Scaffold(
+        appBar: AppBar(title: const Text('🇧🇷 Brasil')),
+        body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Text(t.get('people_in_common'),
+                style:
+                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          ),
+          CommonCarousel(items: [
+            for (var i = 0; i < ppl.length; i++)
+              CommonCarouselItem(
+                  uid: '$i',
+                  name: ppl[i][0],
+                  reason: ppl[i][1],
+                  avatar: CircleAvatar(
+                      radius: 28,
+                      backgroundColor: colors[i],
+                      child: Text(ppl[i][0][0],
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 22)))),
+          ]),
+        ]),
+      )));
+      await _shot(tester, '20_em_comum_carrossel');
+    });
     testWidgets('13 pessoas switch', (tester) async {
       tester.view.physicalSize = const Size(390 * 2, 844 * 2);
       tester.view.devicePixelRatio = 2;

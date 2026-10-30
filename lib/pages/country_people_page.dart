@@ -8,7 +8,9 @@ import 'package:share_plus/share_plus.dart';
 import '../services/remdy_launch_access.dart';
 import '../widgets/publish_cta_card.dart';
 import '../services/explore_only.dart';
+import '../services/nearby_visibility.dart';
 import '../services/user_interests.dart';
+import '../widgets/common_carousel.dart';
 import '../widgets/explore_only_bar.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
@@ -233,7 +235,6 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     // retiram a classificação por distância; não apagam o perfil do país.
     if (data['ageVerificationStatus'] != 'verified') return false;
     if (data['profileComplete'] != true) return false;
-    if (data['nearbyEnabled'] != true) return false;
     return true;
   }
 
@@ -446,8 +447,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
       ),
       bottomNavigationBar: ExploreOnlyBar(
         value: _viewerData?['exploreOnly'] == true,
-        onChanged:
-            _savingNearby || _myUid.isEmpty ? null : _setExploreOnly,
+        onChanged: _savingNearby || _myUid.isEmpty ? null : _setExploreOnly,
       ),
     );
   }
@@ -499,6 +499,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
       hometownSubdivision: (data['hometownState'] ?? '').toString(),
       hometownCountryCode: (data['hometownCountryCode'] ?? '').toString(),
       interests: UserInterests.fromUserData(data),
+      hideInCity: NearbyVisibility.hideInCityFromData(data),
     );
   }
 
@@ -548,17 +549,19 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     } else {
       if (view.common.isNotEmpty) {
         children.add(_sectionTitle(scheme, t.get('people_in_common')));
-        children.add(SizedBox(
-          height: 150,
-          child: ListView.separated(
-            key: const PageStorageKey('country-common'),
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: view.common.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (_, i) => _commonCard(t, scheme, view.common[i], docs),
-          ),
-        ));
+        children.add(CommonCarousel(items: [
+          for (final m in view.common)
+            CommonCarouselItem(
+              uid: m.person.uid,
+              name: m.person.name,
+              reason: _shortReasonText(t, m),
+              avatar: _Avatar(
+                  uid: m.person.uid,
+                  data: docs[m.person.uid]!.data(),
+                  radius: 28),
+              onTap: () => _openProfile(m.person.uid),
+            ),
+        ]));
       }
       if (view.nearby.isNotEmpty) {
         final city = view.referenceCity;
@@ -682,62 +685,21 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
         ),
       );
 
-  String _reasonText(AppTexts t, CommonMatch m) {
+  /// Motivo curto do carrossel "Em comum" (estilo stories).
+  String _shortReasonText(AppTexts t, CommonMatch m) {
     switch (m.reason) {
-      case CommonReason.sameHometown:
-        return t
-            .get('people_reason_same_hometown')
-            .replaceAll('{city}', m.city);
+      case CommonReason.sharedInterests:
+        return UserInterests.shortReasonText(m.interests, t);
+      case CommonReason.sameCity:
       case CommonReason.livesInYourHometown:
         return t
-            .get('people_reason_lives_in_hometown')
+            .get('people_reason_short_same_city')
             .replaceAll('{city}', m.city);
-      case CommonReason.sameCity:
-        return t.get('people_reason_same_city').replaceAll('{city}', m.city);
-      case CommonReason.sharedInterests:
-        return UserInterests.reasonText(m.interests, t);
+      case CommonReason.sameHometown:
+        return t
+            .get('people_reason_short_hometown')
+            .replaceAll('{city}', m.city);
     }
-  }
-
-  Widget _commonCard(AppTexts t, ColorScheme scheme, CommonMatch m,
-      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
-    final doc = docs[m.person.uid]!;
-    return SizedBox(
-      width: 128,
-      child: Material(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => _openProfile(m.person.uid),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _Avatar(uid: m.person.uid, data: doc.data(), radius: 22),
-                const SizedBox(height: 8),
-                Text(m.person.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: scheme.onSurface,
-                        fontSize: 14)),
-                const SizedBox(height: 2),
-                Text(_reasonText(t, m),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        color: scheme.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _personRow(AppTexts t, ColorScheme scheme, CountryPeopleRow r,

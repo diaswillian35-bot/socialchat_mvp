@@ -1684,5 +1684,8 @@
   "interest_cars": "carros",
   "profile_photo_add": "Adicione sua foto de perfil (obrigatória)",
   "profile_photo_change": "Toque para trocar a foto",
-  "profile_photo_required": "Adicione uma foto de perfil para continuar."
+  "profile_photo_required": "Adicione uma foto de perfil para continuar.",
+  "people_reason_short_interest": "Curte {interest}",
+  "people_reason_short_same_city": "Mora em {city}",
+  "people_reason_short_hometown": "De {city}"
 }

@@ -36,8 +36,11 @@ void main() {
   test('security and international chat paths remain wired', () {
     expect(source, contains('blockedUids.contains'));
     expect(source, contains("ageVerificationStatus'] != 'verified'"));
-    // Opt-in "Mostrar pessoas perto de mim" continua obrigatório.
-    expect(source, contains("data['nearbyEnabled'] != true"));
+    // Build 39: o antigo nearbyEnabled (falso para quase todos) não tira
+    // mais ninguém da lista do país; "Não aparecer na minha cidade" usa
+    // hideInCity (ausente = visível).
+    expect(source, isNot(contains("data['nearbyEnabled'] != true")));
+    expect(source, contains('NearbyVisibility.hideInCityFromData(data)'));
     expect(source, contains('InternationalChatService.canSendMessage'));
     expect(source, contains('BlockService.allowOpenPeer'));
   });

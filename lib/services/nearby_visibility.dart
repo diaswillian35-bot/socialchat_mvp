@@ -4,12 +4,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class NearbyVisibility {
   NearbyVisibility._();
 
-  static const String field = 'nearbyEnabled';
+  /// Campo próprio, opt-in: ausente = visível. Não reaproveita o antigo
+  /// `nearbyEnabled` (que nasceu falso para quase todo mundo).
+  static const String field = 'hideInCity';
 
   static bool hideInCityFromData(Map<String, dynamic>? data) =>
-      data?[field] != true;
+      data?[field] == true;
 
-  static Map<String, dynamic> payloadForHide(bool hide) => {field: !hide};
+  static Map<String, dynamic> payloadForHide(bool hide) => {field: hide};
 
   /// Grava em users e publicUsers (mesmos campos do Editar perfil).
   static Future<void> saveHideInCity(String uid, bool hide) async {

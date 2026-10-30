@@ -1684,5 +1684,8 @@
   "interest_cars": "cars",
   "profile_photo_add": "Add your profile photo (required)",
   "profile_photo_change": "Tap to change photo",
-  "profile_photo_required": "Add a profile photo to continue."
+  "profile_photo_required": "Add a profile photo to continue.",
+  "people_reason_short_interest": "Into {interest}",
+  "people_reason_short_same_city": "Lives in {city}",
+  "people_reason_short_hometown": "From {city}"
 }
