@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/publish_cta_card.dart';
 import '../../../l10n/app_texts.dart';
 import 'place_editor_page.dart';
 import '../../../widgets/remdy_logo.dart';
@@ -120,12 +121,7 @@ class _LocaisListPageState extends State<LocaisListPage> {
         heroTag: null,
         backgroundColor: LocaisColors.navy,
         tooltip: AppTexts.t('place_add_title'),
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const PlaceEditorPage()),
-          );
-        },
+        onPressed: _openAddPlace,
         child: const Icon(Icons.add, color: Colors.white),
       ),
       body: SafeArea(
@@ -148,6 +144,15 @@ class _LocaisListPageState extends State<LocaisListPage> {
       slivers: [
         SliverToBoxAdapter(child: _header(strings)),
         SliverToBoxAdapter(child: _searchField(strings)),
+        SliverToBoxAdapter(
+          child: PublishCtaCard(
+            key: const Key('locais_add_place_card'),
+            icon: Icons.storefront_outlined,
+            title: AppTexts.t('place_cta_title'),
+            subtitle: AppTexts.t('place_cta_subtitle'),
+            onTap: _openAddPlace,
+          ),
+        ),
         SliverToBoxAdapter(child: _categories(strings)),
         SliverToBoxAdapter(child: _toolbar(strings)),
         if (_loading)
@@ -205,6 +210,13 @@ class _LocaisListPageState extends State<LocaisListPage> {
           ),
         ],
       ),
+    );
+  }
+
+  void _openAddPlace() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PlaceEditorPage()),
     );
   }
 

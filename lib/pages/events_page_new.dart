@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../widgets/publish_cta_card.dart';
 import '../services/admin_access.dart';
 import 'create_event_page.dart';
 import 'edit_profile_page.dart';
@@ -1793,6 +1794,21 @@ Widget build(BuildContext context) {
                     _topHeader(),
                     _searchBox(
                       hint: _searchHintForScope(isBrazil: isBrazil),
+                    ),
+                    PublishCtaCard(
+                      key: const Key('events_create_event_card'),
+                      padding: const EdgeInsets.fromLTRB(10, 2, 10, 6),
+                      icon: Icons.event_available_outlined,
+                      title: AppTexts.t('event_cta_title'),
+                      subtitle: AppTexts.t('event_cta_subtitle'),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CreateEventPage(),
+                          ),
+                        );
+                      },
                     ),
                     _categoryFilters(),
                     _scopeFilters(myCity, countryLabel: countryLabel),

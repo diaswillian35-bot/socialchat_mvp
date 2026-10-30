@@ -1627,5 +1627,9 @@
   "place_approve": "Approve",
   "place_reject": "Reject",
   "place_approved_snack": "Place approved and published.",
-  "place_rejected_snack": "Place rejected."
+  "place_rejected_snack": "Place rejected.",
+  "place_cta_title": "Own a business? List your place for free",
+  "place_cta_subtitle": "Restaurant, bar, café or lodging",
+  "event_cta_title": "Hosting an event? Promote it for free",
+  "event_cta_subtitle": "Create your event and invite people"
 }

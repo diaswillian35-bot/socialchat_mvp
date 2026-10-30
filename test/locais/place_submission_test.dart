@@ -22,6 +22,31 @@ void main() {
     expect(find.byKey(const Key('locais_add_place_fab')), findsOneWidget);
   });
 
+  testWidgets('card "Cadastre seu local grátis" abre Adicionar local', (
+    tester,
+  ) async {
+    await pumpLocais(tester, demoList());
+    await tester.pumpAndSettle();
+    expect(find.text('Tem um negócio? Cadastre seu local grátis'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('locais_add_place_card')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PlaceEditorPage), findsOneWidget);
+  });
+
+  test('textos dos cards nos 5 idiomas', () {
+    for (final l in ['pt-BR', 'pt-PT', 'en', 'es', 'fr']) {
+      final m = jsonDecode(File('lib/l10n/$l.json').readAsStringSync()) as Map;
+      for (final k in [
+        'place_cta_title',
+        'place_cta_subtitle',
+        'event_cta_title',
+        'event_cta_subtitle',
+      ]) {
+        expect((m[k] as String?)?.isNotEmpty, isTrue, reason: '$l $k');
+      }
+    }
+  });
+
   testWidgets('formulário em passos valida nome e cidade', (tester) async {
     await pumpLocais(tester, const PlaceEditorPage());
     await tester.pumpAndSettle();

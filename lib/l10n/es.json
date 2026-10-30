@@ -1627,5 +1627,9 @@
   "place_approve": "Aprobar",
   "place_reject": "Rechazar",
   "place_approved_snack": "Lugar aprobado y publicado.",
-  "place_rejected_snack": "Lugar rechazado."
+  "place_rejected_snack": "Lugar rechazado.",
+  "place_cta_title": "¿Tienes un negocio? Registra tu local gratis",
+  "place_cta_subtitle": "Restaurante, bar, café u hospedaje",
+  "event_cta_title": "¿Vas a hacer un evento? Difúndelo gratis",
+  "event_cta_subtitle": "Crea tu evento e invita a la gente"
 }

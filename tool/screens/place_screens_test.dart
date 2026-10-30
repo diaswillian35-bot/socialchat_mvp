@@ -17,6 +17,7 @@ import 'package:socialchat_mvp/features/locais/ui/locais_list_page.dart';
 import 'package:socialchat_mvp/features/locais/ui/place_editor_page.dart';
 import 'package:socialchat_mvp/features/locais/ui/place_submissions_page.dart';
 import 'package:socialchat_mvp/l10n/app_texts.dart';
+import 'package:socialchat_mvp/widgets/publish_cta_card.dart';
 
 const _fonts = '/Users/macbookairm1/Downloads/flutter/bin/cache/artifacts/material_fonts';
 
@@ -111,5 +112,39 @@ void main() {
     await tester.tap(find.text('Bar do Zé'));
     await tester.pumpAndSettle();
     await _shot(tester, '6_admin_aprovar_recusar');
+  });
+
+  testWidgets('cards de divulgação', (tester) async {
+    await _pump(tester, LocaisListPage(
+      repository: DemoPlaceRepository(),
+      clock: () => DateTime(2026, 10, 14, 15),
+    ));
+    await _shot(tester, '7_locais_card');
+    // Eventos: a página real depende do Firebase; captura o mesmo card
+    // com o fundo, a busca e os espaçamentos da aba Eventos.
+    await _pump(tester, Scaffold(
+      backgroundColor: const Color(0xFFF6F7FB),
+      body: SafeArea(child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 5, 10, 6),
+          child: TextField(decoration: InputDecoration(
+            hintText: AppTexts.t('events_search_hint'),
+            prefixIcon: const Icon(Icons.search), filled: true, fillColor: Colors.white,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+          )),
+        ),
+        PublishCtaCard(
+          padding: const EdgeInsets.fromLTRB(10, 2, 10, 6),
+          icon: Icons.event_available_outlined,
+          title: AppTexts.t('event_cta_title'),
+          subtitle: AppTexts.t('event_cta_subtitle'),
+          onTap: () {},
+        ),
+      ])),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: const Color(0xFF313A5F), onPressed: () {},
+        child: const Icon(Icons.add, color: Colors.white)),
+    ));
+    await _shot(tester, '8_eventos_card');
   });
 }

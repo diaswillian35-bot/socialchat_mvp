@@ -1386,5 +1386,9 @@
   "place_err_too_many": "Já tem demasiados locais em análise. Aguarde a aprovação.",
   "place_err_city": "Escolha a cidade do local.",
   "place_err_name": "Indique o nome do local.",
-  "place_hours_hint": "Ex.: Seg a sex, 11h às 23h"
+  "place_hours_hint": "Ex.: Seg a sex, 11h às 23h",
+  "place_cta_title": "Tem um negócio? Registe o seu local grátis",
+  "place_cta_subtitle": "Restaurante, bar, café ou alojamento",
+  "event_cta_title": "Vai organizar um evento? Divulgue grátis",
+  "event_cta_subtitle": "Crie o seu evento e convide as pessoas"
 }
