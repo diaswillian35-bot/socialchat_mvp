@@ -21,6 +21,9 @@ import '../services/group_read_service.dart';
 import '../services/chat_read_guard.dart';
 import '../services/conversation_unread.dart';
 import '../services/message_delivery_status.dart';
+import '../services/message_moderation.dart';
+import '../services/moderation_domain_cache.dart';
+import '../services/objectionable_content_filter.dart';
 import '../services/premium_access_service.dart';
 import '../services/remdy_launch_access.dart';
 import '../utils/chat_message_list_stability.dart';
@@ -1321,18 +1324,29 @@ class _GroupChatPageState extends State<GroupChatPage>
       text = item.text;
       pendingId = item.localId;
       reply = item.reply;
+      await ModerationDomainCache.ensureLoaded();
+      if (ObjectionableContentFilter.evaluate(text) != null) {
+        _toast(AppTexts.current.get('content_filter_blocked'));
+        return;
+      }
       if (!_beginPendingSend(pendingId)) return;
       _patchPendingText(pendingId, failed: false, sending: true);
     } else {
       final mySnap =
           await FirebaseFirestore.instance.collection('users').doc(myUid).get();
-      if (mySnap.data()?['shadowBan'] == true) {
+      if (mySnap.data()?['shadowBan'] == true ||
+          ModerationVisibility.isHiddenFromLists(mySnap.data())) {
         _toast(AppTexts.current.get('user_temporarily_silenced'));
         return;
       }
 
       text = ChatComposerText.prepareOutgoingText(_textC.text);
       if (text.isEmpty) return;
+      await ModerationDomainCache.ensureLoaded();
+      if (ObjectionableContentFilter.evaluate(text) != null) {
+        _toast(AppTexts.current.get('content_filter_blocked'));
+        return;
+      }
 
       final filterReject = ObjectionableContentFilter.rejectReason(text);
       if (filterReject != null) {
@@ -1454,6 +1468,7 @@ class _GroupChatPageState extends State<GroupChatPage>
     required String groupId,
     required String myUid,
     required String localPath,
+    required String messageId,
   }) async {
     final t = AppTexts.current;
     final file = File(localPath);
@@ -1477,7 +1492,13 @@ class _GroupChatPageState extends State<GroupChatPage>
         .child(myUid)
         .child(fileName);
 
-    final metadata = SettableMetadata(contentType: 'image/jpeg');
+    final metadata = SettableMetadata(
+      contentType: 'image/jpeg',
+      customMetadata: {
+        'fromUid': myUid,
+        'messageId': messageId,
+      },
+    );
 
     await ref.putFile(file, metadata);
     return await ref.getDownloadURL();
@@ -1519,7 +1540,8 @@ class _GroupChatPageState extends State<GroupChatPage>
       final mySnap =
           await FirebaseFirestore.instance.collection('users').doc(myUid).get();
 
-      if (mySnap.data()?['shadowBan'] == true) {
+      if (mySnap.data()?['shadowBan'] == true ||
+          ModerationVisibility.isHiddenFromLists(mySnap.data())) {
         _toast(AppTexts.current.get('user_temporarily_silenced'));
         return;
       }
@@ -1653,7 +1675,8 @@ class _GroupChatPageState extends State<GroupChatPage>
       final mySnap =
           await FirebaseFirestore.instance.collection('users').doc(myUid).get();
 
-      if (mySnap.data()?['shadowBan'] == true) {
+      if (mySnap.data()?['shadowBan'] == true ||
+          ModerationVisibility.isHiddenFromLists(mySnap.data())) {
         _toast(AppTexts.current.get('user_temporarily_silenced'));
         return;
       }
@@ -1689,6 +1712,7 @@ class _GroupChatPageState extends State<GroupChatPage>
           groupId: widget.groupId,
           myUid: myUid,
           localPath: path,
+          messageId: pendingId,
         );
         _patchPendingImage(pendingId, uploadedUrl: imageUrl);
       } else if (kDebugMode) {
@@ -2898,6 +2922,22 @@ class _GroupChatPageState extends State<GroupChatPage>
                                       forwarded: d['forwarded'] == true,
                                     );
                                   }
+                                } else if (MessageModeration.hidesImage(
+                                  status: MessageModeration.statusOf(d),
+                                  isMe: isMe,
+                                  type: type,
+                                )) {
+                                  bubbleWidget = _Bubble(
+                                    text: t.get('chat_image_blocked'),
+                                    isMe: isMe,
+                                    isDeleted: true,
+                                    timeText: _formatTime(timeTs),
+                                    statusText: null,
+                                    replyToText: replyToText,
+                                    replyToType: replyToType,
+                                    replyToIsMe: replyToIsMe,
+                                    replyToImageUrl: replyToImageUrl,
+                                  );
                                 } else if (type == 'image') {
                                   final imageUrl =
                                       (d['imageUrl'] ?? '').toString();
@@ -2908,6 +2948,21 @@ class _GroupChatPageState extends State<GroupChatPage>
                                     timeText: _formatTime(timeTs),
                                     statusText: statusText,
                                     forwarded: d['forwarded'] == true,
+                                  );
+                                } else if (MessageModeration.hidesText(
+                                  status: MessageModeration.statusOf(d),
+                                  type: type,
+                                )) {
+                                  bubbleWidget = _Bubble(
+                                    text: t.get('chat_message_blocked'),
+                                    isMe: isMe,
+                                    isDeleted: true,
+                                    timeText: _formatTime(timeTs),
+                                    statusText: null,
+                                    replyToText: '',
+                                    replyToType: 'text',
+                                    replyToIsMe: false,
+                                    replyToImageUrl: '',
                                   );
                                 } else {
                                   final text = (d['text'] ?? '').toString();
@@ -3727,14 +3782,16 @@ class _ImageBubble extends StatelessWidget {
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => _FullScreenImagePage(imageUrl: imageUrl),
-            ),
-          );
-        },
+        onTap: imageUrl.isEmpty
+            ? null
+            : () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _FullScreenImagePage(imageUrl: imageUrl),
+                  ),
+                );
+              },
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 5),
           padding: const EdgeInsets.all(8),

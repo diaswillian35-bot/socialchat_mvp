@@ -15,6 +15,9 @@ const {
 const { isObjectionableText } = require("./objectionable_content_filter");
 const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
 const { readDmQuotaConfig } = require("./dm_quota_config");
+const { moderationSendBlock } = require("./moderation/account");
+const { evaluateText } = require("./moderation/text_filter");
+const { loadModerationConfig } = require("./moderation/config");
 
 function asUidList(raw) {
   if (!Array.isArray(raw)) return [];
@@ -22,6 +25,8 @@ function asUidList(raw) {
 }
 
 function accountBlocked(userData = {}) {
+  const suspended = moderationSendBlock(userData);
+  if (suspended) return suspended;
   if (userData.isBanned === true) return "banned";
   if (userData.shadowBan === true) return "shadow_ban";
   if (
@@ -65,6 +70,10 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
 
   if (!conversationId) {
     throw new HttpsError("invalid-argument", "conversationId required.");
+  }
+  const modCfg = await loadModerationConfig(db);
+  if (modCfg.enabled && evaluateText(text, modCfg)) {
+    throw new HttpsError("failed-precondition", "content_filter_blocked");
   }
 
   const idemRef = db.collection("dmSendIdempotency").doc(`${uid}_${requestId}`);
@@ -129,7 +138,8 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
     if (
       blockedSelf === "banned" ||
       blockedSelf === "deleted" ||
-      blockedSelf === "disabled"
+      blockedSelf === "disabled" ||
+      blockedSelf === "suspended"
     ) {
       throw new HttpsError("permission-denied", "Account not allowed.");
     }

@@ -195,6 +195,8 @@
   "chat_photo_deleted": "Photo supprimée",
   "chat_error_sending_image": "Erreur lors de l'envoi de l'image :",
   "chat_image_not_found": "Image introuvable.",
+  "chat_image_blocked": "Image supprimée pour non-respect des règles",
+  "chat_message_blocked": "Message supprimé pour non-respect des règles",
   "chat_empty_image": "Image vide.",
   "invite_friends": "Inviter des amis",
   "invite_unlock_rewards": "Invitez des amis et débloquez des récompenses",

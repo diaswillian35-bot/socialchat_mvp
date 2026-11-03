@@ -7,6 +7,7 @@ import '../services/conversation_inbox_visibility.dart';
 import '../services/conversation_unread.dart';
 import '../services/block_service.dart';
 import '../services/block_visibility.dart';
+import '../services/message_moderation.dart';
 import '../widget/online_dot.dart';
 import '../widgets/blocked_uids_builder.dart';
 import 'chat_page.dart';
@@ -243,7 +244,12 @@ class _MessagesPageState extends State<MessagesPage> {
                 orElse: () => '',
               );
 
-              final lastMessage = (data['lastMessage'] ?? '').toString();
+              final lastMessage = MessageModeration.inboxPreview(
+                data: data,
+                raw: (data['lastMessage'] ?? '').toString(),
+                imageLabel: t.get('chat_image_blocked'),
+                textLabel: t.get('chat_message_blocked'),
+              );
 
               final unreadFinal =
                   ConversationUnread.resolveMyUnread(data, myUid);

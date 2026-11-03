@@ -12,6 +12,7 @@ import 'group_ban_service.dart';
 import 'group_discovery_logic.dart';
 import 'dm_reply_quota.dart';
 import 'international_chat_service.dart';
+import 'message_moderation.dart';
 import 'outgoing_text_message_service.dart';
 import 'premium_access_service.dart';
 import 'remdy_launch_access.dart';
@@ -69,7 +70,8 @@ class OutgoingImageMessageService {
     if (myData['shadowBan'] == true) {
       return OutgoingTextSendResult.fail('user_temporarily_silenced');
     }
-    if (myData['isBanned'] == true) {
+    if (myData['isBanned'] == true ||
+        ModerationVisibility.isHiddenFromLists(myData)) {
       return OutgoingTextSendResult.fail('share_in_no_permission');
     }
     if (await BlockService.isEitherBlocked(otherUid)) {
@@ -106,6 +108,11 @@ class OutgoingImageMessageService {
     }
 
     try {
+      final msgs = _db
+          .collection('conversations')
+          .doc(conversationId)
+          .collection('messages');
+      final pendingId = msgs.doc().id;
       final fileName =
           'remdy_share_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = _storage
@@ -121,15 +128,11 @@ class OutgoingImageMessageService {
             'fromUid': uid,
             'toUid': otherUid,
             'conversationId': conversationId,
+            'messageId': pendingId,
           },
         ),
       );
       final imageUrl = await ref.getDownloadURL();
-      final msgs = _db
-          .collection('conversations')
-          .doc(conversationId)
-          .collection('messages');
-      final pendingId = msgs.doc().id;
       await msgs.doc(pendingId).set({
         'type': 'image',
         'imageUrl': imageUrl,
@@ -184,7 +187,8 @@ class OutgoingImageMessageService {
     if (myData['shadowBan'] == true) {
       return OutgoingTextSendResult.fail('user_temporarily_silenced');
     }
-    if (myData['isBanned'] == true) {
+    if (myData['isBanned'] == true ||
+        ModerationVisibility.isHiddenFromLists(myData)) {
       return OutgoingTextSendResult.fail('share_in_no_permission');
     }
     final groupSnap = await _db.collection('groups').doc(groupId).get();
@@ -222,6 +226,8 @@ class OutgoingImageMessageService {
     }
 
     try {
+      final msgs = _db.collection('groups').doc(groupId).collection('messages');
+      final pendingId = msgs.doc().id;
       final fileName =
           'img_${DateTime.now().millisecondsSinceEpoch}_$uid.jpg';
       final ref = _storage
@@ -231,10 +237,17 @@ class OutgoingImageMessageService {
           .child('images')
           .child(uid)
           .child(fileName);
-      await ref.putFile(file, SettableMetadata(contentType: 'image/jpeg'));
+      await ref.putFile(
+        file,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'fromUid': uid,
+            'messageId': pendingId,
+          },
+        ),
+      );
       final imageUrl = await ref.getDownloadURL();
-      final msgs = _db.collection('groups').doc(groupId).collection('messages');
-      final pendingId = msgs.doc().id;
       final batch = _db.batch();
       batch.set(msgs.doc(pendingId), {
         'id': pendingId,

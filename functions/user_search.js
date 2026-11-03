@@ -130,6 +130,13 @@ function isSearchableAccount(userData) {
   if (!userData) return false;
   if (userData.isBanned === true) return false;
   if (userData.status === "banned") return false;
+  const moderationStatus = userData.moderation && userData.moderation.status;
+  if (
+    moderationStatus === "suspended_pending_review" ||
+    moderationStatus === "banned"
+  ) {
+    return false;
+  }
   if (userData.deleted === true) return false;
   if (userData.isDeleted === true) return false;
   if (userData.accountDeleted === true) return false;

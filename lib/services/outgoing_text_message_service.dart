@@ -12,6 +12,9 @@ import 'group_ban_service.dart';
 import 'group_discovery_logic.dart';
 import 'international_chat_service.dart';
 import 'link_preview_service.dart';
+import 'message_moderation.dart';
+import 'moderation_domain_cache.dart';
+import 'objectionable_content_filter.dart';
 import 'premium_access_service.dart';
 import 'remdy_launch_access.dart';
 import 'send_dm_message_service.dart';
@@ -89,6 +92,10 @@ class OutgoingTextMessageService {
     if (_containsPhone(text)) {
       return OutgoingTextSendResult.fail('chat_phone_not_allowed');
     }
+    await ModerationDomainCache.ensureLoaded(firestore: _db);
+    if (ObjectionableContentFilter.evaluate(text) != null) {
+      return OutgoingTextSendResult.fail('content_filter_blocked');
+    }
 
     if (request.target == OutgoingTextSendTarget.conversation) {
       return _sendDm(uid: uid, request: request, text: text);
@@ -115,7 +122,8 @@ class OutgoingTextMessageService {
     if (myData['shadowBan'] == true) {
       return OutgoingTextSendResult.fail('user_temporarily_silenced');
     }
-    if (myData['isBanned'] == true) {
+    if (myData['isBanned'] == true ||
+        ModerationVisibility.isHiddenFromLists(myData)) {
       return OutgoingTextSendResult.fail('share_in_no_permission');
     }
 
@@ -253,7 +261,8 @@ class OutgoingTextMessageService {
     if (myData['shadowBan'] == true) {
       return OutgoingTextSendResult.fail('user_temporarily_silenced');
     }
-    if (myData['isBanned'] == true) {
+    if (myData['isBanned'] == true ||
+        ModerationVisibility.isHiddenFromLists(myData)) {
       return OutgoingTextSendResult.fail('share_in_no_permission');
     }
 

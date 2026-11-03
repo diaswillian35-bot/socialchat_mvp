@@ -253,6 +253,18 @@ const {
   buildAndroidMessageConfig,
   buildApnsMessageConfig,
 } = require("./push_delivery_logic");
+const { loadModerationConfig } = require("./moderation/config");
+const { safeChatPreview } = require("./moderation/text_filter");
+const { moderateChatImage } = require("./moderate_chat_image");
+const {
+  moderateMessageText,
+  moderateGroupMessageText,
+} = require("./moderate_message_text");
+const { onReportCreated } = require("./on_report_created");
+exports.moderateChatImage = moderateChatImage;
+exports.moderateMessageText = moderateMessageText;
+exports.moderateGroupMessageText = moderateGroupMessageText;
+exports.onReportCreated = onReportCreated;
 
 function pushAllowed(userData, kind) {
   return pushPolicyBlockCode(userData, kind) == null;
@@ -627,6 +639,7 @@ exports.onGroupMessageCreated = onDocumentCreated(
           : null;
       if (!type) return;
 
+      const modCfg = await loadModerationConfig(admin.firestore());
       if (type === "text" && isObjectionableText(msg.text)) {
         await event.data.ref.set(
           {
@@ -640,13 +653,16 @@ exports.onGroupMessageCreated = onDocumentCreated(
       }
 
       let lastMessage = "Nova mensagem";
+      let textBlocked = false;
       if (type === "audio") {
         lastMessage = "🎤 Áudio";
       } else if (type === "image") {
         lastMessage = "📷 Foto";
       } else {
         const text = (msg.text || "").toString().trim();
-        lastMessage = (text || "Nova mensagem").slice(0, 200);
+        const safe = safeChatPreview(text, modCfg);
+        textBlocked = text.length > 0 && safe === "";
+        lastMessage = (textBlocked ? "Nova mensagem" : text || "Nova mensagem").slice(0, 200);
       }
 
       const db = admin.firestore();
@@ -733,6 +749,8 @@ exports.onGroupMessageCreated = onDocumentCreated(
           admin.firestore.FieldValue.serverTimestamp(),
           "updatedAt",
           admin.firestore.FieldValue.serverTimestamp(),
+          "lastMessageModeration",
+          textBlocked ? "blocked" : admin.firestore.FieldValue.delete(),
           ...unreadArgs,
         );
         tx.set(processedRef, {
@@ -832,12 +850,21 @@ exports.onPrivateMessageCreated = onDocumentCreated(
         return;
       }
 
+      const modCfg = await loadModerationConfig(db);
+      const rawText = (msg.text || "").toString();
+      const textBlocked =
+        msgType !== "audio" &&
+        msgType !== "image" &&
+        rawText.trim().length > 0 &&
+        safeChatPreview(rawText, modCfg) === "";
       const preview =
         msgType === "audio"
           ? "🎤 Áudio"
           : msgType === "image"
             ? "📷 Foto"
-            : (msg.text || "Nova mensagem").toString();
+            : textBlocked
+              ? "Nova mensagem"
+              : rawText || "Nova mensagem";
 
       const appliedMeta = parseServerUnreadApplied(msg);
       const skipIncrement = shouldSkipTriggerUnreadIncrement(
@@ -868,6 +895,9 @@ exports.onPrivateMessageCreated = onDocumentCreated(
           lastMessageType: msgType || "text",
           lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastMessageModeration: textBlocked
+            ? "blocked"
+            : admin.firestore.FieldValue.delete(),
           hiddenFor: admin.firestore.FieldValue.arrayRemove(
             ...Array.from(
               new Set([senderId, ...targetUids].filter(Boolean)),
@@ -887,6 +917,8 @@ exports.onPrivateMessageCreated = onDocumentCreated(
             summaryPatch.updatedAt,
             "hiddenFor",
             summaryPatch.hiddenFor,
+            "lastMessageModeration",
+            summaryPatch.lastMessageModeration,
           ];
           appendDmUnreadArgs(
             skipArgs,
@@ -921,6 +953,8 @@ exports.onPrivateMessageCreated = onDocumentCreated(
           summaryPatch.updatedAt,
           "hiddenFor",
           summaryPatch.hiddenFor,
+          "lastMessageModeration",
+          summaryPatch.lastMessageModeration,
         ];
         appendDmUnreadArgs(
           updateArgs,

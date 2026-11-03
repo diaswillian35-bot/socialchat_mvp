@@ -169,7 +169,8 @@ service cloud.firestore {
         'agePolicyVersion',
         'ageTermsAcceptedAt',
         'ageVerifiedAt',
-        'ageVerificationCheckedAt'
+        'ageVerificationCheckedAt',
+        'moderation'
       ];
     }
 
@@ -220,6 +221,7 @@ service cloud.firestore {
         && (!('isPlatformAdmin' in d) || d.isPlatformAdmin == false)
         && (!('isPremium' in d) || d.isPremium == false)
         && (!('isBanned' in d) || d.isBanned == false)
+        && (!('moderation' in d))
         && (!('accountDeleted' in d) || d.accountDeleted == false)
         && (!('role' in d) || d.role == null || d.role == '')
         && (!('roles' in d))
@@ -261,6 +263,16 @@ service cloud.firestore {
       return !eitherDmBlocked(uid(), request.resource.data.toUid);
     }
 
+    // Suspenso ou banido pela moderação não cria mensagem. A conta não é apagada.
+    function senderModerationBlocksSend() {
+      let d = userDoc(uid()).data;
+      let hasStatus = d.keys().hasAll(['moderation'])
+        && d.moderation is map
+        && d.moderation.keys().hasAll(['status']);
+      let st = hasStatus ? d.moderation.status : '';
+      return st == 'suspended_pending_review' || st == 'banned';
+    }
+
     function isValidTextMessage() {
       return request.resource.data.type == 'text'
         && request.resource.data.text is string
@@ -280,6 +292,42 @@ service cloud.firestore {
       return request.resource.data.type == 'image'
         && request.resource.data.imageUrl is string
         && request.resource.data.imageUrl.size() > 0;
+    }
+
+    function isChatImageUrl(url, cid) {
+      return url is string
+        && (
+          url.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/socialchatmvp\\.firebasestorage\\.app/o/chat_images%2F' + cid + '%2F[^?#]+.*')
+          || url.matches('^gs://socialchatmvp\\.firebasestorage\\.app/chat_images/' + cid + '/[^?#]+.*')
+        );
+    }
+
+    function isGroupImageUrl(url, gid) {
+      return url is string
+        && (
+          url.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/socialchatmvp\\.firebasestorage\\.app/o/groups%2F' + gid + '%2Fimages%2F[^/%]+%2F[^?#]+.*')
+          || url.matches('^gs://socialchatmvp\\.firebasestorage\\.app/groups/' + gid + '/images/[^/]+/[^?#]+.*')
+        );
+    }
+
+    function dmMediaUrlsOk(cid) {
+      let data = request.resource.data;
+      let image = data.get('imageUrl', '');
+      let reply = data.get('replyToImageUrl', '');
+      return (!('moderation' in data))
+        && (image.size() == 0 || isChatImageUrl(image, cid))
+        && (reply.size() == 0 || isChatImageUrl(reply, cid))
+        && (data.get('type', '') != 'image' || isChatImageUrl(image, cid));
+    }
+
+    function groupMediaUrlsOk(gid) {
+      let data = request.resource.data;
+      let image = data.get('imageUrl', '');
+      let reply = data.get('replyToImageUrl', '');
+      return (!('moderation' in data))
+        && (image.size() == 0 || isGroupImageUrl(image, gid))
+        && (reply.size() == 0 || isGroupImageUrl(reply, gid))
+        && (data.get('type', '') != 'image' || isGroupImageUrl(image, gid));
     }
 
     function isValidMessagePayload() {
@@ -531,6 +579,8 @@ service cloud.firestore {
           && request.resource.data.toUid != uid()
           && isValidMessagePayload()
           && canSendMessageInConversation(cid)
+          && !senderModerationBlocksSend()
+          && dmMediaUrlsOk(cid)
           // linkPreview/linkPreviewStatus são escritos somente pela Cloud
           // Function fetchLinkPreview via Admin SDK (bypassa Rules).
           && !('linkPreview' in request.resource.data)
@@ -541,7 +591,7 @@ service cloud.firestore {
         // cliente (só a Cloud Function fetchLinkPreview, via Admin SDK).
         allow update: if isParticipantById(cid)
           && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['linkPreview', 'linkPreviewStatus'])
+              .hasAny(['linkPreview', 'linkPreviewStatus', 'moderation'])
           && (
             (
               request.resource.data.diff(resource.data).affectedKeys()
@@ -810,7 +860,9 @@ service cloud.firestore {
             && messageTypeOk()
             && request.resource.data.get('deleted', false) == false
             && request.resource.data.get('deletedBy', '') == ''
-            && request.resource.data.get('deletedText', '') == '';
+            && request.resource.data.get('deletedText', '') == ''
+            && !senderModerationBlocksSend()
+            && groupMediaUrlsOk(groupId);
         }
 
         // Apagar para mim: só adiciona o próprio UID em deletedFor.
@@ -860,7 +912,7 @@ service cloud.firestore {
 
         // linkPreview/linkPreviewStatus nunca são afetados por updates do
         // cliente (só a Cloud Function fetchLinkPreview, via Admin SDK).
-        allow update: if !messageAffectedKeys().hasAny(['linkPreview', 'linkPreviewStatus'])
+        allow update: if !messageAffectedKeys().hasAny(['linkPreview', 'linkPreviewStatus', 'moderation'])
           && (isMessageDeleteForMe() || isMessageSoftDeleteForAll());
 
         allow delete: if false;
@@ -1017,7 +1069,8 @@ service cloud.firestore {
 
     match /reports/{reportId} {
       allow read: if false;
-      allow create: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.fromUid == uid();
       allow update, delete: if false;
     }
 
@@ -1111,6 +1164,39 @@ service cloud.firestore {
     }
     // Franquia Free DM (sendDmMessage) — somente Admin SDK.
     match /dmSendIdempotency/{id} {
+      allow read, write: if false;
+    }
+
+    // Moderação — somente Admin SDK. O cliente lê a lista de domínios.
+    match /appConfig/{docId} {
+      allow read: if signedIn() && docId == 'moderation';
+      allow write: if false;
+    }
+    match /pendingModeration/{id} {
+      allow read, write: if false;
+    }
+    match /moderationStrikes/{id} {
+      allow read, write: if false;
+    }
+    match /moderationApplied/{id} {
+      allow read, write: if false;
+    }
+    match /moderationAudit/{id} {
+      allow read, write: if false;
+    }
+    match /moderationReportDaily/{id} {
+      allow read, write: if false;
+    }
+    match /moderationReporters/{uid} {
+      allow read, write: if false;
+      match /uids/{reporterId} {
+        allow read, write: if false;
+      }
+    }
+    match /csamHolds/{id} {
+      allow read, write: if false;
+    }
+    match /quarantineHolds/{id} {
       allow read, write: if false;
     }
 
