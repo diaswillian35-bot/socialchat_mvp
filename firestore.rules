@@ -310,13 +310,24 @@ service cloud.firestore {
         );
     }
 
+    // Resposta pode citar imagem encaminhada de outro chat ou grupo do mesmo bucket.
+    function isReplyImageUrl(url) {
+      return url is string
+        && (
+          url.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/socialchatmvp\\.firebasestorage\\.app/o/chat_images%2F[^%]+%2F[^?#]+.*')
+          || url.matches('^gs://socialchatmvp\\.firebasestorage\\.app/chat_images/[^/]+/[^?#]+.*')
+          || url.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/socialchatmvp\\.firebasestorage\\.app/o/groups%2F[^%]+%2Fimages%2F[^%]+%2F[^?#]+.*')
+          || url.matches('^gs://socialchatmvp\\.firebasestorage\\.app/groups/[^/]+/images/[^/]+/[^?#]+.*')
+        );
+    }
+
     function dmMediaUrlsOk(cid) {
       let data = request.resource.data;
       let image = data.get('imageUrl', '');
       let reply = data.get('replyToImageUrl', '');
       return (!('moderation' in data))
         && (image.size() == 0 || isChatImageUrl(image, cid))
-        && (reply.size() == 0 || isChatImageUrl(reply, cid))
+        && (reply.size() == 0 || isReplyImageUrl(reply))
         && (data.get('type', '') != 'image' || isChatImageUrl(image, cid));
     }
 
@@ -326,7 +337,7 @@ service cloud.firestore {
       let reply = data.get('replyToImageUrl', '');
       return (!('moderation' in data))
         && (image.size() == 0 || isGroupImageUrl(image, gid))
-        && (reply.size() == 0 || isGroupImageUrl(reply, gid))
+        && (reply.size() == 0 || isReplyImageUrl(reply))
         && (data.get('type', '') != 'image' || isGroupImageUrl(image, gid));
     }
 

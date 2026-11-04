@@ -8,27 +8,47 @@ const base = {
   reasonCode: "harassment",
 };
 
-test("CSAM de usuário é crítico e avisa, sem suspensão", () => {
+test("uma denúncia CSAM de usuário não suspende; 3 denunciantes ou strikes sim", () => {
   const report = {
     ...base,
     reasonCode: "child_sexual_exploitation_or_abuse",
     requiresChildSafetyReview: true,
   };
   assert.equal(isCsamReport(report), true);
-  const decision = decideReportAction({
+  const one = decideReportAction({
+    report,
+    reportedUid: "reported",
+    dailyCount: 1,
+    distinctReporters: 1,
+    strikes: 0,
+    config: {},
+  });
+  assert.equal(one.suspend, false);
+  assert.equal(one.userCsam, true);
+  assert.equal(one.priority, "critical");
+  assert.equal(one.notify, true);
+  assert.match(one.body, /motivo: child_sexual_exploitation_or_abuse/);
+  assert.equal(one.body.includes("reporter"), false);
+
+  const byReporters = decideReportAction({
     report,
     reportedUid: "reported",
     dailyCount: 1,
     distinctReporters: 3,
-    strikes: 3,
-    config: {},
+    strikes: 0,
+    config: { autoActionThreshold: 3 },
   });
-  assert.equal(decision.suspend, false);
-  assert.equal(decision.userCsam, true);
-  assert.equal(decision.priority, "critical");
-  assert.equal(decision.notify, true);
-  assert.match(decision.body, /motivo: child_sexual_exploitation_or_abuse/);
-  assert.equal(decision.body.includes("reporter"), false);
+  assert.equal(byReporters.suspend, true);
+
+  const byStrikes = decideReportAction({
+    report,
+    reportedUid: "reported",
+    dailyCount: 1,
+    distinctReporters: 1,
+    strikes: 3,
+    config: { strikeThreshold: 3 },
+  });
+  assert.equal(byStrikes.suspend, true);
 });
 
 test("CSAM detectado pelo sistema suspende na hora", () => {

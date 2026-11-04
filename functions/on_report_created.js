@@ -21,6 +21,7 @@ const {
   isModeratedImagePath,
 } = require("./moderation/image_policy");
 const { safeModerationLog } = require("./moderation/safe_log");
+const { eventsInWindow } = require("./moderation/strikes");
 const { sendOpsNoticeIfReady } = require("./moderation/report_notice");
 
 const REGION = "northamerica-northeast1";
@@ -188,7 +189,8 @@ async function handleReportCreated(reportId, report) {
   let strikes = 0;
   if (reportedUid) {
     const strikeSnap = await db.collection("moderationStrikes").doc(reportedUid).get();
-    strikes = (strikeSnap.exists && strikeSnap.data() && strikeSnap.data().count) || 0;
+    const strikeData = strikeSnap.exists ? strikeSnap.data() || {} : {};
+    strikes = eventsInWindow(strikeData.events, Date.now()).length;
   }
   const decision = decideReportAction({
     report,

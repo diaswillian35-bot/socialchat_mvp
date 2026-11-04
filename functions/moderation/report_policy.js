@@ -66,9 +66,10 @@ function decideReportAction(input) {
   const distinct = Math.max(0, Number(input.distinctReporters) || 0);
   const strikes = Math.max(0, Number(input.strikes) || 0);
   const userCsam = csam && !system;
+  // Uma denúncia CSAM de usuário não suspende sozinha.
+  // Ela entra na contagem de denunciantes distintos e de strikes.
   const suspend =
     Boolean(input.reportedUid) &&
-    !userCsam &&
     ((csam && system) || distinct >= threshold || strikes >= strikeThreshold);
   const reasonCode = String(report.reasonCode || report.reason || "other")
     .replace(/[^\w.-]/g, "")

@@ -15,7 +15,7 @@ O painel admin vive em `Admin_Talksy_work` (codebase `admin-talksy`), que **não
    - Falha da API: não bloqueia, marca `unchecked` e relança até 3 tentativas (`retry: true`).
 2. **Texto** — `moderateMessageText` (DM) e `moderateGroupMessageText` (grupo), `onDocumentCreated`, mesma região. Porta o filtro para `functions/moderation/text_filter.js` (CSAM, violência sexual, ameaça dirigida, pornografia adulta e venda de conteúdo, URL inclusive "ponto com" e espaços). Domínios em `appConfig/moderation.blockedDomains` quando o campo existe; senão a lista embutida. Ao casar: `text=''`, `moderation.reason` = `text_adult` | `link_adult` | `csam`, strike e denúncia `source: auto_text`. O push e o `lastMessage` não levam o texto bloqueado.
 3. **Cliente** — `lib/services/objectionable_content_filter.dart` devolve na hora a chave `content_filter_blocked`. Balões existentes (`_Bubble`, estilo de mensagem apagada) com `chat_image_blocked` e `chat_message_blocked`. Sem mudança de layout, cor ou fonte. Suspenso some das listas pelo mesmo filtro de conta inativa (`ModerationVisibility.isHiddenFromLists`).
-4. **Denúncias** — `onReportCreated`. Enriquece `distinctReporterCount` e `priority` (`critical` se CSAM). O aviso ao admin sai de `functions/moderation/report_notice.js` (`sendOpsNoticeIfReady`), não de `ops_new_user_notify.js`. FCM para `appConfig/opsSettings.adminUids` ou, se vazio, `admins/{uid}` ativos. Corpo: `Nova denúncia · motivo: {reasonCode} · total: N`. Sem texto de mensagem e sem nome do denunciante. Denúncia de CSAM feita por usuário: prioridade crítica, cópia de preservação (sem apagar o original e sem apagar a mensagem), aviso ao admin, e o mesmo limite de 20 por dia. Sem suspensão automática. Suspensão imediata só quando a detecção é do sistema (`fromUid: system`). Strikes automáticos contam numa janela de 30 dias.
+4. **Denúncias** — `onReportCreated`. Enriquece `distinctReporterCount` e `priority` (`critical` se CSAM). O aviso ao admin sai de `functions/moderation/report_notice.js` (`sendOpsNoticeIfReady`), não de `ops_new_user_notify.js`. FCM para `appConfig/opsSettings.adminUids` ou, se vazio, `admins/{uid}` ativos. Corpo: `Nova denúncia · motivo: {reasonCode} · total: N`. Sem texto de mensagem e sem nome do denunciante. Denúncia de CSAM feita por usuário: prioridade crítica, cópia de preservação (sem apagar o original e sem apagar a mensagem), aviso ao admin, e o mesmo limite de 20 por dia. Uma denúncia sozinha não suspende. Ela conta para o limite de 3 denunciantes distintos em 30 dias e para os strikes. Suspensão imediata por uma ocorrência só quando a detecção é do sistema (`fromUid: system`). Strikes automáticos contam numa janela de 30 dias.
 5. **Ação automática** — 3 denunciantes distintos em 30 dias (`appConfig/moderation.autoActionThreshold`), ou 1 denúncia CSAM, ou 3 strikes: `users/{uid}.moderation = {status:'suspended_pending_review', at}`. Não apaga a conta. Rules negam `create` de mensagem DM e de grupo. O campo `moderation` o cliente não altera.
 6. **CSAM** — texto e path vão para `csamHolds/{reportId}` (cliente não lê). Imagem vai para `quarantine/` com `quarantineHolds.legalHold=true`. Não há exclusão automática. SafeSearch não detecta idade. Nenhum admin baixa o material por este PR (não há URL assinada aqui).
 
@@ -53,7 +53,32 @@ firebase deploy --only functions:default:moderateChatImage,functions:default:mod
 firebase deploy --only firestore:rules,storage --project socialchatmvp
 ```
 
-Antes do deploy, confirme a região do bucket. O trigger `moderateChatImage` está em `northamerica-northeast1` e declara `socialchatmvp.firebasestorage.app`. Storage triggers só sobem se a região da function for a mesma do bucket. Não mude o bucket.
+Antes do deploy, confirme que a produção já está no build 38 para estes quatro artefatos: `firestore.rules`, `storage.rules`, `onPrivateMessageCreated` e `onGroupMessageCreated`. A referência é `origin/feat/remdy-build38`, não esta branch. Se algum divergir, pare e reporte. Não publique.
+
+```bash
+git fetch origin feat/remdy-build38
+git show origin/feat/remdy-build38:firestore.rules > /tmp/b38.firestore.rules
+git show origin/feat/remdy-build38:storage.rules > /tmp/b38.storage.rules
+
+# Somente leitura. Não cria release.
+TOKEN="$(gcloud auth print-access-token)"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://firebaserules.googleapis.com/v1/projects/socialchatmvp/releases?pageSize=20"
+# Para cada release ativo de cloud.firestore e firebase.storage, baixe o ruleset
+# e compare o texto com /tmp/b38.firestore.rules e /tmp/b38.storage.rules.
+
+# Somente leitura. Confira o source implantado das duas functions.
+gcloud functions describe onPrivateMessageCreated \
+  --gen2 --region=northamerica-northeast1 --project=socialchatmvp \
+  --format='yaml(updateTime,buildConfig.source)'
+gcloud functions describe onGroupMessageCreated \
+  --gen2 --region=northamerica-northeast1 --project=socialchatmvp \
+  --format='yaml(updateTime,buildConfig.source)'
+```
+
+Baixe o zip indicado em `buildConfig.source` e compare `onPrivateMessageCreated` e `onGroupMessageCreated` com `git show origin/feat/remdy-build38:functions/index.js`. Se as rules ou essas functions em produção não forem as do build 38, pare e reporte. Não rode `firebase deploy`.
+
+Antes do deploy, confirme também a região do bucket. O trigger `moderateChatImage` está em `northamerica-northeast1` e declara `socialchatmvp.firebasestorage.app`. Storage triggers só sobem se a região da function for a mesma do bucket. Não mude o bucket.
 
 ```bash
 gcloud storage buckets describe gs://socialchatmvp.firebasestorage.app --format="value(location)"

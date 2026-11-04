@@ -201,10 +201,30 @@ describe("moderation rules", () => {
         imageUrl: "https://evil.example/a.jpg",
       }),
     );
-    await assertFails(
-      db.doc("conversations/c1/messages/reply-bad").set({
+    await assertSucceeds(
+      db.doc("conversations/c1/messages/reply-forwarded").set({
         ...dmMessage(),
         replyToImageUrl: chatImageUrl("outra"),
+      }),
+    );
+    await assertSucceeds(
+      db.doc("conversations/c1/messages/reply-group").set({
+        ...dmMessage(),
+        replyToImageUrl: groupImageUrl("g9", "z9"),
+      }),
+    );
+    await assertFails(
+      db.doc("conversations/c1/messages/image-other-chat").set({
+        ...dmMessage(),
+        type: "image",
+        text: "",
+        imageUrl: chatImageUrl("outra"),
+      }),
+    );
+    await assertFails(
+      db.doc("conversations/c1/messages/reply-other-bucket").set({
+        ...dmMessage(),
+        replyToImageUrl: "https://firebasestorage.googleapis.com/v0/b/outro.appspot.com/o/chat_images%2Foutra%2Fa.jpg",
       }),
     );
     await assertSucceeds(
@@ -214,6 +234,20 @@ describe("moderation rules", () => {
         text: "",
         imageUrl: groupImageUrl("g1", "a1"),
         replyToImageUrl: groupImageUrl("g1", "b1"),
+      }),
+    );
+    await assertSucceeds(
+      db.doc("groups/g1/messages/reply-forwarded").set({
+        ...groupMessage(),
+        replyToImageUrl: chatImageUrl("outra"),
+      }),
+    );
+    await assertFails(
+      db.doc("groups/g1/messages/image-other-group").set({
+        ...groupMessage(),
+        type: "image",
+        text: "",
+        imageUrl: groupImageUrl("g9", "a1"),
       }),
     );
     await assertFails(
