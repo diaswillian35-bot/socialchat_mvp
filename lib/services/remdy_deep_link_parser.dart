@@ -4,6 +4,10 @@
 /// - `/` e URLs sem rota de app → nenhum deep link (landing no browser).
 /// - Somente `/g/{code}` (e legado `/group?code=`) abrem prévia de grupo.
 /// - Código ausente/inválido nunca reaproveita o último ID.
+/// - `remdy://g/{code}` (esquema do Info.plist) equivale a `/g/{code}`.
+/// - `intent://…#Intent;scheme=https;…` vira o `https://` correspondente.
+///   No Android o sistema entrega esse intent já resolvido; o filtro
+///   `scheme=https` + `pathPrefix=/g/` do manifesto é o que o recebe.
 
 library remdy_deep_link_parser;
 
@@ -65,6 +69,24 @@ class RemdyDeepLinkParser {
     return (raw ?? '').trim().toUpperCase();
   }
 
+  /// Código de grupo aceito pelo join: 3–32, `A–Z`, `0–9`, `_` e `-`.
+  static bool isValidGroupCode(String? raw) {
+    return _isValidGroupCode(normalizeGroupCode(raw));
+  }
+
+  /// `remdy://` e `intent://` com `scheme=https` entram no mesmo classificador
+  /// que `https://remdy.app/...`.
+  static Uri unwrap(Uri uri) {
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme == 'remdy') {
+      return _unwrapRemdy(uri);
+    }
+    if (scheme == 'intent') {
+      return _unwrapIntent(uri);
+    }
+    return uri;
+  }
+
   static bool isAllowedHost(Uri uri) {
     final host = uri.host.toLowerCase().trim();
     if (host.isEmpty) {
@@ -77,6 +99,10 @@ class RemdyDeepLinkParser {
   }
 
   static RemdyDeepLink parse(Uri uri) {
+    return _parse(unwrap(uri));
+  }
+
+  static RemdyDeepLink _parse(Uri uri) {
     if (!isAllowedHost(uri)) {
       return const RemdyDeepLink(
         kind: RemdyDeepLinkKind.none,
@@ -232,6 +258,49 @@ class RemdyDeepLinkParser {
     // Códigos Remdy: alfanumérico curto; rejeita path lixo.
     if (code.length < 3 || code.length > 32) return false;
     return RegExp(r'^[A-Z0-9_-]+$').hasMatch(code);
+  }
+
+  static Uri _unwrapRemdy(Uri uri) {
+    final query = uri.hasQuery ? uri.query : null;
+    final host = uri.host.trim().toLowerCase();
+    if (host.isEmpty) {
+      return Uri(path: uri.path, query: query);
+    }
+    final path = uri.path;
+    final suffix = path.isEmpty ? '' : (path.startsWith('/') ? path : '/$path');
+    return Uri(path: '/$host$suffix', query: query);
+  }
+
+  /// `intent://host/path#Intent;scheme=https;package=…;end` → `https://host/path`.
+  /// Outro `scheme` não é convite (o manifesto Android só declara https).
+  static Uri _unwrapIntent(Uri uri) {
+    final intentScheme = _intentParam(uri.fragment, 'scheme');
+    if (intentScheme != 'https') {
+      return Uri(scheme: 'https', host: 'invalid.invalid', path: '/');
+    }
+    final query = uri.hasQuery ? uri.query : null;
+    final host = uri.host.trim();
+    if (host.isEmpty) {
+      return Uri(scheme: 'https', path: uri.path, query: query);
+    }
+    return Uri(
+      scheme: 'https',
+      host: host,
+      path: uri.path.isEmpty ? '/' : uri.path,
+      query: query,
+    );
+  }
+
+  static String? _intentParam(String fragment, String key) {
+    for (final part in fragment.split(';')) {
+      final idx = part.indexOf('=');
+      if (idx <= 0) continue;
+      final name = part.substring(0, idx).trim().toLowerCase();
+      if (name == key) {
+        return part.substring(idx + 1).trim().toLowerCase();
+      }
+    }
+    return null;
   }
 
   static bool _isValidPlaceSlug(String slug) {

@@ -68,7 +68,11 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
-            <!-- Deep links: pathPrefix com barra final para NÃO capturar /eventos -->
+            <!--
+              Deep links: pathPrefix com barra final para NÃO capturar /eventos.
+              intent://remdy.app/g/{code}#Intent;scheme=https;package=com.remdy.app;end
+              chega aqui já resolvido como https://remdy.app/g/{code}.
+            -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

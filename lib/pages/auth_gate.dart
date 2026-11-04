@@ -16,6 +16,7 @@ import '../services/share_in_service.dart';
 import '../services/share_extension_session_service.dart';
 import '../services/share_extension_incoming_service.dart';
 import '../services/presence_service.dart';
+import '../services/pending_group_code.dart';
 import '../services/remdy_deep_link_parser.dart';
 import '../services/safe_remdy_navigation.dart';
 import 'join_group_page.dart';
@@ -117,7 +118,9 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
-  /// Reabre só a prévia do grupo após login/idade.
+  /// Reabre só a prévia do grupo depois do cadastro inteiro (e-mail, 18+, foto).
+  /// Não apaga `pending_group_code` aqui: login e verificação trocam a pilha
+  /// com pushAndRemoveUntil. A prévia solta a chave quando continua na tela.
   /// Nunca chama join automaticamente — o pedido só nasce no toque em
   /// “Solicitar entrada” / Entrar na [JoinGroupPage].
   Future<void> _applyPendingGroupIfAny(User user) async {
@@ -126,27 +129,41 @@ class _AuthGateState extends State<AuthGate> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final rawCode = prefs.getString('pending_group_code') ?? '';
+      final rawCode = prefs.getString(PendingGroupCodeLogic.pendingKey) ?? '';
       final code = RemdyDeepLinkParser.normalizeGroupCode(rawCode);
 
       print('DEBUG group: pending code = $code');
 
-      if (code.isEmpty) {
+      if (!RemdyDeepLinkParser.isValidGroupCode(code)) {
         if (rawCode.isNotEmpty) {
-          await prefs.remove('pending_group_code');
+          await prefs.remove(PendingGroupCodeLogic.pendingKey);
         }
         return;
       }
 
-      // Consome a pendência antes de navegar (evita reentrada / auto-join).
-      await prefs.remove('pending_group_code');
+      if (JoinGroupPage.activeCode == code) return;
 
-      final nav = PushService.navKey.currentState;
-      if (nav == null) {
-        // Sem navigator ainda: reinsere para a próxima tentativa pós-shell.
-        await prefs.setString('pending_group_code', code);
+      Map<String, dynamic>? data;
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        data = snap.data();
+      } catch (_) {
         return;
       }
+
+      final mayOpen = PendingGroupCodeLogic.mayOpenPendingGroup(
+        hasUser: true,
+        needsEmailVerification: authRequiresEmailVerification(user),
+        ageVerified: AgeVerification.isVerified(data),
+        needsProfilePhoto: ProfilePhoto.needsPhoto(data),
+      );
+      if (!mayOpen) return;
+
+      final nav = PushService.navKey.currentState;
+      if (nav == null) return;
 
       await SafeRemdyNavigation.openOverShell(
         nav: nav,
@@ -214,8 +231,7 @@ class _AuthGateState extends State<AuthGate> {
                 if (ctx != null) {
                   WelcomeChoiceDialog.show(
                     ctx,
-                    onChoose: (exploreOnly) => WelcomeChoice.complete(
-                        user.uid,
+                    onChoose: (exploreOnly) => WelcomeChoice.complete(user.uid,
                         exploreOnly: exploreOnly),
                   );
                 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -5,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
 import '../services/group_join_service.dart';
+import '../services/pending_group_code.dart';
 import '../services/group_join_ui_logic.dart';
 import '../services/group_location_normalize.dart';
 import '../services/iso_country_names.dart';
@@ -29,9 +32,8 @@ class JoinGroupLocationLabel {
     final code = GroupLocationNormalize.countryCode(
       group['countryCode'] ?? group['country'],
     );
-    final country = code.isEmpty
-        ? '--'
-        : IsoCountryNames.displayName(code, languageCode);
+    final country =
+        code.isEmpty ? '--' : IsoCountryNames.displayName(code, languageCode);
     final scope = GroupLocationNormalize.scope(group['scope']);
     if (scope == 'country') return country;
 
@@ -43,6 +45,10 @@ class JoinGroupLocationLabel {
 
 class JoinGroupPage extends StatefulWidget {
   final String inviteCode;
+
+  /// Código da prévia que está na árvore. Evita abrir a mesma tela duas vezes
+  /// enquanto o cadastro ainda troca de rota.
+  static String? activeCode;
 
   const JoinGroupPage({
     super.key,
@@ -96,7 +102,25 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
   @override
   void initState() {
     super.initState();
+    JoinGroupPage.activeCode = _code;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        PendingGroupCodeStore.releaseIfMatches(
+          _code,
+          pageStillMounted: true,
+        ),
+      );
+    });
     _loadGroupByCode();
+  }
+
+  @override
+  void dispose() {
+    if (JoinGroupPage.activeCode == _code) {
+      JoinGroupPage.activeCode = null;
+    }
+    super.dispose();
   }
 
   Future<void> _loadGroupByCode() async {
@@ -251,7 +275,10 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
             return;
           }
           _toast(_t(result.messageKey));
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
             'lastJoinedGroupId': result.groupId,
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
@@ -433,9 +460,8 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                                   children: [
                                     if (!RemdyLaunchAccess.isFreeBrazilLaunch)
                                       _Tag(
-                                        text: isPremiumGroup
-                                            ? 'Premium'
-                                            : 'Free',
+                                        text:
+                                            isPremiumGroup ? 'Premium' : 'Free',
                                         filled: isPremiumGroup,
                                       ),
                                     _Tag(
