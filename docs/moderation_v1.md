@@ -1,6 +1,6 @@
 # Moderação v1 (imagens, texto/links, denúncias)
 
-Implementação no app `socialchatmvp` (este repositório). **Não foi feito deploy.** Não foi ativada a Cloud Vision API. Não foi criado alerta de orçamento no Billing. Build 37, Remdy Booth e o site remdy.app não foram alterados.
+Implementação no app `socialchatmvp` (este repositório). **Não foi feito deploy.** Não foi ativada a Cloud Vision API. O alerta de orçamento no Billing já existe e é de **US$ 25/mês** (não US$ 15); este PR não cria outro alerta. Build 37, Remdy Booth e o site remdy.app não foram alterados.
 
 O painel admin vive em `Admin_Talksy_work` (codebase `admin-talksy`), que **não está neste workspace**. A especificação para implementar lá está na seção [Painel admin](#painel-admin).
 
@@ -53,19 +53,19 @@ firebase deploy --only functions:default:moderateChatImage,functions:default:mod
 firebase deploy --only firestore:rules,storage --project socialchatmvp
 ```
 
-Antes do deploy, confirme que a produção já está no build 38 para estes quatro artefatos: `firestore.rules`, `storage.rules`, `onPrivateMessageCreated` e `onGroupMessageCreated`. A referência é `origin/feat/remdy-build38`, não esta branch. Se algum divergir, pare e reporte. Não publique.
+Antes do deploy, confirme que a produção já está no build 39 para estes quatro artefatos: `firestore.rules`, `storage.rules`, `onPrivateMessageCreated` e `onGroupMessageCreated`. A referência é `origin/android-match-ios-b38` (commit `bcba233`), não esta branch. Se algum divergir, pare e reporte. Não publique.
 
 ```bash
-git fetch origin feat/remdy-build38
-git show origin/feat/remdy-build38:firestore.rules > /tmp/b38.firestore.rules
-git show origin/feat/remdy-build38:storage.rules > /tmp/b38.storage.rules
+git fetch origin android-match-ios-b38
+git show origin/android-match-ios-b38:firestore.rules > /tmp/b39.firestore.rules
+git show origin/android-match-ios-b38:storage.rules > /tmp/b39.storage.rules
 
 # Somente leitura. Não cria release.
 TOKEN="$(gcloud auth print-access-token)"
 curl -s -H "Authorization: Bearer $TOKEN" \
   "https://firebaserules.googleapis.com/v1/projects/socialchatmvp/releases?pageSize=20"
 # Para cada release ativo de cloud.firestore e firebase.storage, baixe o ruleset
-# e compare o texto com /tmp/b38.firestore.rules e /tmp/b38.storage.rules.
+# e compare o texto com /tmp/b39.firestore.rules e /tmp/b39.storage.rules.
 
 # Somente leitura. Confira o source implantado das duas functions.
 gcloud functions describe onPrivateMessageCreated \
@@ -76,7 +76,7 @@ gcloud functions describe onGroupMessageCreated \
   --format='yaml(updateTime,buildConfig.source)'
 ```
 
-Baixe o zip indicado em `buildConfig.source` e compare `onPrivateMessageCreated` e `onGroupMessageCreated` com `git show origin/feat/remdy-build38:functions/index.js`. Se as rules ou essas functions em produção não forem as do build 38, pare e reporte. Não rode `firebase deploy`.
+Baixe o zip indicado em `buildConfig.source` e compare `onPrivateMessageCreated` e `onGroupMessageCreated` com `git show origin/android-match-ios-b38:functions/index.js` (commit `bcba233`). Se as rules ou essas functions em produção não forem as do build 39, pare e reporte. Não rode `firebase deploy`.
 
 Antes do deploy, confirme também a região do bucket. O trigger `moderateChatImage` está em `northamerica-northeast1` e declara `socialchatmvp.firebasestorage.app`. Storage triggers só sobem se a região da function for a mesma do bucket. Não mude o bucket.
 
@@ -86,7 +86,7 @@ gcloud storage buckets describe gs://socialchatmvp.firebasestorage.app --format=
 
 Se o valor não for `northamerica-northeast1` (ou `NORTHAMERICA-NORTHEAST1`), pare. Não faça o deploy de `moderateChatImage` e não altere a localização do bucket sem o Willian. As functions de Firestore (`moderateMessageText`, `moderateGroupMessageText`, `onReportCreated`, `onPrivateMessageCreated`, `onGroupMessageCreated`) continuam em `northamerica-northeast1`, que já é a região do Firestore.
 
-A Cloud Vision API e o alerta de orçamento no Billing continuam sendo ação do Willian no console. Este PR não ativa API e não cria alerta.
+A Cloud Vision API não é ativada por este PR. O alerta de orçamento no Billing já existe e é de **US$ 25/mês** (não US$ 15). Não crie outro alerta.
 
 Backup sugerido antes do deploy: copiar `firestore.rules`, `storage.rules` e `functions/` para `~/Downloads/remdy_artifacts_backup/moderation_predeploy_<data>/`.
 
