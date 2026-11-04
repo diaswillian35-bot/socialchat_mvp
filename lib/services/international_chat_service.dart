@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'international_country_codes.dart';
+import 'message_moderation.dart';
 import 'premium_access_service.dart';
 import 'remdy_launch_access.dart';
 
@@ -108,6 +109,7 @@ class InternationalChatService {
   static bool isActiveAccount(Map<String, dynamic>? data) {
     if (data == null) return false;
     if (data['isBanned'] == true) return false;
+    if (ModerationVisibility.isHiddenFromLists(data)) return false;
     if (data['deleted'] == true) return false;
     if (data['isDeleted'] == true) return false;
     if (data['accountDeleted'] == true) return false;

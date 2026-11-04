@@ -90,6 +90,14 @@ assert.strictEqual(
   isSearchableAccount({ name: "Ana", profileComplete: false }),
   false
 );
+assert.strictEqual(
+  isSearchableAccount({
+    name: "Ana",
+    profileComplete: true,
+    moderation: { status: "suspended_pending_review" },
+  }),
+  false
+);
 
 // ---- Privacidade ----
 const safe = buildSafeResult("u1", {

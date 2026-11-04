@@ -195,6 +195,8 @@
   "chat_photo_deleted": "Foto eliminada",
   "chat_error_sending_image": "Error al enviar imagen:",
   "chat_image_not_found": "Imagen no encontrada.",
+  "chat_image_blocked": "Imagen eliminada por infringir las normas",
+  "chat_message_blocked": "Mensaje eliminado por infringir las normas",
   "chat_empty_image": "Imagen vacía.",
   "invite_friends": "Invitar amigos",
   "invite_unlock_rewards": "Invita amigos y desbloquea recompensas",

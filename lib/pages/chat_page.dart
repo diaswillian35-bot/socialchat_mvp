@@ -37,6 +37,9 @@ import '../services/dm_reply_quota.dart';
 import '../services/international_chat_service.dart';
 import '../services/international_country_codes.dart';
 import '../services/message_delivery_status.dart';
+import '../services/message_moderation.dart';
+import '../services/moderation_domain_cache.dart';
+import '../services/objectionable_content_filter.dart';
 import '../services/premium_access_service.dart';
 import '../services/remdy_launch_access.dart';
 import '../services/send_dm_message_service.dart';
@@ -1425,13 +1428,19 @@ class _ChatPageState extends State<ChatPage>
       text = item.text;
       pendingId = item.pendingId;
       reply = item.reply;
+      await ModerationDomainCache.ensureLoaded();
+      if (ObjectionableContentFilter.evaluate(text) != null) {
+        _warn(t.get('content_filter_blocked'));
+        return;
+      }
       if (!_beginPendingSend(pendingId)) return;
       _patchPendingText(pendingId, failed: false, sending: true);
     } else {
       final mySnap =
           await FirebaseFirestore.instance.collection('users').doc(myUid).get();
 
-      if (mySnap.data()?['shadowBan'] == true) {
+      if (mySnap.data()?['shadowBan'] == true ||
+          ModerationVisibility.isHiddenFromLists(mySnap.data())) {
         _warn(t.get('user_temporarily_silenced'));
         return;
       }
@@ -1466,6 +1475,11 @@ class _ChatPageState extends State<ChatPage>
 
       text = ChatComposerText.prepareOutgoingText(_textC.text);
       if (text.isEmpty) return;
+      await ModerationDomainCache.ensureLoaded();
+      if (ObjectionableContentFilter.evaluate(text) != null) {
+        _warn(t.get('content_filter_blocked'));
+        return;
+      }
 
       final filterReject = ObjectionableContentFilter.rejectReason(text);
       if (filterReject != null) {
@@ -1779,7 +1793,8 @@ class _ChatPageState extends State<ChatPage>
 
       final mySnap = await myUserDoc.get();
 
-      if (mySnap.data()?['shadowBan'] == true) {
+      if (mySnap.data()?['shadowBan'] == true ||
+          ModerationVisibility.isHiddenFromLists(mySnap.data())) {
         await _setRecording(false);
         _warn(t.get('user_temporarily_silenced'));
         return;
@@ -1969,7 +1984,10 @@ class _ChatPageState extends State<ChatPage>
     return await ref.getDownloadURL();
   }
 
-  Future<String> _uploadImageToStorage(String localPath) async {
+  Future<String> _uploadImageToStorage(
+    String localPath, {
+    required String messageId,
+  }) async {
     final file = File(localPath);
 
     if (!await file.exists()) {
@@ -1990,6 +2008,7 @@ class _ChatPageState extends State<ChatPage>
         'fromUid': myUid,
         'toUid': widget.otherUid,
         'conversationId': widget.conversationId,
+        'messageId': messageId,
       },
     );
 
@@ -2028,7 +2047,8 @@ class _ChatPageState extends State<ChatPage>
     } else {
       final mySnap = await myUserDoc.get();
 
-      if (mySnap.data()?['shadowBan'] == true) {
+      if (mySnap.data()?['shadowBan'] == true ||
+          ModerationVisibility.isHiddenFromLists(mySnap.data())) {
         _warn(t.get('user_temporarily_silenced'));
         return;
       }
@@ -2084,7 +2104,7 @@ class _ChatPageState extends State<ChatPage>
           return;
         }
 
-        imageUrl = await _uploadImageToStorage(path);
+        imageUrl = await _uploadImageToStorage(path, messageId: pendingId);
         _patchPendingImage(pendingId, uploadedUrl: imageUrl);
       } else if (kDebugMode) {
         debugPrint('ChatImage: reutilizando upload existente');
@@ -3045,6 +3065,27 @@ class _ChatPageState extends State<ChatPage>
                                         );
                                       }
 
+                                      if (MessageModeration.hidesImage(
+                                        status: MessageModeration.statusOf(d),
+                                        isMe: isMe,
+                                        type: type,
+                                      )) {
+                                        return KeyedSubtree(
+                                          key: bubbleKey,
+                                          child: _Bubble(
+                                            text: t.get('chat_image_blocked'),
+                                            isMe: isMe,
+                                            isDeleted: true,
+                                            timeText: timeText,
+                                            statusText: null,
+                                            replyToText: '',
+                                            replyToType: 'text',
+                                            replyToIsMe: false,
+                                            replyToImageUrl: replyToImageUrl,
+                                          ),
+                                        );
+                                      }
+
                                       final imageUrl =
                                           (d['imageUrl'] ?? '').toString();
 
@@ -3093,6 +3134,26 @@ class _ChatPageState extends State<ChatPage>
                                         key: bubbleKey,
                                         child: _Bubble(
                                           text: t.get('chat_message_deleted'),
+                                          isMe: isMe,
+                                          isDeleted: true,
+                                          timeText: timeText,
+                                          statusText: null,
+                                          replyToText: '',
+                                          replyToType: 'text',
+                                          replyToIsMe: false,
+                                          replyToImageUrl: '',
+                                        ),
+                                      );
+                                    }
+
+                                    if (MessageModeration.hidesText(
+                                      status: MessageModeration.statusOf(d),
+                                      type: type,
+                                    )) {
+                                      return KeyedSubtree(
+                                        key: bubbleKey,
+                                        child: _Bubble(
+                                          text: t.get('chat_message_blocked'),
                                           isMe: isMe,
                                           isDeleted: true,
                                           timeText: timeText,
@@ -4075,14 +4136,16 @@ class _ImageBubble extends StatelessWidget {
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => _FullScreenImagePage(imageUrl: imageUrl),
-            ),
-          );
-        },
+        onTap: imageUrl.isEmpty
+            ? null
+            : () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _FullScreenImagePage(imageUrl: imageUrl),
+                  ),
+                );
+              },
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 5),
           padding: const EdgeInsets.all(8),

@@ -198,6 +198,8 @@
   "chat_photo_deleted": "Photo deleted",
   "chat_error_sending_image": "Error sending image:",
   "chat_image_not_found": "Image not found.",
+  "chat_image_blocked": "Image removed for violating the rules",
+  "chat_message_blocked": "Message removed for violating the rules",
   "chat_empty_image": "Empty image.",
   "invite_friends": "Invite friends",
   "invite_unlock_rewards": "Invite friends and unlock rewards",

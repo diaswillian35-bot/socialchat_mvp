@@ -3,6 +3,11 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // Quarentena de moderação: só o Admin SDK lê ou escreve.
+    match /quarantine/{allPaths=**} {
+      allow read, write: if false;
+    }
+
     function signedIn() {
       return request.auth != null;
     }
@@ -147,9 +152,13 @@ service firebase.storage {
     match /chat_images/{conversationId}/{fileName} {
       allow read: if isConversationParticipant(conversationId);
 
-      allow write: if isConversationParticipant(conversationId)
+      allow create, update: if isConversationParticipant(conversationId)
         && isImage()
-        && underMb(10);
+        && underMb(10)
+        && request.resource.metadata.keys().hasAll(['fromUid'])
+        && request.resource.metadata.fromUid == request.auth.uid;
+
+      allow delete: if isConversationParticipant(conversationId);
     }
 
     // =========================

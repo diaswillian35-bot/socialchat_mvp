@@ -242,7 +242,8 @@ void main() {
       expect(match, isNotNull);
       final block = match!.group(1)!;
       expect(block, contains('allow read: if false;'));
-      expect(block, contains('allow create: if signedIn();'));
+      expect(block, contains('allow create: if signedIn()'));
+      expect(block, contains('fromUid == uid()'));
       expect(block, contains('allow update, delete: if false;'));
     });
   });

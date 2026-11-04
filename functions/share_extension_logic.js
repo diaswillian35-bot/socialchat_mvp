@@ -52,6 +52,10 @@ function shouldRenew(expiresAtMs, nowMs = Date.now()) {
 }
 
 function accountBlocked(userData = {}) {
+  const status = userData && userData.moderation && userData.moderation.status;
+  if (status === "suspended_pending_review" || status === "banned") {
+    return "suspended";
+  }
   if (userData.isBanned === true) return "banned";
   if (userData.shadowBan === true) return "shadow_ban";
   if (

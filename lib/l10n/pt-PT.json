@@ -165,6 +165,8 @@
   "support_contact_email_app_error": "Não foi possível abrir a aplicação de e-mail.",
   "support_contact_open_email_error": "Erro ao abrir o e-mail.",
   "chat_sending_audio": "A enviar áudio...",
+  "chat_image_blocked": "Imagem removida por violar as regras",
+  "chat_message_blocked": "Mensagem removida por violar as regras",
   "group_back": "Voltar",
   "join_group": "Aderir ao grupo",
   "remdy_notices": "Avisos Remdy",

@@ -24,6 +24,10 @@ const entries = {
   onPublicUserInterestsWritten: ["trigger", "Interest-match push; recipients are age-filtered (pushPolicyBlockCode)."],
   onPlaceModerated: ["trigger", "Owner push after place moderation; recipient is age-filtered."],
   onPlacePendingNotifyAdmins: ["trigger", "Admin-only push when a place enters review; no private data."],
+  moderateChatImage: ["trigger", "Automatic image moderation; no client callable and no content in logs."],
+  moderateMessageText: ["trigger", "Automatic DM text moderation after a verified sender create."],
+  moderateGroupMessageText: ["trigger", "Automatic group text moderation after a verified sender create."],
+  onReportCreated: ["trigger", "Automatic report enrichment and ops notice; no message text in the push."],
 };
 
 for (const name of [

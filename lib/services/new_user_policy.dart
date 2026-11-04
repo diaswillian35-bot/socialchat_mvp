@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'message_moderation.dart';
+
 /// "Novo" user eligibility — 7 days after profile completion.
 ///
 /// Discoverable maps to `nearbyEnabled` (existing field). Legacy profiles
@@ -120,6 +122,7 @@ class NewUserPolicy {
 
   static bool _isActive(Map<String, dynamic> data) {
     if (data['isBanned'] == true) return false;
+    if (ModerationVisibility.isHiddenFromLists(data)) return false;
     if (data['deleted'] == true || data['isDeleted'] == true) return false;
     if (data['accountDeleted'] == true) return false;
     return true;
