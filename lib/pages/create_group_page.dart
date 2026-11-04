@@ -3,11 +3,11 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/group_cover_upload.dart';
 import '../services/group_create_flow.dart';
 import '../services/group_creation_service.dart';
 import '../services/group_places_client.dart';
@@ -116,15 +116,21 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     super.dispose();
   }
 
-  void _toast(String msg) {
+  /// Mostra o aviso. O Future completa quando ele é exibido por um tempo
+  /// mínimo (ou fechado), para dar tempo de ler antes de navegar.
+  Future<void> _toast(String msg) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    final controller = ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(12),
       ),
     );
+    await Future.any<void>([
+      controller.closed.then((_) {}),
+      Future<void>.delayed(const Duration(milliseconds: 1800)),
+    ]);
   }
 
   String? _countryCodeForIso(String iso) {
@@ -204,35 +210,28 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     ).accepted;
   }
 
-  Future<bool> _uploadCover(String groupId) async {
+  /// Envia a capa escolhida. Devolve null se deu certo (ou não há capa),
+  /// ou a chave de texto do erro real.
+  Future<String?> _uploadCover(String groupId) async {
     final file = _coverFile;
-    if (file == null) return true;
+    if (file == null) return null;
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid ?? 'owner';
-      final ext = file.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('groups')
-          .child(groupId)
-          .child('avatar')
-          .child('group_avatar_$uid.$ext');
-      await ref.putFile(
-        File(file.path),
-        SettableMetadata(
-          contentType: ext == 'png' ? 'image/png' : 'image/jpeg',
-        ),
+      final cover = await GroupCoverUpload.upload(
+        groupId: groupId,
+        uid: uid,
+        file: file,
       );
-      final url = await ref.getDownloadURL();
       await GroupSettingsService.updateSettings(
         groupId: groupId,
         changes: {
-          'avatarUrl': url,
-          'avatarPath': ref.fullPath,
+          'avatarUrl': cover.url,
+          'avatarPath': cover.path,
         },
       );
-      return true;
-    } catch (_) {
-      return false;
+      return null;
+    } catch (e, st) {
+      return GroupCoverUpload.errorKeyFor(e, st);
     }
   }
 
@@ -524,21 +523,10 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     final bio = _bioC.text.trim();
     final country = _selectedCountry.trim().toLowerCase();
 
-    if (name.isEmpty) {
+    final textError = GroupCreateFlow.textErrorKey(name: name, bio: bio);
+    if (textError != null) {
       _inFlight = false;
-      return _toast(AppTexts.t('create_group_enter_name'));
-    }
-    if (name.length < 3) {
-      _inFlight = false;
-      return _toast(AppTexts.t('create_group_name_too_short'));
-    }
-    if (name.length > 80) {
-      _inFlight = false;
-      return _toast(AppTexts.t('group_edit_name_required'));
-    }
-    if (bio.length > 1000) {
-      _inFlight = false;
-      return _toast(AppTexts.t('group_create_bio_too_long'));
+      return _toast(AppTexts.t(textError));
     }
     if (country.isEmpty) {
       _inFlight = false;
@@ -642,15 +630,20 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         throw Exception('missing groupId');
       }
 
-      final avatarOk = await _uploadCover(createdGroupId);
+      final coverErrorKey = await _uploadCover(createdGroupId);
       final finish = GroupCreateFlow.finish(
         groupId: createdGroupId,
-        avatarFailed: !avatarOk,
+        avatarFailed: coverErrorKey != null,
       );
       _activeRequestId = null;
       _boundSignature = null;
       if (!mounted) return;
-      _toast(AppTexts.t(finish.toastKey));
+      await _toast(
+        coverErrorKey == null
+            ? AppTexts.t(finish.toastKey)
+            : '${AppTexts.t(finish.toastKey)} ${AppTexts.t(coverErrorKey)}',
+      );
+      if (!mounted) return;
       await Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -1060,10 +1053,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   onPressed: _loading
                       ? null
                       : () async {
-                          final file = await ImagePicker().pickImage(
-                            source: ImageSource.gallery,
-                            imageQuality: 80,
-                          );
+                          final file = await GroupCoverUpload.pick();
                           if (file == null || !mounted) return;
                           setState(() => _coverFile = file);
                         },
@@ -1074,11 +1064,37 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                         : AppTexts.t('create_group_cover_selected'),
                   ),
                 ),
+                if (_coverFile != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          File(_coverFile!.path),
+                          key: ValueKey(_coverFile!.path),
+                          width: 72,
+                          height: 72,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        onPressed: _loading
+                            ? null
+                            : () => setState(() => _coverFile = null),
+                        icon: const Icon(Icons.close),
+                        label: Text(AppTexts.t('remove')),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 TextField(
                   controller: _bioC,
                   textCapitalization: RemdyKeyboardCaps.sentences,
                   maxLines: 4,
+                  maxLength: GroupCreateFlow.bioMaxLength,
                   decoration: _dec(
                     AppTexts.t('create_group_bio'),
                     hint: AppTexts.t('create_group_bio_hint'),
