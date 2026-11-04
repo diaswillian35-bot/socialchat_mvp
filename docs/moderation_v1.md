@@ -13,10 +13,10 @@ O painel admin vive em `Admin_Talksy_work` (codebase `admin-talksy`), que **não
    - Bloqueio: copia para `quarantine/{path}`, apaga o original, grava `moderation.status=blocked` e `imageUrl=''`, cria `reports` (`source: auto_vision`, `fromUid: system`) e soma `moderationStrikes/{uid}`.
    - Corrida upload/mensagem: `pendingModeration/{sha256 do path}` + `messageId` no metadata do Storage.
    - Falha da API: não bloqueia, marca `unchecked` e relança até 3 tentativas (`retry: true`).
-2. **Texto** — `moderateMessageText` (DM) e `moderateGroupMessageText` (grupo), `onDocumentCreated`, mesma região. Porta o filtro para `functions/moderation/text_filter.js` (CSAM, violência sexual, ameaça dirigida, pornografia adulta e venda de conteúdo, URL inclusive "ponto com" e espaços). Domínios em `appConfig/moderation.blockedDomains` quando o campo existe; senão a lista embutida. Ao casar: `text=''`, `moderation.reason` = `text_adult` | `link_adult` | `csam`, strike e denúncia `source: auto_text`. O push e o `lastMessage` não levam o texto bloqueado.
+2. **Texto** — `moderateMessageText` (DM) e `moderateGroupMessageText` (grupo), `onDocumentCreated`, mesma região. Porta o filtro para `functions/moderation/text_filter.js` (CSAM, violência sexual, ameaça dirigida, pornografia adulta e venda de conteúdo, URL inclusive "ponto com" e espaços). Domínios em `appConfig/moderation.blockedDomains` quando o campo existe; senão a lista embutida. Ao casar: `text=''`, `moderation.reason` = `text_adult` | `link_adult` | `csam`, strike e denúncia `source: auto_text`. Essas duas functions apagam o texto da mensagem sozinhas. A prévia do push e o `lastMessage` só deixam de levar o texto bloqueado depois que `onPrivateMessageCreated` e `onGroupMessageCreated` forem publicadas; elas **não** entram na primeira publicação.
 3. **Cliente** — `lib/services/objectionable_content_filter.dart` devolve na hora a chave `content_filter_blocked`. Balões existentes (`_Bubble`, estilo de mensagem apagada) com `chat_image_blocked` e `chat_message_blocked`. Sem mudança de layout, cor ou fonte. Suspenso some das listas pelo mesmo filtro de conta inativa (`ModerationVisibility.isHiddenFromLists`).
 4. **Denúncias** — `onReportCreated`. Enriquece `distinctReporterCount` e `priority` (`critical` se CSAM). O aviso ao admin sai de `functions/moderation/report_notice.js` (`sendOpsNoticeIfReady`), não de `ops_new_user_notify.js`. FCM para `appConfig/opsSettings.adminUids` ou, se vazio, `admins/{uid}` ativos. Corpo: `Nova denúncia · motivo: {reasonCode} · total: N`. Sem texto de mensagem e sem nome do denunciante. Denúncia de CSAM feita por usuário: prioridade crítica, cópia de preservação (sem apagar o original e sem apagar a mensagem), aviso ao admin, e o mesmo limite de 20 por dia. Uma denúncia sozinha não suspende. Ela conta para o limite de 3 denunciantes distintos em 30 dias e para os strikes. Suspensão imediata por uma ocorrência só quando a detecção é do sistema (`fromUid: system`). Strikes automáticos contam numa janela de 30 dias.
-5. **Ação automática** — 3 denunciantes distintos em 30 dias (`appConfig/moderation.autoActionThreshold`), ou 1 denúncia CSAM, ou 3 strikes: `users/{uid}.moderation = {status:'suspended_pending_review', at}`. Não apaga a conta. Rules negam `create` de mensagem DM e de grupo. O campo `moderation` o cliente não altera.
+5. **Ação automática** — 3 denunciantes distintos em 30 dias (`appConfig/moderation.autoActionThreshold`), ou 3 strikes, ou detecção CSAM do sistema (`fromUid: system`): `users/{uid}.moderation = {status:'suspended_pending_review', at}`. Uma denúncia CSAM de usuário não suspende sozinha; ela entra na contagem de denunciantes e de strikes. Não apaga a conta. Rules negam `create` de mensagem DM e de grupo. O campo `moderation` o cliente não altera.
 6. **CSAM** — texto e path vão para `csamHolds/{reportId}` (cliente não lê). Imagem vai para `quarantine/` com `quarantineHolds.legalHold=true`. Não há exclusão automática. SafeSearch não detecta idade. Nenhum admin baixa o material por este PR (não há URL assinada aqui).
 
 Fase 2 (perfil `users/**`, `events/*/photos/**`, `posts/**`) **não** foi implementada.
@@ -48,12 +48,16 @@ Se `blockedDomains` vier preenchido, **substitui** a lista embutida. Para acresc
 
 Codebase `default` em `firebase.json`. Região `northamerica-northeast1`. Sempre `--only`. Projeto `socialchatmvp`.
 
+Primeira publicação: **não** inclua `onPrivateMessageCreated` nem `onGroupMessageCreated`. Essas duas já estão no ar (região `us-central1`, sem `region` no código) e a versão desta branch só muda a prévia do push e o `lastMessage`. Publicá-las junto misturaria essa mudança com o filtro novo.
+
 ```bash
-firebase deploy --only functions:default:moderateChatImage,functions:default:moderateMessageText,functions:default:moderateGroupMessageText,functions:default:onReportCreated,functions:default:onPrivateMessageCreated,functions:default:onGroupMessageCreated --project socialchatmvp
+firebase deploy --only functions:default:moderateChatImage,functions:default:moderateMessageText,functions:default:moderateGroupMessageText,functions:default:onReportCreated --project socialchatmvp
 firebase deploy --only firestore:rules,storage --project socialchatmvp
 ```
 
-Antes do deploy, confirme que a produção já está no build 39 para estes quatro artefatos: `firestore.rules`, `storage.rules`, `onPrivateMessageCreated` e `onGroupMessageCreated`. A referência é `origin/android-match-ios-b38` (commit `bcba233`), não esta branch. Se algum divergir, pare e reporte. Não publique.
+`moderateChatImage`, `moderateMessageText`, `moderateGroupMessageText` e `onReportCreated` funcionam sozinhas. Nenhuma delas chama `onPrivateMessageCreated` ou `onGroupMessageCreated`, e o bloqueio da mensagem, da imagem e da denúncia não depende do diff dessas duas. Até elas serem publicadas, a prévia do push pode mostrar o texto antes do bloqueio: a function que já está em produção grava `lastMessage` e o corpo do push com o texto original, e só depois `moderateMessageText` / `moderateGroupMessageText` limpam o documento.
+
+Antes do deploy, confirme que a produção já está no commit `edebff3` de `origin/android-match-ios-b38` para `firestore.rules` e `storage.rules` (portal de Locais, `isRemdySuperAdmin`, `pendingRequests`, `linkPreview` e Storage de `places/`). `onPrivateMessageCreated` e `onGroupMessageCreated` nesse commit são as do build 39: `edebff3` não altera `functions/index.js` em relação a `bcba233`. A referência é esse commit, não esta branch. Se algum divergir, pare e reporte. Não publique.
 
 ```bash
 git fetch origin android-match-ios-b38
@@ -76,7 +80,7 @@ gcloud functions describe onGroupMessageCreated \
   --format='yaml(updateTime,buildConfig.source)'
 ```
 
-Baixe o zip indicado em `buildConfig.source` e compare `onPrivateMessageCreated` e `onGroupMessageCreated` com `git show origin/android-match-ios-b38:functions/index.js` (commit `bcba233`). Se as rules ou essas functions em produção não forem as do build 39, pare e reporte. Não rode `firebase deploy`.
+Baixe o zip indicado em `buildConfig.source` e compare `onPrivateMessageCreated` e `onGroupMessageCreated` com `git show origin/android-match-ios-b38:functions/index.js` (commit `edebff3`; o source dessas duas functions é o mesmo de `bcba233`). Se as rules não forem as de `edebff3`, ou se essas functions em produção não forem as do build 39, pare e reporte. Não rode `firebase deploy`. Não publique essas duas functions nesta primeira leva.
 
 Antes do deploy, confirme também a região do bucket. O trigger `moderateChatImage` está em `northamerica-northeast1` e declara `socialchatmvp.firebasestorage.app`. Storage triggers só sobem se a região da function for a mesma do bucket. Não mude o bucket.
 
@@ -84,7 +88,7 @@ Antes do deploy, confirme também a região do bucket. O trigger `moderateChatIm
 gcloud storage buckets describe gs://socialchatmvp.firebasestorage.app --format="value(location)"
 ```
 
-Se o valor não for `northamerica-northeast1` (ou `NORTHAMERICA-NORTHEAST1`), pare. Não faça o deploy de `moderateChatImage` e não altere a localização do bucket sem o Willian. As functions de Firestore (`moderateMessageText`, `moderateGroupMessageText`, `onReportCreated`, `onPrivateMessageCreated`, `onGroupMessageCreated`) continuam em `northamerica-northeast1`, que já é a região do Firestore.
+Se o valor não for `northamerica-northeast1` (ou `NORTHAMERICA-NORTHEAST1`), pare. Não faça o deploy de `moderateChatImage` e não altere a localização do bucket sem o Willian. As functions novas de Firestore (`moderateMessageText`, `moderateGroupMessageText`, `onReportCreated`) ficam em `northamerica-northeast1`, que já é a região do Firestore. `onPrivateMessageCreated` e `onGroupMessageCreated` não declaram região e permanecem em `us-central1`; elas ficam de fora desta publicação.
 
 A Cloud Vision API não é ativada por este PR. O alerta de orçamento no Billing já existe e é de **US$ 25/mês** (não US$ 15). Não crie outro alerta.
 

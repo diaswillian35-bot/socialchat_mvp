@@ -1178,11 +1178,8 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Moderação — somente Admin SDK. O cliente lê a lista de domínios.
-    match /appConfig/{docId} {
-      allow read: if signedIn() && docId == 'moderation';
-      allow write: if false;
-    }
+    // Moderação — somente Admin SDK. appConfig/moderation já é legível
+    // pelo match de appConfig acima (signedIn, write false).
     match /pendingModeration/{id} {
       allow read, write: if false;
     }
