@@ -69,10 +69,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 # Somente leitura. Confira o source implantado das duas functions.
 gcloud functions describe onPrivateMessageCreated \
-  --gen2 --region=northamerica-northeast1 --project=socialchatmvp \
+  --gen2 --region=us-central1 --project=socialchatmvp \
   --format='yaml(updateTime,buildConfig.source)'
 gcloud functions describe onGroupMessageCreated \
-  --gen2 --region=northamerica-northeast1 --project=socialchatmvp \
+  --gen2 --region=us-central1 --project=socialchatmvp \
   --format='yaml(updateTime,buildConfig.source)'
 ```
 
