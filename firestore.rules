@@ -51,8 +51,23 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    // Admin total do app (b39): e-mail verificado do Willian ou claim `admin`.
+    // Usado SOMENTE nas regras de Locais/portal (via isActivePortalAdmin).
+    // Não há nenhuma exceção de admin em conversations/messages (DMs).
+    function isRemdySuperAdmin() {
+      return authenticated()
+        && (
+          request.auth.token.get('admin', false) == true
+          || (
+            request.auth.token.get('email', '') == 'diaswillian35@gmail.com'
+            && request.auth.token.get('email_verified', false) == true
+          )
+        );
+    }
+
     function isActivePortalAdmin() {
-      return isPortalAdmin() && adminDoc().data.get('isActive', true) != false;
+      return isRemdySuperAdmin()
+        || (isPortalAdmin() && adminDoc().data.get('isActive', true) != false);
     }
 
     function isOwnerPortalAdmin() {
@@ -244,20 +259,6 @@ service cloud.firestore {
     function canSendMessageInConversation(cid) {
       let parts = partsFrom(conv(cid).data);
       return !eitherDmBlocked(uid(), request.resource.data.toUid);
-    }
-
-    // Admin total do app (b39): e-mail verificado do Willian ou claim `admin`.
-    // Nunca dá acesso a DMs de terceiros: só remove o limite de texto do admin
-    // nas conversas em que ele já é participante.
-    function isRemdySuperAdmin() {
-      return request.auth != null
-        && (
-          request.auth.token.get('admin', false) == true
-          || (
-            request.auth.token.get('email', '') == 'diaswillian35@gmail.com'
-            && request.auth.token.get('email_verified', false) == true
-          )
-        );
     }
 
     function isValidTextMessage() {
@@ -1120,6 +1121,99 @@ service cloud.firestore {
       allow read: if signedIn()
         && resource.data.keys().hasAll(['uid'])
         && resource.data.uid == uid();
+    }
+
+    // =========================
+    // LOCAIS — bloco do portal (remdy-events-web), como estava no ar em 16/10/2026.
+    // Escritas só pelo Admin SDK (funções). Ficha publicada é pública (site e app).
+    // authenticated() = login simples (equivale ao signedIn() do portal em 16/10).
+    // =========================
+    // Locais. Escrita só pelo Admin SDK. O documento público não carrega dono, e-mail nem auditoria.
+    function locaisAccess(placeId) {
+      return get(/databases/$(database)/documents/places/$(placeId)/private/access);
+    }
+
+    function isLocaisEditor(placeId) {
+      return authenticated()
+        // Correção: no portal era locaisAccess(placeId).exists, que não existe
+        // em regras e dava erro (dono/gestor/admin nunca liam a ficha).
+        && exists(/databases/$(database)/documents/places/$(placeId)/private/access)
+        && (
+        isActivePortalAdmin()
+        || locaisAccess(placeId).data.ownerUid == uid()
+        || (
+          locaisAccess(placeId).data.managerUids is list
+          && uid() in locaisAccess(placeId).data.managerUids
+        )
+      );
+    }
+
+    function isPublicLocaisPlace() {
+      return resource.data.schemaVersion == 1
+        && resource.data.deleted == false
+        && resource.data.active == true
+        && resource.data.moderationStatus == "published";
+    }
+
+    match /places/{placeId} {
+      allow get: if isPublicLocaisPlace() || isLocaisEditor(placeId);
+      allow list: if isPublicLocaisPlace();
+      allow create, update, delete: if false;
+
+      match /private/{docId} {
+        allow read: if isLocaisEditor(placeId);
+        allow write: if false;
+      }
+
+      match /reviews/{reviewId} {
+        allow get: if authenticated() && reviewId == uid();
+        allow list: if false;
+        allow create, update, delete: if false;
+      }
+
+      match /reports/{reportId} {
+        allow read: if isActivePortalAdmin();
+        allow write: if false;
+      }
+
+      match /feedback/{feedbackId} {
+        allow read: if isActivePortalAdmin();
+        allow write: if false;
+      }
+
+      match /audit/{logId} {
+        allow read: if isLocaisEditor(placeId);
+        allow write: if false;
+      }
+
+      match /photos/{photoId} {
+        allow read: if isLocaisEditor(placeId);
+        allow write: if false;
+      }
+    }
+
+    match /placeManagers/{userId}/places/{placeId} {
+      allow read: if authenticated() && (uid() == userId || isActivePortalAdmin());
+      allow write: if false;
+    }
+
+    match /placeClaims/{claimId} {
+      allow read: if isActivePortalAdmin() || (authenticated() && resource.data.claimantUid == uid());
+      allow write: if false;
+    }
+
+    match /placeRegistrations/{protocol} {
+      allow read, write: if false;
+    }
+
+    match /placeReviewRate/{userId} {
+      allow read: if isActivePortalAdmin() || (authenticated() && uid() == userId);
+      allow write: if false;
+    }
+
+    match /placeFeedbackRate/{userId} {
+      allow read: if isActivePortalAdmin() || (authenticated() && uid() == userId);
+      allow write: if false;
     }
   }
 }

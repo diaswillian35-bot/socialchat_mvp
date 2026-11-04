@@ -278,5 +278,65 @@ service firebase.storage {
         && isImage()
         && underMb(10);
     }
+
+    // =========================
+    // LOCAIS — bloco do portal (remdy-events-web): fotos e cardápio com leitura
+    // pública; envio só por admin Remdy ou dono/gestor; caixa de entrada do cadastro.
+    // =========================
+    function isLocaisImage() {
+      return request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/jpeg|image/png|image/webp')
+        && !request.resource.contentType.matches('image/svg.*');
+    }
+
+    function locaisEditor(placeId) {
+      return signedIn() && (
+        // Admin total do app (b39): e-mail verificado do Willian ou claim `admin`.
+        request.auth.token.get('admin', false) == true
+        || (
+          request.auth.token.get('email', '') == 'diaswillian35@gmail.com'
+          && request.auth.token.get('email_verified', false) == true
+        )
+        || (
+          firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid))
+          && firestore.get(/databases/(default)/documents/admins/$(request.auth.uid)).data.get('isActive', true) != false
+        )
+        || firestore.get(/databases/(default)/documents/places/$(placeId)/private/access).data.ownerUid == request.auth.uid
+        || (
+          firestore.get(/databases/(default)/documents/places/$(placeId)/private/access).data.get("managerUids", null) is list
+          && request.auth.uid in firestore.get(/databases/(default)/documents/places/$(placeId)/private/access).data.managerUids
+        )
+      );
+    }
+
+    match /places/{placeId}/photos/{fileName} {
+      allow read: if true;
+      allow create: if locaisEditor(placeId)
+        && isLocaisImage()
+        && fileName.matches('[0-9a-f]{32}(_thumb)?\\.(jpg|jpeg|png|webp)');
+      allow delete: if locaisEditor(placeId);
+      allow update: if false;
+    }
+
+    // Cardápio informativo: somente dono/gestor envia; leitura pública segue
+    // a ficha aprovada. Não há pedido, checkout ou comprovante neste caminho.
+    match /places/{placeId}/menu/{fileName} {
+      allow read: if true;
+      allow create: if locaisEditor(placeId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/jpeg|image/png|image/webp|application/pdf')
+        && fileName.matches('[0-9a-f]{32}\\.(jpg|jpeg|png|webp|pdf)');
+      allow delete: if locaisEditor(placeId);
+      allow update: if false;
+    }
+
+    match /places/inbox/{userId}/{fileName} {
+      allow read, delete: if signedIn() && uid() == userId;
+      allow create: if signedIn()
+        && uid() == userId
+        && isLocaisImage()
+        && fileName.matches('[0-9a-f]{32}\\.(jpg|jpeg|png|webp)');
+      allow update: if false;
+    }
   }
 }
