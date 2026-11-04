@@ -1695,5 +1695,9 @@
   "people_reason_short_same_city": "Vive en {city}",
   "people_reason_short_hometown": "De {city}",
   "people_city_header": "{city} · {count}",
-  "people_city_see_all": "Ver todas ({count})"
+  "people_city_see_all": "Ver todas ({count})",
+  "group_create_name_too_long": "El nombre del grupo puede tener como máximo 80 caracteres.",
+  "group_cover_error_unauthorized": "No tienes permiso para cambiar la portada de este grupo.",
+  "group_cover_error_too_large": "La imagen es demasiado grande. Elige otra foto.",
+  "group_cover_error_generic": "No se pudo subir la portada. Inténtalo de nuevo."
 }

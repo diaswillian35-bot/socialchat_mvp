@@ -1695,5 +1695,9 @@
   "people_reason_short_same_city": "Lives in {city}",
   "people_reason_short_hometown": "From {city}",
   "people_city_header": "{city} · {count}",
-  "people_city_see_all": "See all ({count})"
+  "people_city_see_all": "See all ({count})",
+  "group_create_name_too_long": "The group name can have at most 80 characters.",
+  "group_cover_error_unauthorized": "You don't have permission to change this group's cover.",
+  "group_cover_error_too_large": "The image is too large. Choose another photo.",
+  "group_cover_error_generic": "Couldn't upload the cover. Please try again."
 }

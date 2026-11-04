@@ -1428,5 +1428,9 @@
   "hide_in_city_info": "Quando ativado, o seu perfil não aparece a pessoas da sua cidade ou região.",
   "profile_photo_add": "Adicione a sua foto de perfil (obrigatória)",
   "people_reason_short_interest": "Gosta de {interest}",
-  "people_reason_short_same_city": "Vive em {city}"
+  "people_reason_short_same_city": "Vive em {city}",
+  "group_create_name_too_long": "O nome do grupo pode ter no máximo 80 caracteres.",
+  "group_cover_error_unauthorized": "Não tem permissão para alterar a capa deste grupo.",
+  "group_cover_error_too_large": "A imagem é demasiado grande. Escolha outra fotografia.",
+  "group_cover_error_generic": "Não foi possível enviar a capa. Tente novamente."
 }

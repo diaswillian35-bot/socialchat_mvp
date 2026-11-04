@@ -1695,5 +1695,9 @@
   "people_reason_short_same_city": "Mora em {city}",
   "people_reason_short_hometown": "De {city}",
   "people_city_header": "{city} · {count}",
-  "people_city_see_all": "Ver todas ({count})"
+  "people_city_see_all": "Ver todas ({count})",
+  "group_create_name_too_long": "O nome do grupo pode ter no máximo 80 caracteres.",
+  "group_cover_error_unauthorized": "Você não tem permissão para trocar a capa deste grupo.",
+  "group_cover_error_too_large": "A imagem é grande demais. Escolha outra foto.",
+  "group_cover_error_generic": "Não foi possível enviar a capa. Tente de novo."
 }
