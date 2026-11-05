@@ -1,3 +1,4 @@
+import '../logic/place_hours_logic.dart';
 import '../models/place_listing.dart';
 
 /// Adaptador único entre `remdy.places.v1` (portal/Admin) e a apresentação do
@@ -61,6 +62,8 @@ class FirestorePlaceMapper {
         menu: _menu(data),
         deliveryOnly: deliveryOnly,
         deliveryArea: deliveryOnly ? _nullable(data['deliveryArea']) : null,
+        timeZone: _zone(data['timeZone']),
+        hoursNote: _text(data['hoursNote']),
       );
     } catch (_) {
       return null;
@@ -165,21 +168,19 @@ class FirestorePlaceMapper {
     );
   }
 
+  /// `hours` estruturado; sem ele, lê o `hoursNote` antigo (5 idiomas).
   static List<PlaceHours> _hours(Map<String, dynamic> data) {
-    final result = <PlaceHours>[];
-    final note = _text(data['hoursNote']);
-    final match = RegExp(r'^(\d{2}:\d{2})-(\d{2}:\d{2})$').firstMatch(note);
-    if (match == null) return result;
-    for (var day = 1; day <= 7; day++) {
-      result.add(
-        PlaceHours(
-          weekday: day,
-          opens: match.group(1)!,
-          closes: match.group(2)!,
-        ),
-      );
-    }
-    return result;
+    final structured = PlaceHoursLogic.fromJson(data['hours']);
+    if (structured != null) return structured;
+    return PlaceHoursLogic.parseLegacy(_text(data['hoursNote'])) ?? const [];
+  }
+
+  static String? _zone(Object? raw) {
+    final z = raw is String ? raw.trim() : '';
+    return RegExp(r'^[A-Za-z_]+/[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)?$')
+            .hasMatch(z)
+        ? z
+        : null;
   }
 
   static List<PlaceReview> _embeddedReviews(Map<String, dynamic> data) {

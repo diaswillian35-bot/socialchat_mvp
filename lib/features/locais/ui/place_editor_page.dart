@@ -11,6 +11,7 @@ import '../../../widgets/keyboard_dismiss.dart';
 import '../../../widgets/remdy_keyboard_caps.dart';
 import '../data/place_submission_service.dart';
 import '../locais_strings.dart';
+import '../logic/place_hours_logic.dart';
 import '../models/place_listing.dart';
 
 /// "Adicionar local" / "Editar local": mesmo fluxo e visual do wizard de
@@ -55,7 +56,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
   final _nameC = TextEditingController();
   final _descC = TextEditingController();
   final _addressC = TextEditingController();
-  final _hoursC = TextEditingController();
+  List<PlaceHoursGroup> _groups = [PlaceHoursGroup()];
   final _phoneC = TextEditingController();
   final _whatsC = TextEditingController();
   final _siteC = TextEditingController();
@@ -79,7 +80,8 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
     _nameC.text = _draft.name;
     _descC.text = _draft.description;
     _addressC.text = _draft.addressLine;
-    _hoursC.text = _draft.hoursNote;
+    _groups = PlaceHoursLogic.toGroups(_draft.hours);
+    if (_groups.isEmpty) _groups = [PlaceHoursGroup()];
     _phoneC.text = _draft.phone;
     _whatsC.text = _draft.whatsapp;
     _siteC.text = _draft.websiteUrl;
@@ -95,7 +97,6 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
       _nameC,
       _descC,
       _addressC,
-      _hoursC,
       _phoneC,
       _whatsC,
       _siteC,
@@ -112,7 +113,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
       ..name = _nameC.text
       ..description = _descC.text
       ..addressLine = _addressC.text
-      ..hoursNote = _hoursC.text
+      ..hours = PlaceHoursLogic.fromGroups(_groups)
       ..phone = _phoneC.text
       ..whatsapp = _whatsC.text
       ..websiteUrl = _siteC.text
@@ -133,6 +134,9 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
       case 1:
         return _draft.locationValid ? null : 'place_err_city';
       case 2:
+        if (_groups.any((g) => g.days.isNotEmpty && g.opens == g.closes)) {
+          return 'place_hours_err_range';
+        }
         return _isHttpsOrEmpty(_draft.websiteUrl) ? null : 'place_err_link';
       case 3:
         return _draft.photoUrls.length + _draft.pendingPhotoPaths.length == 0
@@ -477,17 +481,134 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
     );
   }
 
+  /// Mudou o horário: o texto antigo deixa de valer.
+  void _editHours(VoidCallback change) {
+    setState(() {
+      change();
+      _draft.hoursNote = '';
+      _draft.hours = PlaceHoursLogic.fromGroups(_groups);
+    });
+  }
+
+  Future<void> _pickTime(PlaceHoursGroup g, {required bool opens}) async {
+    final v = opens ? g.opens : g.closes;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+          hour: int.parse(v.substring(0, 2)),
+          minute: int.parse(v.substring(3, 5))),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: _remdyNavy),
+        ),
+        child: child!,
+      ),
+    );
+    if (time == null || !mounted) return;
+    final hm = '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}';
+    _editHours(() => opens ? g.opens = hm : g.closes = hm);
+  }
+
+  Widget _hoursGroup(int index) {
+    final t = AppTexts.t;
+    final strings = LocaisStrings.of(context);
+    final g = _groups[index];
+    final usedElsewhere = <int>{
+      for (var j = 0; j < _groups.length; j++)
+        if (j != index) ..._groups[j].days,
+    };
+    Widget timeRow(String key, String label, String value, bool opens) =>
+        ListTile(
+          key: Key('place_hours_${key}_$index'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(label),
+          subtitle: !opens && g.closes.compareTo(g.opens) < 0
+              ? Text(t('place_hours_next_day'))
+              : null,
+          trailing: Text(value,
+              style: const TextStyle(
+                  color: _remdyNavy, fontWeight: FontWeight.w700)),
+          onTap: () => _pickTime(g, opens: opens),
+        );
+    return Column(
+      key: Key('place_hours_group_$index'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (index > 0) const Divider(height: 24),
+        Row(
+          children: [
+            Expanded(child: _label(t('place_hours_days'))),
+            if (_groups.length > 1)
+              IconButton(
+                key: Key('place_hours_remove_$index'),
+                tooltip: t('place_hours_remove'),
+                icon: const Icon(Icons.delete_outline, color: _muted),
+                onPressed: () => _editHours(() => _groups.removeAt(index)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            for (var d = 1; d <= 7; d++)
+              if (!usedElsewhere.contains(d))
+                FilterChip(
+                  key: Key('place_hours_day_${index}_$d'),
+                  label: Text(strings.weekday(d)),
+                  selected: g.days.contains(d),
+                  showCheckmark: false,
+                  selectedColor: _remdyNavy,
+                  labelStyle: TextStyle(
+                    color: g.days.contains(d) ? Colors.white : _remdyNavy,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  side: const BorderSide(color: _border),
+                  onSelected: (on) =>
+                      _editHours(() => on ? g.days.add(d) : g.days.remove(d)),
+                ),
+          ],
+        ),
+        timeRow('opens', t('place_hours_opens'), g.opens, true),
+        timeRow('closes', t('place_hours_closes'), g.closes, false),
+      ],
+    );
+  }
+
+  String _hoursSummary(LocaisStrings strings) {
+    _pull();
+    if (_draft.hours.isEmpty) return _draft.hoursNote.trim();
+    return PlaceHoursLogic.toNote(_draft.hours, strings.weekday);
+  }
+
   Widget _stepContact() {
     final t = AppTexts.t;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        TextField(
-          controller: _hoursC,
-          textCapitalization: RemdyKeyboardCaps.sentences,
-          maxLines: 3,
-          decoration: _dec(t('place_hours'), hint: t('place_hours_hint')),
-        ),
+        _label(t('place_hours')),
+        const SizedBox(height: 4),
+        Text(t('place_hours_groups_hint'),
+            style: const TextStyle(color: _muted, fontSize: 12)),
+        if (_draft.hours.isEmpty && _draft.hoursNote.trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text('${t('place_hours_previous')}: ${_draft.hoursNote.trim()}',
+              style: const TextStyle(color: _muted, fontSize: 12)),
+        ],
+        for (var i = 0; i < _groups.length; i++) _hoursGroup(i),
+        if (_groups.expand((g) => g.days).toSet().length < 7)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('place_hours_add_group'),
+              onPressed: () => _editHours(() => _groups.add(PlaceHoursGroup())),
+              icon: const Icon(Icons.add, color: _remdyNavy),
+              label: Text(t('place_hours_add_group'),
+                  style: const TextStyle(color: _remdyNavy)),
+            ),
+          ),
         const SizedBox(height: 12),
         TextField(
           controller: _phoneC,
@@ -573,7 +694,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
             [_draft.addressLine, _draft.cityDisplay]
                 .where((e) => e.trim().isNotEmpty)
                 .join(' · ')),
-        row(t('place_hours'), _draft.hoursNote),
+        row(t('place_hours'), _hoursSummary(strings)),
         row(t('place_phone'), _draft.phone),
         row(
           t('place_add_photos'),

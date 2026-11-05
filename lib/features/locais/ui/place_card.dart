@@ -212,10 +212,11 @@ class PlaceCard extends StatelessWidget {
             _RatingLine(
               label: strings.ratingLine(place.rating, place.ratingCount),
             ),
-            _StatusPill(
-              open: open,
-              label: open ? strings.openNow : strings.closed,
-            ),
+            if (!place.hoursUnknown)
+              _StatusPill(
+                open: open,
+                label: open ? strings.openNow : strings.closed,
+              ),
             if (place.deliveryOnly)
               _StatusPill(
                 key: const Key('place_card_delivery_badge'),

@@ -4,6 +4,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../logic/place_hours_logic.dart';
+import '../models/place_listing.dart';
+
 /// Rascunho do formulário "Adicionar local".
 class PlaceDraft {
   PlaceDraft({
@@ -31,7 +34,9 @@ class PlaceDraft {
     this.status = '',
     List<String>? pendingPhotoPaths,
     List<String>? pendingMenuPaths,
-  })  : photoUrls = photoUrls ?? <String>[],
+    List<PlaceHours>? hours,
+  })  : hours = hours ?? <PlaceHours>[],
+        photoUrls = photoUrls ?? <String>[],
         menuPhotoUrls = menuPhotoUrls ?? <String>[],
         pendingPhotoPaths = pendingPhotoPaths ?? <String>[],
         pendingMenuPaths = pendingMenuPaths ?? <String>[];
@@ -52,6 +57,9 @@ class PlaceDraft {
   bool deliveryOnly;
   String deliveryArea;
   String hoursNote;
+
+  /// Horário por dia (1 = segunda … 7 = domingo). Vazio = sem horário.
+  List<PlaceHours> hours;
   String phone;
   String whatsapp;
   String websiteUrl;
@@ -74,6 +82,16 @@ class PlaceDraft {
 
   static const int maxPhotos = 6;
 
+  /// Fuso IANA do local, derivado de país/estado/cidade.
+  String? get timeZone =>
+      PlaceHoursLogic.zoneFor(countryCode, stateName, cityName);
+
+  /// `hoursNote` enviado: gerado do horário estruturado (o backend atual só
+  /// guarda esse texto); sem horário estruturado, mantém o texto antigo.
+  String noteFor(String Function(int) dayName) => hours.isNotEmpty
+      ? PlaceHoursLogic.toNote(hours, dayName)
+      : hoursNote.trim();
+
   bool get hasCity =>
       cityName.trim().isNotEmpty && latitude != null && longitude != null;
 
@@ -81,7 +99,7 @@ class PlaceDraft {
   bool get locationValid => deliveryOnly ? cityName.trim().isNotEmpty : hasCity;
 
   /// Campos de texto (sem mídia) para create/update.
-  Map<String, dynamic> toFields() => {
+  Map<String, dynamic> toFields({String Function(int)? dayName}) => {
         'name': name.trim(),
         'category': category,
         'description': description.trim(),
@@ -93,12 +111,17 @@ class PlaceDraft {
         'longitude': longitude,
         'deliveryOnly': deliveryOnly,
         'deliveryArea': deliveryOnly ? deliveryArea.trim() : '',
-        'hoursNote': hoursNote.trim(),
+        'hoursNote': noteFor(dayName ?? _ptDay),
+        'hours': PlaceHoursLogic.toJson(hours),
+        'timeZone': timeZone ?? '',
         'phone': phone.trim(),
         'whatsapp': whatsapp.trim(),
         'websiteUrl': websiteUrl.trim(),
         'menuUrl': menuUrl.trim(),
       };
+
+  static String _ptDay(int d) =>
+      const ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][(d - 1) % 7];
 
   factory PlaceDraft.fromSummary(Map<String, dynamic> m) {
     double? d(Object? v) => v is num ? v.toDouble() : null;
@@ -124,6 +147,9 @@ class PlaceDraft {
       deliveryOnly: m['deliveryOnly'] == true,
       deliveryArea: s(m['deliveryArea']),
       hoursNote: s(m['hoursNote']),
+      hours: PlaceHoursLogic.fromJson(m['hours']) ??
+          PlaceHoursLogic.parseLegacy(s(m['hoursNote'])) ??
+          <PlaceHours>[],
       phone: s(m['phone']),
       whatsapp: s(m['whatsapp']),
       websiteUrl: s(m['websiteUrl']),

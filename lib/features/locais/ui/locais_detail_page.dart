@@ -193,7 +193,8 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
             style: const TextStyle(
                 fontWeight: FontWeight.w700, color: LocaisColors.muted),
           ),
-          _pill(open ? strings.openNow : strings.closed, open),
+          if (!place.hoursUnknown)
+            _pill(open ? strings.openNow : strings.closed, open),
           if (place.deliveryOnly)
             _pill(
               strings.deliveryBadge,
@@ -622,14 +623,24 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle(strings.hours),
-        for (var day = 1; day <= 7; day++) _hourRow(strings, place, day),
+        if (place.hoursUnknown)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              place.hoursNote.trim(),
+              key: const Key('locais_detail_hours_note'),
+              style: const TextStyle(color: LocaisColors.muted),
+            ),
+          )
+        else
+          for (var day = 1; day <= 7; day++) _hourRow(strings, place, day),
       ],
     );
   }
 
   Widget _hourRow(LocaisStrings strings, PlaceListing place, int weekday) {
     final slots = place.hours.where((slot) => slot.weekday == weekday).toList();
-    final today = weekday == _now.weekday;
+    final today = weekday == place.localTime(_now).weekday;
     final text = slots.isEmpty
         ? strings.closedToday
         : slots.map((slot) => '${slot.opens}–${slot.closes}').join(', ');

@@ -1,3 +1,5 @@
+import '../logic/place_hours_logic.dart';
+
 /// Contrato público `places.v1`, o mesmo documento que o portal web do
 /// comerciante passará a publicar. Esta etapa só lê JSON local; não há
 /// escrita, Firebase nem credencial.
@@ -393,6 +395,8 @@ class PlaceListing {
     this.ratingCounts = const {},
     this.deliveryOnly = false,
     this.deliveryArea,
+    this.timeZone,
+    this.hoursNote = '',
   });
 
   final String id;
@@ -419,6 +423,24 @@ class PlaceListing {
 
   /// Área de entrega opcional (texto livre), só quando [deliveryOnly].
   final String? deliveryArea;
+
+  /// Fuso IANA do local (`timeZone`); nulo = derivar de país/estado.
+  final String? timeZone;
+
+  /// Texto antigo de horário, mostrado quando não deu para ler os dias.
+  final String hoursNote;
+
+  /// Sem dias lidos mas com texto: mostra o texto, não "fechado".
+  bool get hoursUnknown => hours.isEmpty && hoursNote.trim().isNotEmpty;
+
+  String? get effectiveTimeZone => (timeZone ?? '').isNotEmpty
+      ? timeZone
+      : PlaceHoursLogic.zoneFor(
+          address.countryCode, address.region, address.city);
+
+  /// [instant] no relógio do local.
+  DateTime localTime(DateTime instant) =>
+      PlaceHoursLogic.localTime(instant, effectiveTimeZone);
 
   /// Pode aparecer no mapa / ter rota: tem coordenadas e espaço físico.
   bool get hasPhysicalLocation => !deliveryOnly && address.hasCoordinates;
@@ -450,17 +472,13 @@ class PlaceListing {
         ratingCounts: ratingCounts ?? this.ratingCounts,
         deliveryOnly: deliveryOnly,
         deliveryArea: deliveryArea,
+        timeZone: timeZone,
+        hoursNote: hoursNote,
       );
 
-  bool isOpenAt(DateTime instant) {
-    final minute = instant.hour * 60 + instant.minute;
-    for (final slot in hours) {
-      if (slot.weekday == instant.weekday && slot.containsMinute(minute)) {
-        return true;
-      }
-    }
-    return false;
-  }
+  /// Aberto no fuso do local, contando a madrugada da faixa do dia anterior.
+  bool isOpenAt(DateTime instant) =>
+      PlaceHoursLogic.isOpen(hours, localTime(instant));
 
   Map<String, dynamic> toPortalJson() => {
         'contract': PlaceContract.version,
