@@ -297,6 +297,7 @@ class _LocaisListPageState extends State<LocaisListPage> {
   Widget _toolbar(LocaisStrings strings) {
     final filtering = _query.openNow ||
         _query.wheelchairEntrance ||
+        _query.deliveryOnly ||
         _query.minRating != null ||
         _query.search.trim().isNotEmpty ||
         _query.category != null;
@@ -406,6 +407,7 @@ class _FilterSheet extends StatefulWidget {
 class _FilterSheetState extends State<_FilterSheet> {
   late bool _openNow = widget.initial.openNow;
   late bool _wheelchair = widget.initial.wheelchairEntrance;
+  late bool _delivery = widget.initial.deliveryOnly;
   late double? _minRating = widget.initial.minRating;
 
   @override
@@ -453,6 +455,14 @@ class _FilterSheetState extends State<_FilterSheet> {
               activeThumbColor: LocaisColors.navy,
               onChanged: (value) => setState(() => _wheelchair = value),
             ),
+            SwitchListTile(
+              key: const Key('locais_filter_delivery'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(strings.deliveryFilter),
+              value: _delivery,
+              activeThumbColor: LocaisColors.navy,
+              onChanged: (value) => setState(() => _delivery = value),
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -491,6 +501,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                     widget.initial.copyWith(
                       openNow: _openNow,
                       wheelchairEntrance: _wheelchair,
+                      deliveryOnly: _delivery,
                       minRating: _minRating,
                       clearMinRating: _minRating == null,
                     ),

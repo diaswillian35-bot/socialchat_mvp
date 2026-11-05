@@ -60,6 +60,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
   final _whatsC = TextEditingController();
   final _siteC = TextEditingController();
   final _menuUrlC = TextEditingController();
+  final _deliveryAreaC = TextEditingController();
 
   bool get _isEdit => (widget.placeId ?? '').isNotEmpty;
 
@@ -83,6 +84,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
     _whatsC.text = _draft.whatsapp;
     _siteC.text = _draft.websiteUrl;
     _menuUrlC.text = _draft.menuUrl;
+    _deliveryAreaC.text = _draft.deliveryArea;
     if (mounted) setState(() => _loading = false);
   }
 
@@ -90,7 +92,15 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
   void dispose() {
     _pageController.dispose();
     for (final c in [
-      _nameC, _descC, _addressC, _hoursC, _phoneC, _whatsC, _siteC, _menuUrlC,
+      _nameC,
+      _descC,
+      _addressC,
+      _hoursC,
+      _phoneC,
+      _whatsC,
+      _siteC,
+      _menuUrlC,
+      _deliveryAreaC,
     ]) {
       c.dispose();
     }
@@ -106,7 +116,8 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
       ..phone = _phoneC.text
       ..whatsapp = _whatsC.text
       ..websiteUrl = _siteC.text
-      ..menuUrl = _menuUrlC.text;
+      ..menuUrl = _menuUrlC.text
+      ..deliveryArea = _deliveryAreaC.text;
   }
 
   bool _isHttpsOrEmpty(String v) {
@@ -120,7 +131,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
       case 0:
         return _draft.name.trim().length < 2 ? 'place_err_name' : null;
       case 1:
-        return _draft.hasCity ? null : 'place_err_city';
+        return _draft.locationValid ? null : 'place_err_city';
       case 2:
         return _isHttpsOrEmpty(_draft.websiteUrl) ? null : 'place_err_link';
       case 3:
@@ -425,15 +436,43 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
         const SizedBox(height: 12),
         _chipButton(
           icon: Icons.location_city_outlined,
-          text: _draft.hasCity ? _draft.cityDisplay : t('place_pick_city'),
+          text: _draft.locationValid && _draft.cityDisplay.isNotEmpty
+              ? _draft.cityDisplay
+              : t('place_pick_city'),
           onTap: _pickCity,
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _addressC,
           textCapitalization: RemdyKeyboardCaps.words,
-          decoration: _dec(t('place_address'), hint: t('place_address_hint')),
+          decoration: _dec(
+            t(_draft.deliveryOnly ? 'place_address_optional' : 'place_address'),
+            hint: t('place_address_hint'),
+          ),
         ),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          key: const Key('place_delivery_only_switch'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(t('place_delivery_only')),
+          subtitle: Text(t('place_delivery_only_hint')),
+          value: _draft.deliveryOnly,
+          activeThumbColor: _remdyNavy,
+          onChanged: (v) => setState(() => _draft.deliveryOnly = v),
+        ),
+        if (_draft.deliveryOnly) ...[
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('place_delivery_area_field'),
+            controller: _deliveryAreaC,
+            textCapitalization: RemdyKeyboardCaps.sentences,
+            maxLength: 120,
+            decoration: _dec(
+              t('place_delivery_area'),
+              hint: t('place_delivery_area_hint'),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -518,7 +557,8 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
     Widget row(String label, String value) => ListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(label,
-              style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
+              style:
+                  const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
           subtitle: Text(value.isEmpty ? '—' : value,
               style: const TextStyle(color: _text)),
         );
@@ -528,7 +568,8 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
         row(t('place_name'), _draft.name),
         row(t('place_category'),
             strings.categoryName(PlaceCategory.parse(_draft.category))),
-        row(t('place_step_location'),
+        row(
+            t('place_step_location'),
             [_draft.addressLine, _draft.cityDisplay]
                 .where((e) => e.trim().isNotEmpty)
                 .join(' · ')),
@@ -658,7 +699,9 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
                           minimumSize: const Size.fromHeight(48),
                         ),
                         child: Text(
-                          _step == 0 ? t('event_cancel') : t('event_wizard_back'),
+                          _step == 0
+                              ? t('event_cancel')
+                              : t('event_wizard_back'),
                         ),
                       ),
                     ),

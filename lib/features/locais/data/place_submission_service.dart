@@ -18,6 +18,8 @@ class PlaceDraft {
     this.cityDisplay = '',
     this.latitude,
     this.longitude,
+    this.deliveryOnly = false,
+    this.deliveryArea = '',
     this.hoursNote = '',
     this.phone = '',
     this.whatsapp = '',
@@ -45,6 +47,10 @@ class PlaceDraft {
   String cityDisplay;
   double? latitude;
   double? longitude;
+
+  /// "Só delivery": sem espaço físico; endereço e mapa opcionais.
+  bool deliveryOnly;
+  String deliveryArea;
   String hoursNote;
   String phone;
   String whatsapp;
@@ -71,6 +77,9 @@ class PlaceDraft {
   bool get hasCity =>
       cityName.trim().isNotEmpty && latitude != null && longitude != null;
 
+  /// Passo "Localização": só delivery exige só a cidade.
+  bool get locationValid => deliveryOnly ? cityName.trim().isNotEmpty : hasCity;
+
   /// Campos de texto (sem mídia) para create/update.
   Map<String, dynamic> toFields() => {
         'name': name.trim(),
@@ -82,6 +91,8 @@ class PlaceDraft {
         'countryCode': countryCode.trim().toUpperCase(),
         'latitude': latitude,
         'longitude': longitude,
+        'deliveryOnly': deliveryOnly,
+        'deliveryArea': deliveryOnly ? deliveryArea.trim() : '',
         'hoursNote': hoursNote.trim(),
         'phone': phone.trim(),
         'whatsapp': whatsapp.trim(),
@@ -110,6 +121,8 @@ class PlaceDraft {
       cityDisplay: state.isEmpty ? city : '$city, $state',
       latitude: d(m['latitude']),
       longitude: d(m['longitude']),
+      deliveryOnly: m['deliveryOnly'] == true,
+      deliveryArea: s(m['deliveryArea']),
       hoursNote: s(m['hoursNote']),
       phone: s(m['phone']),
       whatsapp: s(m['whatsapp']),
@@ -146,7 +159,8 @@ class PlaceSubmissionService {
     return List.generate(32, (_) => hex[r.nextInt(16)]).join();
   }
 
-  static Future<String> _upload(String placeId, String folder, String path) async {
+  static Future<String> _upload(
+      String placeId, String folder, String path) async {
     final ref = FirebaseStorage.instance
         .ref()
         .child('places')

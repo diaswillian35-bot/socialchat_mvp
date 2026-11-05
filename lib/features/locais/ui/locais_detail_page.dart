@@ -194,6 +194,13 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
                 fontWeight: FontWeight.w700, color: LocaisColors.muted),
           ),
           _pill(open ? strings.openNow : strings.closed, open),
+          if (place.deliveryOnly)
+            _pill(
+              strings.deliveryBadge,
+              true,
+              key: const Key('locais_detail_delivery_badge'),
+              color: LocaisColors.logoBlue,
+            ),
         ],
       ),
       const SizedBox(height: 12),
@@ -208,37 +215,59 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _sectionTitle(strings.address),
-            Text(
-              place.address.singleLine,
-              key: const Key('locais_detail_address'),
-              style: const TextStyle(
-                color: LocaisColors.text,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Text(
-              '${place.address.postalCode} · ${place.address.countryCode}',
-              style: const TextStyle(color: LocaisColors.muted),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                key: const Key('locais_route_button'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: LocaisColors.navy,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(48, 46),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+            if (place.address.singleLine.isNotEmpty)
+              Text(
+                place.address.singleLine,
+                key: const Key('locais_detail_address'),
+                style: const TextStyle(
+                  color: LocaisColors.text,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
                 ),
-                onPressed: () => _open(Uri.parse(
-                    'https://www.google.com/maps/dir/?api=1&destination=${place.address.latitude},${place.address.longitude}')),
-                icon: const Icon(Icons.directions_outlined),
-                label: Text(strings.route),
               ),
-            ),
+            if (place.address.postalCode.isNotEmpty || !place.deliveryOnly)
+              Text(
+                '${place.address.postalCode} · ${place.address.countryCode}',
+                style: const TextStyle(color: LocaisColors.muted),
+              ),
+            if (place.deliveryOnly) ...[
+              const SizedBox(height: 6),
+              Text(
+                strings.deliveryNoPhysical,
+                key: const Key('locais_detail_delivery_note'),
+                style: const TextStyle(color: LocaisColors.muted),
+              ),
+              if ((place.deliveryArea ?? '').isNotEmpty)
+                Text(
+                  '${strings.deliveryArea}: ${place.deliveryArea}',
+                  key: const Key('locais_detail_delivery_area'),
+                  style: const TextStyle(
+                    color: LocaisColors.text,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+            if (place.hasPhysicalLocation) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  key: const Key('locais_route_button'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: LocaisColors.navy,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(48, 46),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () => _open(Uri.parse(
+                      'https://www.google.com/maps/dir/?api=1&destination=${place.address.latitude},${place.address.longitude}')),
+                  icon: const Icon(Icons.directions_outlined),
+                  label: Text(strings.route),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1271,9 +1300,10 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
     );
   }
 
-  Widget _pill(String label, bool open) {
-    final color = open ? LocaisColors.open : LocaisColors.muted;
+  Widget _pill(String label, bool open, {Key? key, Color? color}) {
+    color ??= open ? LocaisColors.open : LocaisColors.muted;
     return Container(
+      key: key,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),

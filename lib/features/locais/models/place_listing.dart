@@ -76,8 +76,8 @@ class PlaceAddress {
     required this.region,
     required this.countryCode,
     required this.postalCode,
-    required this.latitude,
-    required this.longitude,
+    this.latitude,
+    this.longitude,
   });
 
   final String line1;
@@ -86,10 +86,16 @@ class PlaceAddress {
   final String region;
   final String countryCode;
   final String postalCode;
-  final double latitude;
-  final double longitude;
 
-  String get singleLine => '$line1, $district, $city, $region';
+  /// Nulas só em locais "Só delivery" (sem espaço físico).
+  final double? latitude;
+  final double? longitude;
+
+  bool get hasCoordinates => latitude != null && longitude != null;
+
+  String get singleLine => [line1, district, city, region]
+      .where((part) => part.trim().isNotEmpty)
+      .join(', ');
 
   Map<String, dynamic> toPortalJson() => {
         'line1': line1,
@@ -98,27 +104,38 @@ class PlaceAddress {
         'region': region,
         'countryCode': countryCode,
         'postalCode': postalCode,
-        'latitude': latitude,
-        'longitude': longitude,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
       };
 
-  static PlaceAddress fromPortalJson(Map<String, dynamic> json) {
+  static PlaceAddress fromPortalJson(
+    Map<String, dynamic> json, {
+    bool deliveryOnly = false,
+  }) {
     final country = _reqString(json, 'countryCode').toUpperCase();
     if (!RegExp(r'^[A-Z]{2}$').hasMatch(country)) {
       throw const PlaceContractException('countryCode');
     }
-    final lat = _reqDouble(json, 'latitude');
-    final lng = _reqDouble(json, 'longitude');
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      throw const PlaceContractException('coordinates');
+    final noCoords = json['latitude'] == null && json['longitude'] == null;
+    double? lat;
+    double? lng;
+    if (!(deliveryOnly && noCoords)) {
+      lat = _reqDouble(json, 'latitude');
+      lng = _reqDouble(json, 'longitude');
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        throw const PlaceContractException('coordinates');
+      }
     }
+    String part(String key) => deliveryOnly
+        ? (_optionalString(json[key]) ?? '')
+        : _reqString(json, key);
     return PlaceAddress(
-      line1: _reqString(json, 'line1'),
-      district: _reqString(json, 'district'),
+      line1: part('line1'),
+      district: part('district'),
       city: _reqString(json, 'city'),
-      region: _reqString(json, 'region'),
+      region: part('region'),
       countryCode: country,
-      postalCode: _reqString(json, 'postalCode'),
+      postalCode: part('postalCode'),
       latitude: lat,
       longitude: lng,
     );
@@ -374,6 +391,8 @@ class PlaceListing {
     required this.upcomingEvents,
     this.menu = PlaceMenu.disabled,
     this.ratingCounts = const {},
+    this.deliveryOnly = false,
+    this.deliveryArea,
   });
 
   final String id;
@@ -394,6 +413,15 @@ class PlaceListing {
 
   /// Contagem por estrela (1..5) do agregado do local (`rating.stars`).
   final Map<int, int> ratingCounts;
+
+  /// "Só delivery": sem espaço físico. Fica fora do mapa e sem "Como chegar".
+  final bool deliveryOnly;
+
+  /// Área de entrega opcional (texto livre), só quando [deliveryOnly].
+  final String? deliveryArea;
+
+  /// Pode aparecer no mapa / ter rota: tem coordenadas e espaço físico.
+  bool get hasPhysicalLocation => !deliveryOnly && address.hasCoordinates;
 
   PlacePhoto get cover => photos.first;
 
@@ -420,6 +448,8 @@ class PlaceListing {
         upcomingEvents: upcomingEvents,
         menu: menu,
         ratingCounts: ratingCounts ?? this.ratingCounts,
+        deliveryOnly: deliveryOnly,
+        deliveryArea: deliveryArea,
       );
 
   bool isOpenAt(DateTime instant) {
@@ -449,6 +479,9 @@ class PlaceListing {
         'reviews': reviews.map((review) => review.toPortalJson()).toList(),
         'upcomingEvents':
             upcomingEvents.map((event) => event.toPortalJson()).toList(),
+        if (deliveryOnly) 'deliveryOnly': true,
+        if (deliveryOnly && (deliveryArea ?? '').isNotEmpty)
+          'deliveryArea': deliveryArea,
       };
 
   static PlaceListing fromPortalJson(Map<String, dynamic> json) {
@@ -485,7 +518,14 @@ class PlaceListing {
         accessRaw is! Map) {
       throw const PlaceContractException('listing shape');
     }
+    final deliveryOnlyRaw = json['deliveryOnly'];
+    if (deliveryOnlyRaw != null && deliveryOnlyRaw is! bool) {
+      throw const PlaceContractException('deliveryOnly');
+    }
+    final deliveryOnly = deliveryOnlyRaw == true;
     return PlaceListing(
+      deliveryOnly: deliveryOnly,
+      deliveryArea: deliveryOnly ? _optionalString(json['deliveryArea']) : null,
       id: id,
       slug: slug,
       name: _reqString(json, 'name'),
@@ -496,7 +536,10 @@ class PlaceListing {
           .toList(),
       rating: rating,
       ratingCount: ratingCount,
-      address: PlaceAddress.fromPortalJson(_asMap(addressRaw, 'address')),
+      address: PlaceAddress.fromPortalJson(
+        _asMap(addressRaw, 'address'),
+        deliveryOnly: deliveryOnly,
+      ),
       contact: PlaceContact.fromPortalJson(_asMap(contactRaw, 'contact')),
       hours: hoursRaw
           .map((item) => PlaceHours.fromPortalJson(_asMap(item, 'hours')))

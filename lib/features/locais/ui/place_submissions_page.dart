@@ -43,8 +43,8 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
     _future = loader != null
         ? loader()
         : widget.adminPending
-        ? PlaceSubmissionService.listPending()
-        : PlaceSubmissionService.listMine();
+            ? PlaceSubmissionService.listPending()
+            : PlaceSubmissionService.listMine();
   }
 
   String _statusLabel(String status) {
@@ -171,7 +171,9 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  t(widget.adminPending ? 'place_pending_empty' : 'place_mine_empty'),
+                  t(widget.adminPending
+                      ? 'place_pending_empty'
+                      : 'place_mine_empty'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: _muted),
                 ),
@@ -204,8 +206,7 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
                   subtitle: Text(
                     '$category · ${p.cityDisplay} · ${_statusLabel(p.status)}',
                   ),
-                  onTap: () =>
-                      widget.adminPending ? _actions(p) : _open(p),
+                  onTap: () => widget.adminPending ? _actions(p) : _open(p),
                 );
               },
             ),
