@@ -18,10 +18,15 @@ class LocaisMapView extends StatelessWidget {
   final ValueChanged<PlaceListing>? onSelect;
   final String? highlightId;
 
+  /// Locais "Só delivery" (sem espaço físico) ficam fora do mapa.
+  List<PlaceListing> get _mapped =>
+      places.where((place) => place.hasPhysicalLocation).toList();
+
   @override
   Widget build(BuildContext context) {
+    final mapped = _mapped;
     return Semantics(
-      label: strings.mapLabel(places.length),
+      label: strings.mapLabel(mapped.length),
       container: true,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -38,7 +43,7 @@ class LocaisMapView extends StatelessWidget {
                 painter: _MapPainter(),
                 child: SizedBox.expand(),
               ),
-              if (places.isEmpty)
+              if (mapped.isEmpty)
                 Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -53,7 +58,7 @@ class LocaisMapView extends StatelessWidget {
                   ),
                 )
               else
-                ..._pins(),
+                ..._pins(mapped),
             ],
           ),
         ),
@@ -61,14 +66,14 @@ class LocaisMapView extends StatelessWidget {
     );
   }
 
-  List<Widget> _pins() {
-    var minLat = places.first.address.latitude;
+  List<Widget> _pins(List<PlaceListing> places) {
+    var minLat = places.first.address.latitude!;
     var maxLat = minLat;
-    var minLng = places.first.address.longitude;
+    var minLng = places.first.address.longitude!;
     var maxLng = minLng;
     for (final place in places) {
-      final lat = place.address.latitude;
-      final lng = place.address.longitude;
+      final lat = place.address.latitude!;
+      final lng = place.address.longitude!;
       if (lat < minLat) minLat = lat;
       if (lat > maxLat) maxLat = lat;
       if (lng < minLng) minLng = lng;
@@ -83,10 +88,11 @@ class LocaisMapView extends StatelessWidget {
       for (final place in places)
         _pin(
           place,
-          dx: ((place.address.longitude - (midLng - lngSpan / 2)) / lngSpan)
+          dx: ((place.address.longitude! - (midLng - lngSpan / 2)) / lngSpan)
               .clamp(0.12, 0.88),
           dy: (1 -
-                  ((place.address.latitude - (midLat - latSpan / 2)) / latSpan))
+                  ((place.address.latitude! - (midLat - latSpan / 2)) /
+                      latSpan))
               .clamp(0.16, 0.84),
         ),
     ];

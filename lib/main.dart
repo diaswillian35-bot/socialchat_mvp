@@ -4,6 +4,7 @@ import 'services/app_review_prompt.dart';
 import 'package:app_links/app_links.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -20,6 +21,9 @@ import 'services/firebase_bootstrap.dart';
 import 'services/locale_controller.dart';
 import 'services/photo_picker_config.dart';
 import 'services/push_service.dart';
+import 'services/install_group_attribution.dart';
+import 'services/pending_group_code.dart';
+import 'services/play_install_referrer_reader.dart';
 import 'services/remdy_link_router.dart';
 import 'services/remdy_deep_link_parser.dart';
 import 'services/safe_remdy_navigation.dart';
@@ -112,6 +116,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     ShareInService.start();
     ShareExtensionSessionService.start();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_captureInstallGroupCode());
       if (FirebaseAuth.instance.currentUser != null) {
         unawaited(PresenceService.instance.start());
       }
@@ -216,9 +221,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _captureInstallGroupCode() async {
+    await InstallGroupAttribution.captureIfNeeded(
+      isAndroid: !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
+      isIos: !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS,
+      readAndroidReferrer: PlayInstallReferrerReader.read,
+      readClipboard: _readInviteClipboard,
+      clearClipboard: () => Clipboard.setData(const ClipboardData(text: '')),
+    );
+  }
+
+  /// iOS 16+: `hasStrings` não mostra o aviso; `getData` mostra uma vez.
+  Future<String?> _readInviteClipboard() async {
+    if (!await Clipboard.hasStrings()) return null;
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    return data?.text;
+  }
+
   Future<void> _clearPendingGroupCode() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('pending_group_code');
+    await prefs.remove(PendingGroupCodeLogic.pendingKey);
     _lastGroupInviteCode = '';
   }
 
@@ -231,9 +253,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('pending_group_code', code);
+    await prefs.setString(PendingGroupCodeLogic.pendingKey, code);
 
-    // Pendente até 18+; AuthGate só reabre a prévia — sem auto-join.
+    // Pendente até o fim do cadastro (e-mail, 18+, foto). A chave só sai
+    // quando a prévia permanece na tela.
     if (!await AgeAccessService.currentUserIsVerified()) return;
 
     if (_openingGroupInvite && _lastGroupInviteCode == code) {
@@ -247,6 +270,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final nav = PushService.navKey.currentState;
 
       if (nav == null) {
+        _openingGroupInvite = false;
+        return;
+      }
+
+      if (JoinGroupPage.activeCode == code) {
         _openingGroupInvite = false;
         return;
       }

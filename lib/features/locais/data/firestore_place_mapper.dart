@@ -12,9 +12,15 @@ class FirestorePlaceMapper {
     try {
       final photos = _photos(data);
       if (photos.isEmpty) return null;
-      final latitude = _double(data['latitude']);
-      final longitude = _double(data['longitude']);
-      if (latitude == null || longitude == null) return null;
+      final deliveryOnly = data['deliveryOnly'] == true;
+      var latitude = _double(data['latitude']);
+      var longitude = _double(data['longitude']);
+      if (latitude == null || longitude == null) {
+        // Só delivery não tem espaço físico: coordenadas são opcionais.
+        if (!deliveryOnly) return null;
+        latitude = null;
+        longitude = null;
+      }
       final rating = _rating(data);
       return PlaceListing(
         id: documentId,
@@ -53,6 +59,8 @@ class FirestorePlaceMapper {
         reviews: _embeddedReviews(data),
         upcomingEvents: _events(data),
         menu: _menu(data),
+        deliveryOnly: deliveryOnly,
+        deliveryArea: deliveryOnly ? _nullable(data['deliveryArea']) : null,
       );
     } catch (_) {
       return null;

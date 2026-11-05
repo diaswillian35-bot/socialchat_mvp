@@ -113,6 +113,10 @@
   "admin_approval": "Aprovação do administrador",
   "invite_only": "Apenas por convite",
   "invite_code_label": "Código de convite",
+  "have_invite_code": "Tenho um código de convite",
+  "have_invite_code_hint": "Código ou ligação",
+  "have_invite_code_invalid": "Código de convite inválido.",
+  "have_invite_code_saved": "O grupo abre quando o registo terminar.",
   "invite_applied": "Convite aplicado: {ref}",
   "invite_applied_with_reward": "Convite aplicado: {ref} • Recompensa libertada: {days} dia(s)",
   "invite_already_applied": "Este convite já foi aplicado.",
@@ -1381,6 +1385,11 @@
   "explore_only_info": "Use Locais, Eventos e Grupos sem aparecer em Conheça Pessoas, na lista de online nem nas pesquisas. Ninguém poderá iniciar uma conversa consigo e também não verá quem está online.",
   "explore_only_no_chat": "Esta pessoa está no modo Só explorar e não recebe novas conversas.",
   "place_address_hint": "Rua, número, freguesia",
+  "place_delivery_only": "Só entregas",
+  "place_delivery_only_hint": "Sem espaço físico: morada e mapa ficam opcionais.",
+  "place_delivery_area": "Zona de entrega",
+  "place_delivery_area_hint": "Ex.: Baixa, Avenidas Novas, até 5 km",
+  "place_address_optional": "Morada (opcional)",
   "place_review_notice": "O local fica em análise e só aparece para todos depois de aprovado pela equipa Remdy.",
   "place_submit_error": "Não foi possível guardar o local. Tente novamente.",
   "place_saved": "Local guardado.",
@@ -1424,5 +1433,9 @@
   "hide_in_city_info": "Quando ativado, o seu perfil não aparece a pessoas da sua cidade ou região.",
   "profile_photo_add": "Adicione a sua foto de perfil (obrigatória)",
   "people_reason_short_interest": "Gosta de {interest}",
-  "people_reason_short_same_city": "Vive em {city}"
+  "people_reason_short_same_city": "Vive em {city}",
+  "group_create_name_too_long": "O nome do grupo pode ter no máximo 80 caracteres.",
+  "group_cover_error_unauthorized": "Não tem permissão para alterar a capa deste grupo.",
+  "group_cover_error_too_large": "A imagem é demasiado grande. Escolha outra fotografia.",
+  "group_cover_error_generic": "Não foi possível enviar a capa. Tente novamente."
 }

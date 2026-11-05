@@ -20,6 +20,7 @@ import '../widgets/remdy_keyboard_caps.dart';
 import 'terms_page.dart';
 import 'privacy_page.dart';
 import '../services/auth_terms_gate.dart';
+import '../services/pending_group_code.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -32,6 +33,7 @@ class _LoginPageState extends State<LoginPage> {
   final _emailC = TextEditingController();
   final _passC = TextEditingController();
   final _confirmC = TextEditingController();
+  final _inviteCodeC = TextEditingController();
 
   @override
   void didChangeDependencies() {
@@ -77,6 +79,7 @@ class _LoginPageState extends State<LoginPage> {
     _emailC.dispose();
     _passC.dispose();
     _confirmC.dispose();
+    _inviteCodeC.dispose();
     super.dispose();
   }
 
@@ -246,6 +249,26 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  /// Grava o código (puro ou link) para a prévia abrir depois do cadastro.
+  /// Campo vazio segue o login. Texto inválido interrompe e avisa.
+  Future<bool> _acceptInviteField({bool announceSaved = false}) async {
+    final raw = _inviteCodeC.text.trim();
+    if (raw.isEmpty) return true;
+    final code = PendingGroupCodeLogic.codeFromUserInput(raw);
+    if (code == null) {
+      _toast(AppTexts.current.get('have_invite_code_invalid'));
+      return false;
+    }
+    await PendingGroupCodeStore.save(code);
+    if (announceSaved && mounted) {
+      _toast(
+        AppTexts.current.get('have_invite_code_saved'),
+        success: true,
+      );
+    }
+    return true;
+  }
+
   Future<void> _submitEmailPass() async {
     final email = _emailC.text.trim().toLowerCase();
     final pass = _passC.text;
@@ -258,7 +281,8 @@ class _LoginPageState extends State<LoginPage> {
       return _toast("Senha precisa ter no mínimo 6 caracteres.");
     }
 
-    final termsReject = AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject =
+        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
@@ -278,6 +302,8 @@ class _LoginPageState extends State<LoginPage> {
         return _toast(AppTexts.current.get('age_underage_blocked'));
       }
     }
+
+    if (!await _acceptInviteField()) return;
 
     setState(() => _loading = true);
 
@@ -375,10 +401,12 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginGoogle() async {
     if (_loading) return;
-    final termsReject = AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject =
+        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
+    if (!await _acceptInviteField()) return;
     setState(() => _loading = true);
 
     try {
@@ -421,10 +449,12 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginTest() async {
     if (_loading) return;
-    final termsReject = AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject =
+        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
+    if (!await _acceptInviteField()) return;
 
     setState(() => _loading = true);
     try {
@@ -468,6 +498,7 @@ class _LoginPageState extends State<LoginPage> {
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
+    if (!await _acceptInviteField()) return;
     setState(() => _loading = true);
 
     try {
@@ -507,10 +538,12 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _loginFacebook() async {
-    final termsReject = AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject =
+        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
+    if (!await _acceptInviteField()) return;
     setState(() => _loading = true);
 
     try {
@@ -702,6 +735,30 @@ class _LoginPageState extends State<LoginPage> {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _inviteCodeC,
+                    textCapitalization: RemdyKeyboardCaps.none,
+                    keyboardType: TextInputType.text,
+                    textInputAction: TextInputAction.done,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    onSubmitted: (_) => _acceptInviteField(announceSaved: true),
+                    decoration: InputDecoration(
+                      labelText: t.get('have_invite_code'),
+                      hintText: t.get('have_invite_code_hint'),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _loading
+                          ? null
+                          : () => _acceptInviteField(announceSaved: true),
+                      child: Text(t.get('group_join_group')),
+                    ),
+                  ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     value: _termsAccepted,

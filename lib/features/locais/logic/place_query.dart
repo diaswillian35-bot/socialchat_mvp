@@ -7,6 +7,7 @@ class PlaceQuery {
     this.openNow = false,
     this.minRating,
     this.wheelchairEntrance = false,
+    this.deliveryOnly = false,
   });
 
   /// Cidade, região, bairro ou nome. Sem acento e sem diferenciar maiúsculas.
@@ -16,6 +17,9 @@ class PlaceQuery {
   final double? minRating;
   final bool wheelchairEntrance;
 
+  /// Filtro "Delivery": só locais que fazem só delivery.
+  final bool deliveryOnly;
+
   PlaceQuery copyWith({
     String? search,
     PlaceCategory? category,
@@ -24,6 +28,7 @@ class PlaceQuery {
     double? minRating,
     bool clearMinRating = false,
     bool? wheelchairEntrance,
+    bool? deliveryOnly,
   }) {
     return PlaceQuery(
       search: search ?? this.search,
@@ -31,6 +36,7 @@ class PlaceQuery {
       openNow: openNow ?? this.openNow,
       minRating: clearMinRating ? null : (minRating ?? this.minRating),
       wheelchairEntrance: wheelchairEntrance ?? this.wheelchairEntrance,
+      deliveryOnly: deliveryOnly ?? this.deliveryOnly,
     );
   }
 }
@@ -55,6 +61,7 @@ class PlaceQueryEngine {
       if (query.wheelchairEntrance && !place.accessibility.wheelchairEntrance) {
         return false;
       }
+      if (query.deliveryOnly && !place.deliveryOnly) return false;
       if (needle.isEmpty) return true;
       final haystack = _fold(
         [
@@ -62,6 +69,7 @@ class PlaceQueryEngine {
           place.address.city,
           place.address.region,
           place.address.district,
+          place.deliveryArea ?? '',
         ].join(' '),
       );
       return haystack.contains(needle);

@@ -126,6 +126,40 @@ class LocaisStrings {
         fr: 'Entrée accessible',
       );
 
+  /// Selo dos locais "Só delivery" (sem espaço físico).
+  String get deliveryBadge => _t(
+        pt: 'Delivery',
+        ptPt: 'Entregas',
+        en: 'Delivery',
+        es: 'Delivery',
+        fr: 'Livraison',
+      );
+
+  /// Filtro: só locais que fazem só delivery.
+  String get deliveryFilter => _t(
+        pt: 'Só delivery',
+        ptPt: 'Só entregas',
+        en: 'Delivery only',
+        es: 'Solo delivery',
+        fr: 'Livraison uniquement',
+      );
+
+  String get deliveryArea => _t(
+        pt: 'Área de entrega',
+        ptPt: 'Zona de entrega',
+        en: 'Delivery area',
+        es: 'Zona de entrega',
+        fr: 'Zone de livraison',
+      );
+
+  String get deliveryNoPhysical => _t(
+        pt: 'Só delivery, sem atendimento no local.',
+        ptPt: 'Só entregas, sem atendimento no local.',
+        en: 'Delivery only, no dine-in.',
+        es: 'Solo delivery, sin atención en el local.',
+        fr: 'Livraison uniquement, pas de service sur place.',
+      );
+
   String get apply =>
       _t(pt: 'Aplicar', en: 'Apply', es: 'Aplicar', fr: 'Appliquer');
 

@@ -48,3 +48,27 @@ test("moderação", () => {
   assert.equal(L.moderationPatch("reject").active, false);
   assert.equal(L.moderationPatch("x"), null);
 });
+
+test("só delivery: coordenadas opcionais, cidade obrigatória", () => {
+  const noGeo = { ...base, latitude: null, longitude: null };
+  assert.equal(L.parsePlaceInput(noGeo, { creating: true }).error, "location");
+  const r = L.parsePlaceInput(
+    { ...noGeo, deliveryOnly: true, deliveryArea: "Downtown Toronto" },
+    { creating: true });
+  assert.equal(r.error, undefined);
+  assert.equal(r.fields.deliveryOnly, true);
+  assert.equal(r.fields.latitude, null);
+  assert.equal(r.fields.deliveryArea, "Downtown Toronto");
+  assert.equal(L.parsePlaceInput(
+    { ...noGeo, deliveryOnly: true, cityName: "" },
+    { creating: true }).error, "city");
+  assert.equal(L.parsePlaceInput({ ...base, deliveryOnly: "sim" },
+    { creating: true }).error, "delivery_only");
+  const normal = L.parsePlaceInput({ ...base, deliveryArea: "x" },
+    { creating: true });
+  assert.equal(normal.fields.deliveryOnly, false);
+  assert.equal(normal.fields.deliveryArea, "");
+  const s = L.placeSummary("p1", { deliveryOnly: true, latitude: null });
+  assert.equal(s.deliveryOnly, true);
+  assert.equal(s.latitude, null);
+});

@@ -9,6 +9,7 @@ import '../services/admin_access.dart';
 import 'create_group_page.dart';
 import 'group_chat_page.dart';
 import 'hidden_groups_page.dart';
+import 'join_group_page.dart';
 import '../l10n/app_texts.dart';
 import '../widgets/remdy_keyboard_caps.dart';
 import '../services/conversation_unread.dart';
@@ -24,6 +25,7 @@ import '../services/premium_access_service.dart';
 import '../services/remdy_launch_access.dart';
 import '../services/group_pending_join_badge_service.dart';
 import '../services/group_pending_join_badge_logic.dart';
+import '../services/pending_group_code.dart';
 
 class GroupsListPage extends StatefulWidget {
   const GroupsListPage({super.key});
@@ -45,6 +47,7 @@ class _TabCache {
 
 class GroupsListPageState extends State<GroupsListPage> {
   final TextEditingController _searchC = TextEditingController();
+  final TextEditingController _inviteCodeC = TextEditingController();
   final GroupDiscoveryService _discovery = GroupDiscoveryService();
   final ScrollController _scrollC = ScrollController();
 
@@ -109,6 +112,7 @@ class GroupsListPageState extends State<GroupsListPage> {
     }
     _scrollC.dispose();
     _searchC.dispose();
+    _inviteCodeC.dispose();
     super.dispose();
   }
 
@@ -189,10 +193,10 @@ class GroupsListPageState extends State<GroupsListPage> {
           .limit(GroupDiscoveryLogic.pageSize)
           .snapshots()
           .listen(
-        (snap) =>
-            _applyDiscoverySnapshot(GroupDiscoveryTab.country, snap, uid),
-        onError: (error) => _failTab(GroupDiscoveryTab.country, error),
-      ),
+            (snap) =>
+                _applyDiscoverySnapshot(GroupDiscoveryTab.country, snap, uid),
+            onError: (error) => _failTab(GroupDiscoveryTab.country, error),
+          ),
     );
 
     final batches = GroupGeo.geohashBatches(
@@ -1227,8 +1231,7 @@ class GroupsListPageState extends State<GroupsListPage> {
       final name = (data['name'] ?? '').toString().toLowerCase();
       final bio = (data['bio'] ?? '').toString().toLowerCase();
       final city = GroupLocationNormalize.cityDisplayName(data).toLowerCase();
-      final selected =
-          (data['displayLocation'] ?? '').toString().toLowerCase();
+      final selected = (data['displayLocation'] ?? '').toString().toLowerCase();
       final country = (data['country'] ?? '').toString().toLowerCase();
       return name.contains(q) ||
           bio.contains(q) ||
@@ -1311,6 +1314,10 @@ class GroupsListPageState extends State<GroupsListPage> {
               child: _searchField(scheme, t),
             ),
             Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: _inviteCodeField(scheme, t),
+            ),
+            Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: _selectors(scheme, t),
             ),
@@ -1381,6 +1388,58 @@ class GroupsListPageState extends State<GroupsListPage> {
           borderSide: BorderSide(color: scheme.primary),
         ),
       ),
+    );
+  }
+
+  Widget _inviteCodeField(ColorScheme scheme, AppTexts t) {
+    return TextField(
+      controller: _inviteCodeC,
+      textCapitalization: RemdyKeyboardCaps.none,
+      keyboardType: TextInputType.text,
+      textInputAction: TextInputAction.go,
+      autocorrect: false,
+      enableSuggestions: false,
+      onSubmitted: (_) => _openInviteCode(t),
+      decoration: InputDecoration(
+        hintText: t.get('have_invite_code'),
+        prefixIcon: Icon(
+          Icons.vpn_key_outlined,
+          color: scheme.onSurfaceVariant,
+        ),
+        suffixIcon: IconButton(
+          tooltip: t.get('group_join_group'),
+          onPressed: () => _openInviteCode(t),
+          icon: Icon(Icons.arrow_forward, color: scheme.primary),
+        ),
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.primary),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openInviteCode(AppTexts t) async {
+    final code = PendingGroupCodeLogic.codeFromUserInput(_inviteCodeC.text);
+    if (code == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.get('have_invite_code_invalid'))),
+      );
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => JoinGroupPage(inviteCode: code)),
     );
   }
 

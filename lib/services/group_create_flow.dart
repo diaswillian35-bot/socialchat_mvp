@@ -195,6 +195,22 @@ class GroupCreateFlow {
 
   static bool shouldStartSubmit({required bool inFlight}) => !inFlight;
 
+  /// Limites de texto do grupo (iguais aos das Cloud Functions).
+  static const int nameMinLength = 3;
+  static const int nameMaxLength = 80;
+  static const int bioMaxLength = 2000;
+
+  /// Chave do aviso para nome/bio inválidos, ou null se estiver tudo certo.
+  static String? textErrorKey({required String name, required String bio}) {
+    final n = name.trim();
+    final b = bio.trim();
+    if (n.isEmpty) return 'create_group_enter_name';
+    if (n.length < nameMinLength) return 'create_group_name_too_short';
+    if (n.length > nameMaxLength) return 'group_create_name_too_long';
+    if (b.length > bioMaxLength) return 'group_create_bio_too_long';
+    return null;
+  }
+
   /// The group already exists. An image failure must not delete it or
   /// start another create.
   static GroupCreateFinish finish({

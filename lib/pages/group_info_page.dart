@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,6 +13,7 @@ import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/block_visibility.dart';
 import '../services/group_ban_service.dart';
+import '../services/group_cover_upload.dart';
 import '../services/group_create_flow.dart';
 import '../services/group_discovery_logic.dart';
 import '../services/group_hidden_prefs_service.dart';
@@ -60,6 +60,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
   String _groupCode = '';
 
   final ImagePicker _picker = ImagePicker();
+  /// Capa escolhida e ainda não salva (prévia local; sobe no Salvar).
+  XFile? _pendingCover;
 
   bool _loading = true;
   bool _saving = false;
@@ -512,12 +514,32 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       return;
     }
 
+    final pending = _pendingCover;
+    final allChanges = Map<String, dynamic>.from(changes);
     try {
       setState(() => _saving = true);
+      if (pending != null) {
+        try {
+          final cover = await GroupCoverUpload.upload(
+            groupId: widget.groupId,
+            uid: _uid ?? 'unknown',
+            file: pending,
+          );
+          allChanges['avatarUrl'] = cover.url;
+          allChanges['avatarPath'] = cover.path;
+        } catch (e, st) {
+          _toast(t.get(GroupCoverUpload.errorKeyFor(e, st)));
+          return;
+        }
+      }
+      if (allChanges.isEmpty) return;
       await GroupSettingsService.updateSettings(
         groupId: widget.groupId,
-        changes: changes,
+        changes: allChanges,
       );
+      if (mounted && identical(_pendingCover, pending)) {
+        setState(() => _pendingCover = null);
+      }
       await _loadAll();
       if (mounted) _toast(t.get('group_edit_success'));
     } on FirebaseFunctionsException catch (e) {
@@ -630,7 +652,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
           controller: controller,
           textCapitalization: RemdyKeyboardCaps.sentences,
           maxLines: 4,
-          maxLength: 1000,
+          maxLength: GroupCreateFlow.bioMaxLength,
           decoration: InputDecoration(
             hintText: t.get('typeGroupBio'),
             border: const OutlineInputBorder(),
@@ -672,6 +694,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     });
   }
 
+  /// Escolhe a capa: mostra a prévia na hora; só envia no Salvar,
+  /// junto com os outros campos.
   Future<void> _pickGroupPhoto() async {
     final t = AppTexts.current;
     if (!_isAdmin || _saving) return;
@@ -682,54 +706,15 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     }
 
     try {
-      final file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 80,
-      );
-
-      if (file == null) return;
-
-      setState(() => _saving = true);
-
-      final myUid = _uid ?? 'unknown';
-      final ext = file.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
-
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('groups')
-          .child(widget.groupId)
-          .child('avatar')
-          .child('group_avatar_$myUid.$ext');
-
-      await ref.putFile(
-        File(file.path),
-        SettableMetadata(
-          contentType: ext == 'png' ? 'image/png' : 'image/jpeg',
-        ),
-      );
-
-      final url = await ref.getDownloadURL();
-      final path = ref.fullPath;
-
-      await GroupSettingsService.updateSettings(
-        groupId: widget.groupId,
-        changes: {
-          'avatarUrl': url,
-          'avatarPath': path,
-        },
-      );
-
-      await _loadAll();
-      if (mounted) _toast(t.get('group_edit_success'));
-    } on FirebaseFunctionsException catch (e) {
-      // Upload pode ter ficado órfão no Storage; limpeza automática não nesta tarefa.
-      _toast(t.get(GroupSettingsService.errorKey(e)));
-    } catch (_) {
-      _toast(t.get('errorUploadingGroupPhoto'));
-    } finally {
-      if (mounted) setState(() => _saving = false);
+      final file = await GroupCoverUpload.pick(_picker);
+      if (file == null || !mounted) return;
+      setState(() => _pendingCover = file);
+    } catch (e, st) {
+      _toast(t.get(GroupCoverUpload.errorKeyFor(e, st)));
     }
   }
+
+  Future<void> _savePendingCover() => _saveSettings(const {});
 
   Future<void> _approveJoinRequest(String requestUid) async {
     final t = AppTexts.current;
@@ -1180,7 +1165,15 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: avatarUrl.isNotEmpty
+                  child: _pendingCover != null
+                      ? Image.file(
+                          File(_pendingCover!.path),
+                          key: ValueKey(_pendingCover!.path),
+                          width: 91,
+                          height: 91,
+                          fit: BoxFit.cover,
+                        )
+                      : avatarUrl.isNotEmpty
                       ? Image.network(
                           avatarUrl,
                           width: 91,
@@ -1261,6 +1254,13 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                         _headerEdit(t.get('editBio'), _editBio),
                       if (_isAdmin)
                         _headerEdit(t.get('group_edit_cover'), _pickGroupPhoto),
+                      if (_isAdmin && _pendingCover != null)
+                        _headerEdit(t.get('save'), _savePendingCover),
+                      if (_isAdmin && _pendingCover != null)
+                        _headerEdit(
+                          t.get('remove'),
+                          () => setState(() => _pendingCover = null),
+                        ),
                     ],
                   ),
                 ],

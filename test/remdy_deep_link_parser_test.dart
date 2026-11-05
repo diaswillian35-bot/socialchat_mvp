@@ -47,8 +47,7 @@ void main() {
     });
 
     test('/e/ inválido não vira grupo', () {
-      final link =
-          RemdyDeepLinkParser.parse(Uri.parse('https://remdy.app/e/'));
+      final link = RemdyDeepLinkParser.parse(Uri.parse('https://remdy.app/e/'));
       expect(link.kind, RemdyDeepLinkKind.none);
       expect(link.groupCode, isNull);
       expect(link.clearsPendingGroup, isTrue);
@@ -98,6 +97,56 @@ void main() {
       expect(link.kind, RemdyDeepLinkKind.groupInvite);
       expect(link.groupCode, 'XY99');
     });
+
+    test('remdy://g/{code} abre prévia (esquema do Info.plist)', () {
+      final link = RemdyDeepLinkParser.parse(Uri.parse('remdy://g/abc123'));
+      expect(link.kind, RemdyDeepLinkKind.groupInvite);
+      expect(link.groupCode, 'ABC123');
+      expect(link.opensGroupPreview, isTrue);
+      expect(link.clearsPendingGroup, isFalse);
+    });
+
+    test('remdy://g sem código não reaproveita convite', () {
+      for (final raw in ['remdy://g', 'remdy://g/', 'remdy://g/ab']) {
+        final link = RemdyDeepLinkParser.parse(Uri.parse(raw));
+        expect(link.opensGroupPreview, isFalse, reason: raw);
+        expect(link.groupCode, isNull, reason: raw);
+        expect(link.clearsPendingGroup, isTrue, reason: raw);
+      }
+    });
+
+    test('intent:// com scheme=https vira o link https do grupo', () {
+      final link = RemdyDeepLinkParser.parse(
+        Uri.parse(
+          'intent://remdy.app/g/abc123#Intent;scheme=https;package=com.remdy.app;end',
+        ),
+      );
+      expect(link.kind, RemdyDeepLinkKind.groupInvite);
+      expect(link.groupCode, 'ABC123');
+      expect(link.opensGroupPreview, isTrue);
+      expect(link.clearsPendingGroup, isFalse);
+    });
+
+    test('intent:// com scheme diferente de https não abre grupo', () {
+      final link = RemdyDeepLinkParser.parse(
+        Uri.parse(
+          'intent://remdy.app/g/abc123#Intent;scheme=remdy;package=com.remdy.app;end',
+        ),
+      );
+      expect(link.kind, RemdyDeepLinkKind.none);
+      expect(link.opensGroupPreview, isFalse);
+      expect(link.groupCode, isNull);
+    });
+
+    test('intent:// scheme=https em host estranho não abre grupo', () {
+      final link = RemdyDeepLinkParser.parse(
+        Uri.parse(
+          'intent://evil.com/g/abc123#Intent;scheme=https;package=com.remdy.app;end',
+        ),
+      );
+      expect(link.opensGroupPreview, isFalse);
+      expect(link.clearsPendingGroup, isTrue);
+    });
   });
 
   group('RemdyDeepLinkParser — cold start vs app aberto', () {
@@ -112,8 +161,7 @@ void main() {
       final group = RemdyDeepLinkParser.parse(
         Uri.parse('https://remdy.app/g/CODE01'),
       );
-      final root =
-          RemdyDeepLinkParser.parse(Uri.parse('https://remdy.app'));
+      final root = RemdyDeepLinkParser.parse(Uri.parse('https://remdy.app'));
       expect(group.opensGroupPreview, isTrue);
       expect(root.opensGroupPreview, isFalse);
       expect(root.clearsPendingGroup, isTrue);

@@ -192,7 +192,9 @@ class PlaceCard extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '${place.address.district} · ${place.address.city}',
+          [place.address.district, place.address.city]
+              .where((part) => part.trim().isNotEmpty)
+              .join(' · '),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
@@ -214,6 +216,13 @@ class PlaceCard extends StatelessWidget {
               open: open,
               label: open ? strings.openNow : strings.closed,
             ),
+            if (place.deliveryOnly)
+              _StatusPill(
+                key: const Key('place_card_delivery_badge'),
+                open: true,
+                label: strings.deliveryBadge,
+                color: LocaisColors.logoBlue,
+              ),
           ],
         ),
       ],
@@ -247,14 +256,20 @@ class _RatingLine extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.open, required this.label});
+  const _StatusPill({
+    super.key,
+    required this.open,
+    required this.label,
+    this.color,
+  });
 
   final bool open;
   final String label;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final color = open ? LocaisColors.open : LocaisColors.muted;
+    final color = this.color ?? (open ? LocaisColors.open : LocaisColors.muted);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

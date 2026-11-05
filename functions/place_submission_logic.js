@@ -54,8 +54,10 @@ function parsePlaceInput(data, { creating, placeId = "" } = {}) {
   const name = str(d.name, 80);
   const category = str(d.category, 20);
   const cityName = str(d.cityName, 80);
-  const lat = num(d.latitude);
-  const lng = num(d.longitude);
+  const lat = d.latitude === null || d.latitude === "" ? null : num(d.latitude);
+  const lng = d.longitude === null || d.longitude === "" ? null : num(d.longitude);
+  // "Só delivery": sem espaço físico; endereço e coordenadas opcionais.
+  const deliveryOnly = d.deliveryOnly === true;
 
   if (creating || d.name !== undefined) {
     if (name.length < 2) return { error: "name" };
@@ -71,12 +73,27 @@ function parsePlaceInput(data, { creating, placeId = "" } = {}) {
     f.stateName = str(d.stateName, 80);
     f.countryCode = str(d.countryCode, 2).toUpperCase() || "BR";
     if (!/^[A-Z]{2}$/.test(f.countryCode)) return { error: "country" };
-    if (lat === null || lng === null ||
-        Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-      return { error: "location" };
+    const noCoords = lat === null && lng === null;
+    if (deliveryOnly && noCoords) {
+      f.latitude = null;
+      f.longitude = null;
+    } else {
+      if (lat === null || lng === null ||
+          Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        return { error: "location" };
+      }
+      f.latitude = lat;
+      f.longitude = lng;
     }
-    f.latitude = lat;
-    f.longitude = lng;
+  }
+  if (creating || d.deliveryOnly !== undefined) {
+    if (d.deliveryOnly !== undefined && typeof d.deliveryOnly !== "boolean") {
+      return { error: "delivery_only" };
+    }
+    f.deliveryOnly = deliveryOnly;
+  }
+  if (creating || d.deliveryArea !== undefined) {
+    f.deliveryArea = deliveryOnly ? str(d.deliveryArea, 120) : "";
   }
   for (const [key, max] of [
     ["description", 1200], ["addressLine", 160], ["district", 80],
@@ -155,8 +172,10 @@ function placeSummary(id, d) {
     phone: str(p.phone, 40),
     whatsapp: str(p.whatsapp, 40),
     websiteUrl: str(p.websiteUrl, 600),
-    latitude: num(p.latitude),
-    longitude: num(p.longitude),
+    latitude: p.latitude == null ? null : num(p.latitude),
+    longitude: p.longitude == null ? null : num(p.longitude),
+    deliveryOnly: p.deliveryOnly === true,
+    deliveryArea: str(p.deliveryArea, 120),
     coverUrl: str(p.coverUrl, 600),
     photoUrls: Array.isArray(p.photoUrls) ? p.photoUrls.slice(0, 6) : [],
     menuUrl: str(p.menu && p.menu.pdfUrl, 600),

@@ -440,6 +440,10 @@
   "private_group": "Grupo privado",
   "open_entry": "Entrada abierta",
   "invite_code_label": "Código de invitación",
+  "have_invite_code": "Tengo un código de invitación",
+  "have_invite_code_hint": "Código o enlace",
+  "have_invite_code_invalid": "Código de invitación no válido.",
+  "have_invite_code_saved": "El grupo se abre cuando termines el registro.",
   "group_info": "Información del grupo",
   "member_plural": "miembros",
   "admin_approval": "Aprobación del admin",
@@ -1601,6 +1605,11 @@
   "place_pick_city": "Elegir ciudad",
   "place_address": "Dirección",
   "place_address_hint": "Calle, número, barrio",
+  "place_delivery_only": "Solo delivery",
+  "place_delivery_only_hint": "Sin espacio físico: la dirección y el mapa son opcionales.",
+  "place_delivery_area": "Zona de entrega",
+  "place_delivery_area_hint": "Ej.: Centro, Zona Norte, hasta 5 km",
+  "place_address_optional": "Dirección (opcional)",
   "place_hours": "Horario de atención",
   "place_hours_hint": "Ej.: Lun a vie, 11 a 23 h",
   "place_phone": "Teléfono",
@@ -1691,5 +1700,9 @@
   "people_reason_short_same_city": "Vive en {city}",
   "people_reason_short_hometown": "De {city}",
   "people_city_header": "{city} · {count}",
-  "people_city_see_all": "Ver todas ({count})"
+  "people_city_see_all": "Ver todas ({count})",
+  "group_create_name_too_long": "El nombre del grupo puede tener como máximo 80 caracteres.",
+  "group_cover_error_unauthorized": "No tienes permiso para cambiar la portada de este grupo.",
+  "group_cover_error_too_large": "La imagen es demasiado grande. Elige otra foto.",
+  "group_cover_error_generic": "No se pudo subir la portada. Inténtalo de nuevo."
 }

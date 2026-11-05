@@ -446,6 +446,10 @@
   "admin_approval": "Aprovação do admin",
   "invite_only": "Somente por convite",
   "invite_code_label": "Código de convite",
+  "have_invite_code": "Tenho um código de convite",
+  "have_invite_code_hint": "Código ou link",
+  "have_invite_code_invalid": "Código de convite inválido.",
+  "have_invite_code_saved": "O grupo abre quando o cadastro terminar.",
   "delete_group": "Excluir grupo",
   "leave_group": "Sair do grupo",
   "leaveGroup": "Sair do grupo",
@@ -1601,6 +1605,11 @@
   "place_pick_city": "Escolher cidade",
   "place_address": "Endereço",
   "place_address_hint": "Rua, número, bairro",
+  "place_delivery_only": "Só delivery",
+  "place_delivery_only_hint": "Sem espaço físico: endereço e mapa ficam opcionais.",
+  "place_delivery_area": "Área de entrega",
+  "place_delivery_area_hint": "Ex.: Centro, Zona Sul, até 5 km",
+  "place_address_optional": "Endereço (opcional)",
   "place_hours": "Horário de funcionamento",
   "place_hours_hint": "Ex.: Seg a sex, 11h às 23h",
   "place_phone": "Telefone",
@@ -1691,5 +1700,9 @@
   "people_reason_short_same_city": "Mora em {city}",
   "people_reason_short_hometown": "De {city}",
   "people_city_header": "{city} · {count}",
-  "people_city_see_all": "Ver todas ({count})"
+  "people_city_see_all": "Ver todas ({count})",
+  "group_create_name_too_long": "O nome do grupo pode ter no máximo 80 caracteres.",
+  "group_cover_error_unauthorized": "Você não tem permissão para trocar a capa deste grupo.",
+  "group_cover_error_too_large": "A imagem é grande demais. Escolha outra foto.",
+  "group_cover_error_generic": "Não foi possível enviar a capa. Tente de novo."
 }

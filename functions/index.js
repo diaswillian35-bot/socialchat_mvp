@@ -3147,7 +3147,7 @@ exports.updateGroupSettings = socialOnCall(
             value = name;
           } else if (key === "bio") {
             const bio = (value || "").toString().trim();
-            if (bio.length > 1000) {
+            if (bio.length > 2000) {
               throw new HttpsError("invalid-argument", "Bio too long.");
             }
             value = bio;
@@ -3349,7 +3349,7 @@ exports.createGroup = socialOnCall(
   }
 
   const bio = (dataIn.bio || "").toString().trim();
-  if (bio.length > 1000) {
+  if (bio.length > 2000) {
     throw new HttpsError("invalid-argument", "Bio too long.");
   }
 

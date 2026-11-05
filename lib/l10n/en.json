@@ -441,6 +441,10 @@
   "admin_approval": "Admin approval",
   "invite_only": "Invite only",
   "invite_code_label": "Invite code",
+  "have_invite_code": "I have an invite code",
+  "have_invite_code_hint": "Code or link",
+  "have_invite_code_invalid": "Invalid invite code.",
+  "have_invite_code_saved": "The group opens when signup is finished.",
   "delete_group": "Delete group",
   "leave_group": "Leave group",
   "leaveGroup": "Sair do grupo",
@@ -1601,6 +1605,11 @@
   "place_pick_city": "Choose city",
   "place_address": "Address",
   "place_address_hint": "Street, number, neighbourhood",
+  "place_delivery_only": "Delivery only",
+  "place_delivery_only_hint": "No physical space: address and map are optional.",
+  "place_delivery_area": "Delivery area",
+  "place_delivery_area_hint": "E.g. Downtown, West End, up to 5 km",
+  "place_address_optional": "Address (optional)",
   "place_hours": "Opening hours",
   "place_hours_hint": "E.g. Mon–Fri, 11am–11pm",
   "place_phone": "Phone",
@@ -1691,5 +1700,9 @@
   "people_reason_short_same_city": "Lives in {city}",
   "people_reason_short_hometown": "From {city}",
   "people_city_header": "{city} · {count}",
-  "people_city_see_all": "See all ({count})"
+  "people_city_see_all": "See all ({count})",
+  "group_create_name_too_long": "The group name can have at most 80 characters.",
+  "group_cover_error_unauthorized": "You don't have permission to change this group's cover.",
+  "group_cover_error_too_large": "The image is too large. Choose another photo.",
+  "group_cover_error_generic": "Couldn't upload the cover. Please try again."
 }
