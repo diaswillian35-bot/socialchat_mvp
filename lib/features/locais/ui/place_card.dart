@@ -80,10 +80,16 @@ class PlaceCover extends StatelessWidget {
                       cacheWidth: (w * dpr).clamp(64, 1600).round(),
                       gaplessPlayback: true,
                       // Carregando / erro: fica o placeholder de baixo.
-                      frameBuilder: (context, child, frame, sync) =>
-                          frame == null && !sync
-                              ? const SizedBox.shrink()
-                              : child,
+                      frameBuilder: (context, child, frame, sync) => frame ==
+                                  null &&
+                              !sync
+                          ? const SizedBox.shrink()
+                          // Imagem pronta: fundo branco (logo PNG transparente).
+                          : ColoredBox(
+                              key: const Key('place_cover_loaded'),
+                              color: Colors.white,
+                              child: child,
+                            ),
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     );
                   },

@@ -64,4 +64,22 @@ void main() {
             matching: find.byType(RawImage)),
         findsNothing);
   });
+
+  testWidgets('imagem carregada: fundo branco por baixo', (t) async {
+    final img = Image.network('https://cdn.example.com/a.jpg');
+    final fb = (find.byKey(const Key('place_cover_image')));
+    await t.pumpWidget(_host(const PlacePhoto(
+        id: 'c',
+        alt: 'x',
+        color: 0xFF3157A4,
+        url: 'https://cdn.example.com/a.jpg')));
+    final w = t.widget<Image>(fb);
+    final ctx = t.element(fb);
+    final loaded = w.frameBuilder!(ctx, const SizedBox(), 0, false);
+    expect(loaded, isA<ColoredBox>());
+    expect((loaded as ColoredBox).color, Colors.white);
+    final loading = w.frameBuilder!(ctx, const SizedBox(), null, false);
+    expect(loading, isA<SizedBox>());
+    expect(img, isNotNull);
+  });
 }
