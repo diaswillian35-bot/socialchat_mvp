@@ -72,3 +72,76 @@ test("só delivery: coordenadas opcionais, cidade obrigatória", () => {
   assert.equal(s.deliveryOnly, true);
   assert.equal(s.latitude, null);
 });
+
+// ---------- horário estruturado + fuso ----------
+const BASE = {
+  name: "John Burger", category: "restaurant", cityName: "Toronto",
+  stateName: "Ontario", countryCode: "CA", deliveryOnly: true,
+};
+const JB_HOURS = {
+  v: 1,
+  days: { 4: [{ o: "15:00", c: "21:00" }], 5: [{ o: "15:00", c: "21:00" }],
+    6: [{ o: "15:00", c: "21:00" }] },
+};
+
+test("app antigo (só hoursNote): compatível, sem hours, fuso derivado", () => {
+  const r = L.parsePlaceInput({ ...BASE, hoursNote: "08:00-20:00" },
+    { creating: false, placeId: "p1" });
+  assert.equal(r.error, undefined);
+  assert.equal(r.fields.hoursNote, "08:00-20:00");
+  assert.equal("hours" in r.fields, false);
+  assert.equal(r.fields.timeZone, "America/Toronto");
+});
+
+test("hours v1 válido é normalizado para 7 dias", () => {
+  const r = L.parsePlaceInput({ ...BASE, hours: JB_HOURS, timeZone: "America/Toronto" },
+    { creating: false, placeId: "p1" });
+  assert.equal(r.error, undefined);
+  assert.deepEqual(r.fields.hours.days["4"], [{ o: "15:00", c: "21:00" }]);
+  assert.deepEqual(r.fields.hours.days["1"], []);
+  assert.equal(Object.keys(r.fields.hours.days).length, 7);
+  assert.equal(r.fields.timeZone, "America/Toronto");
+  // passa da meia-noite é permitido
+  assert.ok(L.parseHours({ v: 1, days: { 5: [{ o: "18:00", c: "02:00" }] } }));
+});
+
+test("hours inválido -> error hours", () => {
+  const bad = [
+    { v: 2, days: {} },
+    { v: 1, days: { 8: [] } },
+    { v: 1, days: { 1: [{ o: "10:00", c: "10:00" }] } },
+    { v: 1, days: { 1: [{ o: "24:00", c: "10:00" }] } },
+    { v: 1, days: { 1: [{ o: "9:00", c: "10:00" }] } },
+    { v: 1, days: { 1: [{ o: "09:00", c: "10:00" }, { o: "11:00", c: "12:00" },
+      { o: "13:00", c: "14:00" }] } },
+    { v: 1, days: { 1: "09:00-10:00" } },
+    "08:00-20:00",
+  ];
+  for (const hours of bad) {
+    const r = L.parsePlaceInput({ ...BASE, hours }, { creating: false, placeId: "p1" });
+    assert.equal(r.error, "hours", JSON.stringify(hours));
+  }
+});
+
+test("timeZone: IANA válido aceito; inválido cai no derivado", () => {
+  assert.equal(L.isValidTimeZone("Europe/Lisbon"), true);
+  assert.equal(L.isValidTimeZone("Mars/Base"), false);
+  assert.equal(L.isValidTimeZone("UTC+3"), false);
+  const r = L.parsePlaceInput({ ...BASE, timeZone: "Mars/Base" },
+    { creating: false, placeId: "p1" });
+  assert.equal(r.fields.timeZone, "America/Toronto");
+  assert.equal(L.deriveTimeZone("BR", "Amazonas"), "America/Manaus");
+  assert.equal(L.deriveTimeZone("BR", "Paraná"), "America/Sao_Paulo");
+  assert.equal(L.deriveTimeZone("PT", "Açores"), "Atlantic/Azores");
+  assert.equal(L.deriveTimeZone("CA", "BC"), "America/Vancouver");
+  assert.equal(L.deriveTimeZone("US", "NY"), "");
+});
+
+test("placeSummary devolve hours e timeZone", () => {
+  const s = L.placeSummary("p1", { ...BASE, hours: JB_HOURS, timeZone: "America/Toronto" });
+  assert.deepEqual(s.hours.days["5"], [{ o: "15:00", c: "21:00" }]);
+  assert.equal(s.timeZone, "America/Toronto");
+  const old = L.placeSummary("p2", { ...BASE, hoursNote: "x" });
+  assert.equal(old.hours, null);
+  assert.equal(old.timeZone, "America/Toronto");
+});

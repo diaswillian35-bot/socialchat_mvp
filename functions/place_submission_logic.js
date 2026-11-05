@@ -26,6 +26,96 @@ function httpsOrEmpty(raw) {
   return /^https:\/\/[^\s]+$/i.test(v) ? v : null;
 }
 
+const CLOCK_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MAX_RANGES_PER_DAY = 2;
+
+/** Horário estruturado v1: {v:1, days:{"1".."7":[{o,c}]}}. null = inválido. */
+function parseHours(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (raw.v !== 1) return null;
+  const days = raw.days;
+  if (!days || typeof days !== "object" || Array.isArray(days)) return null;
+  for (const k of Object.keys(days)) {
+    if (!/^[1-7]$/.test(k)) return null;
+  }
+  const out = {};
+  for (let d = 1; d <= 7; d++) {
+    const list = days[String(d)];
+    if (list === undefined || list === null) {
+      out[String(d)] = [];
+      continue;
+    }
+    if (!Array.isArray(list) || list.length > MAX_RANGES_PER_DAY) return null;
+    const ranges = [];
+    for (const r of list) {
+      if (!r || typeof r !== "object") return null;
+      const o = typeof r.o === "string" ? r.o : "";
+      const c = typeof r.c === "string" ? r.c : "";
+      if (!CLOCK_RE.test(o) || !CLOCK_RE.test(c) || o === c) return null;
+      ranges.push({ o, c });
+    }
+    out[String(d)] = ranges;
+  }
+  return { v: 1, days: out };
+}
+
+function isValidTimeZone(z) {
+  if (typeof z !== "string" || !/^[A-Za-z_]+\/[A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)?$/.test(z)) {
+    return false;
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: z });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function foldKey(s) {
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z]/g, "");
+}
+
+const CA_ZONES = {
+  bc: "America/Vancouver", britishcolumbia: "America/Vancouver",
+  ab: "America/Edmonton", alberta: "America/Edmonton",
+  sk: "America/Regina", saskatchewan: "America/Regina",
+  mb: "America/Winnipeg", manitoba: "America/Winnipeg",
+  on: "America/Toronto", ontario: "America/Toronto",
+  qc: "America/Toronto", quebec: "America/Toronto",
+  nb: "America/Moncton", newbrunswick: "America/Moncton",
+  ns: "America/Halifax", novascotia: "America/Halifax",
+  pe: "America/Halifax", princeedwardisland: "America/Halifax",
+  nl: "America/St_Johns", newfoundlandandlabrador: "America/St_Johns",
+  yt: "America/Whitehorse", yukon: "America/Whitehorse",
+  nt: "America/Yellowknife", northwestterritories: "America/Yellowknife",
+  nu: "America/Iqaluit", nunavut: "America/Iqaluit",
+};
+const BR_ZONES = {
+  ac: "America/Rio_Branco", acre: "America/Rio_Branco",
+  am: "America/Manaus", amazonas: "America/Manaus",
+  rr: "America/Boa_Vista", roraima: "America/Boa_Vista",
+  ro: "America/Porto_Velho", rondonia: "America/Porto_Velho",
+  mt: "America/Cuiaba", matogrosso: "America/Cuiaba",
+  ms: "America/Campo_Grande", matogrossodosul: "America/Campo_Grande",
+  pa: "America/Belem", para: "America/Belem",
+  ap: "America/Belem", amapa: "America/Belem",
+};
+
+/** Fuso IANA a partir de país/estado (mesma tabela do app). "" = sem regra. */
+function deriveTimeZone(countryCode, stateName) {
+  const r = foldKey(stateName);
+  switch (String(countryCode || "").trim().toUpperCase()) {
+    case "CA": return CA_ZONES[r] || "America/Toronto";
+    case "BR": return BR_ZONES[r] || "America/Sao_Paulo";
+    case "PT":
+      if (r.includes("acores") || r.includes("azores")) return "Atlantic/Azores";
+      if (r.includes("madeira")) return "Atlantic/Madeira";
+      return "Europe/Lisbon";
+    default: return "";
+  }
+}
+
 /** URL de download do Storage para places/{placeId}/{folder}/... */
 function isOwnStorageUrl(url, placeId, folder) {
   if (typeof url !== "string" || !url.startsWith("https://")) return false;
@@ -101,6 +191,20 @@ function parsePlaceInput(data, { creating, placeId = "" } = {}) {
   ]) {
     if (creating || d[key] !== undefined) f[key] = str(d[key], max);
   }
+  // Horário estruturado (opcional; o app antigo só manda hoursNote).
+  if (d.hours !== undefined && d.hours !== null) {
+    const hours = parseHours(d.hours);
+    if (hours === null) return { error: "hours" };
+    f.hours = hours;
+  }
+  // Fuso: IANA válido enviado ou derivado de país/estado.
+  const tzIn = str(d.timeZone, 64);
+  if (tzIn && isValidTimeZone(tzIn)) {
+    f.timeZone = tzIn;
+  } else if (d.timeZone !== undefined || d.countryCode !== undefined || creating) {
+    const derived = deriveTimeZone(d.countryCode, d.stateName);
+    if (derived) f.timeZone = derived;
+  }
   if (creating || d.websiteUrl !== undefined) {
     const w = httpsOrEmpty(d.websiteUrl);
     if (w === null) return { error: "website" };
@@ -169,6 +273,9 @@ function placeSummary(id, d) {
     addressLine: str(p.addressLine, 160),
     description: str(p.description, 1200),
     hoursNote: str(p.hoursNote, 400),
+    hours: parseHours(p.hours),
+    timeZone: isValidTimeZone(p.timeZone) ? p.timeZone :
+      deriveTimeZone(p.countryCode, p.stateName),
     phone: str(p.phone, 40),
     whatsapp: str(p.whatsapp, 40),
     websiteUrl: str(p.websiteUrl, 600),
@@ -193,4 +300,7 @@ module.exports = {
   moderationPatch,
   placeSummary,
   isOwnStorageUrl,
+  parseHours,
+  isValidTimeZone,
+  deriveTimeZone,
 };
