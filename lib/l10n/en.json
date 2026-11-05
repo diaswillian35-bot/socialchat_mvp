@@ -1612,6 +1612,8 @@
   "place_address_optional": "Address (optional)",
   "place_hours": "Opening hours",
   "place_hours_hint": "E.g. Mon–Fri, 11am–11pm",
+  "place_logo_cover": "Logo / Cover",
+  "place_logo_cover_hint": "Shown on the card and at the top of the place. Use your logo or best photo.",
   "place_hours_groups_hint": "Pick the days and the hours. Days without hours are closed.",
   "place_hours_previous": "Previous hours",
   "place_hours_add_group": "Add other hours",

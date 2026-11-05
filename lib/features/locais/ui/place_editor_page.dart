@@ -75,7 +75,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
     setState(() => _loading = true);
     try {
       final d = await PlaceSubmissionService.load(widget.placeId!);
-      if (d != null) _draft = d;
+      if (d != null) _draft = d..extractCover();
     } catch (_) {}
     _nameC.text = _draft.name;
     _descC.text = _draft.description;
@@ -139,9 +139,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
         }
         return _isHttpsOrEmpty(_draft.websiteUrl) ? null : 'place_err_link';
       case 3:
-        return _draft.photoUrls.length + _draft.pendingPhotoPaths.length == 0
-            ? 'place_err_photo'
-            : null;
+        return _draft.photoCount == 0 ? 'place_err_photo' : null;
       case 4:
         return _isHttpsOrEmpty(_draft.menuUrl) ? null : 'place_err_link';
     }
@@ -247,7 +245,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
   Future<void> _pick({required bool menu}) async {
     final current = menu
         ? _draft.menuPhotoUrls.length + _draft.pendingMenuPaths.length
-        : _draft.photoUrls.length + _draft.pendingPhotoPaths.length;
+        : _draft.photoCount;
     final remaining = PlaceDraft.maxPhotos - current;
     if (remaining <= 0) return;
     final picked = await _picker.pickMultiImage(imageQuality: 80);
@@ -334,6 +332,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
     required List<String> remote,
     required List<String> pending,
     required VoidCallback onAdd,
+    bool countCover = false,
   }) {
     return Wrap(
       spacing: 8,
@@ -349,34 +348,82 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
             localPath: pending[i],
             onRemove: () => setState(() => pending.removeAt(i)),
           ),
-        if (remote.length + pending.length < PlaceDraft.maxPhotos)
-          InkWell(
-            onTap: onAdd,
-            child: Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _border),
-              ),
-              child: const Icon(Icons.add_a_photo_outlined, color: _remdyNavy),
-            ),
-          ),
+        if (remote.length + pending.length + (countCover ? 1 : 0) <
+            PlaceDraft.maxPhotos)
+          _addTile(onAdd),
       ],
     );
   }
+
+  Widget _addTile(VoidCallback onAdd) => InkWell(
+        onTap: onAdd,
+        child: Container(
+          width: 88,
+          height: 88,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _border),
+          ),
+          child: const Icon(Icons.add_a_photo_outlined, color: _remdyNavy),
+        ),
+      );
 
   Widget _label(String text) => Text(
         text,
         style: const TextStyle(fontWeight: FontWeight.w700, color: _muted),
       );
 
+  Future<void> _pickCover() async {
+    // Capa nova substitui a anterior; respeita o limite de fotos.
+    final others = _draft.photoUrls.length + _draft.pendingPhotoPaths.length;
+    if (!_draft.hasCover && others >= PlaceDraft.maxPhotos) return;
+    final picked =
+        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _draft
+        ..coverUrl = ''
+        ..pendingCoverPath = picked.path;
+    });
+  }
+
+  Widget _coverField() {
+    final t = AppTexts.t;
+    final local = _draft.pendingCoverPath;
+    final remote = _draft.coverUrl;
+    return Column(
+      key: const Key('place_logo_cover'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(t('place_logo_cover')),
+        const SizedBox(height: 4),
+        Text(t('place_logo_cover_hint'),
+            style: const TextStyle(color: _muted, fontSize: 12)),
+        const SizedBox(height: 8),
+        if (local != null || remote.isNotEmpty)
+          _photoThumb(
+            localPath: local,
+            remote: local == null ? remote : null,
+            onRemove: () => setState(() {
+              _draft
+                ..coverUrl = ''
+                ..pendingCoverPath = null;
+            }),
+          )
+        else
+          _addTile(_pickCover),
+      ],
+    );
+  }
+
   Widget _stepInfo(LocaisStrings strings) {
     final t = AppTexts.t;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
+        _coverField(),
+        const SizedBox(height: 16),
         TextField(
           key: const Key('place_name_field'),
           controller: _nameC,
@@ -644,6 +691,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
           remote: _draft.photoUrls,
           pending: _draft.pendingPhotoPaths,
           onAdd: () => _pick(menu: false),
+          countCover: _draft.hasCover,
         ),
       ],
     );
@@ -698,7 +746,7 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
         row(t('place_phone'), _draft.phone),
         row(
           t('place_add_photos'),
-          '${_draft.photoUrls.length + _draft.pendingPhotoPaths.length}',
+          '${_draft.photoCount}',
         ),
         const SizedBox(height: 8),
         Text(

@@ -35,6 +35,7 @@ class PlaceDraft {
     List<String>? pendingPhotoPaths,
     List<String>? pendingMenuPaths,
     List<PlaceHours>? hours,
+    this.pendingCoverPath,
   })  : hours = hours ?? <PlaceHours>[],
         photoUrls = photoUrls ?? <String>[],
         menuPhotoUrls = menuPhotoUrls ?? <String>[],
@@ -70,6 +71,40 @@ class PlaceDraft {
   String status;
   List<String> pendingPhotoPaths;
   List<String> pendingMenuPaths;
+
+  /// "Logo / Capa" escolhida no aparelho, ainda não enviada.
+  String? pendingCoverPath;
+
+  /// No editor a capa fica fora da grade: tira o [coverUrl] de [photoUrls].
+  /// Capa que não está nas fotos é descartada (o backend faria o mesmo).
+  void extractCover() {
+    if (coverUrl.isNotEmpty && photoUrls.contains(coverUrl)) {
+      photoUrls.remove(coverUrl);
+    } else {
+      coverUrl = '';
+    }
+  }
+
+  bool get hasCover => coverUrl.isNotEmpty || pendingCoverPath != null;
+
+  /// Fotos contando a capa (limite de [maxPhotos] e foto obrigatória).
+  int get photoCount =>
+      (hasCover ? 1 : 0) + photoUrls.length + pendingPhotoPaths.length;
+
+  /// `photoUrls`/`coverUrl` finais: capa primeiro, sem duplicar, até 6.
+  Map<String, dynamic> mediaFields(List<String> uploaded,
+      {String? uploadedCover}) {
+    final cover = uploadedCover ?? coverUrl;
+    final photos = <String>[];
+    for (final u in [if (cover.isNotEmpty) cover, ...photoUrls, ...uploaded]) {
+      if (u.isNotEmpty && !photos.contains(u)) photos.add(u);
+    }
+    final kept = photos.take(maxPhotos).toList();
+    return {
+      'photoUrls': kept,
+      'coverUrl': kept.isEmpty ? '' : kept.first,
+    };
+  }
 
   static const List<String> categories = [
     'restaurant',
@@ -207,21 +242,21 @@ class PlaceSubmissionService {
       if (id.isEmpty) throw StateError('missing_place_id');
       draft.id = id;
     }
-    final photos = [...draft.photoUrls];
+    final uploaded = <String>[];
     for (final p in draft.pendingPhotoPaths) {
-      photos.add(await _upload(id, 'photos', p));
+      uploaded.add(await _upload(id, 'photos', p));
     }
+    final coverPath = draft.pendingCoverPath;
+    final uploadedCover =
+        coverPath == null ? null : await _upload(id, 'photos', coverPath);
     final menu = [...draft.menuPhotoUrls];
     for (final p in draft.pendingMenuPaths) {
       menu.add(await _upload(id, 'menu', p));
     }
-    var cover = draft.coverUrl;
-    if (!photos.contains(cover)) cover = photos.isNotEmpty ? photos.first : '';
     await _call('updateMyPlace', {
       ...draft.toFields(),
       'placeId': id,
-      'photoUrls': photos,
-      'coverUrl': cover,
+      ...draft.mediaFields(uploaded, uploadedCover: uploadedCover),
       'menuPhotoUrls': menu,
     });
     return id;

@@ -1398,6 +1398,8 @@
   "place_err_city": "Escolha a cidade do local.",
   "place_err_name": "Indique o nome do local.",
   "place_hours_hint": "Ex.: Seg a sex, 11h às 23h",
+  "place_logo_cover": "Logótipo / Capa",
+  "place_logo_cover_hint": "Aparece no cartão e no topo do local. Use o logótipo ou a melhor fotografia.",
   "place_hours_groups_hint": "Escolha os dias e o horário. Os dias sem horário ficam fechados.",
   "place_hours_previous": "Horário anterior",
   "place_hours_add_group": "Adicionar outro horário",

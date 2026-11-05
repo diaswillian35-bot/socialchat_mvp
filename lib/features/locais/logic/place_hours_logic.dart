@@ -51,7 +51,8 @@ class PlaceHoursLogic {
         result.add(PlaceHours(weekday: d, opens: o, closes: c));
       }
     }
-    return result;
+    // Vazio = sem horário estruturado: vale o texto antigo, se houver.
+    return result.isEmpty ? null : result;
   }
 
   // ---------- grupos do editor <-> dias ----------

@@ -1612,6 +1612,8 @@
   "place_address_optional": "Dirección (opcional)",
   "place_hours": "Horario de atención",
   "place_hours_hint": "Ej.: Lun a vie, 11 a 23 h",
+  "place_logo_cover": "Logo / Portada",
+  "place_logo_cover_hint": "Aparece en la tarjeta y arriba del lugar. Usa el logo o la mejor foto.",
   "place_hours_groups_hint": "Elige los días y el horario. Los días sin horario quedan cerrados.",
   "place_hours_previous": "Horario anterior",
   "place_hours_add_group": "Añadir otro horario",

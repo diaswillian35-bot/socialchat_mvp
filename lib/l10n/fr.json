@@ -1612,6 +1612,8 @@
   "place_address_optional": "Adresse (facultatif)",
   "place_hours": "Horaires d’ouverture",
   "place_hours_hint": "Ex. : lun–ven, 11 h–23 h",
+  "place_logo_cover": "Logo / Couverture",
+  "place_logo_cover_hint": "Affiché sur la carte et en haut du lieu. Utilisez votre logo ou votre meilleure photo.",
   "place_hours_groups_hint": "Choisissez les jours et les horaires. Les jours sans horaire sont fermés.",
   "place_hours_previous": "Horaires précédents",
   "place_hours_add_group": "Ajouter d’autres horaires",
