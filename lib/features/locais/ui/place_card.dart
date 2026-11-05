@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'place_photo_viewer.dart';
+
 import '../locais_strings.dart';
 import '../models/place_listing.dart';
 import 'locais_layout.dart';
@@ -37,6 +39,7 @@ class PlaceCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final url = placeSafeImageUrl(photo.url);
     return Semantics(
       label: photo.alt,
       image: true,
@@ -54,12 +57,38 @@ class PlaceCover extends StatelessWidget {
               ],
             ),
           ),
-          child: Center(
-            child: Icon(
-              placeCategoryIcon(category),
-              color: Colors.white,
-              size: height != null && height! < 80 ? 28 : 36,
-            ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Center(
+                child: Icon(
+                  placeCategoryIcon(category),
+                  color: Colors.white,
+                  size: height != null && height! < 80 ? 28 : 36,
+                ),
+              ),
+              if (url != null)
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final dpr =
+                        MediaQuery.maybeDevicePixelRatioOf(context) ?? 2;
+                    final w = box.maxWidth.isFinite ? box.maxWidth : 600.0;
+                    return Image.network(
+                      url,
+                      key: const Key('place_cover_image'),
+                      fit: BoxFit.cover,
+                      cacheWidth: (w * dpr).clamp(64, 1600).round(),
+                      gaplessPlayback: true,
+                      // Carregando / erro: fica o placeholder de baixo.
+                      frameBuilder: (context, child, frame, sync) =>
+                          frame == null && !sync
+                              ? const SizedBox.shrink()
+                              : child,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    );
+                  },
+                ),
+            ],
           ),
         ),
       ),
