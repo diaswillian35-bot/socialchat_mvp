@@ -26,9 +26,13 @@ void main() {
     final w = t.widget<Image>(img);
     expect(w.fit, BoxFit.cover);
     expect(w.image, isA<ResizeImage>());
-    // Placeholder continua por baixo (carregando / erro).
+    expect(w.gaplessPlayback, isTrue);
+    // Carregando: fundo branco, NUNCA o placeholder azul.
+    expect(find.byKey(const Key('place_cover_placeholder')), findsNothing);
     expect(find.byIcon(placeCategoryIcon(PlaceCategory.restaurant)),
-        findsOneWidget);
+        findsNothing);
+    expect(t.widget<ColoredBox>(find.byKey(const Key('place_cover_loaded'))).color,
+        Colors.white);
   });
 
   testWidgets('sem URL: só o placeholder', (t) async {
@@ -65,21 +69,20 @@ void main() {
         findsNothing);
   });
 
-  testWidgets('imagem carregada: fundo branco por baixo', (t) async {
-    final img = Image.network('https://cdn.example.com/a.jpg');
-    final fb = (find.byKey(const Key('place_cover_image')));
-    await t.pumpWidget(_host(const PlacePhoto(
-        id: 'c',
-        alt: 'x',
-        color: 0xFF3157A4,
-        url: 'https://cdn.example.com/a.jpg')));
-    final w = t.widget<Image>(fb);
-    final ctx = t.element(fb);
-    final loaded = w.frameBuilder!(ctx, const SizedBox(), 0, false);
-    expect(loaded, isA<ColoredBox>());
-    expect((loaded as ColoredBox).color, Colors.white);
-    final loading = w.frameBuilder!(ctx, const SizedBox(), null, false);
-    expect(loading, isA<SizedBox>());
-    expect(img, isNotNull);
+  testWidgets('trocar a foto: sem placeholder azul em nenhum frame',
+      (t) async {
+    const a = PlacePhoto(
+        id: 'c', alt: 'x', color: 0xFF3157A4, url: 'https://cdn.example.com/a.jpg');
+    const b = PlacePhoto(
+        id: 'c', alt: 'x', color: 0xFF3157A4, url: 'https://cdn.example.com/c.jpg');
+    await t.pumpWidget(_host(a));
+    expect(find.byKey(const Key('place_cover_placeholder')), findsNothing);
+    final before = t.element(find.byKey(const Key('place_cover_image')));
+    await t.pumpWidget(_host(b));
+    // Mesmo elemento Image (gapless: mantém a foto anterior até a nova chegar).
+    expect(t.element(find.byKey(const Key('place_cover_image'))), same(before));
+    // (no flutter_test o HTTP responde 400, então o errorBuilder pode aparecer aqui)
+    expect(t.widget<Image>(find.byKey(const Key('place_cover_image'))).gaplessPlayback,
+        isTrue);
   });
 }

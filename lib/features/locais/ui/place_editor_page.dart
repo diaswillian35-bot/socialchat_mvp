@@ -308,9 +308,15 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
           borderRadius: BorderRadius.circular(12),
           child: localPath != null
               ? Image.file(File(localPath),
-                  width: 88, height: 88, fit: BoxFit.cover)
+                  width: 88,
+                  height: 88,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true)
               : Image.network(remote!,
-                  width: 88, height: 88, fit: BoxFit.cover),
+                  width: 88,
+                  height: 88,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true),
         ),
         Positioned(
           top: 4,
@@ -788,10 +794,11 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
         ),
         actions: [
           if (!_isEdit)
-            IconButton(
+            TextButton.icon(
               key: const Key('place_my_places'),
-              tooltip: t('place_mine_title'),
-              icon: const Icon(Icons.storefront),
+              icon: const Icon(Icons.storefront, color: _text),
+              label: Text(t('place_edit_places'),
+                  style: const TextStyle(color: _text)),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(

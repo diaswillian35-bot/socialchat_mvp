@@ -40,35 +40,41 @@ class PlaceCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = placeSafeImageUrl(photo.url);
+    final placeholder = DecoratedBox(
+      key: const Key('place_cover_placeholder'),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(photo.color),
+            Color(photo.color).withValues(alpha: 0.72),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          placeCategoryIcon(category),
+          color: Colors.white,
+          size: height != null && height! < 80 ? 28 : 36,
+        ),
+      ),
+    );
     return Semantics(
       label: photo.alt,
       image: true,
       child: SizedBox(
         width: width,
         height: height,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(photo.color),
-                Color(photo.color).withValues(alpha: 0.72),
-              ],
-            ),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Center(
-                child: Icon(
-                  placeCategoryIcon(category),
-                  color: Colors.white,
-                  size: height != null && height! < 80 ? 28 : 36,
-                ),
-              ),
-              if (url != null)
-                LayoutBuilder(
+        // Com foto: fundo branco desde o 1º frame (logo PNG transparente) e,
+        // ao trocar de foto, a anterior fica até a nova carregar
+        // (gaplessPlayback). O placeholder azul só aparece sem foto ou em erro.
+        child: url == null
+            ? placeholder
+            : ColoredBox(
+                key: const Key('place_cover_loaded'),
+                color: Colors.white,
+                child: LayoutBuilder(
                   builder: (context, box) {
                     final dpr =
                         MediaQuery.maybeDevicePixelRatioOf(context) ?? 2;
@@ -77,26 +83,15 @@ class PlaceCover extends StatelessWidget {
                       url,
                       key: const Key('place_cover_image'),
                       fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
                       cacheWidth: (w * dpr).clamp(64, 1600).round(),
                       gaplessPlayback: true,
-                      // Carregando / erro: fica o placeholder de baixo.
-                      frameBuilder: (context, child, frame, sync) => frame ==
-                                  null &&
-                              !sync
-                          ? const SizedBox.shrink()
-                          // Imagem pronta: fundo branco (logo PNG transparente).
-                          : ColoredBox(
-                              key: const Key('place_cover_loaded'),
-                              color: Colors.white,
-                              child: child,
-                            ),
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      errorBuilder: (_, __, ___) => placeholder,
                     );
                   },
                 ),
-            ],
-          ),
-        ),
+              ),
       ),
     );
   }
