@@ -902,7 +902,7 @@
   "create_group_cover_optional": "Add a cover (optional)",
   "create_group_cover_selected": "Cover selected",
   "group_create_places_unavailable": "The city could not be confirmed. Try again.",
-  "group_create_bio_too_long": "The group bio is too long.",
+  "group_create_bio_too_long": "The group bio can have up to 3000 characters.",
   "group_create_avatar_failed": "The group was created, but the image could not be uploaded.",
   "group_create_no_permission": "You do not have permission to create groups",
   "group_pending_requests": "Pending requests",

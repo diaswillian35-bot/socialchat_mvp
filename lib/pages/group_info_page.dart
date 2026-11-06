@@ -28,6 +28,7 @@ import '../services/iso_country_names.dart';
 import '../widgets/blocked_uids_builder.dart';
 import '../widgets/group_city_picker.dart';
 import '../widgets/remdy_keyboard_caps.dart';
+import '../widgets/group_bio_field.dart';
 import '../widgets/group_pending_request_row.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
@@ -648,11 +649,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       context: context,
       builder: (_) => AlertDialog(
         title: Text(t.get('editBio')),
-        content: TextField(
+        content: GroupBioField(
           controller: controller,
-          textCapitalization: RemdyKeyboardCaps.sentences,
-          maxLines: 4,
-          maxLength: GroupCreateFlow.bioMaxLength,
           decoration: InputDecoration(
             hintText: t.get('typeGroupBio'),
             border: const OutlineInputBorder(),
@@ -672,6 +670,11 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     );
 
     if (ok != true) return;
+
+    if (controller.text.trim().length > GroupCreateFlow.bioMaxLength) {
+      _toast(t.get('group_create_bio_too_long'));
+      return;
+    }
 
     await _saveSettings({
       'bio': controller.text.trim(),

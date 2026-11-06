@@ -7,6 +7,16 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 
 const admin = require("firebase-admin");
+const { normalizeGroupBio } = require("./group_bio_logic");
+
+function validatedGroupBio(value) {
+  try {
+    return normalizeGroupBio(value);
+  } catch (error) {
+    throw new HttpsError(error.code, error.message);
+  }
+}
+
 const { validateOpenJoin } = require("./group_open_join_logic");
 const { isSuperAdminAuth } = require("./super_admin");
 const {
@@ -3146,11 +3156,7 @@ exports.updateGroupSettings = socialOnCall(
             }
             value = name;
           } else if (key === "bio") {
-            const bio = (value || "").toString().trim();
-            if (bio.length > 2000) {
-              throw new HttpsError("invalid-argument", "Bio too long.");
-            }
-            value = bio;
+            value = validatedGroupBio(value);
           } else if (key === "joinPolicy") {
             const policy = normalizeJoinPolicyStrict(value);
             if (!policy) {
@@ -3348,10 +3354,7 @@ exports.createGroup = socialOnCall(
     throw new HttpsError("invalid-argument", "Name too long.");
   }
 
-  const bio = (dataIn.bio || "").toString().trim();
-  if (bio.length > 2000) {
-    throw new HttpsError("invalid-argument", "Bio too long.");
-  }
+  const bio = validatedGroupBio(dataIn.bio);
 
   const joinPolicy = normalizeJoinPolicyStrict(dataIn.joinPolicy ?? "open");
   if (!joinPolicy) {

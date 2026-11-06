@@ -15,6 +15,7 @@ import '../services/group_geo.dart';
 import '../services/group_settings_service.dart';
 import '../widgets/keyboard_dismiss.dart';
 import '../widgets/remdy_keyboard_caps.dart';
+import '../widgets/group_bio_field.dart';
 import '../widgets/required_field.dart';
 import 'group_info_page.dart';
 
@@ -1090,11 +1091,8 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                TextField(
+                GroupBioField(
                   controller: _bioC,
-                  textCapitalization: RemdyKeyboardCaps.sentences,
-                  maxLines: 4,
-                  maxLength: GroupCreateFlow.bioMaxLength,
                   decoration: _dec(
                     AppTexts.t('create_group_bio'),
                     hint: AppTexts.t('create_group_bio_hint'),

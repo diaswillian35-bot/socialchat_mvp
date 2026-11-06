@@ -903,7 +903,7 @@
   "create_group_cover_optional": "Adicionar capa (opcional)",
   "create_group_cover_selected": "Capa selecionada",
   "group_create_places_unavailable": "Não foi possível confirmar a cidade. Tente novamente.",
-  "group_create_bio_too_long": "A bio do grupo está longa demais.",
+  "group_create_bio_too_long": "A bio do grupo pode ter até 3000 caracteres.",
   "group_create_avatar_failed": "O grupo foi criado, mas não foi possível enviar a imagem.",
   "group_create_no_permission": "Você não tem permissão para criar grupos",
   "group_pending_requests": "Solicitações pendentes",

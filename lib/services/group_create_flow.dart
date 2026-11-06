@@ -198,7 +198,7 @@ class GroupCreateFlow {
   /// Limites de texto do grupo (iguais aos das Cloud Functions).
   static const int nameMinLength = 3;
   static const int nameMaxLength = 80;
-  static const int bioMaxLength = 2000;
+  static const int bioMaxLength = 3000;
 
   /// Chave do aviso para nome/bio inválidos, ou null se estiver tudo certo.
   static String? textErrorKey({required String name, required String bio}) {

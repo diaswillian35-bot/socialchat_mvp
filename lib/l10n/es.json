@@ -904,7 +904,7 @@
   "create_group_cover_optional": "Añadir portada (opcional)",
   "create_group_cover_selected": "Portada seleccionada",
   "group_create_places_unavailable": "No se pudo confirmar la ciudad. Inténtalo de nuevo.",
-  "group_create_bio_too_long": "La bio del grupo es demasiado larga.",
+  "group_create_bio_too_long": "La bio del grupo puede tener hasta 3000 caracteres.",
   "group_create_avatar_failed": "El grupo fue creado, pero no se pudo subir la imagen.",
   "group_create_no_permission": "No tienes permiso para crear grupos",
   "group_pending_requests": "Solicitudes pendientes",

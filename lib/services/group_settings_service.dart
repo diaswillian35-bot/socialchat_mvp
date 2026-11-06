@@ -26,6 +26,7 @@ class GroupSettingsService {
         return 'group_no_longer_available';
       case 'invalid-argument':
         final msg = (e.message ?? '').toLowerCase();
+        if (msg.contains('bio')) return 'group_create_bio_too_long';
         if (msg.contains('name')) return 'group_edit_name_required';
         if (msg.contains('joinpolicy')) return 'group_edit_invalid_policy';
         if (msg.contains('location') || msg.contains('scope')) {
