@@ -244,7 +244,11 @@ Stream<int> _activeEventsStream() {
 
     final pages = buildMainShellPages(
       locaisEnabled: locaisEnabled,
-      home: HomePage(onOpenEventsTab: () => _selectTab(MainShell.eventsTabIndex)),
+      home: HomePage(
+        onOpenEventsTab: () => _selectTab(MainShell.eventsTabIndex),
+        onOpenLocaisTab: () =>
+            _selectTab(MainShellDestinations.locaisTabIndex),
+      ),
       messages: const MessagesPage(),
       groups: GroupsListPage(key: _groupsListKey),
       events: const EventsPage(),

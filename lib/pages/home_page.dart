@@ -25,6 +25,7 @@ import 'package:socialchat_mvp/pages/about_page.dart';
 import 'package:socialchat_mvp/widgets/home_body_scroll_layout.dart';
 import 'package:socialchat_mvp/widgets/home_discover_section.dart';
 import 'package:socialchat_mvp/widgets/home_nearby_users_section.dart';
+import 'package:socialchat_mvp/widgets/home_places_section.dart';
 import '../services/online_status.dart';
 import '../services/presence_service.dart';
 import '../services/presence_watch.dart';
@@ -40,10 +41,13 @@ import '../services/share_extension_session_service.dart';
 import '../widgets/remdy_logo.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.onOpenEventsTab});
+  const HomePage({super.key, this.onOpenEventsTab, this.onOpenLocaisTab});
 
   /// Seleciona a aba Eventos do [MainShell] (IndexedStack). Não empurra rota.
   final VoidCallback? onOpenEventsTab;
+
+  /// Abre a aba Locais do [MainShell] (só existe com Locais ligado).
+  final VoidCallback? onOpenLocaisTab;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -970,6 +974,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 countryCode: AdminAccess.effectiveCountry(homeCode),
                 city: userCity.isEmpty ? null : userCity,
                 onOpenEventsTab: widget.onOpenEventsTab,
+              ),
+              HomePlacesSection(
+                countryCode: AdminAccess.effectiveCountry(homeCode),
+                city: userCity.isEmpty ? null : userCity,
+                onOpenLocaisTab: widget.onOpenLocaisTab,
               ),
               const SizedBox(height: 16),
               HomeNearbyUsersSection(
