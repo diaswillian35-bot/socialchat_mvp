@@ -1720,5 +1720,6 @@
   "group_create_name_too_long": "O nome do grupo pode ter no máximo 80 caracteres.",
   "group_cover_error_unauthorized": "Você não tem permissão para trocar a capa deste grupo.",
   "group_cover_error_too_large": "A imagem é grande demais. Escolha outra foto.",
-  "group_cover_error_generic": "Não foi possível enviar a capa. Tente de novo."
+  "group_cover_error_generic": "Não foi possível enviar a capa. Tente de novo.",
+  "group_share_error": "Não foi possível compartilhar o grupo. Tente novamente."
 }

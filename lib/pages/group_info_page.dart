@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../services/explore_only.dart';
 import '../l10n/app_texts.dart';
@@ -29,6 +28,7 @@ import '../widgets/blocked_uids_builder.dart';
 import '../widgets/group_city_picker.dart';
 import '../widgets/remdy_keyboard_caps.dart';
 import '../widgets/group_bio_field.dart';
+import '../widgets/group_invite_share_button.dart';
 import '../widgets/group_pending_request_row.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
@@ -2063,12 +2063,9 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                             ),
                           ),
                           const SizedBox(width: 12),
-                          InkWell(
-                            onTap: inviteLink.isEmpty
-                                ? null
-                                : () async {
-                                    await Share.share(inviteLink);
-                                  },
+                          GroupInviteShareButton(
+                            inviteLink: inviteLink,
+                            onError: () => _toast(AppTexts.t('group_share_error')),
                             child: Text(
                               t.get('share'),
                               style: const TextStyle(

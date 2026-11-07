@@ -1720,5 +1720,6 @@
   "group_create_name_too_long": "The group name can have at most 80 characters.",
   "group_cover_error_unauthorized": "You don't have permission to change this group's cover.",
   "group_cover_error_too_large": "The image is too large. Choose another photo.",
-  "group_cover_error_generic": "Couldn't upload the cover. Please try again."
+  "group_cover_error_generic": "Couldn't upload the cover. Please try again.",
+  "group_share_error": "Could not share the group. Please try again."
 }
