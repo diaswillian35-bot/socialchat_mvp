@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:socialchat_mvp/features/locais/data/demo_places.dart';
 import 'package:socialchat_mvp/features/locais/data/place_repository.dart';
 import 'package:socialchat_mvp/features/locais/locais_feature_flag.dart';
 import 'package:socialchat_mvp/features/locais/locais_strings.dart';
