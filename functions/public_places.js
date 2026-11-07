@@ -3,6 +3,7 @@ const {onRequest} = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const logic = require('./public_place_logic');
 const recommendations = require('./public_place_recommendations');
+const {readCachedDescription} = require('./place_description_cache');
 function publishedQuery(db) {
  return db.collection('places').where('schemaVersion','==',1).where('active','==',true).where('deleted','==',false).where('moderationStatus','==','published');
 }
@@ -48,7 +49,14 @@ function createPlaceHandler(db) {
      }
     }
    }
-   const page=logic.renderPlacePage({id,data,language:lang,recommendations:selected});return res.status(page.status).send(page.html);
+   let renderData=data;
+   if(logic.isPublished(data)&&typeof data.description==='string'&&data.description){
+    try{
+     const translated=await readCachedDescription(db,id,data.description,lang);
+     if(translated!==null)renderData={...data,description:translated};
+    }catch(_){/* Cache unavailable: original. Never invoke translation here. */}
+   }
+   const page=logic.renderPlacePage({id,data:renderData,language:lang,recommendations:selected});return res.status(page.status).send(page.html);
   } catch(error){console.error('renderPublicPlacePage',error.code||'unknown');return res.set('Cache-Control','no-store').status(503).send('Temporarily unavailable');}
  };
 }
