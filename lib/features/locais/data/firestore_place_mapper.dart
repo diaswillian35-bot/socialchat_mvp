@@ -8,6 +8,20 @@ class FirestorePlaceMapper {
 
   static const String contractVersion = 'remdy.places.v1';
 
+  /// Mesmo score dos eventos da Home: patrocinado 300, featured 200,
+  /// promotionPriority 100+n. Campos só gravados pelo admin.
+  static int _promotionScore(Map<String, dynamic> data) {
+    if (data['isSponsored'] == true || data['sponsored'] == true) return 300;
+    if (data['featured'] == true ||
+        data['isBoosted'] == true ||
+        data['boosted'] == true) {
+      return 200;
+    }
+    final raw = data['promotionPriority'];
+    if (raw is num && raw > 0) return 100 + raw.toInt().clamp(0, 99);
+    return 0;
+  }
+
   static PlaceListing? tryParse(String documentId, Map<String, dynamic> data) {
     if (!_isPublic(data)) return null;
     try {
@@ -64,6 +78,7 @@ class FirestorePlaceMapper {
         deliveryArea: deliveryOnly ? _nullable(data['deliveryArea']) : null,
         timeZone: _zone(data['timeZone']),
         hoursNote: _text(data['hoursNote']),
+        promotionScore: _promotionScore(data),
       );
     } catch (_) {
       return null;

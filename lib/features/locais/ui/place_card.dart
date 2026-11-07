@@ -79,21 +79,113 @@ class PlaceCover extends StatelessWidget {
                     final dpr =
                         MediaQuery.maybeDevicePixelRatioOf(context) ?? 2;
                     final w = box.maxWidth.isFinite ? box.maxWidth : 600.0;
-                    return Image.network(
-                      url,
-                      key: const Key('place_cover_image'),
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
+                    final h = box.maxHeight.isFinite ? box.maxHeight : w;
+                    return _AdaptiveCoverImage(
+                      url: url,
+                      boxAspect: h > 0 ? w / h : 1,
                       cacheWidth: (w * dpr).clamp(64, 1600).round(),
-                      gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) => placeholder,
+                      placeholder: placeholder,
                     );
                   },
                 ),
               ),
       ),
     );
+  }
+}
+
+/// Logo quadrada/retrato (ex.: logo redonda) numa capa mais larga é
+/// mostrada inteira (contain) sobre o fundo branco, sem cortar o topo.
+/// Fotos largas continuam preenchendo a capa (cover).
+BoxFit placeCoverFit({required double imageAspect, required double boxAspect}) {
+  if (imageAspect <= 0 || boxAspect <= 0) return BoxFit.cover;
+  final squareOrPortrait = imageAspect <= 1.1;
+  final boxWider = boxAspect > imageAspect * 1.05;
+  return squareOrPortrait && boxWider ? BoxFit.contain : BoxFit.cover;
+}
+
+class _AdaptiveCoverImage extends StatefulWidget {
+  const _AdaptiveCoverImage({
+    required this.url,
+    required this.boxAspect,
+    required this.cacheWidth,
+    required this.placeholder,
+  });
+
+  final String url;
+  final double boxAspect;
+  final int cacheWidth;
+  final Widget placeholder;
+
+  @override
+  State<_AdaptiveCoverImage> createState() => _AdaptiveCoverImageState();
+}
+
+class _AdaptiveCoverImageState extends State<_AdaptiveCoverImage> {
+  double? _imageAspect;
+
+  @override
+  void didUpdateWidget(covariant _AdaptiveCoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _imageAspect = null;
+      _reading = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final aspect = _imageAspect;
+    return Image.network(
+      widget.url,
+      key: const Key('place_cover_image'),
+      fit: aspect == null
+          ? BoxFit.cover
+          : placeCoverFit(imageAspect: aspect, boxAspect: widget.boxAspect),
+      width: double.infinity,
+      height: double.infinity,
+      cacheWidth: widget.cacheWidth,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, _) {
+        if (frame != null) _readAspect(context);
+        return child;
+      },
+      errorBuilder: (_, __, ___) => widget.placeholder,
+    );
+  }
+
+  bool _reading = false;
+
+  void _readAspect(BuildContext context) {
+    if (_imageAspect != null || _reading) return;
+    _reading = true;
+    // Fora do build: o listener pode disparar na hora (imagem em cache).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _resolveAspect();
+    });
+  }
+
+  void _resolveAspect() {
+    final provider = ResizeImage.resizeIfNeeded(
+      widget.cacheWidth,
+      null,
+      NetworkImage(widget.url),
+    );
+    final stream = provider.resolve(createLocalImageConfiguration(context));
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener((info, _) {
+      stream.removeListener(listener);
+      _reading = false;
+      final img = info.image;
+      if (!mounted || img.height == 0) return;
+      final a = img.width / img.height;
+      if (a != _imageAspect) setState(() => _imageAspect = a);
+    }, onError: (_, __) {
+      stream.removeListener(listener);
+      _reading = false;
+    });
+    stream.addListener(listener);
   }
 }
 
@@ -273,12 +365,16 @@ class _RatingLine extends StatelessWidget {
       children: [
         const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF5B301)),
         const SizedBox(width: 2),
-        Text(
-          label,
-          style: const TextStyle(
-            color: LocaisColors.text,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: LocaisColors.text,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],

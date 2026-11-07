@@ -397,6 +397,7 @@ class PlaceListing {
     this.deliveryArea,
     this.timeZone,
     this.hoursNote = '',
+    this.promotionScore = 0,
   });
 
   final String id;
@@ -417,6 +418,12 @@ class PlaceListing {
 
   /// Contagem por estrela (1..5) do agregado do local (`rating.stars`).
   final Map<int, int> ratingCounts;
+
+  /// Destaque pago futuro (patrocinado > featured > prioridade). 0 = normal.
+  /// Só leitura no app; sem cobrança nesta versão.
+  final int promotionScore;
+
+  bool get isFeatured => promotionScore > 0;
 
   /// "Só delivery": sem espaço físico. Fica fora do mapa e sem "Como chegar".
   final bool deliveryOnly;
@@ -452,6 +459,7 @@ class PlaceListing {
     double? rating,
     int? ratingCount,
     Map<int, int>? ratingCounts,
+    int? promotionScore,
   }) =>
       PlaceListing(
         id: id,
@@ -474,6 +482,7 @@ class PlaceListing {
         deliveryArea: deliveryArea,
         timeZone: timeZone,
         hoursNote: hoursNote,
+        promotionScore: promotionScore ?? this.promotionScore,
       );
 
   /// Aberto no fuso do local, contando a madrugada da faixa do dia anterior.

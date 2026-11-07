@@ -7,9 +7,11 @@ import '../features/locais/models/place_listing.dart';
 import '../features/locais/ui/locais_detail_page.dart';
 import '../features/locais/ui/place_card.dart';
 import '../l10n/app_texts.dart';
+import 'home_paged_carousel.dart';
 import 'home_section_header.dart';
 
-/// Ordena e corta os locais da Home: mesmo país, cidade do usuário primeiro,
+/// Ordena e corta os locais da Home: destaques (pagos no futuro) na frente,
+/// sem repetir local; depois mesmo país, cidade do usuário primeiro,
 /// depois abertos agora, no máximo [limit]. Filtragem só no cliente sobre a
 /// mesma query pública de Locais (sem índice novo).
 List<PlaceListing> selectHomePlaces(
@@ -17,7 +19,7 @@ List<PlaceListing> selectHomePlaces(
   required String countryCode,
   String? city,
   required DateTime now,
-  int limit = 8,
+  int limit = 12,
 }) {
   final country = countryCode.trim().toUpperCase();
   final userCity = (city ?? '').trim().toLowerCase();
@@ -32,7 +34,8 @@ List<PlaceListing> selectHomePlaces(
   final entries = indexed.entries.toList();
   int score(PlaceListing p) {
     var s = 0;
-    if (userCity.isNotEmpty && p.address.city.trim().toLowerCase() == userCity) {
+    if (userCity.isNotEmpty &&
+        p.address.city.trim().toLowerCase() == userCity) {
       s += 2;
     }
     if (p.isOpenAt(now)) s += 1;
@@ -40,10 +43,17 @@ List<PlaceListing> selectHomePlaces(
   }
 
   entries.sort((a, b) {
+    final promo = b.value.promotionScore.compareTo(a.value.promotionScore);
+    if (promo != 0) return promo;
     final d = score(b.value).compareTo(score(a.value));
     return d != 0 ? d : a.key.compareTo(b.key);
   });
-  return entries.take(limit).map((e) => e.value).toList();
+  final ordered = homeCarouselOrder<PlaceListing>(
+    entries.map((e) => e.value).toList(),
+    idOf: (p) => p.id,
+    isFeatured: (p) => p.isFeatured,
+  );
+  return ordered.take(limit).toList();
 }
 
 /// Seção "Locais perto de você" na Home. Só existe com Locais ligado e
@@ -56,7 +66,7 @@ class HomePlacesSection extends StatefulWidget {
     this.onOpenLocaisTab,
     this.repository,
     this.clock,
-    this.limit = 8,
+    this.limit = 12,
   });
 
   final String countryCode;
@@ -136,29 +146,76 @@ class _HomePlacesSectionState extends State<HomePlacesSection> {
             onSeeAll: widget.onOpenLocaisTab,
           ),
           const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < places.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 12),
-                  SizedBox(
-                    width: 220,
-                    child: PlaceCard(
-                      place: places[i],
-                      strings: strings,
-                      open: places[i].isOpenAt(now),
-                      vertical: true,
-                      onTap: () => _openDetail(places[i]),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          HomePlacesCarousel(
+            places: places,
+            strings: strings,
+            now: now,
+            featuredLabel: t.get('home_featured_badge'),
+            onTap: _openDetail,
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Carrossel de locais da Home: 3 por vez, passando de 3 em 3, com o mesmo
+/// card vertical de Locais. Destaques ganham o selo "Destaque".
+class HomePlacesCarousel extends StatelessWidget {
+  const HomePlacesCarousel({
+    super.key,
+    required this.places,
+    required this.strings,
+    required this.now,
+    required this.featuredLabel,
+    required this.onTap,
+  });
+
+  final List<PlaceListing> places;
+  final LocaisStrings strings;
+  final DateTime now;
+  final String featuredLabel;
+  final ValueChanged<PlaceListing> onTap;
+
+  /// Capa (112) + bloco de texto do card vertical em ~130pt de largura
+  /// (nome em 2 linhas, nota e "Aberto agora" em 2 linhas), com a escala
+  /// de fonte do usuário.
+  static double heightFor(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    return 112 + scaler.scale(168);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return HomePagedCarousel(
+      key: const Key('home_places_carousel'),
+      itemCount: places.length,
+      height: heightFor(context),
+      gap: 8,
+      itemBuilder: (context, i) {
+        final place = places[i];
+        final card = PlaceCard(
+          place: place,
+          strings: strings,
+          open: place.isOpenAt(now),
+          vertical: true,
+          onTap: () => onTap(place),
+        );
+        if (!place.isFeatured) return card;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            card,
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IgnorePointer(
+                child: HomeFeaturedBadge(label: featuredLabel),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

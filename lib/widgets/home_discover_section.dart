@@ -7,6 +7,7 @@ import '../l10n/app_texts.dart';
 import '../pages/event_detail_page.dart';
 import '../services/block_visibility.dart';
 import '../widgets/blocked_uids_builder.dart';
+import 'home_paged_carousel.dart';
 import 'home_section_header.dart';
 
 /// Carrossel de eventos na Home.
@@ -35,23 +36,15 @@ class HomeDiscoverSection extends StatefulWidget {
 
 class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
     with BlockedUidsListenable {
-  static const Color _remdyBlue = Color(0xFF313A5F);
-
-  static const Duration _autoInterval = Duration(seconds: 5);
-
-  PageController? _pageController;
-  Timer? _autoTimer;
-  int _pageIndex = 0;
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _docs = const [];
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> get _visibleDocs =>
-      _docs
-          .where(
-            (d) => !BlockVisibility.hidesEventMap(
-              d.data(),
-              blocked: blockedUids,
-            ),
-          )
-          .toList();
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> get _visibleDocs => _docs
+      .where(
+        (d) => !BlockVisibility.hidesEventMap(
+          d.data(),
+          blocked: blockedUids,
+        ),
+      )
+      .toList();
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
   bool _loading = true;
   bool _hasError = false;
@@ -74,12 +67,8 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
 
   @override
   void dispose() {
-    _autoTimer?.cancel();
-    _autoTimer = null;
     _sub?.cancel();
     _sub = null;
-    _pageController?.dispose();
-    _pageController = null;
     super.dispose();
   }
 
@@ -98,32 +87,16 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
     return 'default';
   }
 
-  /// Score futuro de monetização (patrocinado > featured > priority).
-  int _promotionScore(Map<String, dynamic> data) {
-    if (data['isSponsored'] == true || data['sponsored'] == true) {
-      return 300;
-    }
-    if (data['featured'] == true ||
-        data['isBoosted'] == true ||
-        data['boosted'] == true) {
-      return 200;
-    }
-    final raw = data['promotionPriority'];
-    if (raw is num) {
-      return 100 + raw.toInt().clamp(0, 99);
-    }
-    return 0;
-  }
+  int _promotionScore(Map<String, dynamic> data) =>
+      homeEventPromotionScore(data);
 
   int _locationScore(Map<String, dynamic> data) {
     final userCity = (widget.city ?? '').trim().toLowerCase();
-    final userRegion =
-        userCity.isEmpty ? '' : _regionKeyFromCity(userCity);
-    final eventCity = (data['cityKey'] ?? data['city'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
-    final eventRegion = (data['regionKey'] ?? '').toString().trim().toLowerCase();
+    final userRegion = userCity.isEmpty ? '' : _regionKeyFromCity(userCity);
+    final eventCity =
+        (data['cityKey'] ?? data['city'] ?? '').toString().trim().toLowerCase();
+    final eventRegion =
+        (data['regionKey'] ?? '').toString().trim().toLowerCase();
 
     if (userCity.isNotEmpty && eventCity == userCity) return 30;
     if (userRegion.isNotEmpty &&
@@ -143,7 +116,8 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
     final upcoming = docs.where((doc) {
       final data = doc.data();
       if (data['isActive'] != true) return false;
-      final status = (data['status'] ?? 'approved').toString().trim().toLowerCase();
+      final status =
+          (data['status'] ?? 'approved').toString().trim().toLowerCase();
       if (status == 'pending' ||
           status == 'rejected' ||
           status == 'cancelled' ||
@@ -165,8 +139,7 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
       final aData = a.data();
       final bData = b.data();
 
-      final promo =
-          _promotionScore(bData).compareTo(_promotionScore(aData));
+      final promo = _promotionScore(bData).compareTo(_promotionScore(aData));
       if (promo != 0) return promo;
 
       final loc = _locationScore(bData).compareTo(_locationScore(aData));
@@ -187,8 +160,6 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
 
   void _subscribe() {
     _sub?.cancel();
-    _autoTimer?.cancel();
-    _autoTimer = null;
 
     final country = widget.countryCode.trim().toLowerCase();
     Query<Map<String, dynamic>> query = FirebaseFirestore.instance
@@ -228,63 +199,16 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
           _hasError = true;
           _docs = const [];
         });
-        _stopAuto();
       },
     );
   }
 
   void _applyDocs(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
-    final needsCarousel = docs.length >= 4;
-    final hadCarousel = _docs.length >= 4;
-
-    if (needsCarousel && (!hadCarousel || _pageController == null)) {
-      _pageController?.dispose();
-      _pageController = PageController(viewportFraction: 0.86);
-      _pageIndex = 0;
-    } else if (!needsCarousel) {
-      _pageController?.dispose();
-      _pageController = null;
-      _pageIndex = 0;
-    }
-
     setState(() {
       _docs = docs;
       _loading = false;
       _hasError = false;
-      if (_pageIndex >= docs.length) _pageIndex = 0;
     });
-
-    if (needsCarousel) {
-      _restartAuto();
-    } else {
-      _stopAuto();
-    }
-  }
-
-  void _stopAuto() {
-    _autoTimer?.cancel();
-    _autoTimer = null;
-  }
-
-  void _restartAuto() {
-    _stopAuto();
-    if (_visibleDocs.length < 4) return;
-    _autoTimer = Timer.periodic(_autoInterval, (_) => _goNext());
-  }
-
-  void _goNext() {
-    if (!mounted) return;
-    final controller = _pageController;
-    if (controller == null || !controller.hasClients) return;
-    if (_visibleDocs.length < 4) return;
-
-    final current = controller.page?.round() ?? _pageIndex;
-    final next = (current + 1) % _visibleDocs.length;
-    controller.animateToPage(
-      next,
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeInOut,
-    );
   }
 
   String _resolveImageUrl(Map<String, dynamic> data) {
@@ -356,139 +280,100 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
           onSeeAll: widget.onOpenEventsTab,
         ),
         const SizedBox(height: 8),
-        if (_visibleDocs.length <= 3)
-          _staticRow(context)
-        else
-          _autoCarousel(context),
+        _pagedCarousel(context),
       ],
     );
   }
 
-  Widget _staticRow(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final count = _visibleDocs.length;
-        const gap = 8.0;
-        final cardWidth = count == 1
-            ? constraints.maxWidth
-            : (constraints.maxWidth - gap * (count - 1)) / count;
-        final height = count == 1
-            ? (cardWidth * 0.62).clamp(188.0, 230.0)
-            : (cardWidth * 1.58).clamp(168.0, 210.0);
-
-        return SizedBox(
-          height: height,
-          child: Row(
-            children: [
-              for (var i = 0; i < count; i++) ...[
-                if (i > 0) const SizedBox(width: gap),
-                Expanded(
-                  child: _EventCard(
-                    doc: _visibleDocs[i],
-                    compact: count > 1,
-                    wide: count == 1,
-                    resolveImageUrl: _resolveImageUrl,
-                    fmtDate: _fmtDate,
-                    eventBadge: _eventBadge,
-                    onTap: () => _openEvent(
-                      _visibleDocs[i].id,
-                      _visibleDocs[i].data(),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
+  /// 3 eventos por vez, passando de 3 em 3. Destaques (pagos no futuro)
+  /// vêm na frente com o selo "Destaque"; sem cobrança nesta versão.
+  Widget _pagedCarousel(BuildContext context) {
+    final docs = homeCarouselOrder<QueryDocumentSnapshot<Map<String, dynamic>>>(
+      _visibleDocs,
+      idOf: (d) => d.id,
+      ownerOf: (d) => homeEventOwnerKey(d.data()),
+      isFeatured: (d) => homeEventPromotionScore(d.data()) > 0,
     );
-  }
-
-  Widget _autoCarousel(BuildContext context) {
-    final controller = _pageController;
-    if (controller == null) return const SizedBox.shrink();
-
+    final featuredLabel = AppTexts.t('home_featured_badge');
     return LayoutBuilder(
       builder: (context, constraints) {
-        final height = (constraints.maxWidth * 0.58).clamp(188.0, 236.0);
-
-        return Column(
-          children: [
-            SizedBox(
-              height: height,
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (notification) {
-                  if (notification is ScrollStartNotification &&
-                      notification.dragDetails != null) {
-                    _stopAuto();
-                  } else if (notification is ScrollEndNotification) {
-                    _restartAuto();
-                  }
-                  return false;
-                },
-                child: PageView.builder(
-                  controller: controller,
-                  itemCount: _visibleDocs.length,
-                  onPageChanged: (index) {
-                    if (!mounted) return;
-                    setState(() => _pageIndex = index);
-                  },
-                  itemBuilder: (context, index) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: _EventCard(
-                        doc: _visibleDocs[index],
-                        compact: false,
-                        wide: true,
-                        resolveImageUrl: _resolveImageUrl,
-                        fmtDate: _fmtDate,
-                        eventBadge: _eventBadge,
-                        onTap: () => _openEvent(
-                          _visibleDocs[index].id,
-                          _visibleDocs[index].data(),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_visibleDocs.length.clamp(0, 20), (i) {
-                final active = i == _pageIndex;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: active ? 14 : 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: active ? _remdyBlue : const Color(0xFFD1D5DB),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                );
-              }),
-            ),
-          ],
+        const gap = 8.0;
+        final cardWidth = (constraints.maxWidth - gap * 2) / 3;
+        final height = (cardWidth * 1.58).clamp(168.0, 210.0);
+        return HomePagedCarousel(
+          key: const Key('home_discover_carousel'),
+          itemCount: docs.length,
+          height: height,
+          gap: gap,
+          itemBuilder: (context, i) {
+            final doc = docs[i];
+            final data = doc.data();
+            return HomeEventCard(
+              data: data,
+              compact: true,
+              wide: false,
+              featuredLabel:
+                  homeEventPromotionScore(data) > 0 ? featuredLabel : null,
+              resolveImageUrl: _resolveImageUrl,
+              fmtDate: _fmtDate,
+              eventBadge: _eventBadge,
+              onTap: () => _openEvent(doc.id, data),
+            );
+          },
         );
       },
     );
   }
 }
 
-class _EventCard extends StatelessWidget {
-  const _EventCard({
-    required this.doc,
+/// Dono do evento, para não repetir o mesmo organizador na mesma página.
+String homeEventOwnerKey(Map<String, dynamic> data) {
+  for (final k in [
+    'businessId',
+    'organizerId',
+    'createdBy',
+    'ownerId',
+    'uid'
+  ]) {
+    final v = (data[k] ?? '').toString().trim();
+    if (v.isNotEmpty) return v;
+  }
+  return '';
+}
+
+/// Score de monetização futura (patrocinado > featured > priority).
+int homeEventPromotionScore(Map<String, dynamic> data) {
+  if (data['isSponsored'] == true || data['sponsored'] == true) {
+    return 300;
+  }
+  if (data['featured'] == true ||
+      data['isBoosted'] == true ||
+      data['boosted'] == true) {
+    return 200;
+  }
+  final raw = data['promotionPriority'];
+  if (raw is num && raw > 0) {
+    return 100 + raw.toInt().clamp(0, 99);
+  }
+  return 0;
+}
+
+/// Card de evento da Home (mesmo visual de antes).
+class HomeEventCard extends StatelessWidget {
+  const HomeEventCard({
+    super.key,
+    required this.data,
     required this.resolveImageUrl,
     required this.fmtDate,
     required this.eventBadge,
     required this.onTap,
     required this.compact,
     required this.wide,
+    this.featuredLabel,
   });
 
-  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final Map<String, dynamic> data;
+  final String? featuredLabel;
   final String Function(Map<String, dynamic>) resolveImageUrl;
   final String Function(Timestamp?) fmtDate;
   final String Function(Timestamp?) eventBadge;
@@ -504,7 +389,6 @@ class _EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
-    final data = doc.data();
     final title = (data['title'] ?? 'Evento').toString();
     final city = (data['city'] ?? '').toString();
     final category =
@@ -576,6 +460,12 @@ class _EventCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                      ),
+                    if (featuredLabel != null)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: HomeFeaturedBadge(label: featuredLabel!),
                       ),
                   ],
                 ),
