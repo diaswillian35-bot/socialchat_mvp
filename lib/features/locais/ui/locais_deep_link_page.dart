@@ -6,18 +6,25 @@ import 'locais_detail_page.dart';
 import 'locais_state_views.dart';
 
 class LocaisDeepLinkPage extends StatefulWidget {
-  const LocaisDeepLinkPage({super.key, required this.slug});
-  final String slug;
+  const LocaisDeepLinkPage(
+      {super.key, this.slug, this.placeId, this.repository});
+  final String? slug;
+  final String? placeId;
+  final PlaceRepository? repository;
 
   @override
   State<LocaisDeepLinkPage> createState() => _LocaisDeepLinkPageState();
 }
 
 class _LocaisDeepLinkPageState extends State<LocaisDeepLinkPage> {
+  late final PlaceRepository _repository =
+      widget.repository ?? createPlaceRepository();
   late final Future<String?> _placeId = _resolve();
 
   Future<String?> _resolve() async {
-    final catalog = await createPlaceRepository().fetchCatalog();
+    // Detail page fetches this document directly via fetchById.
+    if (widget.placeId != null) return widget.placeId;
+    final catalog = await _repository.fetchCatalog();
     for (final place in catalog) {
       if (place.slug == widget.slug) return place.id;
     }
@@ -42,7 +49,7 @@ class _LocaisDeepLinkPageState extends State<LocaisDeepLinkPage> {
         }
         return LocaisDetailPage(
           placeId: snapshot.data!,
-          repository: createPlaceRepository(),
+          repository: _repository,
         );
       },
     );

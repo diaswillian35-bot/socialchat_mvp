@@ -1732,5 +1732,7 @@
   "group_role_moderator": "Modérateur",
   "group_promote_moderator": "Promouvoir en modérateur",
   "group_promote_moderator_confirm": "Autoriser ce membre à exclure et bannir les membres ordinaires ?",
-  "group_role_updated_success": "Rôle mis à jour"
+  "group_role_updated_success": "Rôle mis à jour",
+  "places_share_text": "Découvrez ce lieu sur Remdy !",
+  "places_share_error": "Impossible de partager ce lieu."
 }

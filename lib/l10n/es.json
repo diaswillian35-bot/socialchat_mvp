@@ -1732,5 +1732,7 @@
   "group_role_moderator": "Moderador",
   "group_promote_moderator": "Ascender a moderador",
   "group_promote_moderator_confirm": "¿Permitir a este miembro eliminar y expulsar a miembros normales?",
-  "group_role_updated_success": "Rol actualizado correctamente"
+  "group_role_updated_success": "Rol actualizado correctamente",
+  "places_share_text": "¡Descubre este lugar en Remdy!",
+  "places_share_error": "No se pudo compartir este lugar."
 }

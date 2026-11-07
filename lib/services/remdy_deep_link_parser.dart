@@ -42,6 +42,7 @@ class RemdyDeepLink {
     this.inviteRef,
     this.portalSessionId,
     this.placeSlug,
+    this.placeId,
     this.clearsPendingGroup = false,
   });
 
@@ -51,6 +52,7 @@ class RemdyDeepLink {
   final String? inviteRef;
   final String? portalSessionId;
   final String? placeSlug;
+  final String? placeId;
 
   /// Se true, descartar `pending_group_code` (raiz, inválido, outro destino).
   final bool clearsPendingGroup;
@@ -124,6 +126,22 @@ class RemdyDeepLinkParser {
     }
 
     final root = segments.first.toLowerCase();
+
+    // New stable ID route; unlike legacy slugs it does not scan the catalog.
+    if (root == 'l') {
+      final id = segments.length == 2 ? segments[1] : '';
+      if (RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(id)) {
+        return RemdyDeepLink(
+          kind: RemdyDeepLinkKind.place,
+          placeId: id,
+          clearsPendingGroup: true,
+        );
+      }
+      return const RemdyDeepLink(
+        kind: RemdyDeepLinkKind.none,
+        clearsPendingGroup: true,
+      );
+    }
 
     if (root == 'locais' && segments.length >= 4) {
       final slug = segments.last.toLowerCase();

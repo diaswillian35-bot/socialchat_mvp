@@ -1,0 +1,169 @@
+:root {
+  --navy:#313A5F;
+  --navy-2:#264E9A;
+  --ink:#1a1f36;
+  --muted:#6b7280;
+  --line:#e5e7eb;
+  --bg:#f4f6fb;
+  --white:#ffffff;
+  --danger:#b45309;
+  --sticky-offset:238px;
+  --header-h:190px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:auto}
+body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+a{color:var(--navy-2);text-decoration:none}
+img{max-width:100%;display:block}
+.remdy-icon{width:18px;height:18px;object-fit:contain;flex-shrink:0}
+.remdy-logo-full{width:162px;height:auto;max-width:100%;object-fit:contain;display:block}
+.site-header{position:sticky;top:0;z-index:40;background:var(--white);border-bottom:1px solid var(--line)}
+.site-header-inner{max-width:1180px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:18px;min-height:var(--header-h)}
+.brand{display:flex;align-items:center;flex-shrink:0;line-height:0;min-width:0}
+.brand .remdy-logo-full{width:162px;height:auto}
+.nav-links{display:flex;gap:18px;flex:1;font-size:14px;font-weight:600}
+.nav-links a{color:var(--navy)}
+.nav-links a:hover{color:var(--navy-2)}
+.header-actions{display:flex;align-items:center;gap:10px;margin-left:auto}
+.search-form{display:flex;align-items:center}
+.search-form input{border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-size:13px;width:200px;background:#fafbff}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;padding:10px 14px;font-weight:700;font-size:13px;border:0;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn-primary{background:var(--navy);color:#fff}
+.btn-primary:hover{background:#27304f}
+.btn-primary .remdy-icon{width:16px;height:16px;border-radius:3px;background:#fff;padding:1px}
+.btn-ghost{background:transparent;color:var(--navy);border:1px solid var(--line)}
+.btn-wide{width:100%}
+.btn-hero{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35)}
+.btn-hero:hover{background:rgba(255,255,255,.2)}
+.menu-toggle{display:none;background:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-weight:700;color:var(--navy)}
+.mobile-nav{display:none;padding:0 20px 12px;border-top:1px solid var(--line);background:#fff}
+.mobile-nav.open{display:block}
+.mobile-nav a{display:block;padding:10px 0;font-weight:600;color:var(--navy);border-bottom:1px solid var(--line)}
+.breadcrumb{max-width:1180px;margin:0 auto;padding:12px 20px 0;font-size:13px;color:var(--muted)}
+.breadcrumb a{color:var(--muted)}
+.breadcrumb strong{color:var(--ink);font-weight:600}
+.hero{position:relative;min-height:380px;color:#fff;overflow:visible;background:var(--navy)}
+.hero-bg{position:absolute;inset:0;background-size:cover;background-position:center;overflow:hidden;border-radius:0}
+.hero-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,rgba(20,24,45,.92) 0%,rgba(20,24,45,.62) 48%,rgba(20,24,45,.28) 100%)}
+.hero-inner{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:28px 20px 40px;display:grid;grid-template-columns:1fr;gap:20px;align-items:end;min-height:380px}
+.hero-inner.has-side{grid-template-columns:1.45fr .55fr}
+.hero-seal{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:4px 10px 4px 6px;font-size:11px;font-weight:700;letter-spacing:.02em;margin-bottom:10px;width:fit-content}
+.hero-seal .remdy-icon{width:16px;height:16px;border-radius:50%;background:#fff;padding:1px}
+.hero-badge{display:inline-block;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;margin:0 0 10px 8px;vertical-align:middle}
+.hero-badge.finished{background:rgba(180,83,9,.85);border-color:transparent;margin-left:0}
+.hero-kicker{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin-bottom:4px}
+.hero h1{margin:0 0 8px;font-size:clamp(26px,4vw,42px);line-height:1.18;font-weight:800;max-width:100%;white-space:normal;overflow:visible;text-overflow:clip;-webkit-line-clamp:unset;line-clamp:unset;overflow-wrap:break-word;word-break:normal;hyphens:manual}
+.hero-city{margin:0 0 8px;font-size:15px;font-weight:600;opacity:.95}
+.hero-summary{margin:0 0 14px;font-size:14px;opacity:.92;max-width:54ch}
+.hero-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;font-size:13px;opacity:.95}
+.hero-meta-grid span{display:flex;gap:8px;align-items:flex-start}
+@media (min-width:901px){
+  .hero-meta-grid{grid-template-columns:repeat(4,minmax(0,1fr));}
+}
+.hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.hero-side{display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+.logo-chip{width:88px;height:88px;border-radius:16px;background:rgba(255,255,255,.96);padding:8px;object-fit:contain;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.tabs-bar{position:sticky;top:var(--header-h);z-index:30;background:rgba(255,255,255,.97);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.tabs-wrap{position:relative;max-width:1180px;margin:0 auto}
+.tabs-wrap::after{content:"";position:absolute;top:0;right:0;bottom:0;width:36px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,.95));opacity:.9}
+.tabs-inner{display:flex;gap:2px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:0 20px;scrollbar-width:none}
+.tabs-inner::-webkit-scrollbar{display:none}
+.tabs-inner a{flex-shrink:0;scroll-snap-align:start;padding:14px 14px;font-size:13px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent}
+.tabs-inner a:hover,.tabs-inner a.active{color:var(--navy);border-bottom-color:var(--navy)}
+.section-anchor{scroll-margin-top:var(--sticky-offset)}
+.layout{max-width:1180px;margin:0 auto;padding:28px 20px 40px;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:28px;align-items:start}
+.panel{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:18px;box-shadow:0 4px 14px rgba(49,58,95,.04)}
+.panel h2{margin:0 0 12px;font-size:18px;color:var(--navy)}
+.panel p,.panel li{font-size:14px;color:#374151}
+.panel ul{margin:0;padding-left:18px}
+.sidebar{position:sticky;top:calc(var(--sticky-offset) + 8px)}
+.sidebar .panel{box-shadow:0 8px 24px rgba(49,58,95,.06)}
+.participate-brand{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.participate-brand .remdy-icon{width:28px;height:28px;border-radius:8px;background:#fff;border:1px solid var(--line);padding:3px}
+.participate-brand p{margin:0;font-size:13px;color:var(--muted);line-height:1.35}
+.quick-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.quick-list li{font-size:13px;color:#374151;display:grid;gap:2px}
+.quick-list strong{color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.organizer{display:flex;gap:12px;align-items:center}
+.organizer img{width:48px;height:48px;border-radius:50%;object-fit:cover;background:#eef2f7}
+.organizer-fallback{width:48px;height:48px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+.share-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.share-sheet{position:fixed;inset:0;z-index:110;display:none;align-items:flex-end;justify-content:center;background:rgba(15,18,32,.45);padding:16px}
+.share-sheet.open{display:flex}
+.share-sheet-card{width:min(420px,100%);background:#fff;border-radius:16px 16px 12px 12px;padding:16px;box-shadow:0 16px 40px rgba(0,0,0,.2)}
+.share-sheet-card h3{margin:0 0 12px;font-size:16px;color:var(--navy)}
+.share-sheet-actions{display:grid;gap:8px}
+.share-sheet-actions a,.share-sheet-actions button{width:100%;justify-content:flex-start}
+.carousel-section{max-width:1180px;margin:0 auto 28px;padding:0 20px}
+.carousel-section h2{margin:0 0 14px;font-size:20px;color:var(--navy)}
+.carousel{position:relative}
+.carousel-track{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px;-webkit-overflow-scrolling:touch}
+.carousel-track::-webkit-scrollbar{height:6px}
+.carousel-track::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
+.ev-card{flex:0 0 240px;scroll-snap-align:start;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(49,58,95,.05)}
+.ev-card .thumb{width:100%;height:140px;background:#e8edf5;display:flex;align-items:center;justify-content:center}
+.ev-card .thumb img{width:100%;height:100%;object-fit:cover}
+.ev-card-body{padding:12px;display:flex;flex-direction:column;gap:6px;flex:1}
+.ev-card h3{margin:0;font-size:15px;line-height:1.3}
+.ev-card .muted{color:var(--muted);font-size:12px}
+.ev-card .badge{display:inline-block;background:#eef2ff;color:var(--navy-2);border-radius:999px;padding:3px 8px;font-size:11px;font-weight:700;width:fit-content}
+.carousel-nav{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--navy);font-weight:800;cursor:pointer;z-index:2;box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.carousel-nav.prev{left:-6px}
+.carousel-nav.next{right:-6px}
+.download-band{background:linear-gradient(135deg,var(--navy),var(--navy-2));color:#fff;padding:40px 20px;text-align:center}
+.download-band .remdy-logo-full{width:135px;height:auto;max-width:135px;margin:0 auto 14px}
+.download-band h2{margin:0 0 8px;font-size:22px;font-weight:700;max-width:28ch;margin-left:auto;margin-right:auto}
+.download-band p{margin:0 0 18px;opacity:.92;font-size:14px}
+.download-band .actions{display:flex;justify-content:center;flex-wrap:wrap;gap:10px}
+.site-footer{background:#1b2036;color:#cbd5e1;padding:36px 20px 28px}
+.footer-inner{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:24px}
+.site-footer .remdy-logo-full{width:135px;height:auto;max-width:135px;margin-bottom:10px}
+.site-footer h3{margin:0 0 10px;color:#fff;font-size:14px}
+.site-footer a{color:#cbd5e1;font-size:13px;display:block;margin:6px 0}
+.site-footer .copy{max-width:1180px;margin:24px auto 0;padding-top:16px;border-top:1px solid rgba(255,255,255,.1);font-size:12px;color:#94a3b8}
+.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.gallery-grid button{border:0;padding:0;border-radius:10px;overflow:hidden;cursor:pointer;background:#e8edf5;aspect-ratio:1;display:flex;align-items:center;justify-content:center}
+.gallery-grid img{width:100%;height:100%;object-fit:contain}
+.map-frame{width:100%;height:220px;border:0;border-radius:12px;background:#eef2f7}
+.lightbox{position:fixed;inset:0;z-index:100;background:rgba(10,12,24,.92);display:none;align-items:center;justify-content:center;padding:20px}
+.lightbox.open{display:flex}
+.lightbox-stage{max-width:min(960px,100%);max-height:80vh;width:100%;display:flex;align-items:center;justify-content:center;background:#111827;border-radius:8px}
+.lightbox img{max-width:100%;max-height:80vh;object-fit:contain}
+.lightbox-ui{position:absolute;left:0;right:0;top:0;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;color:#fff;font-weight:700}
+.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.12);border:0;color:#fff;width:44px;height:44px;border-radius:50%;font-size:22px;cursor:pointer}
+.lightbox-nav.prev{left:16px}
+.lightbox-nav.next{right:16px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:120}
+.toast.show{opacity:1}
+@media (max-width:900px){
+  :root{--header-h:176px;--sticky-offset:224px}
+  .nav-links,.search-form{display:none}
+  .menu-toggle{display:inline-flex}
+  .brand .remdy-logo-full{width:148px;height:auto}
+  .site-header-inner{padding:12px 16px;gap:12px;min-height:var(--header-h)}
+  .header-actions{gap:8px;flex-shrink:0}
+  .header-actions .btn{padding:8px 10px;font-size:12px}
+  .hero{min-height:0;overflow:visible}
+  .hero-inner{grid-template-columns:1fr;align-items:start;padding:22px 16px 28px;min-height:0;gap:14px}
+  .hero-inner.has-side{grid-template-columns:1fr}
+  .hero-side{align-items:flex-start;flex-direction:row;flex-wrap:wrap;gap:10px}
+  .hero h1{font-size:clamp(24px,7vw,32px);max-width:100%;white-space:normal;overflow:visible;text-overflow:clip;line-clamp:unset;-webkit-line-clamp:unset;overflow-wrap:break-word;word-break:normal}
+  .hero-summary{margin-bottom:12px}
+  .hero-meta-grid{grid-template-columns:1fr;gap:8px}
+  .hero-actions{margin-top:12px}
+  .logo-chip{width:64px;height:64px;border-radius:12px}
+  .layout{grid-template-columns:1fr;padding-top:20px}
+  .sidebar{position:static}
+  .footer-inner{grid-template-columns:1fr}
+  .carousel-nav{display:none}
+  .download-band .remdy-logo-full,.site-footer .remdy-logo-full{width:118px;max-width:118px;height:auto}
+}
+@media (max-width:420px){
+  :root{--header-h:150px;--sticky-offset:198px}
+  .site-header-inner{padding:10px 12px;gap:8px;min-height:var(--header-h)}
+  .brand .remdy-logo-full{width:122px;height:auto}
+  .header-actions .btn{padding:7px 8px;font-size:11px;gap:5px}
+  .header-actions .btn .remdy-icon{width:14px;height:14px}
+  .hero h1{font-size:clamp(22px,6.5vw,28px);max-width:100%;white-space:normal;overflow:visible;text-overflow:clip;line-clamp:unset;-webkit-line-clamp:unset;overflow-wrap:break-word;word-break:normal}
+  .download-band .remdy-logo-full,.site-footer .remdy-logo-full{width:118px;max-width:118px;height:auto}
+}

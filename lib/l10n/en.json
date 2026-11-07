@@ -1732,5 +1732,7 @@
   "group_role_moderator": "Moderator",
   "group_promote_moderator": "Promote to moderator",
   "group_promote_moderator_confirm": "Allow this member to remove and ban regular members?",
-  "group_role_updated_success": "Role updated successfully"
+  "group_role_updated_success": "Role updated successfully",
+  "places_share_text": "Discover this place on Remdy!",
+  "places_share_error": "Unable to share this place."
 }

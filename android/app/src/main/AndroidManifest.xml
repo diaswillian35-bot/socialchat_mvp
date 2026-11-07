@@ -145,6 +145,15 @@
                     android:pathPrefix="/portal-login" />
             </intent-filter>
 
+            <!-- Stable public place pages; legacy routes stay unchanged. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="remdy.app" android:pathPrefix="/l/" />
+                <data android:scheme="https" android:host="www.remdy.app" android:pathPrefix="/l/" />
+            </intent-filter>
+
             <!-- Launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

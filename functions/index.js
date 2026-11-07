@@ -6341,3 +6341,7 @@ exports.onPlacePendingNotifyAdmins = onDocumentWritten(
     }
   },
 );
+
+// Public place pages (read-only SSR). Deploy only the named functions.
+exports.renderPublicPlacePage = require('./public_places').renderPublicPlacePage;
+exports.renderPlacesSitemap = require('./public_places').renderPlacesSitemap;

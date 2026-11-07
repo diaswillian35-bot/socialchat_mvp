@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../../l10n/app_texts.dart';
+import '../logic/place_share_link.dart';
 
 import '../data/place_actions_service.dart';
 import '../data/place_description_translation_service.dart';
@@ -133,22 +137,25 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
       key: const Key('locais_detail_scroll'),
       padding: EdgeInsets.zero,
       children: [
-        EventDetailLightHeader(
-          key: const Key('locais_detail_title'),
-          title: place.name,
-          locationLine: '${place.address.city} · ${place.address.region}',
-          dateLine: '',
-          confirmed: false,
-          cancelled: false,
-          liked: false,
-          confirmedLabel: '',
-          cancelledLabel: '',
-          coverChild: _photos(place, wide),
-          onBack: () => Navigator.maybePop(context),
-          showLike: false,
-          pageBackground: _eventBg,
-          heroHeight: wide ? 340 : 280,
-        ),
+        Builder(
+            builder: (shareContext) => EventDetailLightHeader(
+                  key: const Key('locais_detail_title'),
+                  title: place.name,
+                  locationLine:
+                      '${place.address.city} · ${place.address.region}',
+                  dateLine: '',
+                  confirmed: false,
+                  cancelled: false,
+                  liked: false,
+                  confirmedLabel: '',
+                  cancelledLabel: '',
+                  coverChild: _photos(place, wide),
+                  onBack: () => Navigator.maybePop(context),
+                  onShare: () => _sharePlace(place, shareContext),
+                  showLike: false,
+                  pageBackground: _eventBg,
+                  heroHeight: wide ? 340 : 280,
+                )),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
           child: Column(
@@ -158,6 +165,27 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _sharePlace(
+      PlaceListing place, BuildContext shareContext) async {
+    // Same native share_plus pattern as event detail, with an iPad anchor.
+    final box = shareContext.findRenderObject() as RenderBox?;
+    final origin = box == null || !box.hasSize
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+    try {
+      await Share.share(
+        '${place.name}\n${AppTexts.t('places_share_text')}\n${PlaceShareLink.url(place.id)}',
+        subject: place.name,
+        sharePositionOrigin: origin,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppTexts.t('places_share_error'))),
+      );
+    }
   }
 
   static const Color _eventBg = Colors.white;

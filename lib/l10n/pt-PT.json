@@ -1466,5 +1466,7 @@
   "group_role_moderator": "Moderador",
   "group_promote_moderator": "Promover a moderador",
   "group_promote_moderator_confirm": "Dar a este membro permissão para remover e banir membros comuns?",
-  "group_role_updated_success": "Cargo atualizado com sucesso"
+  "group_role_updated_success": "Cargo atualizado com sucesso",
+  "places_share_text": "Conheça este local no Remdy!",
+  "places_share_error": "Não foi possível partilhar este local."
 }

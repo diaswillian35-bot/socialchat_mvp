@@ -1,6 +1,8 @@
 "use strict";
 
 const entries = {
+  renderPublicPlacePage: ["public-read", "Read-only published business landing page; no social actions or private fields."],
+  renderPlacesSitemap: ["public-read", "Read-only public place URLs for search indexing; no account or social content."],
   confirmAdultAge: ["essential", "Required to complete age verification."],
   deleteMyAccount: ["essential", "Account deletion must remain available."],
   revokeShareExtensionSessions: ["essential", "Logout/security token revocation."],
