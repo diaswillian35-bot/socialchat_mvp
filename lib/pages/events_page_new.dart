@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import '../services/event_share_image_service.dart';
 import 'event_detail_page.dart';
 import '../l10n/app_texts.dart';
+import '../l10n/event_category_labels.dart';
 import '../services/event_attendance_service.dart';
 import '../services/event_deep_link_service.dart';
 import '../services/event_list_queries.dart';
@@ -797,7 +798,7 @@ SizedBox(
     ),
 
   Text(
-    category.isNotEmpty ? category : AppTexts.t('events_default_category'),
+    category.isNotEmpty ? eventCategoryLabel(category) : AppTexts.t('events_default_category'),
 
 
                       maxLines: 1,

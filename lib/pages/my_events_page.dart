@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import '../l10n/event_category_labels.dart';
 import '../pages/edit_event_page.dart';
 import '../pages/event_detail_page.dart';
 import '../services/event_list_queries.dart';
@@ -682,7 +683,7 @@ class _MyEventsPageState extends State<MyEventsPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '$category • $city',
+                    '${eventCategoryLabel(category)} • $city',
                     style: const TextStyle(
                       color: _muted,
                       fontWeight: FontWeight.w700,

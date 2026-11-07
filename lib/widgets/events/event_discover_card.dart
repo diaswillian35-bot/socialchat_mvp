@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_texts.dart';
+import '../../l10n/event_category_labels.dart';
 import '../../models/event_presentation.dart';
 
 /// Card de carrossel — capa, badges, título, local, data.
@@ -98,7 +99,7 @@ class EventDiscoverCard extends StatelessWidget {
                           const Spacer(),
                           if (event.category.isNotEmpty)
                             _Pill(
-                              text: event.category.toUpperCase(),
+                              text: eventCategoryLabel(event.category).toUpperCase(),
                               background: navy.withValues(alpha: 0.85),
                             ),
                         ],

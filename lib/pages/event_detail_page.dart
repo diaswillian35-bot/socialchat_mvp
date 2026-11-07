@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_texts.dart';
+import '../l10n/event_category_labels.dart';
 import '../models/event_presentation.dart';
 import '../services/app_notification_state.dart';
 import '../services/event_attendance_service.dart';
@@ -1037,7 +1038,7 @@ class _EventDetailPageState extends State<EventDetailPage>
       return const Center(child: CircularProgressIndicator());
     }
     final title = event.title;
-    final category = event.category;
+    final category = eventCategoryLabel(event.category);
     final city = event.city;
     final state = event.stateName;
     final place = event.placeName.isNotEmpty

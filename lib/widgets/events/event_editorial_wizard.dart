@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import '../../l10n/app_texts.dart';
+import '../../l10n/event_category_labels.dart';
 import '../../models/event_editorial_draft.dart';
 import '../../services/event_address_parts.dart';
 import '../../utils/event_timezone.dart';
@@ -1024,7 +1025,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
               : 'Geral',
           decoration: _dec(t('create_event_category')),
           items: eventCategoryPickerItems(_draft.category)
-              .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+              .map((c) => DropdownMenuItem(value: c, child: Text(eventCategoryLabel(c))))
               .toList(),
           onChanged: (v) {
             if (v == null) return;
@@ -1746,7 +1747,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         row(t('create_event_name'), _draft.title),
-        row(t('create_event_category'), _draft.category),
+        row(t('create_event_category'), eventCategoryLabel(_draft.category)),
         row(t('create_event_city'),
             '${_draft.city} ${_draft.stateName}'.trim()),
         row(t('create_event_place'), _draft.placeName),
