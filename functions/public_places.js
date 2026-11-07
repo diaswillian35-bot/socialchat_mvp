@@ -2,6 +2,7 @@
 const {onRequest} = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const logic = require('./public_place_logic');
+const recommendations = require('./public_place_recommendations');
 function publishedQuery(db) {
  return db.collection('places').where('schemaVersion','==',1).where('active','==',true).where('deleted','==',false).where('moderationStatus','==','published');
 }
@@ -15,12 +16,39 @@ function createPlaceHandler(db) {
   const match=(req.path||'').match(/^\/l\/([A-Za-z0-9_-]{1,128})\/?$/);const id=match?.[1]||'';
   try {
    const snap=id?await db.collection('places').doc(id).get():null;
-   const data=snap?.exists?snap.data():null;let related=[];
-   if(logic.isPublished(data) && data.cityName){
-    try {const pool=await publishedQuery(db).where('cityName','==',data.cityName).limit(7).get();related=pool.docs.map(d=>({id:d.id,data:d.data()}));}
-    catch(error){console.warn('publicPlaces related query unavailable',error.code||'unknown');}
+   const data=snap?.exists?snap.data():null;let selected={places:[],events:[]};
+   if(logic.isPublished(data)){
+    const nowMs=Date.now();let cityRows=[],pool=[];
+    if(data.cityName)try{
+     const snap=await publishedQuery(db).where('cityName','==',data.cityName).limit(7).get();cityRows=snap.docs.map(d=>({id:d.id,data:d.data()}));
+    }catch(error){console.warn('publicPlaces city query unavailable',error.code||'unknown');}
+    selected.places=recommendations.pickPlaceRecommendations(id,data,cityRows);
+    if(selected.places.length<3)try{
+     const snap=await publishedQuery(db).orderBy('updatedAt','desc').limit(24).get();pool=snap.docs.map(d=>({id:d.id,data:d.data()}));
+     selected.places=recommendations.pickPlaceRecommendations(id,data,cityRows,pool);
+    }catch(error){console.warn('publicPlaces recent query unavailable',error.code||'unknown');}
+    if(!selected.places.length){
+     // Respect the same global public-events switch as renderPublicEventPage.
+     let publicEventsOnline=false;
+     try{const config=await db.collection('config').doc('publicEvents').get();publicEventsOnline=config.exists&&config.data()?.enabled===true;}catch(error){console.warn('publicPlaces event switch unavailable',error.code||'unknown');}
+     if(publicEventsOnline){
+     const upcoming=()=>{
+      let q=db.collection('events').where('isActive','==',true);
+      if(data.countryCode)q=q.where('countryCode','==',String(data.countryCode).toLowerCase());
+      return q.where('startAt','>=',new Date(nowMs)).orderBy('startAt','asc');
+     };
+     let eventRows=[];
+     if(data.cityName)try{
+      const snap=await upcoming().where('city','==',data.cityName).limit(16).get();eventRows=snap.docs.map(d=>({id:d.id,data:d.data()}));
+     }catch(error){console.warn('publicPlaces city events query unavailable',error.code||'unknown');}
+     if(recommendations.pickEventRecommendations(data,eventRows,nowMs).length<3)try{
+      const snap=await upcoming().limit(40).get();eventRows.push(...snap.docs.map(d=>({id:d.id,data:d.data()})));
+     }catch(error){console.warn('publicPlaces national events query unavailable',error.code||'unknown');}
+     selected.events=recommendations.pickEventRecommendations(data,eventRows,nowMs).map(r=>recommendations.eventCard(r,lang));
+     }
+    }
    }
-   const page=logic.renderPlacePage({id,data,language:lang,related});return res.status(page.status).send(page.html);
+   const page=logic.renderPlacePage({id,data,language:lang,recommendations:selected});return res.status(page.status).send(page.html);
   } catch(error){console.error('renderPublicPlacePage',error.code||'unknown');return res.set('Cache-Control','no-store').status(503).send('Temporarily unavailable');}
  };
 }
