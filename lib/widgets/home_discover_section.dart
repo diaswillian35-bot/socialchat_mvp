@@ -463,8 +463,8 @@ class HomeEventCard extends StatelessWidget {
                       ),
                     if (featuredLabel != null)
                       Positioned(
-                        top: 8,
-                        right: 8,
+                        left: 8,
+                        bottom: 8,
                         child: HomeFeaturedBadge(label: featuredLabel!),
                       ),
                   ],

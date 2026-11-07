@@ -14,10 +14,10 @@ import 'package:socialchat_mvp/widgets/home_section_header.dart';
 const _lang = String.fromEnvironment('PREVIEW_LANG', defaultValue: 'pt-BR');
 const _page = int.fromEnvironment('PREVIEW_PAGE', defaultValue: 0);
 
-const _jbCover =
-    'https://firebasestorage.googleapis.com/v0/b/socialchatmvp.firebasestorage.app/o/places%2FhPGFEU4iQbDJXItOwQhV%2Fphotos%2F249b720ad29516bb5e39bce58660f152.jpg?alt=media&token=670d4b83-8eda-4539-a039-e1ab33aa2444';
-const _testeCover =
-    'https://firebasestorage.googleapis.com/v0/b/socialchatmvp.firebasestorage.app/o/events%2F2UrrzsLSexQT2II2l69b%2Fphotos%2F1794022652770_0.jpg?alt=media&token=e07bb5bd-405a-48b3-bfa8-16556a4d13d1';
+const kPreviewPlaceCover = String.fromEnvironment('PREVIEW_PLACE_IMG',
+    defaultValue: 'https://firebasestorage.googleapis.com/v0/b/socialchatmvp.firebasestorage.app/o/places%2FhPGFEU4iQbDJXItOwQhV%2Fphotos%2F249b720ad29516bb5e39bce58660f152.jpg?alt=media&token=670d4b83-8eda-4539-a039-e1ab33aa2444');
+const kPreviewEventCover = String.fromEnvironment('PREVIEW_EVENT_IMG',
+    defaultValue: 'https://firebasestorage.googleapis.com/v0/b/socialchatmvp.firebasestorage.app/o/events%2F2UrrzsLSexQT2II2l69b%2Fphotos%2F1794022652770_0.jpg?alt=media&token=e07bb5bd-405a-48b3-bfa8-16556a4d13d1');
 
 PlaceListing _as(PlaceListing p,
         {String? id,
@@ -63,19 +63,21 @@ class _PreviewApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: _PreviewHome(),
+      home: HomeCarouselsPreview(),
     );
   }
 }
 
-class _PreviewHome extends StatefulWidget {
-  const _PreviewHome();
+class HomeCarouselsPreview extends StatefulWidget {
+  const HomeCarouselsPreview({super.key, this.page = _page});
+
+  final int page;
 
   @override
-  State<_PreviewHome> createState() => _PreviewHomeState();
+  State<HomeCarouselsPreview> createState() => HomeCarouselsPreviewState();
 }
 
-class _PreviewHomeState extends State<_PreviewHome> {
+class HomeCarouselsPreviewState extends State<HomeCarouselsPreview> {
   final _now = DateTime.now();
 
   Map<String, dynamic> _event(String id, String title, String cat,
@@ -100,7 +102,7 @@ class _PreviewHomeState extends State<_PreviewHome> {
     final events = homeCarouselOrder<Map<String, dynamic>>(
       [
         _event('teste', 'Teste', 'Esportes', DateTime(2026, 11, 9, 9),
-            'Toronto', cover: _testeCover),
+            'Toronto', cover: kPreviewEventCover),
         _event('e1', 'Noite de Forró no Centro', 'Música',
             d.add(const Duration(days: 1)), 'Toronto', featured: true),
         _event('e2', 'Feira Brasileira de Artesanato', 'Cultura', d,
@@ -123,7 +125,7 @@ class _PreviewHomeState extends State<_PreviewHome> {
         _as(demo[0],
             id: 'john_burger',
             name: 'John Burger',
-            url: _jbCover,
+            url: kPreviewPlaceCover,
             deliveryOnly: true),
         ...demo.skip(2).take(5),
       ],
@@ -149,6 +151,7 @@ class _PreviewHomeState extends State<_PreviewHome> {
               LayoutBuilder(builder: (context, c) {
                 final cardWidth = (c.maxWidth - 16) / 3;
                 return _Jump(
+                  page: widget.page,
                   child: HomePagedCarousel(
                     itemCount: events.length,
                     height: (cardWidth * 1.58).clamp(168.0, 210.0),
@@ -188,6 +191,7 @@ class _PreviewHomeState extends State<_PreviewHome> {
               ),
               const SizedBox(height: 8),
               _Jump(
+                page: widget.page,
                 child: HomePlacesCarousel(
                   places: places,
                   strings: strings,
@@ -206,8 +210,9 @@ class _PreviewHomeState extends State<_PreviewHome> {
 
 /// Vai direto para a página PREVIEW_PAGE (para os prints da 2ª página).
 class _Jump extends StatefulWidget {
-  const _Jump({required this.child});
+  const _Jump({required this.child, this.page = 0});
   final Widget child;
+  final int page;
   @override
   State<_Jump> createState() => _JumpState();
 }
@@ -216,11 +221,11 @@ class _JumpState extends State<_Jump> {
   @override
   void initState() {
     super.initState();
-    if (_page > 0) {
+    if (widget.page > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         void visit(Element e) {
           if (e.widget is PageView) {
-            (e.widget as PageView).controller?.jumpToPage(_page);
+            (e.widget as PageView).controller?.jumpToPage(widget.page);
             return;
           }
           e.visitChildElements(visit);
