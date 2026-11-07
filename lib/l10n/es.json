@@ -1721,5 +1721,7 @@
   "group_cover_error_unauthorized": "No tienes permiso para cambiar la portada de este grupo.",
   "group_cover_error_too_large": "La imagen es demasiado grande. Elige otra foto.",
   "group_cover_error_generic": "No se pudo subir la portada. Inténtalo de nuevo.",
-  "group_share_error": "No se pudo compartir el grupo. Inténtalo de nuevo."
+  "group_share_error": "No se pudo compartir el grupo. Inténtalo de nuevo.",
+  "place_view_original": "Ver original",
+  "place_view_translation": "Ver traducción"
 }

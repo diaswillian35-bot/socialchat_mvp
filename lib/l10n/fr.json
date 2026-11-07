@@ -1721,5 +1721,7 @@
   "group_cover_error_unauthorized": "Vous n'avez pas l'autorisation de modifier la couverture de ce groupe.",
   "group_cover_error_too_large": "L'image est trop volumineuse. Choisissez une autre photo.",
   "group_cover_error_generic": "Impossible d'envoyer la couverture. Veuillez réessayer.",
-  "group_share_error": "Impossible de partager le groupe. Réessayez."
+  "group_share_error": "Impossible de partager le groupe. Réessayez.",
+  "place_view_original": "Voir l’original",
+  "place_view_translation": "Voir la traduction"
 }

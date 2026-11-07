@@ -1455,5 +1455,7 @@
   "group_cover_error_unauthorized": "Não tem permissão para alterar a capa deste grupo.",
   "group_cover_error_too_large": "A imagem é demasiado grande. Escolha outra fotografia.",
   "group_cover_error_generic": "Não foi possível enviar a capa. Tente novamente.",
-  "group_share_error": "Não foi possível partilhar o grupo. Tente novamente."
+  "group_share_error": "Não foi possível partilhar o grupo. Tente novamente.",
+  "place_view_original": "Ver original",
+  "place_view_translation": "Ver tradução"
 }

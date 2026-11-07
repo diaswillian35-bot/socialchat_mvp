@@ -1,0 +1,12 @@
+{
+  "name": "place-translation-emulator-only",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "24"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.6.1",
+    "firebase-functions": "^7.0.5"
+  }
+}

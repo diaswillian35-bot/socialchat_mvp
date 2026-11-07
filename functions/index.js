@@ -174,6 +174,12 @@ exports.fetchLinkPreview = fetchLinkPreview;
 
 // Locais build 38. Implementado localmente; não publicar enquanto a flag do
 // cliente estiver desligada e o pacote 38 não for autorizado.
+const placeDescriptionTranslate = require("./place_description_translate");
+exports.translatePlaceDescription = socialOnCall(
+  { region: "us-central1", maxInstances: 2, concurrency: 10, timeoutSeconds: 60 },
+  placeDescriptionTranslate.translatePlaceDescriptionHandler,
+);
+
 const placeActions = require("./place_actions");
 exports.submitPlaceReview = socialOnCall(
   { region: "us-central1" },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/place_actions_service.dart';
+import '../data/place_description_translation_service.dart';
 import '../data/place_repository.dart';
 import '../locais_feature_flag.dart';
 import '../locais_strings.dart';
@@ -12,6 +13,7 @@ import 'locais_layout.dart';
 import 'locais_state_views.dart';
 import 'place_card.dart';
 import 'place_photo_viewer.dart';
+import 'place_description.dart';
 
 class LocaisDetailPage extends StatefulWidget {
   const LocaisDetailPage({
@@ -21,12 +23,14 @@ class LocaisDetailPage extends StatefulWidget {
     this.clock,
     PlaceActionsService? actions,
     this.launcher,
+    this.translationService,
   }) : actions = actions ?? const PlaceActionsService();
 
   final String placeId;
   final PlaceRepository repository;
   final DateTime Function()? clock;
   final PlaceActionsService actions;
+  final PlaceDescriptionTranslationService? translationService;
 
   /// Abre links externos; injetável nos testes. Padrão: url_launcher.
   final Future<bool> Function(Uri uri, LaunchMode mode)? launcher;
@@ -207,7 +211,16 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
       const SizedBox(height: 12),
       _card(
         key: const Key('locais_detail_description'),
-        child: _section(strings.description, place.description),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(strings.description),
+            PlaceDescription(
+                placeId: place.id,
+                original: place.description,
+                service: widget.translationService),
+          ],
+        ),
       ),
       const SizedBox(height: 12),
       _card(
@@ -1281,19 +1294,6 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
           ),
         );
       },
-    );
-  }
-
-  Widget _section(String title, String body) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionTitle(title),
-        Text(
-          body,
-          style: const TextStyle(color: LocaisColors.text, height: 1.4),
-        ),
-      ],
     );
   }
 
