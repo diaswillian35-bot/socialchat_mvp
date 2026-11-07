@@ -1,0 +1,6 @@
+function isGroupOwnerOrAdminData(data, uid) {
+  if (!data || !uid) return false;
+  if ((data.ownerId || "").toString() === uid) return true;
+  const admins = asUidList(data.admins);
+  return admins.includes(uid);
+}

@@ -1,0 +1,12 @@
+00:00 +76: /Volumes/REMDY_SSD/group_roles_work/test/group_join_ui_logic_test.dart: GroupJoinService._mapFunctionsException (via messageKey) permission-denied → banned
+00:00 +78: /Volumes/REMDY_SSD/group_roles_work/test/group_join_ui_logic_test.dart: GroupJoinService._mapFunctionsException (via messageKey) networkError messageKey
+00:00 +80: /Volumes/REMDY_SSD/group_roles_work/test/group_join_ui_logic_test.dart: GroupJoinService._mapFunctionsException (via messageKey) Functions unavailable code maps to networkError
+00:00 +81: /Volumes/REMDY_SSD/group_roles_work/test/group_join_ui_logic_test.dart: GroupJoinService._mapFunctionsException (via messageKey) Functions unavailable code maps to networkError
+00:02 +229: All tests passed!
+
+Analyzing 5 items...
+
+   info • Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check • lib/pages/group_info_page.dart:947:7 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check • lib/pages/groups_list_page.dart:966:7 • use_build_context_synchronously
+
+2 issues found. (ran in 2.8s)

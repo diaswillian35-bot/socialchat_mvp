@@ -1,0 +1,29 @@
+{
+  "functions": [
+    {
+      "codebase": "default",
+      "source": "functions"
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "emulators": {
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 18080
+    },
+    "functions": {
+      "host": "127.0.0.1",
+      "port": 15001
+    },
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 19099
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  }
+}

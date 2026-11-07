@@ -1,0 +1,89 @@
+exports.demoteGroupAdmin = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const targetUid = (request.data?.targetUid || "").toString().trim();
+
+    if (!groupId || !targetUid) {
+      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const actorRef = db.collection("users").doc(actorUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (actorUid !== ownerId) {
+          throw new HttpsError("permission-denied", "Only owner can demote.");
+        }
+
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        if (targetUid === ownerId) {
+          throw new HttpsError("failed-precondition", "Cannot demote the owner.");
+        }
+
+        const members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+
+        if (!admins.includes(targetUid)) {
+          return { groupId, targetUid, alreadyMemberOnly: true };
+        }
+
+        if (!members.includes(targetUid)) {
+          throw new HttpsError("failed-precondition", "Target is not a member.");
+        }
+
+        admins = admins.filter((a) => a !== targetUid);
+
+        tx.set(
+          groupRef,
+          {
+            admins,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        return { groupId, targetUid, alreadyMemberOnly: false };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_admin_demoted",
+          groupId,
+          targetUid,
+          performedBy: actorUid,
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro demoteGroupAdmin:", e);
+      throw new HttpsError("internal", "Could not demote admin.");
+    }
+  }
+);

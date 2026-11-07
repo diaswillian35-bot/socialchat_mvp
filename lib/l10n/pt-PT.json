@@ -585,7 +585,7 @@
   "group_role_admin": "Administrador",
   "group_role_member": "Membro",
   "group_promote_confirm": "Deseja tornar este utilizador administrador do grupo?",
-  "group_demote_confirm": "Deseja remover as permissões de administrador deste utilizador?",
+  "group_demote_confirm": "Pretende despromover este utilizador para membro?",
   "group_remove_confirm": "Deseja remover este utilizador do grupo? Ele poderá entrar novamente conforme a política do grupo.",
   "group_promote_success": "Utilizador promovido com sucesso",
   "group_demote_success": "Administrador rebaixado com sucesso",
@@ -1454,5 +1454,15 @@
   "group_create_name_too_long": "O nome do grupo pode ter no máximo 80 caracteres.",
   "group_cover_error_unauthorized": "Não tem permissão para alterar a capa deste grupo.",
   "group_cover_error_too_large": "A imagem é demasiado grande. Escolha outra fotografia.",
-  "group_cover_error_generic": "Não foi possível enviar a capa. Tente novamente."
+  "group_cover_error_generic": "Não foi possível enviar a capa. Tente novamente.",
+  "group_owner_protected": "O dono do grupo não pode ser removido, banido ou despromovido.",
+  "group_admin_protected": "Só o dono pode remover, banir ou despromover outro administrador.",
+  "group_only_owner_roles": "Só o dono pode alterar os cargos do grupo.",
+  "group_role_not_allowed": "Não tem permissão para esta ação.",
+  "group_owner_transfer_disabled": "Não é possível transferir a propriedade do grupo.",
+  "group_owner_cannot_leave": "O dono não pode sair do grupo. Pode eliminar o próprio grupo.",
+  "group_role_moderator": "Moderador",
+  "group_promote_moderator": "Promover a moderador",
+  "group_promote_moderator_confirm": "Dar a este membro permissão para remover e banir membros comuns?",
+  "group_role_updated_success": "Cargo atualizado com sucesso"
 }

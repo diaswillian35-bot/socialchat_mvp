@@ -20,6 +20,8 @@ import '../services/group_hidden_prefs_service.dart';
 import '../services/group_lifecycle_service.dart';
 import '../services/group_location_normalize.dart';
 import '../services/group_roles_service.dart';
+import '../services/group_role_policy.dart';
+import '../services/group_role_error.dart';
 import '../services/group_settings_service.dart';
 import '../services/group_join_request_service.dart';
 import '../services/group_pending_join_badge_logic.dart';
@@ -209,6 +211,9 @@ class _GroupInfoPageState extends State<GroupInfoPage>
 
   bool get _canModerate => _isOwner || _isAdmin;
 
+  bool _canActOn(String targetUid, String action) => GroupRolePolicy.can(
+        _groupData ?? <String, dynamic>{}, _uid ?? '', targetUid, action);
+
   String get _ownerId => (_groupData?['ownerId'] ?? '').toString().trim();
 
   Future<void> _confirmBanUser(Map<String, dynamic> m) async {
@@ -218,7 +223,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     if (targetUid.isEmpty || targetUid == _uid || targetUid == _ownerId) {
       return;
     }
-    if (!_canModerate) return;
+    if (!_canActOn(targetUid, 'ban')) return;
 
     final reasonC = TextEditingController();
 
@@ -279,7 +284,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       await _loadAll();
     } on FirebaseFunctionsException catch (e) {
       _toast(
-          '${t.get(GroupBanService.messageForFunctionsError(e))}: ${e.message ?? e.code}');
+          '${t.get(GroupBanService.messageForFunctionsError(e))}: ${groupRoleErrorText(e)}');
     } catch (e) {
       _toast('${t.get('group_ban_error')}: $e');
     } finally {
@@ -323,7 +328,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       _toast(t.get('group_unban_success'));
     } on FirebaseFunctionsException catch (e) {
       _toast(
-        '${t.get('group_unban_error')}: ${e.message ?? e.code}',
+        '${t.get('group_unban_error')}: ${groupRoleErrorText(e)}',
       );
     } catch (e) {
       _toast('${t.get('group_unban_error')}: $e');
@@ -768,46 +773,6 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     }
   }
 
-  Future<String?> _pickNewOwnerUid() async {
-    final t = AppTexts.current;
-    final myUid = _uid;
-    final candidates = _membersData.where((m) {
-      final id = (m['uid'] ?? '').toString();
-      return id.isNotEmpty && id != myUid;
-    }).toList();
-    if (candidates.isEmpty) {
-      _toast(t.get('group_transfer_need_member'));
-      return null;
-    }
-
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return SimpleDialog(
-          title: Text(t.get('group_transfer_title')),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-              child: Text(t.get('group_transfer_before_leave')),
-            ),
-            ...candidates.map((m) {
-              final id = (m['uid'] ?? '').toString();
-              final name = (m['name'] ?? id).toString();
-              return SimpleDialogOption(
-                onPressed: () => Navigator.pop(ctx, id),
-                child: Text(name),
-              );
-            }),
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(t.get('cancel')),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _leaveGroup({bool alsoHide = false}) async {
     final t = AppTexts.current;
     final myUid = _uid;
@@ -823,10 +788,9 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       return;
     }
 
-    String? newOwnerUid;
     if (_isOwner) {
-      newOwnerUid = await _pickNewOwnerUid();
-      if (newOwnerUid == null || newOwnerUid.isEmpty) return;
+      _toast(t.get('group_owner_cannot_leave'));
+      return;
     }
 
     final confirm = await showDialog<bool>(
@@ -861,12 +825,6 @@ class _GroupInfoPageState extends State<GroupInfoPage>
 
     try {
       setState(() => _saving = true);
-      if (_isOwner && newOwnerUid != null) {
-        await GroupLifecycleService.transferOwnership(
-          groupId: widget.groupId,
-          newOwnerUid: newOwnerUid,
-        );
-      }
       await GroupLifecycleService.leaveGroup(groupId: widget.groupId);
       if (alsoHide) {
         final name = (_groupData?['name'] ?? '').toString();
@@ -884,17 +842,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       );
       Navigator.pop(context, true);
     } on FirebaseFunctionsException catch (e) {
-      final key = _isOwner && e.message?.toLowerCase().contains('owner') != true
-          ? GroupLifecycleService.transferErrorKey(e)
-          : GroupLifecycleService.leaveErrorKey(e);
-      // Prefer transfer key when transfer likely failed.
-      final transferFailed = e.message?.toLowerCase().contains('transfer') ==
-              true ||
-          e.message?.toLowerCase().contains('new owner') == true ||
-          e.code == 'failed-precondition' && _isOwner && newOwnerUid != null;
-      _toast(
-        '${t.get(transferFailed ? GroupLifecycleService.transferErrorKey(e) : key)}: ${e.message ?? e.code}',
-      );
+      _toast('${t.get(GroupLifecycleService.leaveErrorKey(e))}: ${groupRoleErrorText(e)}');
     } catch (e) {
       _toast('${t.get('group_leave_error')}: $e');
     } finally {
@@ -1022,7 +970,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       Navigator.pop(context, true);
     } on FirebaseFunctionsException catch (e) {
       _toast(
-        '${t.get(GroupLifecycleService.deleteErrorKey(e))}: ${e.message ?? e.code}',
+        '${t.get(GroupLifecycleService.deleteErrorKey(e))}: ${groupRoleErrorText(e)}',
       );
     } catch (e) {
       _toast('${t.get('group_delete_error')}: $e');
@@ -1348,7 +1296,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     );
   }
 
-  Future<void> _confirmPromote(Map<String, dynamic> m) async {
+  Future<void> _confirmPromote(Map<String, dynamic> m, {String role = 'admin'}) async {
     final t = AppTexts.current;
     final targetUid = (m['uid'] ?? '').toString().trim();
     if (!_isOwner || targetUid.isEmpty || targetUid == _ownerId) return;
@@ -1356,8 +1304,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(t.get('group_promote_admin')),
-        content: Text(t.get('group_promote_confirm')),
+        title: Text(t.get(role == 'moderator' ? 'group_promote_moderator' : 'group_promote_admin')),
+        content: Text(t.get(role == 'moderator' ? 'group_promote_moderator_confirm' : 'group_promote_confirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -1365,7 +1313,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(t.get('group_promote_admin')),
+            child: Text(t.get(role == 'moderator' ? 'group_promote_moderator' : 'group_promote_admin')),
           ),
         ],
       ),
@@ -1377,11 +1325,12 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       await GroupRolesService.promoteAdmin(
         groupId: widget.groupId,
         targetUid: targetUid,
+        role: role,
       );
-      _toast(t.get('group_promote_success'));
+      _toast(t.get('group_role_updated_success'));
       await _loadAll();
     } on FirebaseFunctionsException catch (e) {
-      _toast('${t.get('group_promote_error')}: ${e.message ?? e.code}');
+      _toast('${t.get('group_promote_error')}: ${groupRoleErrorText(e)}');
     } catch (e) {
       _toast('${t.get('group_promote_error')}: $e');
     } finally {
@@ -1419,10 +1368,10 @@ class _GroupInfoPageState extends State<GroupInfoPage>
         groupId: widget.groupId,
         targetUid: targetUid,
       );
-      _toast(t.get('group_demote_success'));
+      _toast(t.get('group_role_updated_success'));
       await _loadAll();
     } on FirebaseFunctionsException catch (e) {
-      _toast('${t.get('group_demote_error')}: ${e.message ?? e.code}');
+      _toast('${t.get('group_demote_error')}: ${groupRoleErrorText(e)}');
     } catch (e) {
       _toast('${t.get('group_demote_error')}: $e');
     } finally {
@@ -1437,13 +1386,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       return;
     }
 
-    final adminsRaw = _groupData?['admins'];
-    final admins = (adminsRaw is List)
-        ? adminsRaw.map((e) => e.toString()).toList()
-        : <String>[];
-    final targetIsAdmin = admins.contains(targetUid);
-
-    if (!_isOwner && (!_isAdmin || targetIsAdmin)) return;
+    if (!_canActOn(targetUid, 'remove')) return;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -1473,7 +1416,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       _toast(t.get('group_remove_success'));
       await _loadAll();
     } on FirebaseFunctionsException catch (e) {
-      _toast('${t.get('group_remove_error')}: ${e.message ?? e.code}');
+      _toast('${t.get('group_remove_error')}: ${groupRoleErrorText(e)}');
     } catch (e) {
       _toast('${t.get('group_remove_error')}: $e');
     } finally {
@@ -1512,30 +1455,20 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     final avatarUrl = (m['avatarUrl'] ?? '').toString().trim();
     final pic = photoUrl.isNotEmpty ? photoUrl : avatarUrl;
 
-    final adminsRaw = _groupData?['admins'];
-    final admins = (adminsRaw is List)
-        ? adminsRaw.map((e) => e.toString()).toList()
-        : <String>[];
-
-    final isOwnerUser = uid == _ownerId;
-    final isAdminUser = admins.contains(uid);
+    final role = GroupRolePolicy.roleOf(_groupData ?? {}, uid);
+    final isOwnerUser = role == 'owner';
+    final isAdminUser = role == 'admin';
+    final isModeratorUser = role == 'moderator';
     final isMe = uid == _uid;
-
-    final canPromote = _isOwner && !isMe && !isOwnerUser && !isAdminUser;
-    final canDemote = _isOwner && !isMe && !isOwnerUser && isAdminUser;
-    final canRemove =
-        !isMe && !isOwnerUser && (_isOwner || (_isAdmin && !isAdminUser));
-    final canBan = _canModerate && !isMe && !isOwnerUser;
-    final showMenu = canPromote || canDemote || canRemove || canBan;
-
-    String roleLabel;
-    if (isOwnerUser) {
-      roleLabel = t.get('group_role_owner');
-    } else if (isAdminUser) {
-      roleLabel = t.get('group_role_admin');
-    } else {
-      roleLabel = t.get('group_role_member');
-    }
+    final canPromote = _canActOn(uid, 'promote') && !isAdminUser;
+    final canPromoteModerator = _canActOn(uid, 'promote') && !isModeratorUser && !isAdminUser;
+    final canDemote = _canActOn(uid, 'demote') && (isAdminUser || isModeratorUser);
+    final canRemove = _canActOn(uid, 'remove');
+    final canBan = _canActOn(uid, 'ban');
+    final showMenu = canPromote || canPromoteModerator || canDemote || canRemove || canBan;
+    final roleLabel = t.get(isOwnerUser ? 'group_role_owner'
+        : isAdminUser ? 'group_role_admin'
+        : isModeratorUser ? 'group_role_moderator' : 'group_role_member');
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -1598,6 +1531,9 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                     case 'promote':
                       _confirmPromote(m);
                       break;
+                    case 'moderator':
+                      _confirmPromote(m, role: 'moderator');
+                      break;
                     case 'demote':
                       _confirmDemote(m);
                       break;
@@ -1614,6 +1550,11 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                     PopupMenuItem(
                       value: 'promote',
                       child: Text(t.get('group_promote_admin')),
+                    ),
+                  if (canPromoteModerator)
+                    PopupMenuItem(
+                      value: 'moderator',
+                      child: Text(t.get('group_promote_moderator')),
                     ),
                   if (canDemote)
                     PopupMenuItem(
@@ -2107,7 +2048,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                             width: double.infinity,
                             child: OutlinedButton.icon(
                               onPressed:
-                                  _saving ? null : () => _leaveGroup(),
+                                  _saving || _isOwner ? null : () => _leaveGroup(),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: _remdyBlue,
                                 side: const BorderSide(color: _border),

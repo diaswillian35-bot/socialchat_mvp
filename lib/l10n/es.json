@@ -869,7 +869,7 @@
   "group_role_admin": "Administrador",
   "group_role_member": "Miembro",
   "group_promote_confirm": "¿Convertir a este usuario en administrador del grupo?",
-  "group_demote_confirm": "¿Quitar los permisos de administrador de este usuario?",
+  "group_demote_confirm": "¿Rebajar a este usuario a miembro normal?",
   "group_remove_confirm": "¿Eliminar a este usuario del grupo? Podrá volver a entrar según la política del grupo.",
   "group_promote_success": "Usuario promovido con éxito",
   "group_demote_success": "Administrador rebajado con éxito",
@@ -1720,5 +1720,15 @@
   "group_create_name_too_long": "El nombre del grupo puede tener como máximo 80 caracteres.",
   "group_cover_error_unauthorized": "No tienes permiso para cambiar la portada de este grupo.",
   "group_cover_error_too_large": "La imagen es demasiado grande. Elige otra foto.",
-  "group_cover_error_generic": "No se pudo subir la portada. Inténtalo de nuevo."
+  "group_cover_error_generic": "No se pudo subir la portada. Inténtalo de nuevo.",
+  "group_owner_protected": "No se puede eliminar, expulsar ni degradar al propietario del grupo.",
+  "group_admin_protected": "Solo el propietario puede eliminar, expulsar o degradar a otro administrador.",
+  "group_only_owner_roles": "Solo el propietario puede cambiar los roles del grupo.",
+  "group_role_not_allowed": "No tienes permiso para esta acción.",
+  "group_owner_transfer_disabled": "No se puede transferir la propiedad del grupo.",
+  "group_owner_cannot_leave": "El propietario no puede salir del grupo. Puede eliminar su propio grupo.",
+  "group_role_moderator": "Moderador",
+  "group_promote_moderator": "Ascender a moderador",
+  "group_promote_moderator_confirm": "¿Permitir a este miembro eliminar y expulsar a miembros normales?",
+  "group_role_updated_success": "Rol actualizado correctamente"
 }

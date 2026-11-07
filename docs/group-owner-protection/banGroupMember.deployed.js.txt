@@ -1,0 +1,149 @@
+exports.banGroupMember = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const actorUid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const targetUid = (request.data?.targetUid || "").toString().trim();
+    const reason = (request.data?.reason || "").toString().trim().slice(0, 300);
+
+    if (!groupId || !targetUid) {
+      throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+    }
+    if (actorUid === targetUid) {
+      throw new HttpsError("failed-precondition", "Cannot ban yourself.");
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const banRef = groupRef.collection("bannedUsers").doc(targetUid);
+    const pendingRef = groupRef.collection("pendingRequests").doc(targetUid);
+    const actorRef = db.collection("users").doc(actorUid);
+    const targetRef = db.collection("users").doc(targetUid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+        const targetSnap = await tx.get(targetRef);
+        const banSnap = await tx.get(banRef);
+        const pendingSnap = await tx.get(pendingRef);
+
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+
+        if (!isGroupOwnerOrAdminData(data, actorUid)) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (targetUid === ownerId) {
+          throw new HttpsError("failed-precondition", "Cannot ban the owner.");
+        }
+
+        if (!actorSnap.exists) {
+          throw new HttpsError("failed-precondition", "Actor profile missing.");
+        }
+        const actorData = actorSnap.data() || {};
+        if (actorData.isBanned === true) {
+          throw new HttpsError("permission-denied", "Account is banned.");
+        }
+        const actorName = (actorData.name || "").toString().trim() || "Admin";
+
+        const targetData = targetSnap.exists ? targetSnap.data() || {} : {};
+        const targetName =
+          (targetData.name || "").toString().trim() || "User";
+        const targetPhoto = (
+          targetData.photoUrl ||
+          targetData.avatarUrl ||
+          ""
+        ).toString();
+
+        let members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+        const wasMember = members.includes(targetUid);
+
+        members = members.filter((m) => m !== targetUid);
+        admins = admins.filter((a) => a !== targetUid);
+
+        const patch = {
+          members,
+          admins,
+          membersCount: members.length,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          [`unread.${targetUid}`]: admin.firestore.FieldValue.delete(),
+        };
+
+        tx.set(groupRef, patch, { merge: true });
+
+        tx.set(
+          banRef,
+          {
+            uid: targetUid,
+            name: targetName,
+            photoUrl: targetPhoto,
+            reason,
+            bannedAt: admin.firestore.FieldValue.serverTimestamp(),
+            bannedBy: actorUid,
+            bannedByName: actorName,
+            isActive: true,
+            unbannedAt: null,
+            unbannedBy: "",
+            unbannedByName: "",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (pendingSnap.exists) {
+          const p = pendingSnap.data() || {};
+          if ((p.status || "").toString().trim() === "pending") {
+            tx.set(
+              pendingRef,
+              {
+                status: "rejected",
+                rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+                rejectedBy: actorUid,
+                rejectionReason: "banned",
+              },
+              { merge: true }
+            );
+          }
+        }
+
+        return {
+          groupId,
+          targetUid,
+          wasMember,
+          alreadyBanned: banSnap.exists && banSnap.data()?.isActive === true,
+        };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_member_banned",
+          groupId,
+          targetUid,
+          performedBy: actorUid,
+          reason: reason ? "[set]" : "",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro banGroupMember:", e);
+      throw new HttpsError("internal", "Could not ban member.");
+    }
+  }
+);

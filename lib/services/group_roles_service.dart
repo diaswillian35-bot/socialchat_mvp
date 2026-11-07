@@ -10,11 +10,13 @@ class GroupRolesService {
   static Future<void> promoteAdmin({
     required String groupId,
     required String targetUid,
+    String role = 'admin',
   }) async {
     final callable = _functions.httpsCallable('promoteGroupAdmin');
     await callable.call(<String, dynamic>{
       'groupId': groupId,
       'targetUid': targetUid,
+      'role': role,
     });
   }
 
