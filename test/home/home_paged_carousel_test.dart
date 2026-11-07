@@ -179,4 +179,18 @@ void main() {
     expect(find.text('Destaque'), findsOneWidget);
     expect(find.byKey(const Key('home_places_carousel')), findsOneWidget);
   });
+
+  test('carrossel da Home tem no máximo 12 itens (4 páginas de 3)', () async {
+    expect(kHomeCarouselMaxItems, 12);
+    expect(HomePagedCarousel.pageCountFor(kHomeCarouselMaxItems, 3), 4);
+    final ids = List.generate(30, (i) => 'e$i');
+    final ordered = homeCarouselOrder<String>(ids, idOf: (s) => s)
+        .take(kHomeCarouselMaxItems)
+        .toList();
+    expect(ordered.length, 12);
+    final catalog = await DemoPlaceRepository().fetchCatalog();
+    final places =
+        selectHomePlaces(catalog, countryCode: 'BR', now: _clock(), limit: 50);
+    expect(places.length, lessThanOrEqualTo(kHomeCarouselMaxItems));
+  });
 }

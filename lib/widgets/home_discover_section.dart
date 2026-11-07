@@ -293,7 +293,7 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
       idOf: (d) => d.id,
       ownerOf: (d) => homeEventOwnerKey(d.data()),
       isFeatured: (d) => homeEventPromotionScore(d.data()) > 0,
-    );
+    ).take(kHomeCarouselMaxItems).toList();
     final featuredLabel = AppTexts.t('home_featured_badge');
     return LayoutBuilder(
       builder: (context, constraints) {

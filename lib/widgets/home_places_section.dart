@@ -53,7 +53,7 @@ List<PlaceListing> selectHomePlaces(
     idOf: (p) => p.id,
     isFeatured: (p) => p.isFeatured,
   );
-  return ordered.take(limit).toList();
+  return ordered.take(limit.clamp(1, kHomeCarouselMaxItems)).toList();
 }
 
 /// Seção "Locais perto de você" na Home. Só existe com Locais ligado e

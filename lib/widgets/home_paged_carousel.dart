@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 /// Ordem dos carrosséis da Home: destaques (pagos, no futuro) na frente,
 /// sem itens repetidos e, quando possível, sem o mesmo dono/empresa duas
 /// vezes na mesma página de [perPage].
+/// Máximo de itens por carrossel da Home: 4 páginas de 3 (os espaços
+/// vendáveis). "Ver todos" continua abrindo a lista completa.
+const int kHomeCarouselMaxItems = 12;
+
 List<T> homeCarouselOrder<T>(
   List<T> items, {
   required String Function(T) idOf,
