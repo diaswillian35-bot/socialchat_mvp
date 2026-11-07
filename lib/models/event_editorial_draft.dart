@@ -141,6 +141,25 @@ const List<String> kEventEditorialCategories = [
   'Cultural',
 ];
 
+/// Categorias legadas: continuam válidas (eventos antigos/CF), mas não são
+/// mais oferecidas na lista de seleção.
+const Set<String> kEventLegacyCategories = {'Restaurante', 'café'};
+
+/// Categorias oferecidas no seletor do wizard.
+final List<String> kEventSelectableCategories = kEventEditorialCategories
+    .where((c) => !kEventLegacyCategories.contains(c))
+    .toList(growable: false);
+
+/// Itens do seletor: as selecionáveis + a categoria legada atual (se houver),
+/// para que editar um evento antigo preserve o valor.
+List<String> eventCategoryPickerItems(String current) {
+  final c = current.trim();
+  if (kEventLegacyCategories.contains(c)) {
+    return [...kEventSelectableCategories, c];
+  }
+  return kEventSelectableCategories;
+}
+
 const Set<String> kEventTicketTypes = {'free', 'paid', 'inquire'};
 
 /// Estado serializável do wizard editorial (7 passos).

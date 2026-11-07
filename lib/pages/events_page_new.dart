@@ -452,7 +452,6 @@ _categoryChip(2, AppTexts.t('events_week')),
 _categoryChip(3, AppTexts.t('events_general')),
 _categoryChip(4, AppTexts.t('events_music')),
 _categoryChip(5, AppTexts.t('events_sports')),
-_categoryChip(6, AppTexts.t('events_restaurant')),
 _categoryChip(7, AppTexts.t('events_culture')),
 _categoryChip(8, AppTexts.t('events_languages')),
 

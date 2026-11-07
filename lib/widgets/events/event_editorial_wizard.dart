@@ -1023,7 +1023,7 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
               ? _draft.category
               : 'Geral',
           decoration: _dec(t('create_event_category')),
-          items: kEventEditorialCategories
+          items: eventCategoryPickerItems(_draft.category)
               .map((c) => DropdownMenuItem(value: c, child: Text(c)))
               .toList(),
           onChanged: (v) {
