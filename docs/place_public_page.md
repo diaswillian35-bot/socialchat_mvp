@@ -1,3 +1,7 @@
+# Atualização V3
+
+Veja `place_public_page_v3.md`: delivery somente no app, privacidade, lojas corretas, campos mascarados e pendência do `/app` (404). As seções abaixo registram V1/V2.
+
 # Página pública de Locais — preparação local
 
 Nenhum deploy, push, merge, instalação, login ou escrita em Firestore foi feito.

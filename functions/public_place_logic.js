@@ -3,6 +3,7 @@
 // Pure rendering: never reads Firestore, never serializes a source document.
 const css = require('node:fs').readFileSync(require('node:path').join(__dirname, 'public_place.css'), 'utf8');
 const brand = require('./public_place_brand.json');
+const {buildPlaceAppLinks,appOpenScript,APP_STORE_URL}=require('./public_place_app_links');
 const ORIGIN = 'https://remdy.app';
 const LANGS = ['pt-BR', 'pt-PT', 'en', 'es', 'fr'];
 const COPY = {
@@ -25,6 +26,13 @@ const EXTRA_COPY = {
  en: {gallery:'Gallery',photo:'photo',events:'Events you might like to discover',explore:'Explore on Remdy',browse:'Explore events',empty:'New public places and events will appear here when available.'},
  es: {gallery:'Galería',photo:'foto',events:'Eventos que quizás quieras conocer',explore:'Explora en Remdy',browse:'Explorar eventos',empty:'Los nuevos lugares y eventos públicos aparecerán aquí cuando estén disponibles.'},
  fr: {gallery:'Galerie',photo:'photo',events:'Des événements que vous pourriez aimer découvrir',explore:'Explorez sur Remdy',browse:'Explorer les événements',empty:'Les nouveaux lieux et événements publics apparaîtront ici dès leur disponibilité.'},
+};
+const ACTION_COPY = {
+ 'pt-BR': {directions:'Como chegar',orderInApp:'Ver cardápio e pedir'},
+ 'pt-PT': {directions:'Como chegar',orderInApp:'Ver ementa e pedir'},
+ en: {directions:'Get directions',orderInApp:'View menu and order'},
+ es: {directions:'Cómo llegar',orderInApp:'Ver menú y pedir'},
+ fr: {directions:'Itinéraire',orderInApp:'Voir le menu et commander'},
 };
 const CATEGORY_KEYS = ['restaurant','bar','cafe','hotel','pousada','nightclub'];
 const SCHEMA_TYPES = ['Restaurant','BarOrPub','CafeOrCoffeeShop','Hotel','BedAndBreakfast','NightClub'];
@@ -57,6 +65,14 @@ function photosOf(d) {
  add(d.coverUrl);if(Array.isArray(d.photoUrls))d.photoUrls.forEach(add);return urls;
 }
 function publicLocation(d) { return d.deliveryOnly !== true && d.addressPublic !== false && d.hideAddress !== true; }
+// Identical URL pattern to public_event_model.mapsUrl: coordinates first.
+function mapsUrlForPlace(d) {
+ if(!publicLocation(d))return '';
+ if(typeof d.latitude==='number'&&typeof d.longitude==='number'&&Math.abs(d.latitude)<=90&&Math.abs(d.longitude)<=180)return `https://www.google.com/maps/search/?api=1&query=${d.latitude},${d.longitude}`;
+ if(!text(d.addressLine))return '';
+ const line=[text(d.addressLine),text(d.district),text(d.cityName),text(d.stateName)].filter(Boolean).join(', ');
+ return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(line)}`;
+}
 function hoursOf(d) {
  if (d.hours?.v !== 1 || !d.hours.days || typeof d.hours.days !== 'object') return [];
  return DAYS.map((day,i) => ({day, slots: Array.isArray(d.hours.days[String(i+1)]) ? d.hours.days[String(i+1)].filter(s => /^([01]\d|2[0-3]):[0-5]\d$/.test(s?.o) && /^([01]\d|2[0-3]):[0-5]\d$/.test(s?.c)) : []}));
@@ -81,23 +97,23 @@ function jsonLd(id,d) {
 }
 function jsonForScript(obj) { return JSON.stringify(obj).replace(/[<>&\u2028\u2029]/g, c => '\\u'+c.charCodeAt(0).toString(16).padStart(4,'0')); }
 function renderPlacePage({id,data,language='pt-BR',related=[],recommendations=null}) {
- const lang = LANGS.includes(language) ? language : 'pt-BR';const t=COPY[lang];const x=EXTRA_COPY[lang];const e=escapeHtml;
+ const lang = LANGS.includes(language) ? language : 'pt-BR';const t=COPY[lang];const x=EXTRA_COPY[lang];const actions=ACTION_COPY[lang];const e=escapeHtml;
  const found = validId(id) && isPublished(data); const d=found?data:{};
  const url = validId(id) ? `${ORIGIN}/l/${id}` : `${ORIGIN}/`;
  const category = categoryName(d,lang);const city = text(d.cityName);
  const title = found ? `${text(d.name)}${category?' · '+category:''}${city?' '+t[25]+' '+city:''} | Remdy` : `${t[10]} | Remdy`;
  const desc = found ? `${text(d.name)}${city?' '+t[25]+' '+city:''}. ${text(d.description) || t[14]}`.slice(0,220) : t[11];
- const image=imageOf(d);const deepLink=found?`remdy://l/${id}`:ORIGIN;
+ const image=imageOf(d);const appLinks=validId(id)?buildPlaceAppLinks(id):null;
  const logo=`<img class="remdy-logo-full" src="${e(brand.logo)}" alt="Remdy" decoding="async">`;
  const whiteLogo=`<img class="remdy-logo-full remdy-logo-on-dark" src="${e(brand.whiteLogo || brand.logo)}" alt="Remdy" decoding="async">`;
  const icon=`<img class="remdy-icon" src="${e(brand.icon)}" alt="" width="18" height="18">`;
- const open=`<a class="btn btn-primary" href="${e(deepLink)}" data-open-app>${icon} ${e(t[1])}</a>`;
+ const open=`<a class="btn btn-primary" href="${e(appLinks?.download||ORIGIN)}" data-open-app>${icon} ${e(t[1])}</a>`;
  const header=`<header class="site-header"><div class="site-header-inner"><a class="brand" href="${ORIGIN}/" aria-label="Remdy">${logo}</a><nav class="nav-links">${[20,21,22,23].map((i,j)=>`<a href="${ORIGIN}/${j===0?'eventos':''}">${e(t[i])}</a>`).join('')}</nav><div class="header-actions"><form class="search-form" method="get" action="${ORIGIN}/eventos"><input type="search" name="cidade" placeholder="${e(t[24])}" aria-label="${e(t[24])}"></form>${open}<button type="button" class="menu-toggle" id="menuToggle" aria-label="Menu">☰</button></div></div><div class="mobile-nav" id="mobileNav">${[20,21,22,23].map((i,j)=>`<a href="${ORIGIN}/${j===0?'eventos':''}">${e(t[i])}</a>`).join('')}${open}</div></header>`;
- const footer=`<section class="download-band">${whiteLogo}<h2>${e(t[14])}</h2><p>${e(t[15])}</p><div class="actions"><a class="btn btn-primary" style="background:#fff;color:var(--navy)" href="https://play.google.com/store/apps/details?id=com.remdy.app">Google Play</a><a class="btn btn-ghost" style="border-color:rgba(255,255,255,.4);color:#fff" href="https://apps.apple.com/">App Store</a></div></section><footer class="site-footer"><div class="footer-inner"><div>${whiteLogo}<p>${e(t[16])}</p></div><div><h3>${e(t[17])}</h3><a href="${ORIGIN}/eventos">${e(t[20])}</a><a href="${ORIGIN}/">${e(t[18])}</a></div><div><h3>App</h3><a href="https://play.google.com/store/apps/details?id=com.remdy.app">Google Play</a><a href="https://apps.apple.com/">App Store</a></div></div><div class="copy">© ${new Date().getUTCFullYear()} Remdy. ${e(t[19])}</div></footer>`;
+ const footer=`<section class="download-band">${whiteLogo}<h2>${e(t[14])}</h2><p>${e(t[15])}</p><div class="actions"><a class="btn btn-primary" style="background:#fff;color:var(--navy)" href="https://play.google.com/store/apps/details?id=com.remdy.app">Google Play</a><a class="btn btn-ghost" style="border-color:rgba(255,255,255,.4);color:#fff" href="${APP_STORE_URL}">App Store</a></div></section><footer class="site-footer"><div class="footer-inner"><div>${whiteLogo}<p>${e(t[16])}</p></div><div><h3>${e(t[17])}</h3><a href="${ORIGIN}/eventos">${e(t[20])}</a><a href="${ORIGIN}/">${e(t[18])}</a></div><div><h3>App</h3><a href="https://play.google.com/store/apps/details?id=com.remdy.app">Google Play</a><a href="${APP_STORE_URL}">App Store</a></div></div><div class="copy">© ${new Date().getUTCFullYear()} Remdy. ${e(t[19])}</div></footer>`;
  const hours=hoursOf(d);const hoursText=hours.length?hours.map((h,i)=>`${t[27+i]}: ${h.slots.length?h.slots.map(s=>`${s.o}–${s.c}`).join(', '):t[26]}`).join('\n'):text(d.hoursNote);
  const location = [publicLocation(d)?text(d.addressLine):'',text(d.district),city,text(d.stateName)].filter(Boolean).join(' · ');
- const addressQuery = publicLocation(d) && text(d.addressLine) ? [d.addressLine,city,d.stateName].filter(Boolean).join(', ') : '';
- const maps=addressQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}` : publicLocation(d) && typeof d.latitude==='number' && typeof d.longitude==='number' ? `https://www.google.com/maps/search/?api=1&query=${d.latitude},${d.longitude}` : '';
+ const maps=mapsUrlForPlace(d);
+ const primaryAction=d.deliveryOnly?`<a class="btn btn-primary btn-wide" href="${e(appLinks?.download||ORIGIN)}" data-open-app>${icon} ${e(actions.orderInApp)}</a>`:maps?`<a href="${e(maps)}" target="_blank" rel="noopener noreferrer">${e(actions.directions)}</a>`:'';
  const share=`<a class="btn btn-hero" href="https://wa.me/?text=${encodeURIComponent(text(d.name)+' '+url)}">${e(t[8])}</a>`;
  const placeRows=recommendations?.places || relatedPlaces(id,d,related);
  const cards=placeRows.filter(r=>r.id!==id&&validId(r.id)&&isPublished(r.data)).slice(0,6).map(r=>`<article class="ev-card"><a href="${ORIGIN}/l/${r.id}?lang=${lang}"><div class="thumb">${imageOf(r.data)?`<img src="${e(imageOf(r.data))}" alt="${e(r.data.name)}" loading="lazy">`:''}</div></a><div class="ev-card-body"><span class="badge">${e(categoryName(r.data,lang))}</span><h3><a href="${ORIGIN}/l/${r.id}?lang=${lang}">${e(r.data.name)}</a></h3><div class="muted">${e(r.data.cityName)}</div></div></article>`).join('');
@@ -105,23 +121,12 @@ function renderPlacePage({id,data,language='pt-BR',related=[],recommendations=nu
  const eventCards=(recommendations?.events || []).slice(0,6).filter(r=>validId(r.id)).map(r=>`<article class="ev-card"><a href="${ORIGIN}/e/${r.id}"><div class="thumb">${safeHttps(r.image)?`<img src="${e(safeHttps(r.image))}" alt="${e(r.title)}" loading="lazy">`:''}</div></a><div class="ev-card-body">${r.category?`<span class="badge">${e(r.category)}</span>`:''}<h3><a href="${ORIGIN}/e/${r.id}">${e(r.title)}</a></h3><div class="muted">${e(r.date)}</div><div class="muted">${e(r.city)}</div></div></article>`).join('');
  const recTitle=cards?t[9]:eventCards?x.events:x.explore;
  const recSection=`<section class="carousel-section" id="related-places" data-kind="${cards?'places':eventCards?'events':'explore'}"><h2>${e(recTitle)}</h2>${cards||eventCards?`<div class="carousel"><div class="carousel-track">${cards||eventCards}</div></div>`:`<div class="panel"><p>${e(x.empty)}</p><a class="btn btn-primary" href="${ORIGIN}/eventos">${e(x.browse)}</a></div>`}</section>`;
- const body=found?`<nav class="breadcrumb"><a href="${ORIGIN}/">${e(t[18])}</a> › <strong>${e(d.name)}</strong></nav><section class="hero"><div class="hero-bg">${image?`<img src="${e(image)}" alt="" style="width:100%;height:100%;object-fit:cover">`:''}</div><div class="hero-inner${safeHttps(d.logoUrl)?' has-side':''}"><div><div class="hero-kicker"><span class="hero-seal">${icon} ${e(t[0])}</span><span class="hero-badge">${e(category)}</span></div><h1>${e(d.name)}</h1><p class="hero-city">${e([city,d.stateName].filter(Boolean).join(' · '))}</p><p class="hero-summary">${e(text(d.description).slice(0,160))}</p><div class="hero-meta-grid"><span>${e(d.deliveryOnly?t[12]:location)}</span></div><div class="hero-actions">${open}${share}</div></div>${safeHttps(d.logoUrl)?`<div class="hero-side"><img class="logo-chip" src="${e(safeHttps(d.logoUrl))}" alt="${e(d.name)}"></div>`:''}</div></section><nav class="tabs-bar"><div class="tabs-wrap"><div class="tabs-inner"><a href="#sobre">${e(t[2])}</a><a href="#informacoes">${e(t[3])}</a><a href="#localizacao">${e(t[4])}</a>${gallery?`<a href="#galeria">${e(x.gallery)}</a>`:''}</div></div></nav><div class="layout"><main class="main-col"><section class="panel section-anchor" id="sobre"><h2>${e(t[2])}</h2><p style="white-space:pre-line">${e(d.description)}</p></section><section class="panel section-anchor" id="informacoes"><h2>${e(t[3])}</h2><ul class="quick-list"><li><strong>${e(t[6])}</strong>${e(category)}</li>${hoursText?`<li><strong>${e(t[5])}</strong><span style="white-space:pre-line">${e(hoursText)}</span></li>`:''}</ul></section><section class="panel section-anchor" id="localizacao"><h2>${e(t[4])}</h2><p>${e(location)}</p>${d.deliveryOnly?`<p>${e(t[12])}</p>`:''}${maps?`<a href="${e(maps)}" target="_blank" rel="noopener noreferrer">${e(t[13])}</a>`:''}</section>${gallery?`<section class="panel section-anchor" id="galeria"><h2>${e(x.gallery)}</h2><div class="gallery-grid">${gallery}</div></section>`:''}</main><aside class="sidebar"><div class="panel"><h2>${e(t[1])}</h2><div class="participate-brand">${icon}<p>${e(t[14])}</p></div>${open}</div><div class="panel"><h2>${e(t[7])}</h2><ul class="quick-list"><li><strong>${e(t[6])}</strong>${e(category)}</li><li><strong>${e(t[4])}</strong>${e(city)}</li></ul></div></aside></div>${recSection}`:`<main class="layout"><section class="panel"><h1>${e(t[10])}</h1><p>${e(t[11])}</p></section></main>`;
+ const body=found?`<nav class="breadcrumb"><a href="${ORIGIN}/">${e(t[18])}</a> › <strong>${e(d.name)}</strong></nav><section class="hero"><div class="hero-bg">${image?`<img src="${e(image)}" alt="" style="width:100%;height:100%;object-fit:cover">`:''}</div><div class="hero-inner${safeHttps(d.logoUrl)?' has-side':''}"><div><div class="hero-kicker"><span class="hero-seal">${icon} ${e(t[0])}</span><span class="hero-badge">${e(category)}</span>${d.deliveryOnly?`<span class="hero-badge" id="delivery-badge">${e(t[12])}</span>`:''}</div><h1>${e(d.name)}</h1><p class="hero-city">${e([city,d.stateName].filter(Boolean).join(' · '))}</p><p class="hero-summary">${e(text(d.description).slice(0,160))}</p><div class="hero-meta-grid">${d.deliveryOnly?'':`<span>${e(location)}</span>`}</div><div class="hero-actions">${open}${share}</div></div>${safeHttps(d.logoUrl)?`<div class="hero-side"><img class="logo-chip" src="${e(safeHttps(d.logoUrl))}" alt="${e(d.name)}"></div>`:''}</div></section><nav class="tabs-bar"><div class="tabs-wrap"><div class="tabs-inner"><a href="#sobre">${e(t[2])}</a><a href="#informacoes">${e(t[3])}</a><a href="#localizacao">${e(t[4])}</a>${gallery?`<a href="#galeria">${e(x.gallery)}</a>`:''}</div></div></nav><div class="layout"><main class="main-col"><section class="panel section-anchor" id="sobre"><h2>${e(t[2])}</h2><p style="white-space:pre-line">${e(d.description)}</p></section><section class="panel section-anchor" id="informacoes"><h2>${e(t[3])}</h2><ul class="quick-list"><li><strong>${e(t[6])}</strong>${e(category)}</li>${hoursText?`<li><strong>${e(t[5])}</strong><span style="white-space:pre-line">${e(hoursText)}</span></li>`:''}</ul></section><section class="panel section-anchor" id="localizacao"><h2>${e(t[4])}</h2><p>${e(location)}</p>${primaryAction?`<div id="place-primary-action">${primaryAction}</div>`:''}</section>${gallery?`<section class="panel section-anchor" id="galeria"><h2>${e(x.gallery)}</h2><div class="gallery-grid">${gallery}</div></section>`:''}</main><aside class="sidebar"><div class="panel"><h2>${e(t[1])}</h2><div class="participate-brand">${icon}<p>${e(t[14])}</p></div>${open}</div><div class="panel"><h2>${e(t[7])}</h2><ul class="quick-list"><li><strong>${e(t[6])}</strong>${e(category)}</li><li><strong>${e(t[4])}</strong>${e(city)}</li></ul></div></aside></div>${recSection}`:`<main class="layout"><section class="panel"><h1>${e(t[10])}</h1><p>${e(t[11])}</p></section></main>`;
  const alternates=found?LANGS.map(l=>`<link rel="alternate" hreflang="${l}" href="${url}?lang=${l}">`).join('')+`<link rel="alternate" hreflang="x-default" href="${url}">`:'';
  const canonical = found && lang !== 'pt-BR' ? `${url}?lang=${lang}` : url;
  return {status:found?200:404,html:`<!DOCTYPE html><html lang="${lang}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${e(title)}</title><meta name="description" content="${e(desc)}"><link rel="canonical" href="${e(canonical)}">${alternates}<meta name="robots" content="${found?'index,follow':'noindex,follow'}"><meta property="og:type" content="website"><meta property="og:site_name" content="Remdy"><meta property="og:title" content="${e(title)}"><meta property="og:description" content="${e(desc)}"><meta property="og:url" content="${url}"><meta property="og:locale" content="${lang.replace('-','_')}">${image?`<meta property="og:image" content="${e(image)}"><meta property="og:image:alt" content="${e(d.name)}"><meta name="twitter:image" content="${e(image)}">`:''}<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${e(title)}"><meta name="twitter:description" content="${e(desc)}">${found?`<script type="application/ld+json">${jsonForScript(jsonLd(id,d))}</script>`:''}<style>${css}</style></head><body>${header}${body}${footer}<script>
  document.getElementById('menuToggle').addEventListener('click',function(){document.getElementById('mobileNav').classList.toggle('open')});
- const appLinks=${jsonForScript({id:validId(id)?id:'',scheme:deepLink,play:'https://play.google.com/store/apps/details?id=com.remdy.app',ios:'https://apps.apple.com/'})};
- document.querySelectorAll('[data-open-app]').forEach(function(button){button.addEventListener('click',function(event){
-  if(!appLinks.id)return;
-  const ua=navigator.userAgent;
-  if(/Android/i.test(ua)){
-   event.preventDefault();
-   window.location.href='intent://remdy.app/l/'+encodeURIComponent(appLinks.id)+'#Intent;scheme=https;package=com.remdy.app;S.browser_fallback_url='+encodeURIComponent(appLinks.play)+';end';
-  }else if(/iPhone|iPad|iPod/i.test(ua)){
-   event.preventDefault();window.location.href=appLinks.scheme;
-   setTimeout(function(){if(!document.hidden)window.location.href=appLinks.ios},1400);
-  }
- });});
+ ${appLinks?appOpenScript(appLinks):''}
  </script></body></html>`};
 }
 function buildPlacesSitemap(rows) {
@@ -145,4 +150,4 @@ function buildPlacesSitemapResponse(rows, page) {
  }
  return `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${Array.from({length:count},(_,i)=>`<sitemap><loc>${ORIGIN}/sitemap-locais.xml?page=${i+1}</loc></sitemap>`).join('')}</sitemapindex>`;
 }
-module.exports={ORIGIN,LANGS,escapeHtml,safeHttps,photosOf,validId,isPublished,chooseLanguage,relatedPlaces,jsonLd,jsonForScript,renderPlacePage,buildPlacesSitemap,buildPlacesSitemapResponse};
+module.exports={ORIGIN,LANGS,escapeHtml,safeHttps,photosOf,mapsUrlForPlace,validId,isPublished,chooseLanguage,relatedPlaces,jsonLd,jsonForScript,renderPlacePage,buildPlacesSitemap,buildPlacesSitemapResponse};
