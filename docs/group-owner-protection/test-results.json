@@ -1,0 +1,34 @@
+{
+  "local_only": true,
+  "base": "c779572",
+  "branch": "fix/group-owner-protection",
+  "project_under_test": "demo-group-owner-protection",
+  "production_writes": false,
+  "functions_tests": {
+    "pass": 278,
+    "fail": 0,
+    "policy_included": 128
+  },
+  "integration": {
+    "pass": 86,
+    "fail": 0,
+    "transport": "exported Firebase callable .run + real Firestore emulator + REST rules checks",
+    "http_e2e": false,
+    "rules_checks": 47
+  },
+  "flutter_tests": {
+    "pass": 229,
+    "fail": 0,
+    "policy_and_locales_included": 105
+  },
+  "rules_live_and_repo_sha256": "8417e8ac72fc7854a008e22b5bb2211cdbf0ee74233c5caca4baaa7ad68a94e5",
+  "rules_changed": false,
+  "java": "existing Homebrew OpenJDK 21; no install",
+  "node": "existing 26 (project declares 24)",
+  "functions_http_emulator_error": "Failed to initialize and load triggers: Cannot read properties of undefined (reading 'documentId')",
+  "not_tested": [
+    "HTTP callable transport/App Check on a working Functions emulator",
+    "interactive Flutter UI/device/simulator",
+    "complete Auth/Storage account-deletion flow; actual group-cleanup function tested with only Storage cleanup stubbed"
+  ]
+}

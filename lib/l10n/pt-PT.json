@@ -585,7 +585,7 @@
   "group_role_admin": "Administrador",
   "group_role_member": "Membro",
   "group_promote_confirm": "Deseja tornar este utilizador administrador do grupo?",
-  "group_demote_confirm": "Deseja remover as permissões de administrador deste utilizador?",
+  "group_demote_confirm": "Pretende despromover este utilizador para membro?",
   "group_remove_confirm": "Deseja remover este utilizador do grupo? Ele poderá entrar novamente conforme a política do grupo.",
   "group_promote_success": "Utilizador promovido com sucesso",
   "group_demote_success": "Administrador rebaixado com sucesso",
@@ -597,7 +597,6 @@
   "group_leave_confirm": "Deseja sair deste grupo? Perderá o acesso às mensagens e poderá entrar novamente conforme a política do grupo.",
   "group_left_success": "Saiu do grupo.",
   "group_leave_error": "Erro ao sair do grupo",
-  "group_owner_cannot_leave": "Transfira a propriedade para outro membro antes de sair do grupo.",
   "group_delete_confirm": "Deseja eliminar este grupo? Todos os membros perderão o acesso.",
   "group_delete_confirm_final": "Esta ação não poderá ser desfeita pela aplicação.",
   "group_deleted_success": "Grupo eliminado com sucesso.",
@@ -1457,5 +1456,15 @@
   "group_cover_error_generic": "Não foi possível enviar a capa. Tente novamente.",
   "group_share_error": "Não foi possível partilhar o grupo. Tente novamente.",
   "place_view_original": "Ver original",
-  "place_view_translation": "Ver tradução"
+  "place_view_translation": "Ver tradução",
+  "group_owner_protected": "O dono do grupo não pode ser removido, banido ou despromovido.",
+  "group_admin_protected": "Só o dono pode remover, banir ou despromover outro administrador.",
+  "group_only_owner_roles": "Só o dono pode alterar os cargos do grupo.",
+  "group_role_not_allowed": "Não tem permissão para esta ação.",
+  "group_owner_transfer_disabled": "Não é possível transferir a propriedade do grupo.",
+  "group_owner_cannot_leave": "O dono não pode sair do grupo. Pode eliminar o próprio grupo.",
+  "group_role_moderator": "Moderador",
+  "group_promote_moderator": "Promover a moderador",
+  "group_promote_moderator_confirm": "Dar a este membro permissão para remover e banir membros comuns?",
+  "group_role_updated_success": "Cargo atualizado com sucesso"
 }

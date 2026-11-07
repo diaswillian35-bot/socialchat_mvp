@@ -7,6 +7,12 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 
 const admin = require("firebase-admin");
+const { permissionError, roleOf, uidList } = require("./group_role_policy");
+function assertGroupRoleAction(group, actorUid, targetUid, action) {
+  const key = permissionError(group, actorUid, targetUid, action);
+  if (key) throw new HttpsError("permission-denied", key, { localizationKey: key });
+}
+
 const { normalizeGroupBio } = require("./group_bio_logic");
 
 function validatedGroupBio(value) {
@@ -2050,9 +2056,6 @@ exports.banGroupMember = socialOnCall({ region: "us-central1" }, async (request)
   if (!groupId || !targetUid) {
     throw new HttpsError("invalid-argument", "groupId and targetUid required.");
   }
-  if (actorUid === targetUid) {
-    throw new HttpsError("failed-precondition", "Cannot ban yourself.");
-  }
 
   const db = admin.firestore();
   const groupRef = db.collection("groups").doc(groupId);
@@ -2078,9 +2081,7 @@ exports.banGroupMember = socialOnCall({ region: "us-central1" }, async (request)
         throw new HttpsError("failed-precondition", "Group unavailable.");
       }
 
-      if (!isGroupOwnerOrAdminData(data, actorUid)) {
-        throw new HttpsError("permission-denied", "Not allowed.");
-      }
+      assertGroupRoleAction(data, actorUid, targetUid, "ban");
 
       const ownerId = (data.ownerId || "").toString().trim();
       if (targetUid === ownerId) {
@@ -2115,6 +2116,8 @@ exports.banGroupMember = socialOnCall({ region: "us-central1" }, async (request)
         members,
         admins,
         membersCount: members.length,
+        moderators: uidList(data.moderators).filter((v) => v !== targetUid),
+        mods: uidList(data.mods).filter((v) => v !== targetUid),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         [`unread.${targetUid}`]: admin.firestore.FieldValue.delete(),
       };
@@ -2309,6 +2312,10 @@ exports.promoteGroupAdmin = socialOnCall(
       );
     }
 
+    const role = request.data?.role ?? "admin";
+    if (!["admin", "moderator"].includes(role)) {
+      throw new HttpsError("invalid-argument", "Invalid role.");
+    }
     const db = admin.firestore();
     const groupRef = db.collection("groups").doc(groupId);
     const banRef = groupRef.collection("bannedUsers").doc(targetUid);
@@ -2329,6 +2336,7 @@ exports.promoteGroupAdmin = socialOnCall(
           throw new HttpsError("failed-precondition", "Group unavailable.");
         }
 
+        assertGroupRoleAction(data, actorUid, targetUid, "promote");
         const ownerId = (data.ownerId || "").toString().trim();
         if (actorUid !== ownerId) {
           throw new HttpsError("permission-denied", "Only owner can promote.");
@@ -2359,16 +2367,24 @@ exports.promoteGroupAdmin = socialOnCall(
           );
         }
 
-        if (admins.includes(targetUid)) {
+        if ((role === "admin" && admins.includes(targetUid)) ||
+            (role === "moderator" && roleOf(data, targetUid) === "moderator")) {
           return { groupId, targetUid, alreadyAdmin: true };
         }
 
-        admins.push(targetUid);
+        // Setting moderator on an admin is an owner-authorized demotion.
+        admins = admins.filter((v) => v !== targetUid);
+        if (role === "admin") admins.push(targetUid);
+        const moderators = uidList([...uidList(data.moderators), ...uidList(data.mods)])
+          .filter((v) => v !== targetUid);
+        if (role === "moderator") moderators.push(targetUid);
 
         tx.set(
           groupRef,
           {
             admins,
+            moderators,
+            mods: [],
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true },
@@ -2435,6 +2451,7 @@ exports.demoteGroupAdmin = socialOnCall(
           throw new HttpsError("failed-precondition", "Group unavailable.");
         }
 
+        assertGroupRoleAction(data, actorUid, targetUid, "demote");
         const ownerId = (data.ownerId || "").toString().trim();
         if (actorUid !== ownerId) {
           throw new HttpsError("permission-denied", "Only owner can demote.");
@@ -2454,7 +2471,7 @@ exports.demoteGroupAdmin = socialOnCall(
         const members = asUidList(data.members);
         let admins = asUidList(data.admins);
 
-        if (!admins.includes(targetUid)) {
+        if (!admins.includes(targetUid) && roleOf(data, targetUid) !== "moderator") {
           return { groupId, targetUid, alreadyMemberOnly: true };
         }
 
@@ -2471,6 +2488,8 @@ exports.demoteGroupAdmin = socialOnCall(
           groupRef,
           {
             admins,
+            moderators: uidList(data.moderators).filter((v) => v !== targetUid),
+            mods: uidList(data.mods).filter((v) => v !== targetUid),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true },
@@ -2520,9 +2539,6 @@ exports.removeGroupMember = socialOnCall(
         "groupId and targetUid required.",
       );
     }
-    if (actorUid === targetUid) {
-      throw new HttpsError("failed-precondition", "Use leave group instead.");
-    }
 
     const db = admin.firestore();
     const groupRef = db.collection("groups").doc(groupId);
@@ -2542,9 +2558,7 @@ exports.removeGroupMember = socialOnCall(
           throw new HttpsError("failed-precondition", "Group unavailable.");
         }
 
-        if (!isGroupOwnerOrAdminData(data, actorUid)) {
-          throw new HttpsError("permission-denied", "Not allowed.");
-        }
+        assertGroupRoleAction(data, actorUid, targetUid, "remove");
 
         if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
           throw new HttpsError("permission-denied", "Not allowed.");
@@ -2561,9 +2575,10 @@ exports.removeGroupMember = socialOnCall(
         let members = asUidList(data.members);
         let admins = asUidList(data.admins);
         const targetIsAdmin = admins.includes(targetUid);
+        const targetIsModerator = roleOf(data, targetUid) === "moderator";
         const actorIsOwner = actorUid === ownerId;
 
-        if (!members.includes(targetUid) && !targetIsAdmin) {
+        if (!members.includes(targetUid) && !targetIsAdmin && !targetIsModerator) {
           return { groupId, targetUid, alreadyRemoved: true };
         }
 
@@ -2583,6 +2598,8 @@ exports.removeGroupMember = socialOnCall(
             members,
             admins,
             membersCount: members.length,
+            moderators: uidList(data.moderators).filter((v) => v !== targetUid),
+            mods: uidList(data.mods).filter((v) => v !== targetUid),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             [`unread.${targetUid}`]: admin.firestore.FieldValue.delete(),
           },
@@ -2617,99 +2634,14 @@ exports.removeGroupMember = socialOnCall(
 );
 
 /**
- * Transferir ownership do grupo — somente owner atual.
- * newOwnerUid deve ser membro (e preferencialmente admin).
+ * Ownership is immutable. Keep the endpoint so older clients fail closed.
  */
 exports.transferGroupOwnership = socialOnCall(
   { region: "us-central1" },
-  async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
-    }
-
-    const uid = request.auth.uid;
-    const groupId = (request.data?.groupId || "").toString().trim();
-    const newOwnerUid = (request.data?.newOwnerUid || "").toString().trim();
-    if (!groupId || !newOwnerUid) {
-      throw new HttpsError(
-        "invalid-argument",
-        "groupId and newOwnerUid required.",
-      );
-    }
-    if (uid === newOwnerUid) {
-      throw new HttpsError("failed-precondition", "Already the owner.");
-    }
-
-    const db = admin.firestore();
-    const groupRef = db.collection("groups").doc(groupId);
-    const actorRef = db.collection("users").doc(uid);
-
-    try {
-      const result = await db.runTransaction(async (tx) => {
-        const groupSnap = await tx.get(groupRef);
-        const actorSnap = await tx.get(actorRef);
-        if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
-        }
-        const data = groupSnap.data() || {};
-        if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
-        }
-        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Not allowed.");
-        }
-        const ownerId = (data.ownerId || "").toString().trim();
-        if (uid !== ownerId) {
-          throw new HttpsError(
-            "permission-denied",
-            "Only owner can transfer ownership.",
-          );
-        }
-
-        let members = asUidList(data.members);
-        let admins = asUidList(data.admins);
-        if (!members.includes(newOwnerUid)) {
-          throw new HttpsError(
-            "failed-precondition",
-            "New owner must be a member.",
-          );
-        }
-
-        if (!admins.includes(newOwnerUid)) {
-          admins.push(newOwnerUid);
-        }
-        // Mantém o antigo owner como admin.
-        if (!admins.includes(uid)) {
-          admins.push(uid);
-        }
-
-        tx.set(
-          groupRef,
-          {
-            ownerId: newOwnerUid,
-            admins,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedBy: uid,
-          },
-          { merge: true },
-        );
-
-        return { groupId, previousOwnerId: uid, newOwnerUid };
-      });
-
-      console.log(
-        JSON.stringify({
-          action: "group_ownership_transferred",
-          ...result,
-          createdAt: new Date().toISOString(),
-        }),
-      );
-      return { success: true, ...result };
-    } catch (e) {
-      if (e instanceof HttpsError) throw e;
-      console.error("Erro transferGroupOwnership:", e);
-      throw new HttpsError("internal", "Could not transfer ownership.");
-    }
+  async () => {
+    throw new HttpsError("permission-denied", "group_owner_transfer_disabled", {
+      localizationKey: "group_owner_transfer_disabled",
+    });
   },
 );
 
@@ -2753,7 +2685,8 @@ exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => 
       if (uid === ownerId) {
         throw new HttpsError(
           "failed-precondition",
-          "Owner cannot leave the group.",
+          "group_owner_cannot_leave",
+          { localizationKey: "group_owner_cannot_leave" },
         );
       }
 
@@ -2761,8 +2694,9 @@ exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => 
       let admins = asUidList(data.admins);
       const wasMember = members.includes(uid);
       const wasAdmin = admins.includes(uid);
+      const wasModerator = roleOf(data, uid) === "moderator";
 
-      if (!wasMember && !wasAdmin) {
+      if (!wasMember && !wasAdmin && !wasModerator) {
         return { groupId, alreadyLeft: true, deleted: false };
       }
 
@@ -2775,6 +2709,8 @@ exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => 
           members,
           admins,
           membersCount: members.length,
+          moderators: uidList(data.moderators).filter((v) => v !== uid),
+          mods: uidList(data.mods).filter((v) => v !== uid),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           [`unread.${uid}`]: admin.firestore.FieldValue.delete(),
         },

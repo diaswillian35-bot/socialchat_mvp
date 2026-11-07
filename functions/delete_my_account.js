@@ -4,6 +4,7 @@
  */
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
+const { accountDeletionGroupPatch } = require("./group_role_policy");
 
 const REMOVED_NAME = "Removed user";
 const BATCH_LIMIT = 400;
@@ -150,26 +151,15 @@ async function processConversations(db, uid) {
   return count;
 }
 
-async function processGroups(db, uid) {
-  const snap = await db
-    .collection("groups")
-    .where("members", "array-contains", uid)
-    .get();
-
-  // Also groups where user is owner but maybe not in members (edge case)
-  let ownerSnap;
-  try {
-    ownerSnap = await db
-      .collection("groups")
-      .where("ownerId", "==", uid)
-      .get();
-  } catch (_) {
-    ownerSnap = { docs: [], empty: true };
-  }
-
+async function processGroups(db, uid, { deleteMedia = deleteStoragePrefix } = {}) {
+  // Fail closed on query errors. Include legacy roles even when membership
+  // lists are inconsistent; no owner may be silently skipped.
   const byId = new Map();
-  for (const d of snap.docs) byId.set(d.id, d);
-  for (const d of ownerSnap.docs || []) byId.set(d.id, d);
+  for (const field of ["members", "admins", "moderators", "mods", "ownerId"]) {
+    const snap = await db.collection("groups")
+      .where(field, field === "ownerId" ? "==" : "array-contains", uid).get();
+    for (const doc of snap.docs) byId.set(doc.id, doc);
+  }
 
   let processed = 0;
   for (const doc of byId.values()) {
@@ -186,55 +176,20 @@ async function processGroups(db, uid) {
       continue;
     }
 
-    const ownerId = (data.ownerId || "").toString().trim();
-    let members = asUidList(data.members).filter((m) => m !== uid);
-    let admins = asUidList(data.admins).filter((a) => a !== uid);
-
-    const patch = {
-      members,
-      admins,
-      membersCount: members.length,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      [`unread.${uid}`]: admin.firestore.FieldValue.delete(),
-    };
-
-    if (ownerId === uid) {
-      if (admins.length > 0) {
-        // Transfer ownership to another admin still in members if possible
-        const nextOwner =
-          admins.find((a) => members.includes(a)) || admins[0];
-        patch.ownerId = nextOwner;
-        if (!members.includes(nextOwner)) {
-          members = [...members, nextOwner];
-          patch.members = members;
-          patch.membersCount = members.length;
-        }
-        if (!admins.includes(nextOwner)) {
-          admins = [...admins, nextOwner];
-          patch.admins = admins;
-        }
-        patch.ownershipTransferredFrom = uid;
-        patch.ownershipTransferredAt =
-          admin.firestore.FieldValue.serverTimestamp();
-      } else if (members.length > 0) {
-        // Promote first remaining member
-        const nextOwner = members[0];
-        patch.ownerId = nextOwner;
-        patch.admins = Array.from(new Set([...admins, nextOwner]));
-        patch.ownershipTransferredFrom = uid;
-        patch.ownershipTransferredAt =
-          admin.firestore.FieldValue.serverTimestamp();
-      } else {
-        // No one left — soft-delete group
-        patch.deleted = true;
-        patch.isActive = false;
+    // Re-read under a transaction: never act on stale membership/ownership.
+    await db.runTransaction(async (tx) => {
+      const current = await tx.get(doc.ref);
+      if (!current.exists || current.data().deleted === true) return;
+      const group = current.data();
+      const patch = accountDeletionGroupPatch(group, uid);
+      patch.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      if (group.ownerId === uid) {
         patch.deletedAt = admin.firestore.FieldValue.serverTimestamp();
-        patch.deletedBy = uid;
-        patch.deletedReason = "owner_account_deleted";
+      } else {
+        patch[`unread.${uid}`] = admin.firestore.FieldValue.delete();
       }
-    }
-
-    await doc.ref.set(patch, { merge: true });
+      tx.set(doc.ref, patch, { merge: true });
+    });
 
     try {
       await doc.ref.collection("presence").doc(uid).delete();
@@ -250,8 +205,8 @@ async function processGroups(db, uid) {
     } catch (_) {}
 
     // User-owned media under this group
-    await deleteStoragePrefix(`groups/${doc.id}/images/${uid}/`);
-    await deleteStoragePrefix(`groups/${doc.id}/audio/${uid}/`);
+    await deleteMedia(`groups/${doc.id}/images/${uid}/`);
+    await deleteMedia(`groups/${doc.id}/audio/${uid}/`);
 
     processed += 1;
   }
@@ -622,3 +577,6 @@ exports.deleteMyAccount = onCall(
 );
 
 exports._deleteMyAccountHandler = deleteMyAccountHandler;
+
+// Internal test seam, not re-exported as a Firebase function.
+exports._processGroupsForTest = processGroups;

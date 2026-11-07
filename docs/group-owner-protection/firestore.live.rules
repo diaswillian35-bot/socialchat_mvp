@@ -1,0 +1,1313 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function authenticated() {
+      return request.auth != null;
+    }
+
+    // Áreas sociais exigem confirmação 18+ emitida exclusivamente por Function.
+    // O próprio users/{uid} continua legível para a tela de verificação.
+    function signedIn() {
+      return authenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+          .data.get('ageVerificationStatus', '') == 'verified';
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function ownerIdFromMap(data) {
+      return data.organizerId != null ? data.organizerId
+           : data.createdBy != null ? data.createdBy
+           : data.ownerId != null ? data.ownerId
+           : data.userId;
+    }
+
+    function eventDoc(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId));
+    }
+
+    function eventExists(eventId) {
+      return exists(/databases/$(database)/documents/events/$(eventId));
+    }
+
+    function isEventOrganizer(eventId) {
+      return signedIn()
+        && eventExists(eventId)
+        && ownerIdFromMap(eventDoc(eventId).data) == uid();
+    }
+
+
+    // Admin do portal Remdy (Admin_Talksy): documento em admins/{uid}.
+    function adminDoc() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isPortalAdmin() {
+      return authenticated()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Admin total do app (b39): e-mail verificado do Willian ou claim `admin`.
+    // Usado SOMENTE nas regras de Locais/portal (via isActivePortalAdmin).
+    // Não há nenhuma exceção de admin em conversations/messages (DMs).
+    function isRemdySuperAdmin() {
+      return authenticated()
+        && (
+          request.auth.token.get('admin', false) == true
+          || (
+            request.auth.token.get('email', '') == 'diaswillian35@gmail.com'
+            && request.auth.token.get('email_verified', false) == true
+          )
+        );
+    }
+
+    function isActivePortalAdmin() {
+      return isRemdySuperAdmin()
+        || (isPortalAdmin() && adminDoc().data.get('isActive', true) != false);
+    }
+
+    function isOwnerPortalAdmin() {
+      return isActivePortalAdmin() && adminDoc().data.get('isOwner', false) == true;
+    }
+
+    function hasAdminPermission(permission) {
+      return isOwnerPortalAdmin()
+        || (isActivePortalAdmin()
+          && adminDoc().data.keys().hasAll(['permissions'])
+          && adminDoc().data.permissions.get(permission, false) == true);
+    }
+
+
+    // aceita participants OU members (compatibilidade com docs antigos)
+    function partsFrom(data) {
+      return (data.participants is list) ? data.participants
+           : (data.members is list) ? data.members
+           : [];
+    }
+
+    function conv(cid) {
+      return get(/databases/$(database)/documents/conversations/$(cid));
+    }
+
+    function userDoc(userId) {
+      return get(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // Modo "Só explorar": ninguém inicia conversa com a pessoa.
+    function isExploreOnlyUser(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId))
+        && userDoc(userId).data.get('exploreOnly', false) == true;
+    }
+
+    function peerIsExploreOnly(parts) {
+      return (parts[0] != uid() && isExploreOnlyUser(parts[0]))
+        || (parts[1] != uid() && isExploreOnlyUser(parts[1]));
+    }
+
+    function normCountryCode(raw) {
+      return raw is string && raw.size() > 0 ? raw.lower() : '';
+    }
+
+    // País oficial: homeCountryCode, fallback countryCode (case-insensitive).
+    function userCountry(userId) {
+      let d = userDoc(userId).data;
+      let home = normCountryCode(d.get('homeCountryCode', ''));
+      return home.size() > 0
+        ? home
+        : normCountryCode(d.get('countryCode', ''));
+    }
+
+    function isPremiumUser(userId) {
+      let d = userDoc(userId).data;
+      // Campos null (isMaster/premiumUntil: null) não usam o default de get()
+      // e quebram comparações → Null value error. Sempre testar `is timestamp`.
+      let master = d.get('isMaster', false) == true;
+      let untilRaw = d.get('premiumUntil', timestamp.date(1970, 1, 1));
+      let untilActive = untilRaw is timestamp && untilRaw > request.time;
+      // Se a chave premiumUntil existe (mesmo null/expirado): só until futuro libera.
+      // Sem a chave: legado isPremium == true ainda conta.
+      let hasUntilKey = d.keys().hasAny(['premiumUntil']);
+      let legacyPremium = !hasUntilKey && d.get('isPremium', false) == true;
+      return master || untilActive || legacyPremium;
+    }
+
+    // Campos de Premium/assinatura/convite/admin — somente Admin SDK / Functions.
+    // homeCountryCode NÃO entra aqui: tem regra própria (primeira definição).
+    function premiumInviteProtectedKeys() {
+      return [
+        'isPremium',
+        'premiumUntil',
+        'premiumType',
+        'premiumSource',
+        'premiumExpiresAt',
+        'subscriptionStatus',
+        'subscriptionProductId',
+        'subscriptionPlatform',
+        'subscriptionExpiresAt',
+        'subscriptionUpdatedAt',
+        'revenueCatAppUserId',
+        'revenueCatLastEventId',
+        'inviteRewardLevel',
+        'isAmbassador',
+        'invitesCount',
+        'isMaster',
+        'isAdmin',
+        'isPlatformAdmin',
+        'isBanned',
+        'accountDeleted',
+        'invitedBy',
+        'invitedByCode',
+        'role',
+        'roles',
+        'permissions',
+        'dateOfBirth',
+        'ageVerificationStatus',
+        'agePolicyVersion',
+        'ageTermsAcceptedAt',
+        'ageVerifiedAt',
+        'ageVerificationCheckedAt',
+        'moderation'
+      ];
+    }
+
+    function premiumInviteFieldsUnchanged() {
+      return resource != null
+        && !request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasAny(premiumInviteProtectedKeys());
+    }
+
+    // homeCountryCode: criar/primeira definição OK; depois só o mesmo valor (case-insensitive).
+    function homeCountryCodeChangeAllowed() {
+      return resource != null
+        && (
+          normCountryCode(resource.data.get('homeCountryCode', '')).size() == 0
+          || normCountryCode(resource.data.get('homeCountryCode', ''))
+            == normCountryCode(request.resource.data.get('homeCountryCode', ''))
+        );
+    }
+
+    function isUserCreatePremiumSafe() {
+      let d = request.resource.data;
+      return (!d.keys().hasAny([
+          'dateOfBirth',
+          'ageVerificationStatus',
+          'agePolicyVersion',
+          'ageTermsAcceptedAt',
+          'ageVerifiedAt',
+          'ageVerificationCheckedAt'
+        ]))
+        && (!('premiumUntil' in d))
+        && (!('premiumType' in d) || d.premiumType == null || d.premiumType == '')
+        && (!('premiumSource' in d) || d.premiumSource == null || d.premiumSource == '')
+        && (!('premiumExpiresAt' in d))
+        && (!('subscriptionStatus' in d) || d.subscriptionStatus == null || d.subscriptionStatus == '')
+        && (!('subscriptionProductId' in d) || d.subscriptionProductId == null || d.subscriptionProductId == '')
+        && (!('subscriptionPlatform' in d) || d.subscriptionPlatform == null || d.subscriptionPlatform == '')
+        && (!('subscriptionExpiresAt' in d))
+        && (!('subscriptionUpdatedAt' in d))
+        && (!('revenueCatAppUserId' in d) || d.revenueCatAppUserId == null || d.revenueCatAppUserId == '')
+        && (!('revenueCatLastEventId' in d) || d.revenueCatLastEventId == null || d.revenueCatLastEventId == '')
+        && (!('inviteRewardLevel' in d) || d.inviteRewardLevel == 0)
+        && (!('isAmbassador' in d) || d.isAmbassador == false)
+        && (!('invitesCount' in d) || d.invitesCount == 0)
+        && (!('isMaster' in d) || d.isMaster == false)
+        && (!('isAdmin' in d) || d.isAdmin == false)
+        && (!('isPlatformAdmin' in d) || d.isPlatformAdmin == false)
+        && (!('isPremium' in d) || d.isPremium == false)
+        && (!('isBanned' in d) || d.isBanned == false)
+        && (!('moderation' in d))
+        && (!('accountDeleted' in d) || d.accountDeleted == false)
+        && (!('role' in d) || d.role == null || d.role == '')
+        && (!('roles' in d))
+        && (!('permissions' in d));
+    }
+
+    function isInternationalBetween(uidA, uidB) {
+      let ca = userCountry(uidA);
+      let cb = userCountry(uidB);
+      return ca.size() > 0 && cb.size() > 0 && ca != cb;
+    }
+
+    function isInternationalParticipants(parts) {
+      return parts.size() == 2 && isInternationalBetween(parts[0], parts[1]);
+    }
+
+    function canCreateInternationalConversation(parts) {
+      // Conversas entre países liberadas e gratuitas.
+      return true;
+    }
+
+    function userDocData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    function uidInBlockedArray(ownerId, targetId) {
+      return exists(/databases/$(database)/documents/users/$(ownerId))
+        && userDocData(ownerId).keys().hasAny(['blocked'])
+        && userDocData(ownerId).blocked is list
+        && targetId in userDocData(ownerId).blocked;
+    }
+
+    function eitherDmBlocked(fromId, toId) {
+      return uidInBlockedArray(fromId, toId) || uidInBlockedArray(toId, fromId);
+    }
+
+    function canSendMessageInConversation(cid) {
+      let parts = partsFrom(conv(cid).data);
+      return !eitherDmBlocked(uid(), request.resource.data.toUid);
+    }
+
+    // Suspenso ou banido pela moderação não cria mensagem. A conta não é apagada.
+    function senderModerationBlocksSend() {
+      let d = userDoc(uid()).data;
+      let hasStatus = d.keys().hasAll(['moderation'])
+        && d.moderation is map
+        && d.moderation.keys().hasAll(['status']);
+      let st = hasStatus ? d.moderation.status : '';
+      return st == 'suspended_pending_review' || st == 'banned';
+    }
+
+    function isValidTextMessage() {
+      return request.resource.data.type == 'text'
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        // 1500 por mensagem para todos; admin total sem limite prático.
+        && (request.resource.data.text.size() <= 1500
+          || (isRemdySuperAdmin() && request.resource.data.text.size() <= 20000));
+    }
+
+    function isValidAudioMessage() {
+      return request.resource.data.type == 'audio'
+        && request.resource.data.audioUrl is string
+        && request.resource.data.audioUrl.size() > 0;
+    }
+
+    function isValidImageMessage() {
+      return request.resource.data.type == 'image'
+        && request.resource.data.imageUrl is string
+        && request.resource.data.imageUrl.size() > 0;
+    }
+
+    function isChatImageUrl(url, cid) {
+      return url is string
+        && (
+          url.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/socialchatmvp\\.firebasestorage\\.app/o/chat_images%2F' + cid + '%2F[^?#]+.*')
+          || url.matches('^gs://socialchatmvp\\.firebasestorage\\.app/chat_images/' + cid + '/[^?#]+.*')
+        );
+    }
+
+    function isGroupImageUrl(url, gid) {
+      return url is string
+        && (
+          url.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/socialchatmvp\\.firebasestorage\\.app/o/groups%2F' + gid + '%2Fimages%2F[^/%]+%2F[^?#]+.*')
+          || url.matches('^gs://socialchatmvp\\.firebasestorage\\.app/groups/' + gid + '/images/[^/]+/[^?#]+.*')
+        );
+    }
+
+    // Resposta pode citar imagem encaminhada de outro chat ou grupo do mesmo bucket.
+    function isReplyImageUrl(url) {
+      return url is string
+        && (
+          url.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/socialchatmvp\\.firebasestorage\\.app/o/chat_images%2F[^%]+%2F[^?#]+.*')
+          || url.matches('^gs://socialchatmvp\\.firebasestorage\\.app/chat_images/[^/]+/[^?#]+.*')
+          || url.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/socialchatmvp\\.firebasestorage\\.app/o/groups%2F[^%]+%2Fimages%2F[^%]+%2F[^?#]+.*')
+          || url.matches('^gs://socialchatmvp\\.firebasestorage\\.app/groups/[^/]+/images/[^/]+/[^?#]+.*')
+        );
+    }
+
+    function dmMediaUrlsOk(cid) {
+      let data = request.resource.data;
+      let image = data.get('imageUrl', '');
+      let reply = data.get('replyToImageUrl', '');
+      return (!('moderation' in data))
+        && (image.size() == 0 || isChatImageUrl(image, cid))
+        && (reply.size() == 0 || isReplyImageUrl(reply))
+        && (data.get('type', '') != 'image' || isChatImageUrl(image, cid));
+    }
+
+    function groupMediaUrlsOk(gid) {
+      let data = request.resource.data;
+      let image = data.get('imageUrl', '');
+      let reply = data.get('replyToImageUrl', '');
+      return (!('moderation' in data))
+        && (image.size() == 0 || isGroupImageUrl(image, gid))
+        && (reply.size() == 0 || isReplyImageUrl(reply))
+        && (data.get('type', '') != 'image' || isGroupImageUrl(image, gid));
+    }
+
+    function isValidMessagePayload() {
+      return isValidTextMessage() || isValidAudioMessage() || isValidImageMessage();
+    }
+
+    function isParticipantById(cid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/conversations/$(cid))
+        && uid() in partsFrom(conv(cid).data);
+    }
+
+    function isParticipantData(data) {
+      return signedIn() && uid() in partsFrom(data);
+    }
+
+    // =========================
+    // USERS
+    // =========================
+    // Perfil: interesses (lista, máx. 20), Sobre mim (texto, máx. 300),
+    // flags booleanas novas. Em update, só valida o que mudou.
+    function profileExtrasOk(isUpdate) {
+      let d = request.resource.data;
+      let ch = isUpdate ? d.diff(resource.data).affectedKeys() : d.keys();
+      return (!ch.hasAny(['interests']) || (d.interests is list && d.interests.size() <= 20))
+        && (!ch.hasAny(['about']) || (d.about is string && d.about.size() <= 300))
+        && (!ch.hasAny(['welcomeChoiceDone']) || d.welcomeChoiceDone is bool)
+        && (!ch.hasAny(['interestPushEnabled']) || d.interestPushEnabled is bool);
+    }
+
+    match /users/{userId} {
+      allow read: if (authenticated() && uid() == userId) || signedIn();
+
+      // Create: defaults ok; não permitir auto-concessão Premium/convite.
+      allow create: if authenticated()
+        && uid() == userId
+        && isUserCreatePremiumSafe()
+        && profileExtrasOk(false);
+
+      // Update: perfil ok; Premium/admin protegidos; homeCountryCode só 1ª definição ou mesmo valor.
+      allow update: if signedIn()
+        && uid() == userId
+        && premiumInviteFieldsUnchanged()
+        && homeCountryCodeChangeAllowed()
+        && profileExtrasOk(true)
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['blocked'])
+          || (
+            request.resource.data.blocked is list
+            && request.resource.data.blocked.size() <= 500
+          )
+        );
+
+      allow delete: if false;
+
+      match /fcmTokens/{tokenId} {
+        allow read, write: if signedIn() && uid() == userId;
+      }
+
+      match /systemInbox/{docId} {
+        allow read, write: if signedIn() && uid() == userId;
+      }
+    }
+
+    // =========================
+    // REVENUECAT EVENT IDEMPOTENCY (Admin only)
+    // =========================
+    match /revenueCatEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    // =========================
+    // PRESENCE COUNTERS (server-only; RTDB mirror)
+    // =========================
+    match /presenceState/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /presenceCounters/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /presenceReconcileCheckpoint/{docId} {
+      allow read, write: if false;
+    }
+
+    // =========================
+    // PUBLIC PROFILES (app Remdy)
+    // =========================
+    match /publicUsers/{userId} {
+      allow read: if signedIn();
+      // Cliente pode criar/atualizar perfil público, mas NÃO pode forçar
+      // isOnline:false no agregado (offline do agregado = Cloud Function / TTL).
+      allow create: if signedIn()
+        && uid() == userId
+        && !request.resource.data.keys().hasAny(['dateOfBirth', 'age'])
+        && profileExtrasOk(false);
+      allow update: if signedIn()
+        && uid() == userId
+        && !request.resource.data.keys().hasAny(['dateOfBirth', 'age'])
+        && profileExtrasOk(true)
+        && (
+          !('isOnline' in request.resource.data.diff(resource.data).affectedKeys())
+          || request.resource.data.isOnline == true
+        );
+      allow delete: if false;
+
+      // Sessões/aparelhos do mesmo UID — escrita só do dono.
+      // Leitura assinada para prune local; o contador usa o doc pai.
+      match /sessions/{sessionId} {
+        allow read: if signedIn() && uid() == userId;
+        allow create, update: if signedIn()
+          && uid() == userId
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'sessionId',
+            'isOnline',
+            'lastSeenAt',
+            'updatedAt',
+            'platform'
+          ])
+          && request.resource.data.uid == userId
+          && request.resource.data.uid == uid()
+          && request.resource.data.sessionId == sessionId
+          && request.resource.data.isOnline is bool
+          && request.resource.data.updatedAt is timestamp
+          && (
+            !('lastSeenAt' in request.resource.data)
+            || request.resource.data.lastSeenAt is timestamp
+          )
+          && (
+            !('platform' in request.resource.data)
+            || request.resource.data.platform is string
+          );
+        allow delete: if signedIn() && uid() == userId;
+      }
+    }
+
+    // =========================
+    // ORGANIZER PORTAL PROFILE
+    // =========================
+    match /organizers/{organizerId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && uid() == organizerId;
+      allow delete: if false;
+    }
+
+
+    // =========================
+    // ADMINS (portal Remdy / Admin_Talksy)
+    // =========================
+    match /admins/{adminId} {
+      allow get: if signedIn() && uid() == adminId;
+      allow get: if signedIn() && uid() != adminId && isOwnerPortalAdmin();
+      allow list: if isOwnerPortalAdmin();
+      allow write: if false;
+    }
+
+    // =========================
+    // EVENTS (app + portal)
+    // =========================
+    match /events/{eventId} {
+      allow read: if signedIn();
+      // Criação/edição editorial somente via Cloud Functions createEvent/updateEvent.
+      allow create: if false;
+      // App: sem update client (cancelEvent CF). Admin_Talksy: aprova/rejeita via cliente.
+      // likesCount NÃO é editável pelo cliente — somente Admin SDK (toggleEventLike).
+      allow update: if hasAdminPermission('events');
+      allow delete: if hasAdminPermission('events');
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        // Criar/curtir/excluir somente via Cloud Functions (Admin SDK).
+        allow create, update, delete: if false;
+      }
+
+      // Curtidas escaláveis: events/{eventId}/likes/{uid}
+      // Contador agregado (likesCount) só via Cloud Function toggleEventLike.
+      match /likes/{likeUid} {
+        // Leitura pontual do próprio like (sem list da coleção / sem listener global).
+        allow get: if signedIn() && uid() == likeUid;
+        allow list: if false;
+        allow create, update, delete: if false;
+      }
+
+      match /attendees/{attendeeId} {
+        allow read: if signedIn();
+        // Entrada/saída somente via Cloud Functions joinEvent/leaveEvent (Admin SDK).
+        allow create, update, delete: if false;
+      }
+
+      match /views/{viewId} {
+        // Contagem via Cloud Function registerEventView (Admin SDK).
+        allow read: if signedIn() && isEventOrganizer(eventId);
+        allow create, update, delete: if false;
+      }
+    }
+
+    // =========================
+    // CONVERSATIONS
+    // =========================
+    match /conversations/{cid} {
+      // Permite .get() em documento inexistente (criação de conversa) sem permission-denied.
+      allow read: if signedIn() && (
+        !exists(/databases/$(database)/documents/conversations/$(cid))
+        || uid() in resource.data.participants
+      );
+
+      allow create: if signedIn()
+        && uid() in request.resource.data.participants
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.resource.data.participants[0] != request.resource.data.participants[1]
+        // replyQuota é somente Admin SDK (sendDmMessage). Cliente nunca cria.
+        && !('replyQuota' in request.resource.data)
+        && !peerIsExploreOnly(request.resource.data.participants)
+        && (
+          !isInternationalParticipants(request.resource.data.participants)
+          || canCreateInternationalConversation(request.resource.data.participants)
+        );
+
+      allow update: if signedIn()
+        && uid() in resource.data.participants
+        && request.resource.data.participants == resource.data.participants
+        // Impede criar/editar/remover replyQuota (mapa inteiro ou campos).
+        && !('replyQuota' in request.resource.data.diff(resource.data).affectedKeys())
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'lastMessage',
+              'lastMessageType',
+              'lastMessageAt',
+              'updatedAt',
+              'unread',
+              'hiddenFor',
+              'typing'
+            ]);
+
+      allow delete: if false;
+
+      match /messages/{mid} {
+        allow read: if isParticipantById(cid);
+
+        allow create: if isParticipantById(cid)
+          && request.resource.data.fromUid == uid()
+          && request.resource.data.senderId == uid()
+          && request.resource.data.toUid in partsFrom(conv(cid).data)
+          && request.resource.data.toUid != uid()
+          && isValidMessagePayload()
+          && canSendMessageInConversation(cid)
+          && !senderModerationBlocksSend()
+          && dmMediaUrlsOk(cid)
+          // linkPreview/linkPreviewStatus são escritos somente pela Cloud
+          // Function fetchLinkPreview via Admin SDK (bypassa Rules).
+          && !('linkPreview' in request.resource.data)
+          && !('linkPreviewStatus' in request.resource.data);
+
+        // Apagar para mim (hiddenFor) ou soft-delete do autor.
+        // linkPreview/linkPreviewStatus nunca são afetados por updates do
+        // cliente (só a Cloud Function fetchLinkPreview, via Admin SDK).
+        allow update: if isParticipantById(cid)
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['linkPreview', 'linkPreviewStatus', 'moderation'])
+          && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['hiddenFor'])
+              && request.resource.data.hiddenFor is list
+              && uid() in request.resource.data.hiddenFor
+            )
+            || (
+              resource.data.get('deleted', false) == false
+              && request.resource.data.deleted == true
+              && request.resource.data.deletedBy == uid()
+              && resource.data.senderId == uid()
+              && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['deleted', 'deletedBy', 'deletedText', 'deletedAt'])
+            )
+          );
+
+        allow delete: if false;
+      }
+
+      match /presence/{presenceId} {
+        allow read, write: if isParticipantById(cid);
+      }
+    }
+
+    // =========================
+    // GROUPS — papéis e helpers
+    // =========================
+    function groupMembers(data) {
+      return (data.members is list) ? data.members : [];
+    }
+
+    function groupAdmins(data) {
+      return (data.admins is list) ? data.admins : [];
+    }
+
+    function isGroupOwner() {
+      return signedIn()
+        && resource.data.ownerId == uid();
+    }
+
+    function isGroupAdmin() {
+      return signedIn()
+        && uid() in groupAdmins(resource.data);
+    }
+
+    function isGroupMember() {
+      return signedIn()
+        && uid() in groupMembers(resource.data);
+    }
+
+    function isGroupOwnerOrAdmin() {
+      return isGroupOwner() || isGroupAdmin();
+    }
+
+    // Helpers por ID (subcoleções: resource = doc filho, não o grupo).
+    function groupDocById(gid) {
+      return get(/databases/$(database)/documents/groups/$(gid));
+    }
+
+    // get() retorna Resource sem propriedade `.exists` — usar exists(path).
+    function groupExistsById(gid) {
+      return exists(/databases/$(database)/documents/groups/$(gid));
+    }
+
+    function isOwnerOfGroup(gid) {
+      return signedIn()
+        && groupExistsById(gid)
+        && groupDocById(gid).data.get('ownerId', '') == uid();
+    }
+
+    function isAdminOfGroup(gid) {
+      return signedIn()
+        && groupExistsById(gid)
+        && uid() in groupAdmins(groupDocById(gid).data);
+    }
+
+    function isMemberOfGroup(gid) {
+      return signedIn()
+        && groupExistsById(gid)
+        && uid() in groupMembers(groupDocById(gid).data);
+    }
+
+    function isOwnerOrAdminOfGroup(gid) {
+      return isOwnerOfGroup(gid) || isAdminOfGroup(gid);
+    }
+
+
+    function groupCountryCode(gid) {
+      let d = groupDocById(gid).data;
+      return normCountryCode(d.get('countryCode', ''));
+    }
+
+    // Grupo internacional para o usuário: país diferente ou flag isPremiumGroup.
+    function isInternationalGroupForUser(gid) {
+      let g = groupDocById(gid).data;
+      let gc = groupCountryCode(gid);
+      let uc = userCountry(uid());
+      let flagged = g.get('isPremiumGroup', false) == true;
+      let mismatch = gc.size() > 0 && uc.size() > 0 && gc != uc;
+      return flagged || mismatch;
+    }
+
+    function canAccessInternationalGroup(gid) {
+      return !isInternationalGroupForUser(gid) || isPremiumUser(uid());
+    }
+
+
+    function groupJoinPolicy(gid) {
+      return groupDocById(gid).data.get('joinPolicy', 'open');
+    }
+
+    function isGroupBanned(gid, who) {
+      // Fail-closed: doc de ban existente sem isActive explícito = banido.
+      // isActive:false = desbanido. Null/ausente no doc existente ≠ liberar.
+      let banPath = /databases/$(database)/documents/groups/$(gid)/bannedUsers/$(who);
+      return exists(banPath)
+        && get(banPath).data.get('isActive', true) == true;
+    }
+
+    function groupOwnerIdUnchanged() {
+      return request.resource.data.ownerId == resource.data.ownerId;
+    }
+
+    function groupAffectedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function listOnlyAddedUid(before, after, who) {
+      return after is list
+        && before is list
+        && after.hasAll(before)
+        && after.size() == before.size() + 1
+        && who in after
+        && !(who in before);
+    }
+
+    function listOnlyRemovedUid(before, after, who) {
+      return after is list
+        && before is list
+        && before.hasAll(after)
+        && after.size() == before.size() - 1
+        && who in before
+        && !(who in after);
+    }
+
+    // Saída: admins iguais; ou remove só a si; ou último admin promove 1 membro restante.
+    // (legado — saída agora é via leaveGroup CF; helper mantido sem uso ativo)
+    function leaveAdminsOk() {
+      let before = groupAdmins(resource.data);
+      let after = groupAdmins(request.resource.data);
+      let newMembers = groupMembers(request.resource.data);
+
+      return before == after
+        || (
+          uid() in before
+          && !(uid() in after)
+          && before.hasAll(after)
+          && after.size() == before.size() - 1
+        )
+        || (
+          uid() in before
+          && !(uid() in after)
+          && before.size() == 1
+          && after.size() == 1
+          && after[0] in newMembers
+          && after[0] != uid()
+        );
+    }
+
+    // Self-join open: somente Cloud Function joinOpenGroup (Admin SDK).
+    // Rules não conseguem provar a ordem exata de um prefixo de lista
+    // arbitrário; por isso o cliente não atualiza o documento do grupo.
+
+    // Metadados lastMessage/unread: somente onGroupMessageCreated / markGroupAsRead (Admin SDK).
+    // Cliente NÃO atualiza lastMessage nem o mapa unread.
+
+    // Saída voluntária: somente via Cloud Function leaveGroup (Admin SDK).
+    // Soft-delete: somente via Cloud Function deleteGroup (Admin SDK).
+
+    // Configuração do grupo: somente via Cloud Function updateGroupSettings.
+
+    // Admin/owner adiciona membro via approveGroupJoinRequest (Admin SDK).
+
+    // Soft-delete pelo cliente removido — usar deleteGroup (Admin SDK).
+
+    // Owner broad update removido — configuração via updateGroupSettings.
+
+    // =========================
+    // GROUPS
+    // =========================
+    match /groups/{groupId} {
+      allow read: if signedIn();
+
+      // Criação somente via Cloud Function createGroup (Admin SDK).
+      allow create: if false;
+
+      // Toda mutação do documento raiz passa por Functions/Admin SDK:
+      // joinOpenGroup, approveGroupJoinRequest, leaveGroup,
+      // updateGroupSettings e deleteGroup.
+      allow update: if false;
+
+      allow delete: if false;
+
+      match /messages/{mid} {
+        function messageAffectedKeys() {
+          return request.resource.data.diff(resource.data).affectedKeys();
+        }
+
+        function canAccessGroupMessages() {
+          return groupNotDeleted()
+            && !isGroupBanned(groupId, uid())
+            && (
+              isMemberOfGroup(groupId)
+              || isOwnerOrAdminOfGroup(groupId)
+            );
+        }
+
+        function groupNotDeleted() {
+          return groupExistsById(groupId)
+            && groupDocById(groupId).data.get('deleted', false) != true;
+        }
+
+        // NÃO adicionar 'linkPreview' / 'linkPreviewStatus' a esta allowlist:
+        // esses campos são escritos somente pela Cloud Function
+        // fetchLinkPreview via Admin SDK (bypassa Rules), nunca pelo cliente.
+        function messageCreateKeysOk() {
+          return request.resource.data.keys().hasOnly([
+            'id',
+            'type',
+            'text',
+            'senderId',
+            'createdAt',
+            'replyToMessageId',
+            'replyToText',
+            'replyToType',
+            'replyToIsMe',
+            'replyToImageUrl',
+            'deleted',
+            'deletedBy',
+            'deletedText',
+            'deletedAt',
+            'deletedFor',
+            'audioUrl',
+            'durationMs',
+            'imageUrl'
+          ]);
+        }
+
+        function messageTypeOk() {
+          return request.resource.data.get('type', 'text') in [
+            'text',
+            'audio',
+            'image'
+          ];
+        }
+
+        function isValidMessageCreate() {
+          return signedIn()
+            && canAccessGroupMessages()
+            && groupNotDeleted()
+            && canAccessInternationalGroup(groupId)
+            && request.resource.data.senderId == uid()
+            && request.resource.data.createdAt == request.time
+            && messageCreateKeysOk()
+            && messageTypeOk()
+            && request.resource.data.get('deleted', false) == false
+            && request.resource.data.get('deletedBy', '') == ''
+            && request.resource.data.get('deletedText', '') == ''
+            && !senderModerationBlocksSend()
+            && groupMediaUrlsOk(groupId);
+        }
+
+        // Apagar para mim: só adiciona o próprio UID em deletedFor.
+        function isMessageDeleteForMe() {
+          return canAccessGroupMessages()
+            && messageAffectedKeys().hasOnly(['deletedFor'])
+            && listOnlyAddedUid(
+              resource.data.get('deletedFor', []),
+              request.resource.data.deletedFor,
+              uid()
+            );
+        }
+
+        // Apagar para todos (soft-delete): autor, owner ou admin.
+        function isMessageSoftDeleteForAll() {
+          return canAccessGroupMessages()
+            && resource.data.get('deleted', false) == false
+            && request.resource.data.deleted == true
+            && request.resource.data.deletedBy == uid()
+            && (
+              resource.data.senderId == uid()
+              || isOwnerOrAdminOfGroup(groupId)
+            )
+            && (
+              messageAffectedKeys().hasOnly([
+                'deleted',
+                'deletedBy',
+                'deletedText',
+                'deletedAt'
+              ])
+              || (
+                messageAffectedKeys().hasOnly([
+                  'deleted',
+                  'deletedBy',
+                  'deletedText',
+                  'deletedAt',
+                  'text'
+                ])
+                && request.resource.data.text == ''
+              )
+            );
+        }
+
+        allow read: if canAccessGroupMessages();
+
+        allow create: if isValidMessageCreate();
+
+        // linkPreview/linkPreviewStatus nunca são afetados por updates do
+        // cliente (só a Cloud Function fetchLinkPreview, via Admin SDK).
+        allow update: if !messageAffectedKeys().hasAny(['linkPreview', 'linkPreviewStatus', 'moderation'])
+          && (isMessageDeleteForMe() || isMessageSoftDeleteForAll());
+
+        allow delete: if false;
+      }
+
+      match /reads/{readerId} {
+        allow read: if signedIn()
+          && (
+            uid() == readerId
+            || isOwnerOrAdminOfGroup(groupId)
+            || isMemberOfGroup(groupId)
+          );
+
+        allow create, update: if signedIn()
+          && uid() == readerId
+          && groupExistsById(groupId)
+          && groupDocById(groupId).data.get('deleted', false) != true
+          && !isGroupBanned(groupId, uid())
+          && (isMemberOfGroup(groupId) || isOwnerOrAdminOfGroup(groupId))
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'lastReadAt',
+            'lastReadMessageId',
+            'updatedAt'
+          ])
+          && (
+            !('uid' in request.resource.data)
+            || request.resource.data.uid == uid()
+          );
+
+        allow delete: if false;
+      }
+
+      match /pendingRequests/{requestUid} {
+        function pendingAffectedKeys() {
+          return request.resource.data.diff(resource.data).affectedKeys();
+        }
+
+        function isPendingRequester() {
+          return signedIn() && uid() == requestUid;
+        }
+
+        function pendingCreateKeysOk() {
+          return request.resource.data.keys().hasOnly([
+            'uid',
+            'name',
+            'photoUrl',
+            'status',
+            'createdAt'
+          ]);
+        }
+
+        // deleted ausente/null deve contar como ativo (legado).
+        function groupAllowsPendingJoin() {
+          return groupExistsById(groupId)
+            && groupDocById(groupId).data.get('deleted', false) != true
+            && groupJoinPolicy(groupId) == 'approval'
+            && !isGroupBanned(groupId, uid())
+            && canAccessInternationalGroup(groupId)
+            && !isMemberOfGroup(groupId)
+            && !isOwnerOrAdminOfGroup(groupId);
+        }
+
+        function isValidPendingCreate() {
+          return isPendingRequester()
+            && groupAllowsPendingJoin()
+            && request.resource.data.uid == uid()
+            && request.resource.data.status == 'pending'
+            && pendingCreateKeysOk();
+        }
+
+        // Solicitante: re-pedido (ex. após rejected) ou manter pending — nunca self-approve.
+        function isRequesterPendingUpdate() {
+          return isPendingRequester()
+            && groupAllowsPendingJoin()
+            && request.resource.data.uid == uid()
+            && request.resource.data.status == 'pending'
+            && pendingAffectedKeys().hasOnly([
+              'uid',
+              'name',
+              'photoUrl',
+              'status',
+              'createdAt'
+            ]);
+        }
+
+        // Aprovação/rejeição: somente Cloud Functions (Admin SDK).
+
+        allow get: if isPendingRequester() || isOwnerOrAdminOfGroup(groupId);
+        allow list: if groupExistsById(groupId)
+          && (
+            groupDocById(groupId).data.get('ownerId', '') == uid()
+            || uid() in groupAdmins(groupDocById(groupId).data)
+          );
+
+        allow create: if isValidPendingCreate();
+
+        allow update: if isRequesterPendingUpdate();
+
+        // Cancelamento pelo próprio solicitante. Decisão admin não apaga histórico pelo cliente.
+        allow delete: if isPendingRequester();
+      }
+
+      // Banimentos — escrita só via Cloud Functions (Admin SDK).
+      match /bannedUsers/{bannedUid} {
+        allow read: if isOwnerOrAdminOfGroup(groupId)
+          || (signedIn() && uid() == bannedUid);
+
+        allow create, update, delete: if false;
+      }
+
+      match /presence/{presenceId} {
+        allow read: if signedIn()
+          && !isGroupBanned(groupId, uid())
+          && (
+            isMemberOfGroup(groupId)
+            || isOwnerOrAdminOfGroup(groupId)
+          );
+
+        allow create, update: if signedIn()
+          && presenceId == uid()
+          && groupExistsById(groupId)
+          && groupDocById(groupId).data.get('deleted', false) != true
+          && !isGroupBanned(groupId, uid())
+          && (isMemberOfGroup(groupId) || isOwnerOrAdminOfGroup(groupId))
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'typing',
+            'recording',
+            'isOnline',
+            'lastSeen',
+            'lastSeenAt',
+            'updatedAt',
+            'deviceId'
+          ])
+          && (
+            !('uid' in request.resource.data)
+            || request.resource.data.uid == uid()
+          );
+
+        allow delete: if signedIn() && presenceId == uid();
+      }
+    }
+
+    // =========================
+    // POSTS / REPORTS / CONFIG
+    // =========================
+    match /posts/{postId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if signedIn()
+        && resource.data.uid == uid();
+    }
+
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if signedIn()
+        && request.resource.data.fromUid == uid();
+      allow update, delete: if false;
+    }
+
+    match /configCountries/{countryCode} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Config do app (ex. appConfig/dmQuota {enabled,limit}: cota de DM entre
+    // países, DESLIGADA por padrão). Só leitura; escrita só Admin SDK/console.
+    match /appConfig/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Cache server-side de Place Details (Admin SDK only).
+    match /placesCache/{placeId} {
+      allow read, write: if false;
+    }
+
+    // Escritas somente via Cloud Functions (Admin SDK).
+    match /boost_checkouts/{docId} {
+      allow read, write: if false;
+    }
+
+    match /boost_payments/{docId} {
+      allow read, write: if false;
+    }
+
+    match /portal_qr_login_sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /portal_qr_login_rate_limits/{docId} {
+      allow read, write: if false;
+    }
+
+    // Idempotência / índice de códigos — somente Admin SDK.
+    match /groupCreationRequests/{docId} {
+      allow read, write: if false;
+    }
+
+    match /eventCreateRequests/{docId} {
+      allow read, write: if false;
+    }
+
+    match /eventCommentRequests/{docId} {
+      allow read, write: if false;
+    }
+
+    match /groupInviteCodes/{code} {
+      allow read, write: if false;
+    }
+
+    match /processedGroupMessages/{docId} {
+      allow read, write: if false;
+    }
+
+    // Remi usage counters + idempotency — somente Admin SDK (Cloud Functions).
+    match /remiUsage/{uid} {
+      allow read, write: if false;
+      match /requests/{requestId} {
+        allow read, write: if false;
+      }
+    }
+
+    // =========================
+    // LINK PREVIEW (fetchLinkPreview Cloud Function) — server-only
+    // =========================
+    // Cache de preview de link: linkPreviewCache/{hash}. Ver CACHE POLICY
+    // em functions/link_preview_logic.js. Somente Admin SDK lê/escreve.
+    match /linkPreviewCache/{id} {
+      allow read, write: if false;
+    }
+
+    // Janelas de rate limit internas (link preview, busca, etc.).
+    // Somente Admin SDK lê/escreve.
+    match /_rateLimits/{id} {
+      allow read, write: if false;
+    }
+
+    // Share Extension sessions / idempotency — Admin SDK only (deny-all clients).
+    match /shareExtensionSessions/{sid} {
+      allow read, write: if false;
+    }
+    match /shareExtensionIdempotency/{id} {
+      allow read, write: if false;
+    }
+    match /forwardIdempotency/{id} {
+      allow read, write: if false;
+    }
+    // Franquia Free DM (sendDmMessage) — somente Admin SDK.
+    match /dmSendIdempotency/{id} {
+      allow read, write: if false;
+    }
+
+    // Moderação — somente Admin SDK. appConfig/moderation já é legível
+    // pelo match de appConfig acima (signedIn, write false).
+    match /pendingModeration/{id} {
+      allow read, write: if false;
+    }
+    match /moderationStrikes/{id} {
+      allow read, write: if false;
+    }
+    match /moderationApplied/{id} {
+      allow read, write: if false;
+    }
+    match /moderationAudit/{id} {
+      allow read, write: if false;
+    }
+    match /moderationReportDaily/{id} {
+      allow read, write: if false;
+    }
+    match /moderationReporters/{uid} {
+      allow read, write: if false;
+      match /uids/{reporterId} {
+        allow read, write: if false;
+      }
+    }
+    match /csamHolds/{id} {
+      allow read, write: if false;
+    }
+    match /quarantineHolds/{id} {
+      allow read, write: if false;
+    }
+
+    // collectionGroup('pendingRequests') — badges de pedido pendente do próprio uid.
+    // Comparar resource.data.uid (não o wildcard): em collectionGroup o id do
+    // doc pode não bindar de forma segura em alguns avaliadores → Null value.
+    match /{path=**}/pendingRequests/{pendingReqId} {
+      allow read: if signedIn()
+        && resource.data.keys().hasAll(['uid'])
+        && resource.data.uid == uid();
+    }
+
+    // =========================
+    // LOCAIS — bloco do portal (remdy-events-web), como estava no ar em 16/10/2026.
+    // Escritas só pelo Admin SDK (funções). Ficha publicada é pública (site e app).
+    // authenticated() = login simples (equivale ao signedIn() do portal em 16/10).
+    // =========================
+    // Locais. Escrita só pelo Admin SDK. O documento público não carrega dono, e-mail nem auditoria.
+    function locaisAccess(placeId) {
+      return get(/databases/$(database)/documents/places/$(placeId)/private/access);
+    }
+
+    function isLocaisEditor(placeId) {
+      return authenticated()
+        // Correção: no portal era locaisAccess(placeId).exists, que não existe
+        // em regras e dava erro (dono/gestor/admin nunca liam a ficha).
+        && exists(/databases/$(database)/documents/places/$(placeId)/private/access)
+        && (
+        isActivePortalAdmin()
+        || locaisAccess(placeId).data.ownerUid == uid()
+        || (
+          locaisAccess(placeId).data.managerUids is list
+          && uid() in locaisAccess(placeId).data.managerUids
+        )
+      );
+    }
+
+    function isPublicLocaisPlace() {
+      return resource.data.schemaVersion == 1
+        && resource.data.deleted == false
+        && resource.data.active == true
+        && resource.data.moderationStatus == "published";
+    }
+
+    match /places/{placeId} {
+      allow get: if isPublicLocaisPlace() || isLocaisEditor(placeId);
+      allow list: if isPublicLocaisPlace();
+      allow create, update, delete: if false;
+
+      match /private/{docId} {
+        allow read: if isLocaisEditor(placeId);
+        allow write: if false;
+      }
+
+      match /reviews/{reviewId} {
+        allow get: if authenticated() && reviewId == uid();
+        allow list: if false;
+        allow create, update, delete: if false;
+      }
+
+      match /reports/{reportId} {
+        allow read: if isActivePortalAdmin();
+        allow write: if false;
+      }
+
+      match /feedback/{feedbackId} {
+        allow read: if isActivePortalAdmin();
+        allow write: if false;
+      }
+
+      match /audit/{logId} {
+        allow read: if isLocaisEditor(placeId);
+        allow write: if false;
+      }
+
+      match /photos/{photoId} {
+        allow read: if isLocaisEditor(placeId);
+        allow write: if false;
+      }
+    }
+
+    match /placeManagers/{userId}/places/{placeId} {
+      allow read: if authenticated() && (uid() == userId || isActivePortalAdmin());
+      allow write: if false;
+    }
+
+    match /placeClaims/{claimId} {
+      allow read: if isActivePortalAdmin() || (authenticated() && resource.data.claimantUid == uid());
+      allow write: if false;
+    }
+
+    match /placeRegistrations/{protocol} {
+      allow read, write: if false;
+    }
+
+    match /placeReviewRate/{userId} {
+      allow read: if isActivePortalAdmin() || (authenticated() && uid() == userId);
+      allow write: if false;
+    }
+
+    match /placeFeedbackRate/{userId} {
+      allow read: if isActivePortalAdmin() || (authenticated() && uid() == userId);
+      allow write: if false;
+    }
+  }
+}

@@ -867,7 +867,7 @@
   "group_role_admin": "Admin",
   "group_role_member": "Member",
   "group_promote_confirm": "Make this user a group admin?",
-  "group_demote_confirm": "Remove this user's admin permissions?",
+  "group_demote_confirm": "Demote this user to a regular member?",
   "group_remove_confirm": "Remove this user from the group? They may rejoin according to the group policy.",
   "group_promote_success": "User promoted successfully",
   "group_demote_success": "Admin demoted successfully",
@@ -879,7 +879,6 @@
   "group_leave_confirm": "Leave this group? You will lose access to messages and may rejoin according to the group policy.",
   "group_left_success": "You left the group.",
   "group_leave_error": "Error leaving the group",
-  "group_owner_cannot_leave": "Transfer ownership to another member before leaving the group.",
   "group_delete_confirm": "Delete this group? All members will lose access.",
   "group_delete_confirm_final": "This action cannot be undone in the app.",
   "group_deleted_success": "Group deleted successfully.",
@@ -1723,5 +1722,15 @@
   "group_cover_error_generic": "Couldn't upload the cover. Please try again.",
   "group_share_error": "Could not share the group. Please try again.",
   "place_view_original": "View original",
-  "place_view_translation": "View translation"
+  "place_view_translation": "View translation",
+  "group_owner_protected": "The group owner cannot be removed, banned or demoted.",
+  "group_admin_protected": "Only the owner can remove, ban or demote another admin.",
+  "group_only_owner_roles": "Only the owner can change group roles.",
+  "group_role_not_allowed": "You do not have permission for this action.",
+  "group_owner_transfer_disabled": "Group ownership cannot be transferred.",
+  "group_owner_cannot_leave": "The owner cannot leave the group. You can delete your own group.",
+  "group_role_moderator": "Moderator",
+  "group_promote_moderator": "Promote to moderator",
+  "group_promote_moderator_confirm": "Allow this member to remove and ban regular members?",
+  "group_role_updated_success": "Role updated successfully"
 }

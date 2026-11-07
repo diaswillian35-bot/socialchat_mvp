@@ -1,0 +1,324 @@
+[
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1788737646074951",
+          "object": "onGroupJoinRequestCreated/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "49491554e9d896657bdd9ccf8f66ee6fdc0f7e4f"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/onGroupJoinRequestCreated",
+    "updateTime": "2026-09-06T23:35:07.365596631Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766495933294",
+          "object": "banGroupMember/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/banGroupMember",
+    "updateTime": "2026-07-23T00:28:36.041272123Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766496069330",
+          "object": "removeGroupMember/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/removeGroupMember",
+    "updateTime": "2026-07-23T00:28:41.655284083Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766495843750",
+          "object": "unbanGroupMember/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/unbanGroupMember",
+    "updateTime": "2026-07-23T00:28:35.050872593Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766495950498",
+          "object": "leaveGroup/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/leaveGroup",
+    "updateTime": "2026-07-23T00:28:46.510603458Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1794008869195925",
+          "object": "createGroup/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "57d0b8588a99df028daeaa4a16718fab3af0c70e"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/createGroup",
+    "updateTime": "2026-11-06T23:47:57.966747288Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766495936925",
+          "object": "deleteGroup/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/deleteGroup",
+    "updateTime": "2026-07-23T00:28:46.713358345Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766495950296",
+          "object": "promoteGroupAdmin/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/promoteGroupAdmin",
+    "updateTime": "2026-07-23T00:28:30.011725276Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1794008820707888",
+          "object": "updateGroupSettings/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "57d0b8588a99df028daeaa4a16718fab3af0c70e"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/updateGroupSettings",
+    "updateTime": "2026-11-06T23:47:48.575288561Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1785090157718359",
+          "object": "joinOpenGroup/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "25b5e20d6ca6f44fdf6f79544796f9d8e797118c"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/joinOpenGroup",
+    "updateTime": "2026-07-26T18:23:26.741910539Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1791727707415347",
+          "object": "onGroupMessageCreated/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "acb79f3829575c2ffd1c22125e6f6536e5051f27"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/onGroupMessageCreated",
+    "updateTime": "2026-10-11T14:08:40.176908087Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1787708317384911",
+          "object": "rejectGroupJoinRequest/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "7ffb2200088f73ab5f528e93bd7e377c00952ea8"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/rejectGroupJoinRequest",
+    "updateTime": "2026-08-26T01:39:11.447913098Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766495839310",
+          "object": "demoteGroupAdmin/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/demoteGroupAdmin",
+    "updateTime": "2026-07-23T00:28:47.979046004Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766447828494",
+          "object": "transferGroupOwnership/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/transferGroupOwnership",
+    "updateTime": "2026-07-23T00:28:46.247444061Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766448417430",
+          "object": "deleteMyAccount/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/deleteMyAccount",
+    "updateTime": "2026-07-23T00:28:47.778605991Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1787708317489289",
+          "object": "approveGroupJoinRequest/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "7ffb2200088f73ab5f528e93bd7e377c00952ea8"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/approveGroupJoinRequest",
+    "updateTime": "2026-08-26T01:39:11.227801475Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1784766495985784",
+          "object": "joinGroupByInviteCode/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "c0b5224448ca53fe409aab7dc5b5b9f488cb90ef"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/joinGroupByInviteCode",
+    "updateTime": "2026-07-23T00:28:40.926722232Z"
+  },
+  {
+    "buildConfig": {
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-384686982032-us-central1",
+          "generation": "1791663477407761",
+          "object": "markGroupAsRead/function-source.zip"
+        }
+      }
+    },
+    "labels": {
+      "deployment-callable": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "2568e7103400709e58b77c095c743f87da9dd8e2"
+    },
+    "name": "projects/socialchatmvp/locations/us-central1/functions/markGroupAsRead",
+    "updateTime": "2026-10-10T20:18:11.314307593Z"
+  }
+]

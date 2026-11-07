@@ -868,7 +868,7 @@
   "group_role_admin": "Administrador",
   "group_role_member": "Membro",
   "group_promote_confirm": "Deseja tornar este usuário administrador do grupo?",
-  "group_demote_confirm": "Deseja remover as permissões de administrador deste usuário?",
+  "group_demote_confirm": "Deseja rebaixar este usuário para membro?",
   "group_remove_confirm": "Deseja remover este usuário do grupo? Ele poderá entrar novamente conforme a política do grupo.",
   "group_promote_success": "Usuário promovido com sucesso",
   "group_demote_success": "Administrador rebaixado com sucesso",
@@ -880,7 +880,6 @@
   "group_leave_confirm": "Deseja sair deste grupo? Você perderá o acesso às mensagens. Em grupos privados, precisará de um novo convite ou aprovação para entrar novamente. O grupo permanece para os demais.",
   "group_left_success": "Você saiu do grupo.",
   "group_leave_error": "Erro ao sair do grupo",
-  "group_owner_cannot_leave": "Transfira a propriedade para outro membro antes de sair do grupo.",
   "group_delete_confirm": "Deseja excluir este grupo? Todos os membros perderão o acesso.",
   "group_delete_confirm_final": "Esta ação não poderá ser desfeita pelo aplicativo.",
   "group_deleted_success": "Grupo excluído com sucesso.",
@@ -1723,5 +1722,15 @@
   "group_cover_error_generic": "Não foi possível enviar a capa. Tente de novo.",
   "group_share_error": "Não foi possível compartilhar o grupo. Tente novamente.",
   "place_view_original": "Ver original",
-  "place_view_translation": "Ver tradução"
+  "place_view_translation": "Ver tradução",
+  "group_owner_protected": "O dono do grupo não pode ser removido, banido ou rebaixado.",
+  "group_admin_protected": "Só o dono pode remover, banir ou rebaixar outro administrador.",
+  "group_only_owner_roles": "Só o dono pode alterar os cargos do grupo.",
+  "group_role_not_allowed": "Você não tem permissão para esta ação.",
+  "group_owner_transfer_disabled": "Não é possível transferir a propriedade do grupo.",
+  "group_owner_cannot_leave": "O dono não pode sair do grupo. Pode excluir o próprio grupo.",
+  "group_role_moderator": "Moderador",
+  "group_promote_moderator": "Promover a moderador",
+  "group_promote_moderator_confirm": "Dar a este membro permissão para remover e banir membros comuns?",
+  "group_role_updated_success": "Cargo atualizado com sucesso"
 }

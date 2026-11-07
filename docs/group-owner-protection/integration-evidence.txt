@@ -1,0 +1,175 @@
+CALL (exported callable .run, NOT HTTP) createGroup owner
+{"action":"group_created","groupId":"FrABMuSuqkPy6wWjmXBy","performedBy":"roles-e2e-owner","performedByName":"owner","scope":"country","createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) joinOpenGroup A
+▶ group roles: live-source reproduction, exported callables + real Firestore/rules integration (NO HTTP)
+  ✔ create as owner through exported callable (41.375125ms)
+{"action":"group_open_join","groupId":"FrABMuSuqkPy6wWjmXBy","userId":"roles-e2e-A","joined":true,"alreadyMember":false,"createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) joinOpenGroup B
+  ✔ join open A (17.703833ms)
+{"action":"group_open_join","groupId":"FrABMuSuqkPy6wWjmXBy","userId":"roles-e2e-B","joined":true,"alreadyMember":false,"createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) joinOpenGroup mod
+  ✔ join open B (15.43725ms)
+{"action":"group_open_join","groupId":"FrABMuSuqkPy6wWjmXBy","userId":"roles-e2e-mod","joined":true,"alreadyMember":false,"createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) joinOpenGroup member
+  ✔ join open mod (26.061541ms)
+{"action":"group_open_join","groupId":"FrABMuSuqkPy6wWjmXBy","userId":"roles-e2e-member","joined":true,"alreadyMember":false,"createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) promoteGroupAdmin owner
+  ✔ join open member (20.687791ms)
+{"action":"group_admin_promoted","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-A","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) promoteGroupAdmin owner
+  ✔ owner promotes A (22.007792ms)
+{"action":"group_admin_promoted","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-B","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:42 EST"}
+  ✔ owner promotes B (20.53825ms)
+  ✔ deployed source: admin cannot ban/remove/demote owner (39.503208ms)
+CALL (exported callable .run, NOT HTTP) joinOpenGroup B
+{"action":"group_open_join","groupId":"FrABMuSuqkPy6wWjmXBy","userId":"roles-e2e-B","joined":true,"alreadyMember":false,"createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) promoteGroupAdmin owner
+{"action":"group_admin_promoted","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-B","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:42 EST"}
+  ✔ deployed source BUG: admin A can ban admin B (54.205833ms)
+  ✔ deployed source indirect BUG: transfer then new owner can remove creator (24.340875ms)
+CALL (exported callable .run, NOT HTTP) removeGroupMember A
+  ✔ fixed A cannot removeGroupMember owner (21.361208ms)
+CALL (exported callable .run, NOT HTTP) banGroupMember A
+  ✔ fixed A cannot banGroupMember owner (23.773792ms)
+CALL (exported callable .run, NOT HTTP) demoteGroupAdmin A
+  ✔ fixed A cannot demoteGroupAdmin owner (13.632833ms)
+CALL (exported callable .run, NOT HTTP) removeGroupMember A
+  ✔ fixed A cannot removeGroupMember B (20.373917ms)
+CALL (exported callable .run, NOT HTTP) banGroupMember A
+  ✔ fixed A cannot banGroupMember B (25.154625ms)
+CALL (exported callable .run, NOT HTTP) demoteGroupAdmin A
+CALL (exported callable .run, NOT HTTP) removeGroupMember outsider
+  ✔ fixed A cannot demoteGroupAdmin B (17.744416ms)
+CALL (exported callable .run, NOT HTTP) banGroupMember outsider
+  ✔ no superadmin override removeGroupMember (12.255833ms)
+CALL (exported callable .run, NOT HTTP) demoteGroupAdmin outsider
+  ✔ no superadmin override banGroupMember (18.481542ms)
+CALL (exported callable .run, NOT HTTP) demoteGroupAdmin owner
+  ✔ no superadmin override demoteGroupAdmin (8.41025ms)
+{"action":"group_admin_demoted","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-A","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) promoteGroupAdmin owner
+{"action":"group_admin_promoted","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-A","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) removeGroupMember owner
+{"action":"group_member_removed","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-A","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) promoteGroupAdmin owner
+  ✔ owner may demote and remove admin A (40.730334ms)
+{"action":"group_admin_promoted","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-mod","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) removeGroupMember mod
+  ✔ owner promotes moderator (19.647375ms)
+CALL (exported callable .run, NOT HTTP) banGroupMember mod
+  ✔ mod cannot removeGroupMember owner (9.551875ms)
+CALL (exported callable .run, NOT HTTP) demoteGroupAdmin mod
+  ✔ mod cannot banGroupMember owner (15.615833ms)
+CALL (exported callable .run, NOT HTTP) removeGroupMember mod
+  ✔ mod cannot demoteGroupAdmin owner (8.232042ms)
+CALL (exported callable .run, NOT HTTP) banGroupMember mod
+  ✔ mod cannot removeGroupMember B (9.470833ms)
+CALL (exported callable .run, NOT HTTP) demoteGroupAdmin mod
+  ✔ mod cannot banGroupMember B (16.029167ms)
+CALL (exported callable .run, NOT HTTP) removeGroupMember mod
+  ✔ mod cannot demoteGroupAdmin B (8.926292ms)
+{"action":"group_member_removed","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-member","performedBy":"roles-e2e-mod","createdAt":"2026-11-06 19:52:42 EST"}
+CALL (exported callable .run, NOT HTTP) transferGroupOwnership owner
+  ✔ moderator can remove regular member (12.138625ms)
+CALL (exported callable .run, NOT HTTP) leaveGroup owner
+CALL (exported callable .run, NOT HTTP) deleteGroup B
+  ✔ owner cannot transfer or leave (13.788708ms)
+CALL (exported callable .run, NOT HTTP) deleteGroup outsider
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+  ✔ admin and superadmin cannot delete group (19.232875ms)
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+CALL (exported callable .run, NOT HTTP) updateGroupSettings B
+  ✔ settings reject forged ownership/role fields (43.053625ms)
+{"action":"group_settings_updated","groupId":"FrABMuSuqkPy6wWjmXBy","performedBy":"roles-e2e-B","changedFields":["bio"],"createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+  ✔ bio editing regression (15.153416ms)
+{"action":"group_settings_updated","groupId":"FrABMuSuqkPy6wWjmXBy","performedBy":"roles-e2e-owner","changedFields":["joinPolicy"],"createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) joinGroupByInviteCode member
+{"action":"group_joined_by_invite","groupId":"FrABMuSuqkPy6wWjmXBy","userId":"roles-e2e-member","alreadyMember":false,"joined":true,"createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+  ✔ invite regression (34.678125ms)
+{"action":"group_settings_updated","groupId":"FrABMuSuqkPy6wWjmXBy","performedBy":"roles-e2e-owner","changedFields":["joinPolicy"],"createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) approveGroupJoinRequest B
+{"action":"group_join_request_approved","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-joiner","performedBy":"roles-e2e-B","createdAt":"2026-11-06 19:52:43 EST"}
+  ✔ approval adds member without changing roles (49.803167ms)
+  ✔ rules positive control: signed-in read works (27.279875ms)
+  ✔ rules deny owner direct ownerId (11.895ms)
+  ✔ rules deny owner direct admins (4.812167ms)
+  ✔ rules deny owner direct members (6.357958ms)
+  ✔ rules deny owner direct moderators (5.161417ms)
+  ✔ rules deny owner direct roles (9.780458ms)
+  ✔ rules deny owner members owner write (8.382125ms)
+  ✔ rules deny owner roles owner write (7.8335ms)
+  ✔ rules deny owner bannedUsers owner write (8.208625ms)
+  ✔ rules deny owner root delete (3.196375ms)
+  ✔ rules deny B direct ownerId (5.984917ms)
+  ✔ rules deny B direct admins (5.087583ms)
+  ✔ rules deny B direct members (6.547459ms)
+  ✔ rules deny B direct moderators (6.027708ms)
+  ✔ rules deny B direct roles (6.455958ms)
+  ✔ rules deny B members owner write (4.744833ms)
+  ✔ rules deny B roles owner write (5.506458ms)
+  ✔ rules deny B bannedUsers owner write (9.054ms)
+  ✔ rules deny B root delete (5.260875ms)
+  ✔ rules deny mod direct ownerId (5.242625ms)
+  ✔ rules deny mod direct admins (3.768833ms)
+  ✔ rules deny mod direct members (6.812375ms)
+  ✔ rules deny mod direct moderators (5.549333ms)
+  ✔ rules deny mod direct roles (10.493ms)
+  ✔ rules deny mod members owner write (3.8385ms)
+  ✔ rules deny mod roles owner write (4.721375ms)
+  ✔ rules deny mod bannedUsers owner write (8.153584ms)
+  ✔ rules deny mod root delete (5.415542ms)
+  ✔ rules deny member direct ownerId (5.042917ms)
+  ✔ rules deny member direct admins (7.725959ms)
+  ✔ rules deny member direct members (7.789667ms)
+  ✔ rules deny member direct moderators (5.135458ms)
+  ✔ rules deny member direct roles (5.388584ms)
+  ✔ rules deny member members owner write (3.888667ms)
+  ✔ rules deny member roles owner write (4.597917ms)
+  ✔ rules deny member bannedUsers owner write (6.94275ms)
+  ✔ rules deny member root delete (4.385041ms)
+  ✔ rules deny outsider direct ownerId (3.636042ms)
+  ✔ rules deny outsider direct admins (5.672083ms)
+  ✔ rules deny outsider direct members (6.620542ms)
+  ✔ rules deny outsider direct moderators (5.408209ms)
+  ✔ rules deny outsider direct roles (6.929167ms)
+  ✔ rules deny outsider members owner write (4.915083ms)
+  ✔ rules deny outsider roles owner write (4.479416ms)
+  ✔ rules deny outsider bannedUsers owner write (5.22675ms)
+  ✔ rules deny outsider root delete (5.424208ms)
+CALL (exported callable .run, NOT HTTP) leaveGroup member
+  ✔ rules deny self-approved request (15.909208ms)
+{"action":"group_member_left","groupId":"FrABMuSuqkPy6wWjmXBy","performedBy":"roles-e2e-member","createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) banGroupMember owner
+  ✔ member leaves without touching owner (19.675ms)
+{"action":"group_member_banned","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-B","performedBy":"roles-e2e-owner","reason":"","createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) unbanGroupMember owner
+{"action":"group_member_unbanned","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-B","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) updateGroupSettings owner
+{"action":"group_settings_updated","groupId":"FrABMuSuqkPy6wWjmXBy","performedBy":"roles-e2e-owner","changedFields":["joinPolicy"],"createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) joinOpenGroup B
+{"action":"group_open_join","groupId":"FrABMuSuqkPy6wWjmXBy","userId":"roles-e2e-B","joined":true,"alreadyMember":false,"createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) promoteGroupAdmin owner
+{"action":"group_admin_promoted","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-B","performedBy":"roles-e2e-owner","createdAt":"2026-11-06 19:52:43 EST"}
+CALL (exported callable .run, NOT HTTP) removeGroupMember B
+{"action":"group_member_removed","groupId":"FrABMuSuqkPy6wWjmXBy","targetUid":"roles-e2e-mod","performedBy":"roles-e2e-B","createdAt":"2026-11-06 19:52:43 EST"}
+  ✔ owner may ban admin B, admin may remove moderator (106.026625ms)
+CALL (exported callable .run, NOT HTTP) leaveGroup mod
+{"action":"group_member_left","groupId":"FrABMuSuqkPy6wWjmXBy","performedBy":"roles-e2e-mod","createdAt":"2026-11-06 19:52:43 EST"}
+  ✔ legacy mod outside members may leave without retaining privileges (16.716333ms)
+Integration groupId (DEMO ONLY): FrABMuSuqkPy6wWjmXBy
+  ✔ account-deletion group cleanup preserves owner and closes group (41.157666ms)
+✔ group roles: live-source reproduction, exported callables + real Firestore/rules integration (NO HTTP) (1495.361584ms)
+ℹ tests 86
+ℹ suites 0
+ℹ pass 86
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3489.845333

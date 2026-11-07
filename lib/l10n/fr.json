@@ -867,7 +867,7 @@
   "group_role_admin": "Administrateur",
   "group_role_member": "Membre",
   "group_promote_confirm": "Faire de cet utilisateur un administrateur du groupe ?",
-  "group_demote_confirm": "Retirer les droits d'administrateur de cet utilisateur ?",
+  "group_demote_confirm": "Rétrograder cet utilisateur en membre ordinaire ?",
   "group_remove_confirm": "Retirer cet utilisateur du groupe ? Il pourra revenir selon la politique du groupe.",
   "group_promote_success": "Utilisateur promu avec succès",
   "group_demote_success": "Administrateur rétrogradé avec succès",
@@ -879,7 +879,6 @@
   "group_leave_confirm": "Quitter ce groupe ? Vous perdrez l'accès aux messages et pourrez revenir selon la politique du groupe.",
   "group_left_success": "Vous avez quitté le groupe.",
   "group_leave_error": "Erreur en quittant le groupe",
-  "group_owner_cannot_leave": "Transférez la propriété à un autre membre avant de quitter le groupe.",
   "group_delete_confirm": "Supprimer ce groupe ? Tous les membres perdront l'accès.",
   "group_delete_confirm_final": "Cette action ne pourra pas être annulée dans l'application.",
   "group_deleted_success": "Groupe supprimé avec succès.",
@@ -1723,5 +1722,15 @@
   "group_cover_error_generic": "Impossible d'envoyer la couverture. Veuillez réessayer.",
   "group_share_error": "Impossible de partager le groupe. Réessayez.",
   "place_view_original": "Voir l’original",
-  "place_view_translation": "Voir la traduction"
+  "place_view_translation": "Voir la traduction",
+  "group_owner_protected": "Le propriétaire du groupe ne peut pas être exclu, banni ou rétrogradé.",
+  "group_admin_protected": "Seul le propriétaire peut exclure, bannir ou rétrograder un autre administrateur.",
+  "group_only_owner_roles": "Seul le propriétaire peut modifier les rôles du groupe.",
+  "group_role_not_allowed": "Vous n’avez pas l’autorisation pour cette action.",
+  "group_owner_transfer_disabled": "La propriété du groupe ne peut pas être transférée.",
+  "group_owner_cannot_leave": "Le propriétaire ne peut pas quitter le groupe. Il peut supprimer son propre groupe.",
+  "group_role_moderator": "Modérateur",
+  "group_promote_moderator": "Promouvoir en modérateur",
+  "group_promote_moderator_confirm": "Autoriser ce membre à exclure et bannir les membres ordinaires ?",
+  "group_role_updated_success": "Rôle mis à jour"
 }

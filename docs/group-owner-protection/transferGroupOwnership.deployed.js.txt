@@ -1,0 +1,95 @@
+exports.transferGroupOwnership = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Login required.");
+    }
+
+    const uid = request.auth.uid;
+    const groupId = (request.data?.groupId || "").toString().trim();
+    const newOwnerUid = (request.data?.newOwnerUid || "").toString().trim();
+    if (!groupId || !newOwnerUid) {
+      throw new HttpsError(
+        "invalid-argument",
+        "groupId and newOwnerUid required."
+      );
+    }
+    if (uid === newOwnerUid) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Already the owner."
+      );
+    }
+
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const actorRef = db.collection("users").doc(uid);
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const groupSnap = await tx.get(groupRef);
+        const actorSnap = await tx.get(actorRef);
+        if (!groupSnap.exists) {
+          throw new HttpsError("not-found", "Group not found.");
+        }
+        const data = groupSnap.data() || {};
+        if (data.deleted === true) {
+          throw new HttpsError("failed-precondition", "Group unavailable.");
+        }
+        if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
+          throw new HttpsError("permission-denied", "Not allowed.");
+        }
+        const ownerId = (data.ownerId || "").toString().trim();
+        if (uid !== ownerId) {
+          throw new HttpsError(
+            "permission-denied",
+            "Only owner can transfer ownership."
+          );
+        }
+
+        let members = asUidList(data.members);
+        let admins = asUidList(data.admins);
+        if (!members.includes(newOwnerUid)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "New owner must be a member."
+          );
+        }
+
+        if (!admins.includes(newOwnerUid)) {
+          admins.push(newOwnerUid);
+        }
+        // Mantém o antigo owner como admin.
+        if (!admins.includes(uid)) {
+          admins.push(uid);
+        }
+
+        tx.set(
+          groupRef,
+          {
+            ownerId: newOwnerUid,
+            admins,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy: uid,
+          },
+          { merge: true }
+        );
+
+        return { groupId, previousOwnerId: uid, newOwnerUid };
+      });
+
+      console.log(
+        JSON.stringify({
+          action: "group_ownership_transferred",
+          ...result,
+          createdAt: new Date().toISOString(),
+        })
+      );
+      return { success: true, ...result };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("Erro transferGroupOwnership:", e);
+      throw new HttpsError("internal", "Could not transfer ownership.");
+    }
+  }
+);

@@ -18,6 +18,7 @@ import '../services/group_discovery_service.dart';
 import '../services/group_geo.dart';
 import '../services/group_hidden_prefs_service.dart';
 import '../services/group_lifecycle_service.dart';
+import '../services/group_role_error.dart';
 import '../services/group_location_normalize.dart';
 import '../services/groups_list_logic.dart';
 import '../services/iso_country_names.dart';
@@ -996,7 +997,7 @@ class GroupsListPageState extends State<GroupsListPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${t.get(GroupLifecycleService.deleteErrorKey(e))}: ${e.message ?? e.code}',
+            '${t.get(GroupLifecycleService.deleteErrorKey(e))}: ${groupRoleErrorText(e)}',
           ),
         ),
       );
@@ -1082,7 +1083,7 @@ class GroupsListPageState extends State<GroupsListPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${t.get(GroupLifecycleService.leaveErrorKey(e))}: ${e.message ?? e.code}',
+            '${t.get(GroupLifecycleService.leaveErrorKey(e))}: ${groupRoleErrorText(e)}',
           ),
         ),
       );

@@ -1,0 +1,9 @@
+*.tap
+*.log
+*.source.diff
+*.deployed.js.txt
+!banGroupMember.deployed.js.txt
+!removeGroupMember.deployed.js.txt
+!demoteGroupAdmin.deployed.js.txt
+!transferGroupOwnership.deployed.js.txt
+deployed-functions.json
