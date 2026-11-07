@@ -1721,5 +1721,7 @@
   "group_create_name_too_long": "Le nom du groupe peut contenir 80 caractères au maximum.",
   "group_cover_error_unauthorized": "Vous n'avez pas l'autorisation de modifier la couverture de ce groupe.",
   "group_cover_error_too_large": "L'image est trop volumineuse. Choisissez une autre photo.",
-  "group_cover_error_generic": "Impossible d'envoyer la couverture. Veuillez réessayer."
+  "group_cover_error_generic": "Impossible d'envoyer la couverture. Veuillez réessayer.",
+  "places_share_text": "Découvrez ce lieu sur Remdy !",
+  "places_share_error": "Impossible de partager ce lieu."
 }

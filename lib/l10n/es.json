@@ -1721,5 +1721,7 @@
   "group_create_name_too_long": "El nombre del grupo puede tener como máximo 80 caracteres.",
   "group_cover_error_unauthorized": "No tienes permiso para cambiar la portada de este grupo.",
   "group_cover_error_too_large": "La imagen es demasiado grande. Elige otra foto.",
-  "group_cover_error_generic": "No se pudo subir la portada. Inténtalo de nuevo."
+  "group_cover_error_generic": "No se pudo subir la portada. Inténtalo de nuevo.",
+  "places_share_text": "¡Descubre este lugar en Remdy!",
+  "places_share_error": "No se pudo compartir este lugar."
 }

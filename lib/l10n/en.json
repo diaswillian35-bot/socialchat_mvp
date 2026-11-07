@@ -1721,5 +1721,7 @@
   "group_create_name_too_long": "The group name can have at most 80 characters.",
   "group_cover_error_unauthorized": "You don't have permission to change this group's cover.",
   "group_cover_error_too_large": "The image is too large. Choose another photo.",
-  "group_cover_error_generic": "Couldn't upload the cover. Please try again."
+  "group_cover_error_generic": "Couldn't upload the cover. Please try again.",
+  "places_share_text": "Discover this place on Remdy!",
+  "places_share_error": "Unable to share this place."
 }

@@ -19,7 +19,7 @@ void main() {
     LocaisFeatureFlag.resetDebugOverride();
     expect(LocaisFeatureFlag.isEnabled, isFalse);
     final pubspec = File('pubspec.yaml').readAsStringSync();
-    expect(pubspec.contains('version: 1.0.4+39'), isTrue);
+    expect(pubspec.contains('version: 1.0.5+40'), isTrue);
   });
 
   test('Locais entra apenas no shell e no roteador atrás da flag', () {
@@ -43,11 +43,12 @@ void main() {
     expect(shell, contains('LocaisFeatureFlag.isEnabled'));
   });
 
-  test('o link público futuro não abre no roteador atual', () {
+  test('link público por ID é reconhecido sem abrir grupo e respeita a flag', () {
     final link = RemdyDeepLinkParser.parse(
       Uri.parse('https://remdy.app/l/casa_do_sabor'),
     );
-    expect(link.kind, RemdyDeepLinkKind.none);
+    expect(link.kind, RemdyDeepLinkKind.place);
+    expect(link.placeId, 'casa_do_sabor');
     expect(link.opensGroupPreview, isFalse);
     expect(
       MerchantPortalPlan.shouldOpenInApp(

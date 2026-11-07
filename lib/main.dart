@@ -355,9 +355,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       case RemdyDeepLinkKind.place:
         if (!LocaisFeatureFlag.isEnabled) return;
         final slug = (parsed.placeSlug ?? '').trim();
-        if (slug.isEmpty) return;
+        final placeId = parsed.placeId;
+        if (slug.isEmpty && placeId == null) return;
         nav.push(
-          MaterialPageRoute(builder: (_) => LocaisDeepLinkPage(slug: slug)),
+          MaterialPageRoute(
+            builder: (_) => LocaisDeepLinkPage(slug: slug, placeId: placeId),
+          ),
         );
         return;
 

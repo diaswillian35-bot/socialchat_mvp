@@ -1455,5 +1455,7 @@
   "group_create_name_too_long": "O nome do grupo pode ter no máximo 80 caracteres.",
   "group_cover_error_unauthorized": "Não tem permissão para alterar a capa deste grupo.",
   "group_cover_error_too_large": "A imagem é demasiado grande. Escolha outra fotografia.",
-  "group_cover_error_generic": "Não foi possível enviar a capa. Tente novamente."
+  "group_cover_error_generic": "Não foi possível enviar a capa. Tente novamente.",
+  "places_share_text": "Conheça este local no Remdy!",
+  "places_share_error": "Não foi possível partilhar este local."
 }

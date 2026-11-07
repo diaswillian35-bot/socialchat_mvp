@@ -175,6 +175,14 @@
           "function": "renderPublicEventPage"
         },
         {
+          "source": "/l/**",
+          "function": "renderPublicPlacePage"
+        },
+        {
+          "source": "/sitemap-locais.xml",
+          "function": "renderPlacesSitemap"
+        },
+        {
           "source": "/eventos/**",
           "function": "renderPublicEventsSearch"
         },
