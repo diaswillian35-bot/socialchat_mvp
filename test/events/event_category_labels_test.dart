@@ -24,11 +24,14 @@ void main() {
     }
   });
 
-  test('Cultura e Cultural ficam distintos em cada língua', () {
-    for (final l in locales) {
-      final m = _load(l);
-      expect(m['events_culture'], isNot(m['events_cat_cultural']), reason: l);
-    }
+  test('Cultural (legado) usa o mesmo rótulo de Cultura', () {
+    expect(eventCategoryLabelKey('Cultural'), 'events_culture');
+    expect(kEventSelectableCategories, isNot(contains('Cultural')));
+    expect(kEventSelectableCategories, contains('Cultura'));
+    expect(eventCategoryPickerItems('Cultural'), isNot(contains('Cultural')));
+    expect(normalizeEventCategory('Cultural'), 'Cultura');
+    expect(normalizeEventCategory('Show'), 'Show');
+    expect(kEventEditorialCategories, contains('Cultural'));
   });
 
   test('rótulo traduzido; desconhecido mostra valor cru', () {
@@ -36,7 +39,7 @@ void main() {
     expect(eventCategoryLabel('Esportes'), 'Sports');
     expect(eventCategoryLabel('café'), 'Café');
     expect(eventCategoryLabel('Restaurante'), 'Restaurant');
-    expect(eventCategoryLabel('Cultural'), 'Cultural');
+    expect(eventCategoryLabel('Cultural'), 'Culture');
     expect(eventCategoryLabel('Cultura'), 'Culture');
     expect(eventCategoryLabel('Xyz'), 'Xyz');
     AppTexts.loadFromMap(_load('fr'));

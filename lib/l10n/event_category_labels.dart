@@ -10,7 +10,7 @@ const Map<String, String> kEventCategoryLabelKeys = {
   'Cultura': 'events_culture',
   'Idiomas': 'events_languages',
   'Festival': 'events_cat_festival',
-  'Cultural': 'events_cat_cultural',
+  'Cultural': 'events_culture', // fundida em Cultura
   'Restaurante': 'events_restaurant',
   'café': 'events_cat_cafe',
 };

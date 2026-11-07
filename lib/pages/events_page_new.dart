@@ -1050,7 +1050,9 @@ bool _passesCategoryFilter(Map<String, dynamic> data) {
 
   // Cultura
   if (_selectedCategory == 7) {
-    return category == 'cultura' || category == 'culture';
+    return category == 'cultura' ||
+        category == 'culture' ||
+        category == 'cultural';
   }
 
   // Idiomas

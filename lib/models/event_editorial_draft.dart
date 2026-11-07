@@ -145,15 +145,26 @@ const List<String> kEventEditorialCategories = [
 /// mais oferecidas na lista de seleção.
 const Set<String> kEventLegacyCategories = {'Restaurante', 'café'};
 
+/// Aliases legados unificados: 'Cultural' foi fundida em 'Cultura'.
+/// Continua válida (CF aceita), mas o app exibe/edita/salva como canônica.
+const Map<String, String> kEventCategoryAliases = {'Cultural': 'Cultura'};
+
+String normalizeEventCategory(String raw) {
+  final v = raw.trim();
+  return kEventCategoryAliases[v] ?? v;
+}
+
 /// Categorias oferecidas no seletor do wizard.
 final List<String> kEventSelectableCategories = kEventEditorialCategories
-    .where((c) => !kEventLegacyCategories.contains(c))
+    .where((c) =>
+        !kEventLegacyCategories.contains(c) &&
+        !kEventCategoryAliases.containsKey(c))
     .toList(growable: false);
 
 /// Itens do seletor: as selecionáveis + a categoria legada atual (se houver),
 /// para que editar um evento antigo preserve o valor.
 List<String> eventCategoryPickerItems(String current) {
-  final c = current.trim();
+  final c = normalizeEventCategory(current);
   if (kEventLegacyCategories.contains(c)) {
     return [...kEventSelectableCategories, c];
   }
@@ -710,7 +721,7 @@ class EventEditorialDraft {
       'endTime': timeOf(end),
     });
 
-    final cat = base.category.trim();
+    final cat = normalizeEventCategory(base.category);
     final category = kEventEditorialCategories.contains(cat) ? cat : 'Geral';
     return base.copyWith(category: category);
   }

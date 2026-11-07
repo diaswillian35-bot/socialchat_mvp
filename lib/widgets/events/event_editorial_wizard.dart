@@ -1020,8 +1020,9 @@ class _EventEditorialWizardState extends State<EventEditorialWizard> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: kEventEditorialCategories.contains(_draft.category)
-              ? _draft.category
+          value: kEventEditorialCategories
+                  .contains(normalizeEventCategory(_draft.category))
+              ? normalizeEventCategory(_draft.category)
               : 'Geral',
           decoration: _dec(t('create_event_category')),
           items: eventCategoryPickerItems(_draft.category)

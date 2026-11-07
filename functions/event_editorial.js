@@ -19,6 +19,17 @@ const EVENT_ALLOWED_CATEGORIES = new Set([
   "Cultural",
 ]);
 
+// Aliases legados: continuam aceitos (apps antigos nas lojas ainda enviam),
+// mas são gravados com o valor canônico.
+const EVENT_CATEGORY_ALIASES = Object.freeze({ Cultural: "Cultura" });
+
+function normalizeEventCategory(category) {
+  if (!category) return category;
+  return Object.prototype.hasOwnProperty.call(EVENT_CATEGORY_ALIASES, category)
+    ? EVENT_CATEGORY_ALIASES[category]
+    : category;
+}
+
 const TICKET_TYPES = new Set(["free", "paid", "inquire"]);
 
 const EDITORIAL_FIELD_KEYS = [
@@ -386,13 +397,14 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
     "shortDescription",
     { required: false, max: 280 },
   );
-  const category = asTrimmedString(dataIn.category, "category", {
+  const rawCategory = asTrimmedString(dataIn.category, "category", {
     required: !forUpdate,
     max: 40,
   });
-  if (category && !EVENT_ALLOWED_CATEGORIES.has(category)) {
+  if (rawCategory && !EVENT_ALLOWED_CATEGORIES.has(rawCategory)) {
     throw new HttpsError("invalid-argument", "Invalid category.");
   }
+  const category = normalizeEventCategory(rawCategory);
 
   const subcategories = asStringList(dataIn.subcategories, "subcategories", {
     maxItems: SUBCATEGORIES_MAX,
@@ -969,6 +981,8 @@ function formatAttractionLines(attractions) {
 
 module.exports = {
   EVENT_ALLOWED_CATEGORIES,
+  EVENT_CATEGORY_ALIASES,
+  normalizeEventCategory,
   EVENT_CREATE_ALLOWED,
   EVENT_UPDATE_ALLOWED,
   EVENT_PENDING_EDITORIAL_KEYS,
