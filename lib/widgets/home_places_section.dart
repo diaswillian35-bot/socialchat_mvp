@@ -7,6 +7,8 @@ import '../features/locais/models/place_listing.dart';
 import '../features/locais/ui/locais_detail_page.dart';
 import '../features/locais/ui/place_card.dart';
 import '../l10n/app_texts.dart';
+import '../features/locais/logic/place_country_access.dart';
+import '../services/admin_access.dart';
 import 'home_paged_carousel.dart';
 import 'home_section_header.dart';
 
@@ -26,7 +28,13 @@ List<PlaceListing> selectHomePlaces(
   final indexed = <int, PlaceListing>{};
   for (var i = 0; i < catalog.length; i++) {
     final p = catalog[i];
-    if (country.isNotEmpty && p.address.countryCode.toUpperCase() != country) {
+    if (AdminAccess.isAdmin) {
+      // Admin: todos, ou só o país escolhido no Modo administrador.
+      if (country.isNotEmpty &&
+          p.address.countryCode.toUpperCase() != country) {
+        continue;
+      }
+    } else if (!canSeePlaceCountry(p, country)) {
       continue;
     }
     indexed[i] = p;

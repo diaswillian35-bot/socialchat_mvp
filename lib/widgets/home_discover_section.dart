@@ -9,6 +9,7 @@ import '../services/block_visibility.dart';
 import '../widgets/blocked_uids_builder.dart';
 import 'home_paged_carousel.dart';
 import 'home_section_header.dart';
+import '../services/admin_access.dart';
 
 /// Carrossel de eventos na Home.
 ///
@@ -127,12 +128,14 @@ class _HomeDiscoverSectionState extends State<HomeDiscoverSection>
       final startAt = data['startAt'];
       if (startAt is! Timestamp || startAt.compareTo(now) <= 0) return false;
 
-      if (country.isEmpty) return true;
+      // Conta sem país não vê eventos (admin vê todos); evento sem país
+      // não aparece.
+      if (country.isEmpty) return AdminAccess.isAdmin;
       final eventCountry = (data['countryCode'] ?? data['country'] ?? '')
           .toString()
           .trim()
           .toLowerCase();
-      return eventCountry.isEmpty || eventCountry == country;
+      return eventCountry.isNotEmpty && eventCountry == country;
     }).toList();
 
     upcoming.sort((a, b) {

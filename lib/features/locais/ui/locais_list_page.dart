@@ -7,6 +7,7 @@ import '../../../widgets/remdy_logo.dart';
 import '../data/place_repository.dart';
 import '../locais_feature_flag.dart';
 import '../locais_strings.dart';
+import '../logic/place_country_access.dart';
 import '../logic/place_query.dart';
 import '../models/place_listing.dart';
 import 'locais_layout.dart';
@@ -16,9 +17,13 @@ import 'locais_detail_page.dart';
 
 /// Lista e mapa de Locais. Com a flag desligada não desenha conteúdo.
 class LocaisListPage extends StatefulWidget {
-  const LocaisListPage({super.key, this.repository, this.clock});
+  const LocaisListPage(
+      {super.key, this.repository, this.clock, this.homeCountryLoader});
 
   final PlaceRepository? repository;
+
+  /// País de casa da conta (testes injetam). Padrão: doc do usuário.
+  final HomeCountryLoader? homeCountryLoader;
   final DateTime Function()? clock;
 
   @override
@@ -59,10 +64,15 @@ class _LocaisListPageState extends State<LocaisListPage> {
       _failed = false;
     });
     try {
-      final catalog = await repository.fetchCatalog();
+      final results = await Future.wait<Object>([
+        repository.fetchCatalog(),
+        (widget.homeCountryLoader ?? loadCurrentHomeCountryCode)(),
+      ]);
+      final catalog = results[0] as List<PlaceListing>;
+      final home = results[1] as String;
       if (!mounted) return;
       setState(() {
-        _catalog = catalog;
+        _catalog = filterPlacesByCountry(catalog, home);
         _loading = false;
       });
     } catch (_) {

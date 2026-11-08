@@ -7,8 +7,13 @@ import 'package:socialchat_mvp/features/locais/models/place_listing.dart';
 import 'package:socialchat_mvp/features/locais/ui/locais_detail_page.dart';
 
 import 'locais_test_support.dart';
+import 'package:socialchat_mvp/services/admin_access.dart';
 
 void main() {
+  // Catálogo demo tem BR, CA e PT: estes testes de lista/filtros rodam
+  // como admin (vê todos). O filtro por país tem testes próprios.
+  setUp(() => AdminAccess.instance.debugSet(admin: true));
+  tearDown(() => AdminAccess.instance.debugSet(admin: false));
   tearDown(LocaisFeatureFlag.resetDebugOverride);
 
   const engine = PlaceQueryEngine();

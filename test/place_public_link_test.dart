@@ -49,10 +49,14 @@ void main() {
     await pumpLocais(
         tester,
         LocaisDeepLinkPage(
-            placeId: 'hPGFEU4iQbDJXItOwQhV', repository: repository));
+            placeId: 'hPGFEU4iQbDJXItOwQhV',
+            repository: repository,
+            homeCountryLoader: () async =>
+                DemoPlaces.all.first.address.countryCode));
     await tester.pumpAndSettle();
     expect(repository.catalogReads, 0);
-    expect(repository.idReads, 1);
+    // 1 leitura para conferir o país + 1 da ficha.
+    expect(repository.idReads, 2);
     expect(repository.lastId, 'hPGFEU4iQbDJXItOwQhV');
     await tester.tap(find.byIcon(Icons.ios_share_rounded));
     await tester.pumpAndSettle();

@@ -48,5 +48,6 @@ LocaisListPage demoList({Duration latency = Duration.zero, Object? failure}) {
   return LocaisListPage(
     repository: demoRepository(latency: latency, failure: failure),
     clock: locaisDemoClock,
+    homeCountryLoader: () async => 'br',
   );
 }
