@@ -1761,5 +1761,10 @@
   "audio_room_error": "No se pudo entrar a la sala. Inténtalo de nuevo.",
   "audio_room_ended": "La sala se cerró.",
   "audio_room_push_setting": "Avisarme cuando la sala de audio esté en vivo",
-  "audio_room_mic_denied": "Permite el micrófono en Ajustes para hablar."
+  "audio_room_mic_denied": "Permite el micrófono en Ajustes para hablar.",
+  "audio_room_mute": "Silenciar micrófono",
+  "audio_room_mute_all": "Silenciar todos",
+  "audio_room_revoke": "Quitar la palabra",
+  "audio_room_muted_by_mod": "Un moderador apagó tu micrófono. Puedes volver a activarlo cuando quieras.",
+  "audio_room_muted_all": "Se apagaron los micrófonos de todos."
 }

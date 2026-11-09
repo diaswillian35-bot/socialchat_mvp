@@ -1761,5 +1761,10 @@
   "audio_room_error": "Impossible de rejoindre le salon. Réessayez.",
   "audio_room_ended": "Le salon est terminé.",
   "audio_room_push_setting": "M'avertir quand le salon audio est en direct",
-  "audio_room_mic_denied": "Autorisez le micro dans les Réglages pour parler."
+  "audio_room_mic_denied": "Autorisez le micro dans les Réglages pour parler.",
+  "audio_room_mute": "Couper le micro",
+  "audio_room_mute_all": "Tout couper",
+  "audio_room_revoke": "Retirer la parole",
+  "audio_room_muted_by_mod": "Un modérateur a coupé votre micro. Vous pouvez le réactiver quand vous voulez.",
+  "audio_room_muted_all": "Les micros de tout le monde ont été coupés."
 }

@@ -36,11 +36,13 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
   AudioRoomService get _svc => _c.service;
   String get _myUid => FirebaseAuth.instance.currentUser?.uid ?? '';
   bool _busy = false;
+  StreamSubscription<String>? _noticeSub;
 
   @override
   void initState() {
     super.initState();
     _c.addListener(_onChange);
+    _noticeSub = _c.notices.listen(_toast);
     if (!_c.isInGroup(widget.groupId)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _join());
     }
@@ -49,6 +51,7 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
   @override
   void dispose() {
     _c.removeListener(_onChange);
+    _noticeSub?.cancel();
     super.dispose();
   }
 
@@ -72,7 +75,7 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
 
   Future<void> _join() async {
     try {
-      await _c.join(widget.groupId);
+      await _c.join(widget.groupId, groupData: widget.groupData);
       _joinedOnce = true;
     } catch (e) {
       _toast(audioRoomErrorKey(e));
@@ -155,6 +158,12 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
               _run(() => _svc.approveSpeaker(widget.groupId, uid)),
           onRevoke: (uid) =>
               _run(() => _svc.revokeSpeaker(widget.groupId, uid)),
+          canMuteOf: _c.canMute,
+          onMute: (uid) => _run(() => _c.mute(uid)),
+          onMuteAll: () => _run(() async {
+            await _c.muteAll();
+            _toast('audio_room_muted_all');
+          }),
           onToggleHand: (raised) => _run(() => raised
               ? _svc.lowerHand(widget.groupId)
               : _svc.raiseHand(widget.groupId)),
@@ -185,6 +194,9 @@ class AudioRoomView extends StatelessWidget {
   final bool busy;
   final void Function(String uid) onApprove;
   final void Function(String uid) onRevoke;
+  final bool Function(String uid) canMuteOf;
+  final void Function(String uid) onMute;
+  final VoidCallback onMuteAll;
   final void Function(bool raised) onToggleHand;
   final VoidCallback onToggleMic;
   final VoidCallback onMessage;
@@ -205,6 +217,9 @@ class AudioRoomView extends StatelessWidget {
     required this.busy,
     required this.onApprove,
     required this.onRevoke,
+    required this.canMuteOf,
+    required this.onMute,
+    required this.onMuteAll,
     required this.onToggleHand,
     required this.onToggleMic,
     required this.onMessage,
@@ -220,9 +235,54 @@ class AudioRoomView extends StatelessWidget {
     return const Icon(Icons.mic_off_rounded, color: _muted, size: 22);
   }
 
-  Widget _peerTile(AppTexts t, AudioRoomPeer p) {
+  void _peerActions(BuildContext context, AppTexts t, AudioRoomPeer p,
+      bool canMute, bool canRevoke) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: AudioRoomAvatar(uid: p.uid, name: p.name),
+            title: Text(p.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: _text, fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+          const Divider(height: 1, color: _border),
+          if (canMute)
+            ListTile(
+              leading: const Icon(Icons.mic_off_rounded, color: _remdyBlue),
+              title: Text(t.get('audio_room_mute'),
+                  style: const TextStyle(
+                      color: _text, fontWeight: FontWeight.w700)),
+              onTap: () {
+                Navigator.pop(ctx);
+                onMute(p.uid);
+              },
+            ),
+          if (canRevoke)
+            ListTile(
+              leading: const Icon(Icons.back_hand_outlined, color: _remdyBlue),
+              title: Text(t.get('audio_room_revoke'),
+                  style: const TextStyle(
+                      color: _text, fontWeight: FontWeight.w700)),
+              onTap: () {
+                Navigator.pop(ctx);
+                onRevoke(p.uid);
+              },
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _peerTile(BuildContext context, AppTexts t, AudioRoomPeer p) {
     final role = roleLabelOf(p.uid);
     final canRevoke = isModerator && !p.isLocal && p.canSpeak && role.isEmpty;
+    final canMute =
+        isModerator && !p.isLocal && p.canSpeak && p.micOn && canMuteOf(p.uid);
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       leading: AudioRoomAvatar(uid: p.uid, name: p.name),
@@ -246,6 +306,9 @@ class AudioRoomView extends StatelessWidget {
         ),
       ),
       trailing: _micIcon(p),
+      onTap: (canMute || canRevoke)
+          ? () => _peerActions(context, t, p, canMute, canRevoke)
+          : null,
       onLongPress: canRevoke ? () => onRevoke(p.uid) : null,
     );
   }
@@ -371,7 +434,7 @@ class AudioRoomView extends StatelessWidget {
                   itemCount: peers.length,
                   separatorBuilder: (_, __) =>
                       const Divider(height: 1, color: _border, indent: 72),
-                  itemBuilder: (_, i) => _peerTile(t, peers[i]),
+                  itemBuilder: (_, i) => _peerTile(context, t, peers[i]),
                 ),
               ),
             ]),
@@ -399,6 +462,9 @@ class AudioRoomView extends StatelessWidget {
                 busy ? null : onToggleMic,
                 active: micOn,
               ),
+            if (isModerator)
+              _action(Icons.volume_off_rounded, t.get('audio_room_mute_all'),
+                  busy ? null : onMuteAll),
             _action(Icons.chat_bubble_outline_rounded,
                 t.get('audio_room_message'), onMessage),
             _action(Icons.logout_rounded, t.get('audio_room_leave'), onLeave),

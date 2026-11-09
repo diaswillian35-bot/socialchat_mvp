@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
 
+import '../../services/group_role_policy.dart';
 import 'audio_room_service.dart';
 
 /// Uma pessoa na sala, como a tela mostra.
@@ -37,6 +39,15 @@ class AudioRoomController extends ChangeNotifier {
   String? roomId;
   String role = 'member';
   bool connecting = false;
+  Map<String, dynamic> _groupData = const {};
+
+  /// Pedido de "mutar" mandado por dono/admin/moderador pela sala.
+  static const String muteTopic = 'remdy_mute';
+
+  /// Avisos para a tela mostrar (chave de texto).
+  final StreamController<String> _notices =
+      StreamController<String>.broadcast();
+  Stream<String> get notices => _notices.stream;
 
   bool get connected => _room != null && groupId != null;
   bool isInGroup(String gid) => connected && groupId == gid;
@@ -68,7 +79,8 @@ class AudioRoomController extends ChangeNotifier {
       );
 
   /// Entra na sala ao vivo do grupo. Lança erro para a tela mostrar.
-  Future<void> join(String gid) async {
+  Future<void> join(String gid,
+      {Map<String, dynamic> groupData = const {}}) async {
     if (isInGroup(gid) || connecting) return;
     if (connected) await leave();
     connecting = true;
@@ -91,6 +103,7 @@ class AudioRoomController extends ChangeNotifier {
           }
           notifyListeners();
         });
+      listener.on<DataReceivedEvent>((e) => _onData(room, e));
       room.addListener(notifyListeners);
       await room.connect(t.url, t.token);
       _room = room;
@@ -98,6 +111,7 @@ class AudioRoomController extends ChangeNotifier {
       groupId = gid;
       roomId = t.roomId;
       role = t.role;
+      _groupData = groupData;
     } finally {
       connecting = false;
       notifyListeners();
@@ -109,6 +123,60 @@ class AudioRoomController extends ChangeNotifier {
     if (local == null) return;
     if (on && !canPublish) return;
     await local.setMicrophoneEnabled(on);
+    notifyListeners();
+  }
+
+  String _roleOf(String uid) => GroupRolePolicy.roleOf(_groupData, uid);
+
+  /// Dono, admin e moderadores mutam qualquer um, menos a si mesmos;
+  /// só o dono pode mutar outro dono.
+  bool canMute(String uid) {
+    final me = _room?.localParticipant?.identity ?? '';
+    if (!isModerator || uid.isEmpty || uid == me) return false;
+    return role == 'owner' || _roleOf(uid) != 'owner';
+  }
+
+  Future<void> _sendMute(String to, {List<String>? only}) async {
+    final local = _room?.localParticipant;
+    if (local == null || !isModerator) return;
+    await local.publishData(
+      utf8.encode(jsonEncode({'to': to})),
+      reliable: true,
+      topic: muteTopic,
+      destinationIdentities: only,
+    );
+  }
+
+  /// Desliga o microfone de uma pessoa. Ela pode ligar de novo.
+  Future<void> mute(String uid) async {
+    if (!canMute(uid)) return;
+    await _sendMute(uid, only: [uid]);
+  }
+
+  /// Desliga o microfone de todos na sala, menos o de quem pediu.
+  Future<void> muteAll() => _sendMute('*');
+
+  Future<void> _onData(Room room, DataReceivedEvent e) async {
+    if (e.topic != muteTopic) return;
+    final from = e.participant?.identity ?? '';
+    final fromRole = _roleOf(from);
+    // Só vale pedido de dono, admin ou moderador do grupo.
+    if (!audioRoomIsModeratorRole(fromRole)) return;
+    final local = room.localParticipant;
+    if (local == null || from == local.identity) return;
+    String to = '';
+    try {
+      to = '${(jsonDecode(utf8.decode(e.data)) as Map)['to'] ?? ''}';
+    } catch (_) {
+      return;
+    }
+    if (to != '*' && to != local.identity) return;
+    if (role == 'owner' && fromRole != 'owner') return;
+    if (!local.isMicrophoneEnabled()) return;
+    try {
+      await local.setMicrophoneEnabled(false);
+    } catch (_) {}
+    _notices.add('audio_room_muted_by_mod');
     notifyListeners();
   }
 
@@ -136,6 +204,7 @@ class AudioRoomController extends ChangeNotifier {
     groupId = null;
     roomId = null;
     role = 'member';
+    _groupData = const {};
     notifyListeners();
   }
 }

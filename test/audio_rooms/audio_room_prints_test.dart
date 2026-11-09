@@ -16,17 +16,24 @@ Future<void> _fonts() async {
       '${Platform.environment['FLUTTER_ROOT'] ?? '${Platform.environment['HOME']}/Downloads/flutter'}'
       '/bin/cache/artifacts/material_fonts';
   final roboto = FontLoader('Roboto');
-  for (final f in ['Roboto-Regular', 'Roboto-Medium', 'Roboto-Bold', 'Roboto-Black']) {
+  for (final f in [
+    'Roboto-Regular',
+    'Roboto-Medium',
+    'Roboto-Bold',
+    'Roboto-Black'
+  ]) {
     final file = File('$dir/$f.ttf');
     if (file.existsSync()) {
-      roboto.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
+      roboto
+          .addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
     }
   }
   await roboto.load();
   final icons = File('$dir/MaterialIcons-Regular.otf');
   if (icons.existsSync()) {
     await (FontLoader('MaterialIcons')
-          ..addFont(Future.value(ByteData.sublistView(icons.readAsBytesSync()))))
+          ..addFont(
+              Future.value(ByteData.sublistView(icons.readAsBytesSync()))))
         .load();
   }
 }
@@ -48,15 +55,54 @@ Widget _app(Widget home) => MaterialApp(
     );
 
 const _peers = [
-  AudioRoomPeer(uid: 'own', name: 'Willian', isLocal: true, canSpeak: true, micOn: true, speaking: true),
-  AudioRoomPeer(uid: 'mod', name: 'Carla', isLocal: false, canSpeak: true, micOn: false, speaking: false),
-  AudioRoomPeer(uid: 'spk', name: 'Rafael', isLocal: false, canSpeak: true, micOn: true, speaking: false),
-  AudioRoomPeer(uid: 'l1', name: 'Juliana', isLocal: false, canSpeak: false, micOn: false, speaking: false),
-  AudioRoomPeer(uid: 'l2', name: 'Pedro', isLocal: false, canSpeak: false, micOn: false, speaking: false),
-  AudioRoomPeer(uid: 'l3', name: 'Marina', isLocal: false, canSpeak: false, micOn: false, speaking: false),
+  AudioRoomPeer(
+      uid: 'own',
+      name: 'Willian',
+      isLocal: true,
+      canSpeak: true,
+      micOn: true,
+      speaking: true),
+  AudioRoomPeer(
+      uid: 'mod',
+      name: 'Carla',
+      isLocal: false,
+      canSpeak: true,
+      micOn: false,
+      speaking: false),
+  AudioRoomPeer(
+      uid: 'spk',
+      name: 'Rafael',
+      isLocal: false,
+      canSpeak: true,
+      micOn: true,
+      speaking: false),
+  AudioRoomPeer(
+      uid: 'l1',
+      name: 'Juliana',
+      isLocal: false,
+      canSpeak: false,
+      micOn: false,
+      speaking: false),
+  AudioRoomPeer(
+      uid: 'l2',
+      name: 'Pedro',
+      isLocal: false,
+      canSpeak: false,
+      micOn: false,
+      speaking: false),
+  AudioRoomPeer(
+      uid: 'l3',
+      name: 'Marina',
+      isLocal: false,
+      canSpeak: false,
+      micOn: false,
+      speaking: false),
 ];
 
-AudioRoomView _room({required bool moderator, List<AudioRoomPeer> peers = _peers, bool raised = false}) =>
+AudioRoomView _room(
+        {required bool moderator,
+        List<AudioRoomPeer> peers = _peers,
+        bool raised = false}) =>
     AudioRoomView(
       groupName: 'Papo De BUTECO',
       peers: peers,
@@ -76,6 +122,9 @@ AudioRoomView _room({required bool moderator, List<AudioRoomPeer> peers = _peers
       busy: false,
       onApprove: (_) {},
       onRevoke: (_) {},
+      canMuteOf: (uid) => uid != 'own',
+      onMute: (_) {},
+      onMuteAll: () {},
       onToggleHand: (_) {},
       onToggleMic: () {},
       onMessage: () {},
@@ -89,7 +138,8 @@ void main() {
   for (final lang in ['pt-BR', 'en']) {
     testWidgets('prints $lang', (tester) async {
       AppTexts.loadFromMap(
-          jsonDecode(File('lib/l10n/$lang.json').readAsStringSync()) as Map<String, dynamic>);
+          jsonDecode(File('lib/l10n/$lang.json').readAsStringSync())
+              as Map<String, dynamic>);
       tester.view.physicalSize = const Size(390 * 3, 844 * 3);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
@@ -97,17 +147,37 @@ void main() {
       Future<void> shot(Widget w, String name) async {
         await tester.pumpWidget(_app(w));
         await tester.pumpAndSettle();
-        await expectLater(find.byKey(const Key('shot')),
-            matchesGoldenFile('../../docs/audio_rooms/prints/${lang}_$name.png'));
+        await expectLater(
+            find.byKey(const Key('shot')),
+            matchesGoldenFile(
+                '../../docs/audio_rooms/prints/${lang}_$name.png'));
       }
 
       await shot(_room(moderator: true), '1_sala_moderador');
+      // Moderador tocou em quem está falando: opções de mutar e tirar a palavra.
+      await tester.pumpWidget(_app(_room(moderator: true)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rafael'));
+      await tester.pumpAndSettle();
+      await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile(
+              '../../docs/audio_rooms/prints/${lang}_4_sala_mutar_pessoa.png'));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+
       final listenerPeers = [
         for (final p in _peers)
-          AudioRoomPeer(uid: p.uid, name: p.uid == 'l1' ? 'Juliana' : p.name, isLocal: p.uid == 'l1',
-              canSpeak: p.canSpeak, micOn: p.micOn, speaking: p.speaking),
+          AudioRoomPeer(
+              uid: p.uid,
+              name: p.uid == 'l1' ? 'Juliana' : p.name,
+              isLocal: p.uid == 'l1',
+              canSpeak: p.canSpeak,
+              micOn: p.micOn,
+              speaking: p.speaking),
       ];
-      await shot(_room(moderator: false, peers: listenerPeers, raised: true), '2_sala_ouvinte');
+      await shot(_room(moderator: false, peers: listenerPeers, raised: true),
+          '2_sala_ouvinte');
 
       await shot(
         Scaffold(
@@ -118,18 +188,33 @@ void main() {
             centerTitle: true,
             iconTheme: const IconThemeData(color: Color(0xFF6B7280)),
             title: const Text('Papo De BUTECO',
-                style: TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w800, fontSize: 16)),
+                style: TextStyle(
+                    color: Color(0xFF111827),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16)),
             actions: [
-              IconButton(onPressed: () {}, icon: const Icon(Icons.headset_mic_outlined, color: Color(0xFF6B7280))),
-              IconButton(onPressed: () {}, icon: const Icon(Icons.flag_outlined, color: Color(0xFF6B7280))),
-              IconButton(onPressed: () {}, icon: const Icon(Icons.search, color: Color(0xFF6B7280))),
+              IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.headset_mic_outlined,
+                      color: Color(0xFF6B7280))),
+              IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.flag_outlined,
+                      color: Color(0xFF6B7280))),
+              IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.search, color: Color(0xFF6B7280))),
             ],
           ),
           body: Column(children: [
             GroupLiveCardView(
               room: const AudioRoomInfo(
-                id: 'r', openedBy: 'own', openedByName: 'Willian', participantCount: 6,
-                presentUids: ['own', 'mod', 'spk', 'l1'], speakerUids: ['spk'],
+                id: 'r',
+                openedBy: 'own',
+                openedByName: 'Willian',
+                participantCount: 6,
+                presentUids: ['own', 'mod', 'spk', 'l1'],
+                speakerUids: ['spk'],
               ),
               inside: false,
               enabled: true,

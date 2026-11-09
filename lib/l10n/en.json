@@ -1761,5 +1761,10 @@
   "audio_room_error": "Couldn't join the room. Try again.",
   "audio_room_ended": "The room has ended.",
   "audio_room_push_setting": "Notify me when the audio room is live",
-  "audio_room_mic_denied": "Allow the microphone in Settings to speak."
+  "audio_room_mic_denied": "Allow the microphone in Settings to speak.",
+  "audio_room_mute": "Mute mic",
+  "audio_room_mute_all": "Mute all",
+  "audio_room_revoke": "Remove from speakers",
+  "audio_room_muted_by_mod": "A moderator muted your mic. You can turn it back on anytime.",
+  "audio_room_muted_all": "Everyone’s mic was muted."
 }
