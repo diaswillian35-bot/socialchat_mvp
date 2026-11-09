@@ -135,6 +135,8 @@ class _GroupChatPageState extends State<GroupChatPage>
   bool _handledGroupUnavailable = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _groupWatchSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _readsSub;
+  StreamSubscription<bool>? _audioRoomEnabledSub;
+  bool _audioRoomEnabled = false;
   final Map<String, DateTime> _readAtByUid = {};
   final Map<String, DeliveryStage> _groupStageLatch = {};
   final Map<String, int> _groupReadByLatch = {};
@@ -341,6 +343,13 @@ class _GroupChatPageState extends State<GroupChatPage>
     _textC.addListener(_onTextChanged);
     _scrollC.addListener(_onScrollMaybeMarkGroupRead);
     AppNotificationState.instance.enterGroupChat(widget.groupId);
+    _audioRoomEnabledSub = AudioRoomService()
+        .groupEnabled(widget.groupId)
+        .listen((on) {
+      if (mounted && on != _audioRoomEnabled) {
+        setState(() => _audioRoomEnabled = on);
+      }
+    });
     _bootstrap();
   }
 
@@ -385,6 +394,7 @@ class _GroupChatPageState extends State<GroupChatPage>
     AppNotificationState.instance.leaveGroupChat(widget.groupId);
     _groupWatchSub?.cancel();
     _readsSub?.cancel();
+    _audioRoomEnabledSub?.cancel();
     _typingDebounce?.cancel();
     _setTyping(false);
     _setRecording(false);
@@ -2434,9 +2444,11 @@ class _GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  /// Dono, admin ou moderador podem abrir a sala de áudio do grupo.
+  /// Dono, admin ou moderador podem abrir a sala de áudio do grupo,
+  /// só nos grupos liberados (audioRoomGroups/{groupId}.enabled).
   bool get _canOpenAudioRoom {
     final me = uid;
+    if (!_audioRoomEnabled) return false;
     if (me == null || !_isMember || _isBanned) return false;
     return audioRoomIsModeratorRole(
       GroupRolePolicy.roleOf(_groupData ?? const <String, dynamic>{}, me),
@@ -2552,7 +2564,7 @@ class _GroupChatPageState extends State<GroupChatPage>
           : ChatKeyboardScope(
               child: Column(
               children: [
-                if (_isMember && !_isBanned)
+                if (_audioRoomEnabled && _isMember && !_isBanned)
                   GroupLiveCard(
                     groupId: widget.groupId,
                     onEnter: () => _enterAudioRoom(headerName),

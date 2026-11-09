@@ -6349,6 +6349,7 @@ exports.renderPlacesSitemap = require('./public_places').renderPlacesSitemap;
 // Salas de áudio ao vivo nos grupos (build 42, teste). Sem gravação.
 exports.audioRoomAction = require("./audio_room").audioRoomAction;
 exports.audioRoomWebhook = require("./audio_room").audioRoomWebhook;
+exports.setGroupAudioRoom = require("./audio_room").setGroupAudioRoom;
 
 // Sala aberta: mensagem de sistema no grupo + push "sala ao vivo" para os
 // membros (menos quem abriu e quem desligou o push deste grupo). Durante o

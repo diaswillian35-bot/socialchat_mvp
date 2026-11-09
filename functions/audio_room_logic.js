@@ -109,6 +109,19 @@ function speakerChangeError({ group, uid, targetUid }) {
   return null;
 }
 
+/** Sala liberada neste grupo? Fonte da verdade: audioRoomGroups/{groupId}. */
+function roomEnabledError(flag) {
+  return flag && flag.enabled === true ? null : "room_disabled";
+}
+
+/** Entrada do setGroupAudioRoom: { groupId, enabled } validados, ou null. */
+function parseGroupAudioRoomInput(data) {
+  const groupId = (data?.groupId == null ? "" : String(data.groupId)).trim();
+  if (!groupId || groupId.length > 128 || groupId.includes("/")) return null;
+  if (typeof data?.enabled !== "boolean") return null;
+  return { groupId, enabled: data.enabled };
+}
+
 function shouldSendLivePush(groupId, allowlist = AUDIO_PUSH_TEST_GROUP_IDS) {
   return allowlist.includes(String(groupId));
 }
@@ -151,5 +164,5 @@ module.exports = {
   isCountryOpen, userCountry, groupCountry, canAccessGroupCountry, isModeratorRole,
   joinError, manageError, grantFor, capacityError, roomNameFor, groupIdFromRoomName,
   isLive, speakerChangeError, shouldSendLivePush, audioPushMuted, PUSH_TEXTS, pushLocale,
-  livePushText,
+  livePushText, roomEnabledError, parseGroupAudioRoomInput,
 };

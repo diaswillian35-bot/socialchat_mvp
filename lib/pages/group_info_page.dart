@@ -35,6 +35,8 @@ import '../widgets/group_pending_request_row.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
 import '../features/audio_rooms/audio_room_service.dart';
+import '../features/audio_rooms/audio_room_switch_row.dart';
+import '../services/admin_access.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 class GroupInfoPage extends StatefulWidget {
@@ -1882,43 +1884,47 @@ class _GroupInfoPageState extends State<GroupInfoPage>
         stream: svc.livePushEnabled(me, widget.groupId),
         builder: (context, snap) {
           final on = snap.data ?? true;
-          return Row(
-            children: [
-              const Icon(Icons.headset_mic_outlined, color: _muted, size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  t.get('audio_room_push_setting'),
-                  style: const TextStyle(
-                    color: _text,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              Switch(
-                value: on,
-                activeThumbColor: Colors.white,
-                activeTrackColor: _remdyBlue,
-                inactiveThumbColor: const Color(0xFF6B7280),
-                inactiveTrackColor: const Color(0xFFE5E7EB),
-                trackOutlineColor: WidgetStateProperty.resolveWith<Color?>(
-                  (states) {
-                    if (states.contains(WidgetState.selected)) {
-                      return _remdyBlue;
+          return AudioRoomSwitchRow(
+            label: t.get('audio_room_push_setting'),
+            value: on,
+            onChanged: (v) async {
+              try {
+                await svc.setLivePushEnabled(me, widget.groupId, v);
+              } catch (_) {
+                _toast(t.get('audio_room_error'));
+              }
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  bool _audioRoomToggling = false;
+
+  /// Só o admin do app: libera ou trava a sala de áudio deste grupo.
+  Widget _audioRoomGroupCard(AppTexts t) {
+    final svc = AudioRoomService();
+    return _card(
+      child: StreamBuilder<bool>(
+        stream: svc.groupEnabled(widget.groupId),
+        builder: (context, snap) {
+          final on = snap.data ?? false;
+          return AudioRoomSwitchRow(
+            label: t.get('audio_room_group_toggle'),
+            value: on,
+            onChanged: _audioRoomToggling
+                ? null
+                : (v) async {
+                    setState(() => _audioRoomToggling = true);
+                    try {
+                      await svc.setGroupEnabled(widget.groupId, v);
+                    } catch (_) {
+                      _toast(t.get('audio_room_group_toggle_error'));
+                    } finally {
+                      if (mounted) setState(() => _audioRoomToggling = false);
                     }
-                    return const Color(0xFFE5E7EB);
                   },
-                ),
-                onChanged: (v) async {
-                  try {
-                    await svc.setLivePushEnabled(me, widget.groupId, v);
-                  } catch (_) {
-                    _toast(t.get('audio_room_error'));
-                  }
-                },
-              ),
-            ],
           );
         },
       ),
@@ -2019,6 +2025,10 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                     ],
                     if (_canModerate) ...[
                       _bannedUsersCard(),
+                      const SizedBox(height: 14),
+                    ],
+                    if (_uid != null && AdminAccess.isAdmin) ...[
+                      _audioRoomGroupCard(t),
                       const SizedBox(height: 14),
                     ],
                     if (_uid != null) ...[

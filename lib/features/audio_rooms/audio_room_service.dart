@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
@@ -85,6 +87,21 @@ class AudioRoomService {
           ? null
           : AudioRoomInfo.fromDoc(s.docs.first.id, s.docs.first.data()));
 
+  /// Sala liberada neste grupo (audioRoomGroups/{groupId}.enabled).
+  /// Sem documento ou com erro de leitura: desligada.
+  Stream<bool> groupEnabled(String groupId) => db
+      .collection('audioRoomGroups')
+      .doc(groupId)
+      .snapshots()
+      .map((s) => s.data()?['enabled'] == true)
+      .transform(StreamTransformer<bool, bool>.fromHandlers(
+          handleError: (_, __, sink) => sink.add(false)));
+
+  /// Só admin do app: liga/desliga a sala deste grupo (função no servidor).
+  Future<void> setGroupEnabled(String groupId, bool enabled) => functions
+      .httpsCallable('setGroupAudioRoom')
+      .call({'groupId': groupId, 'enabled': enabled});
+
   Stream<List<AudioRoomHand>> hands(String groupId, String roomId) =>
       _rooms(groupId).doc(roomId).collection('hands').snapshots().map((s) => s
           .docs
@@ -145,6 +162,7 @@ String audioRoomErrorKey(Object error) {
     final m = error.message ?? '';
     if (m == 'room_full') return 'audio_room_full';
     if (m == 'no_live_room') return 'audio_room_ended';
+    if (m == 'room_disabled') return 'audio_room_disabled';
   }
   return 'audio_room_error';
 }

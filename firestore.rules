@@ -508,6 +508,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Sala de áudio liberada por grupo (só a função setGroupAudioRoom grava).
+    match /audioRoomGroups/{groupId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // =========================
     // EVENTS (app + portal)
     // =========================

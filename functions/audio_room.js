@@ -19,7 +19,7 @@ const ERR = {
   banned: "permission-denied", not_member: "permission-denied",
   country_blocked: "permission-denied", not_moderator: "permission-denied",
   target_is_moderator: "failed-precondition", room_full: "resource-exhausted",
-  no_live_room: "failed-precondition",
+  no_live_room: "failed-precondition", room_disabled: "failed-precondition",
 };
 function fail(code) {
   throw new HttpsError(ERR[code] || "failed-precondition", code);
@@ -47,11 +47,12 @@ async function loadContext(request) {
   }
   const db = admin.firestore();
   const groupRef = db.collection("groups").doc(groupId);
-  const [g, u, b, live] = await Promise.all([
+  const [g, u, b, live, flag] = await Promise.all([
     groupRef.get(),
     db.collection("users").doc(uid).get(),
     groupRef.collection("bannedUsers").doc(uid).get(),
     groupRef.collection("audioRooms").where("status", "==", "live").limit(1).get(),
+    db.collection("audioRoomGroups").doc(groupId).get(),
   ]);
   return {
     uid, groupId, groupRef, db,
@@ -60,11 +61,13 @@ async function loadContext(request) {
     banned: b.exists && b.data()?.isActive !== false,
     isAdmin: isSuperAdminAuth(request.auth),
     liveDoc: live.empty ? null : live.docs[0],
+    roomFlag: flag.exists ? flag.data() : null,
   };
 }
 
 async function handleOpen(c) {
   const e = L.manageError(c); if (e) fail(e);
+  const d = L.roomEnabledError(c.roomFlag); if (d) fail(d);
   if (c.liveDoc) return { roomId: c.liveDoc.id, alreadyLive: true };
   const roomName = L.roomNameFor(c.groupId);
   await roomService().createRoom({ name: roomName, maxParticipants: L.MAX_PARTICIPANTS, emptyTimeout: 300 });
@@ -93,6 +96,7 @@ async function handleClose(c) {
 
 async function handleToken(c) {
   const e = L.joinError(c); if (e) fail(e);
+  const d = L.roomEnabledError(c.roomFlag); if (d) fail(d);
   if (!c.liveDoc) fail("no_live_room");
   const room = c.liveDoc.data();
   const cap = L.capacityError(room, c.uid); if (cap) fail(cap);
@@ -162,6 +166,30 @@ exports.audioRoomAction = onCall(
       case "approveSpeaker": return handleSpeaker(c, true);
       default: return handleSpeaker(c, false);
     }
+  },
+);
+
+// Liga/desliga a sala de áudio de um grupo. Só admin do app (admins/{uid}
+// ou o admin total do Remdy). Grava audioRoomGroups/{groupId} pelo Admin SDK.
+exports.setGroupAudioRoom = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const uid = request.auth?.uid || "";
+    if (!uid) throw new HttpsError("unauthenticated", "unauthenticated");
+    const db = admin.firestore();
+    const isAppAdmin = isSuperAdminAuth(request.auth) ||
+      (await db.collection("admins").doc(uid).get()).exists;
+    if (!isAppAdmin) throw new HttpsError("permission-denied", "not_app_admin");
+    const input = L.parseGroupAudioRoomInput(request.data);
+    if (!input) throw new HttpsError("invalid-argument", "groupId/enabled");
+    const g = await db.collection("groups").doc(input.groupId).get();
+    if (!g.exists) throw new HttpsError("not-found", "group_not_found");
+    await db.collection("audioRoomGroups").doc(input.groupId).set({
+      enabled: input.enabled,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: uid,
+    });
+    return { groupId: input.groupId, enabled: input.enabled };
   },
 );
 

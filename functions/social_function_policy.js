@@ -12,6 +12,7 @@ const entries = {
   onAudioRoomOpened: ["trigger", "Automatic system message/push; recipients are age-filtered."],
   reconcilePresenceCountersNow: ["admin", "Explicit portal/platform admin maintenance."],
   approveEventPendingChanges: ["admin", "Portal event moderation."],
+  setGroupAudioRoom: ["admin", "App admin turns a group's audio room on/off."],
   rejectEventPendingChanges: ["admin", "Portal event moderation."],
   purgeExpiredShareExtensionData: ["maintenance", "Scheduled security cleanup."],
   onPresenceConnectionWritten: ["maintenance", "Automatic presence aggregation/cleanup."],

@@ -94,3 +94,19 @@ test("sem gravação: o código nunca usa Egress", () => {
 test("opção B: mensagem de sistema desligada até o 42 estar nas lojas", () => {
   assert.equal(L.AUDIO_ROOM_SYSTEM_MESSAGE_ENABLED, false);
 });
+
+test("sala liberada só com audioRoomGroups/{groupId}.enabled === true", () => {
+  assert.equal(L.roomEnabledError({ enabled: true }), null);
+  for (const f of [null, undefined, {}, { enabled: false }, { enabled: "true" }, { enabled: 1 }]) {
+    assert.equal(L.roomEnabledError(f), "room_disabled");
+  }
+});
+
+test("setGroupAudioRoom: valida groupId e enabled", () => {
+  assert.deepEqual(L.parseGroupAudioRoomInput({ groupId: " g1 ", enabled: true }), { groupId: "g1", enabled: true });
+  assert.deepEqual(L.parseGroupAudioRoomInput({ groupId: "g1", enabled: false }), { groupId: "g1", enabled: false });
+  for (const d of [null, {}, { groupId: "", enabled: true }, { groupId: "a/b", enabled: true },
+    { groupId: "x".repeat(129), enabled: true }, { groupId: "g1" }, { groupId: "g1", enabled: "true" }]) {
+    assert.equal(L.parseGroupAudioRoomInput(d), null);
+  }
+});

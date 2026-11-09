@@ -8,6 +8,7 @@ import 'package:socialchat_mvp/features/audio_rooms/audio_room_float_chat.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_controller.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_page.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_service.dart';
+import 'package:socialchat_mvp/features/audio_rooms/audio_room_switch_row.dart';
 import 'package:socialchat_mvp/features/audio_rooms/group_live_card.dart';
 import 'package:socialchat_mvp/l10n/app_texts.dart';
 
@@ -38,6 +39,24 @@ Future<void> _fonts() async {
         .load();
   }
 }
+
+// Mesmo card das informações do grupo (_card de group_info_page.dart).
+Widget _infoCard(Widget child) => Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: child,
+    );
 
 Widget _app(Widget home) => MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -290,6 +309,36 @@ void main() {
           ]),
         ),
         '3_grupo_card_ao_vivo',
+      );
+
+      // Informações do grupo vistas pelo admin do app: sala liberada.
+      final tx = AppTexts.current;
+      await shot(
+        Scaffold(
+          appBar: AppBar(
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            centerTitle: true,
+            title: Text(tx.get('group_info'),
+                style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18)),
+            iconTheme: const IconThemeData(color: Color(0xFF111827)),
+          ),
+          body: ListView(padding: const EdgeInsets.all(16), children: [
+            _infoCard(AudioRoomSwitchRow(
+                label: tx.get('audio_room_group_toggle'),
+                value: true,
+                onChanged: (_) {})),
+            const SizedBox(height: 14),
+            _infoCard(AudioRoomSwitchRow(
+                label: tx.get('audio_room_push_setting'),
+                value: true,
+                onChanged: (_) {})),
+          ]),
+        ),
+        '8_info_sala_por_grupo',
       );
     });
   }
