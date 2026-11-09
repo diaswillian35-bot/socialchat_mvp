@@ -8,6 +8,8 @@ const entries = {
   revokeShareExtensionSessions: ["essential", "Logout/security token revocation."],
   syncRevenueCatEntitlement: ["essential", "Preserves purchases; does not expose social content."],
   revenueCatWebhook: ["service", "Secret-authenticated purchase webhook."],
+  audioRoomWebhook: ["service", "LiveKit-signed webhook; only updates audio room presence."],
+  onAudioRoomOpened: ["trigger", "Automatic system message/push; recipients are age-filtered."],
   reconcilePresenceCountersNow: ["admin", "Explicit portal/platform admin maintenance."],
   approveEventPendingChanges: ["admin", "Portal event moderation."],
   rejectEventPendingChanges: ["admin", "Portal event moderation."],
@@ -49,6 +51,7 @@ for (const name of [
   "submitPlaceReview", "replyPlaceReview", "claimPlaceForAccount",
   "listPlaceReviews", "submitPlace", "updateMyPlace", "getMyPlace",
   "listMyPlaces", "listPendingPlaces", "moderatePlace", "translatePlaceDescription",
+  "audioRoomAction",
 ]) {
   entries[name] = ["adult", "User-initiated social operation; verified adult required."];
 }

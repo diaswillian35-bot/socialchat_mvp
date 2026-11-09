@@ -11,6 +11,7 @@ const exported = [...indexSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)]
 
 const delegatedAdultMarkers = {
   forwardMessage: ["forward_message.js", "assertVerifiedAdult"],
+  audioRoomAction: ["audio_room.js", "assertVerifiedAdult"],
   sendDmMessage: ["send_dm_message.js", "assertVerifiedAdult"],
   issueShareExtensionSession: ["share_extension.js", "assertVerifiedAdult(request"],
   listShareDestinations: ["share_extension.js", "assertVerifiedAdultUid"],

@@ -401,6 +401,15 @@ service cloud.firestore {
       match /systemInbox/{docId} {
         allow read, write: if signedIn() && uid() == userId;
       }
+
+      // Preferência por grupo (push "sala ao vivo"). Só o próprio usuário.
+      match /groupPrefs/{groupId} {
+        allow read, delete: if signedIn() && uid() == userId;
+        allow create, update: if signedIn() && uid() == userId
+          && request.resource.data.keys().hasOnly(['audioRoomPush', 'updatedAt'])
+          && (!('audioRoomPush' in request.resource.data)
+            || request.resource.data.audioRoomPush is bool);
+      }
     }
 
     // =========================
@@ -1033,6 +1042,22 @@ service cloud.firestore {
           || (signedIn() && uid() == bannedUid);
 
         allow create, update, delete: if false;
+      }
+
+      // Salas de áudio (build 42): só leitura para membros; escrita só pelas
+      // Cloud Functions (audioRoomAction / audioRoomWebhook).
+      match /audioRooms/{roomId} {
+        allow read: if signedIn()
+          && !isGroupBanned(groupId, uid())
+          && isMemberOfGroup(groupId);
+        allow create, update, delete: if false;
+
+        match /hands/{handUid} {
+          allow read: if signedIn()
+            && !isGroupBanned(groupId, uid())
+            && isMemberOfGroup(groupId);
+          allow create, update, delete: if false;
+        }
       }
 
       match /presence/{presenceId} {

@@ -6345,3 +6345,54 @@ exports.onPlacePendingNotifyAdmins = onDocumentWritten(
 // Public place pages (read-only SSR). Deploy only the named functions.
 exports.renderPublicPlacePage = require('./public_places').renderPublicPlacePage;
 exports.renderPlacesSitemap = require('./public_places').renderPlacesSitemap;
+
+// Salas de áudio ao vivo nos grupos (build 42, teste). Sem gravação.
+exports.audioRoomAction = require("./audio_room").audioRoomAction;
+exports.audioRoomWebhook = require("./audio_room").audioRoomWebhook;
+
+// Sala aberta: mensagem de sistema no grupo + push "sala ao vivo" para os
+// membros (menos quem abriu e quem desligou o push deste grupo). Durante o
+// teste, só para os grupos de AUDIO_PUSH_TEST_GROUP_IDS.
+exports.onAudioRoomOpened = onDocumentCreated(
+  "groups/{groupId}/audioRooms/{roomId}",
+  async (event) => {
+    const audioLogic = require("./audio_room_logic");
+    const room = event.data?.data();
+    const { groupId, roomId } = event.params;
+    if (!room || room.status !== "live") return;
+    if (!audioLogic.shouldSendLivePush(groupId)) return;
+    const db = admin.firestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const groupSnap = await groupRef.get();
+    if (!groupSnap.exists) return;
+    const group = groupSnap.data() || {};
+    const openedBy = (room.openedBy || "").toString();
+    const openerName = (room.openedByName || "").toString();
+    await groupRef.collection("messages").doc(`audio_room_${roomId}`).set({
+      type: "audio_room", systemEvent: "audio_room_opened",
+      senderId: openedBy, fromUid: openedBy, senderName: openerName,
+      roomId, text: "",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    const members = uidList(group.members).filter((u) => u && u !== openedBy);
+    const byLocale = new Map();
+    for (const uid of members) {
+      const [userSnap, prefSnap] = await Promise.all([
+        db.collection("users").doc(uid).get(),
+        db.collection("users").doc(uid).collection("groupPrefs").doc(groupId).get(),
+      ]);
+      if (audioLogic.audioPushMuted(prefSnap.data())) continue;
+      const loc = audioLogic.pushLocale(userSnap.data());
+      if (!byLocale.has(loc)) byLocale.set(loc, []);
+      byLocale.get(loc).push(uid);
+    }
+    const groupName = (group.name || "").toString().trim();
+    for (const [loc, uids] of byLocale) {
+      const { title, body } = audioLogic.livePushText(loc, groupName, openerName);
+      await sendPushToUids({
+        uids, title, body, prefKey: "group",
+        data: { type: "audio_room_live", groupId, roomId },
+      });
+    }
+  },
+);
