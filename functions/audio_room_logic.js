@@ -7,7 +7,7 @@ const { roleOf } = require("./group_role_policy");
 const MAX_PARTICIPANTS = 50;
 const FREE_COUNTRY_CODES = Object.freeze(["br", "ca"]);
 // Teste: o push "sala ao vivo" só sai para estes grupos (Papo de Boteco).
-const AUDIO_PUSH_TEST_GROUP_IDS = Object.freeze([]);
+const AUDIO_PUSH_TEST_GROUP_IDS = Object.freeze(["8ehlhwLZj9twQ47TSOIu"]);
 const LIVEKIT_URL = "wss://remdy-ngb7mimi.livekit.cloud";
 const LIVEKIT_HOST = "https://remdy-ngb7mimi.livekit.cloud";
 
