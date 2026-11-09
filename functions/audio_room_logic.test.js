@@ -40,11 +40,13 @@ test("abrir/fechar: só dono, admin do grupo e moderador", () => {
 });
 
 test("token: ouvinte sem microfone; dono/mod e falante aprovado com microfone", () => {
-  assert.equal(L.grantFor({ group, room: {}, uid: "m1" }).canPublish, false);
-  assert.deepEqual(L.grantFor({ group, room: {}, uid: "m1" }).canPublishSources, []);
+  assert.equal(L.grantFor({ group, room: {}, uid: "m1" }).canPublish, true);
+  assert.deepEqual(L.grantFor({ group, room: {}, uid: "m1" }).canPublishSources, ["microphone"]);
+  assert.equal(L.grantFor({ group, room: { blockedUids: ["m1"] }, uid: "m1" }).canPublish, false);
+  assert.deepEqual(L.grantFor({ group, room: { blockedUids: ["m1"] }, uid: "m1" }).canPublishSources, []);
+  assert.equal(L.grantFor({ group, room: { blockedUids: ["mod"] }, uid: "mod" }).canPublish, true);
   assert.equal(L.grantFor({ group, room: {}, uid: "own" }).canPublish, true);
   assert.equal(L.grantFor({ group, room: {}, uid: "mod" }).canPublish, true);
-  assert.equal(L.grantFor({ group, room: { speakerUids: ["m1"] }, uid: "m1" }).canPublish, true);
   assert.equal(L.grantFor({ group, room: {}, uid: "m1" }).canSubscribe, true);
 });
 

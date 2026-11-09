@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/chat_composer_text.dart';
@@ -37,7 +36,6 @@ class AudioRoomPage extends StatefulWidget {
 class _AudioRoomPageState extends State<AudioRoomPage> {
   final AudioRoomController _c = AudioRoomController.instance;
   AudioRoomService get _svc => _c.service;
-  String get _myUid => FirebaseAuth.instance.currentUser?.uid ?? '';
   bool _busy = false;
   StreamSubscription<String>? _noticeSub;
   bool _composerOpen = false;
@@ -171,51 +169,38 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
   @override
   Widget build(BuildContext context) {
     final peers = _c.isInGroup(widget.groupId) ? _c.peers : <AudioRoomPeer>[];
-    final roomId = _c.roomId;
-    Widget view(List<AudioRoomHand> hands) => AudioRoomView(
-          groupName: widget.groupName,
-          peers: peers,
-          roleLabelOf: _roleLabel,
-          isModerator: _c.isModerator,
-          loading: _c.connecting && peers.isEmpty,
-          hands: _c.isModerator ? hands : const [],
-          myHandRaised: hands.any((h) => h.uid == _myUid),
-          canSpeak: _c.canPublish,
-          micOn: _c.micOn,
-          busy: _busy,
-          onApprove: (uid) =>
-              _run(() => _svc.approveSpeaker(widget.groupId, uid)),
-          onRevoke: (uid) =>
-              _run(() => _svc.revokeSpeaker(widget.groupId, uid)),
-          canMuteOf: _c.canMute,
-          onMute: (uid) => _run(() => _c.mute(uid)),
-          onMuteAll: () => _run(() async {
-            await _c.muteAll();
-            _toast('audio_room_muted_all');
-          }),
-          onToggleHand: (raised) => _run(() => raised
-              ? _svc.lowerHand(widget.groupId)
-              : _svc.raiseHand(widget.groupId)),
-          onToggleMic: _toggleMic,
-          onMessage: _toggleComposer,
-          onGroupChat: () => Navigator.of(context).maybePop(),
-          chatMessages: List.of(_c.chat),
-          onDeleteChat: (id) => _c.deleteChat(id),
-          composer: _composerOpen
-              ? AudioRoomComposer(
-                  controller: _textC,
-                  focusNode: _focus,
-                  onSend: _sendChat,
-                  onClose: _toggleComposer,
-                )
-              : null,
-          onLeave: _leave,
-          onClose: _close,
-        );
-    if (roomId == null) return view(const []);
-    return StreamBuilder<List<AudioRoomHand>>(
-      stream: _svc.hands(widget.groupId, roomId),
-      builder: (context, snap) => view(snap.data ?? const <AudioRoomHand>[]),
+    return AudioRoomView(
+      groupName: widget.groupName,
+      peers: peers,
+      roleLabelOf: _roleLabel,
+      isModerator: _c.isModerator,
+      loading: _c.connecting && peers.isEmpty,
+      canSpeak: _c.canPublish,
+      micOn: _c.micOn,
+      busy: _busy,
+      onApprove: (uid) => _run(() => _svc.approveSpeaker(widget.groupId, uid)),
+      onRevoke: (uid) => _run(() => _svc.revokeSpeaker(widget.groupId, uid)),
+      canMuteOf: _c.canMute,
+      onMute: (uid) => _run(() => _c.mute(uid)),
+      onMuteAll: () => _run(() async {
+        await _c.muteAll();
+        _toast('audio_room_muted_all');
+      }),
+      onToggleMic: _toggleMic,
+      onMessage: _toggleComposer,
+      onGroupChat: () => Navigator.of(context).maybePop(),
+      chatMessages: List.of(_c.chat),
+      onDeleteChat: (id) => _c.deleteChat(id),
+      composer: _composerOpen
+          ? AudioRoomComposer(
+              controller: _textC,
+              focusNode: _focus,
+              onSend: _sendChat,
+              onClose: _toggleComposer,
+            )
+          : null,
+      onLeave: _leave,
+      onClose: _close,
     );
   }
 }
@@ -227,8 +212,6 @@ class AudioRoomView extends StatelessWidget {
   final String Function(String uid) roleLabelOf;
   final bool isModerator;
   final bool loading;
-  final List<AudioRoomHand> hands;
-  final bool myHandRaised;
   final bool canSpeak;
   final bool micOn;
   final bool busy;
@@ -237,7 +220,6 @@ class AudioRoomView extends StatelessWidget {
   final bool Function(String uid) canMuteOf;
   final void Function(String uid) onMute;
   final VoidCallback onMuteAll;
-  final void Function(bool raised) onToggleHand;
   final VoidCallback onToggleMic;
   final VoidCallback onMessage;
   final VoidCallback onGroupChat;
@@ -255,8 +237,6 @@ class AudioRoomView extends StatelessWidget {
     required this.roleLabelOf,
     required this.isModerator,
     required this.loading,
-    required this.hands,
-    required this.myHandRaised,
     required this.canSpeak,
     required this.micOn,
     required this.busy,
@@ -265,7 +245,6 @@ class AudioRoomView extends StatelessWidget {
     required this.canMuteOf,
     required this.onMute,
     required this.onMuteAll,
-    required this.onToggleHand,
     required this.onToggleMic,
     required this.onMessage,
     required this.onGroupChat,
@@ -286,7 +265,7 @@ class AudioRoomView extends StatelessWidget {
   }
 
   void _peerActions(BuildContext context, AppTexts t, AudioRoomPeer p,
-      bool canMute, bool canRevoke) {
+      bool canMute, bool canRevoke, bool canAllow) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
@@ -314,13 +293,26 @@ class AudioRoomView extends StatelessWidget {
             ),
           if (canRevoke)
             ListTile(
-              leading: const Icon(Icons.back_hand_outlined, color: _remdyBlue),
+              leading:
+                  const Icon(Icons.voice_over_off_rounded, color: _remdyBlue),
               title: Text(t.get('audio_room_revoke'),
                   style: const TextStyle(
                       color: _text, fontWeight: FontWeight.w700)),
               onTap: () {
                 Navigator.pop(ctx);
                 onRevoke(p.uid);
+              },
+            ),
+          if (canAllow)
+            ListTile(
+              leading: const Icon(Icons.record_voice_over_outlined,
+                  color: _remdyBlue),
+              title: Text(t.get('audio_room_allow_speak'),
+                  style: const TextStyle(
+                      color: _text, fontWeight: FontWeight.w700)),
+              onTap: () {
+                Navigator.pop(ctx);
+                onApprove(p.uid);
               },
             ),
         ]),
@@ -331,6 +323,7 @@ class AudioRoomView extends StatelessWidget {
   Widget _peerTile(BuildContext context, AppTexts t, AudioRoomPeer p) {
     final role = roleLabelOf(p.uid);
     final canRevoke = isModerator && !p.isLocal && p.canSpeak && role.isEmpty;
+    final canAllow = isModerator && !p.isLocal && !p.canSpeak && role.isEmpty;
     final canMute =
         isModerator && !p.isLocal && p.canSpeak && p.micOn && canMuteOf(p.uid);
     return ListTile(
@@ -348,7 +341,7 @@ class AudioRoomView extends StatelessWidget {
             ? role
             : (p.canSpeak
                 ? t.get('audio_room_speaker')
-                : t.get('audio_room_listening')),
+                : t.get('audio_room_blocked')),
         style: TextStyle(
           color: role.isNotEmpty ? _remdyBlue : _muted,
           fontWeight: FontWeight.w700,
@@ -356,54 +349,9 @@ class AudioRoomView extends StatelessWidget {
         ),
       ),
       trailing: _micIcon(p),
-      onTap: (canMute || canRevoke)
-          ? () => _peerActions(context, t, p, canMute, canRevoke)
+      onTap: (canMute || canRevoke || canAllow)
+          ? () => _peerActions(context, t, p, canMute, canRevoke, canAllow)
           : null,
-      onLongPress: canRevoke ? () => onRevoke(p.uid) : null,
-    );
-  }
-
-  Widget _handsStrip(AppTexts t) {
-    final title = hands.length == 1
-        ? t.get('audio_room_request_one')
-        : t.get('audio_room_requests').replaceAll('{count}', '${hands.length}');
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            const Icon(Icons.back_hand_rounded, color: _remdyBlue, size: 18),
-            const SizedBox(width: 8),
-            Text(title,
-                style: const TextStyle(
-                    color: _text, fontWeight: FontWeight.w800, fontSize: 14)),
-          ]),
-          for (final h in hands)
-            Row(children: [
-              Expanded(
-                child: Text(h.name.isEmpty ? h.uid : h.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: _text, fontWeight: FontWeight.w600)),
-              ),
-              TextButton(
-                onPressed: busy ? null : () => onApprove(h.uid),
-                child: Text(t.get('audio_room_approve'),
-                    style: const TextStyle(
-                        color: _remdyBlue, fontWeight: FontWeight.w800)),
-              ),
-            ]),
-        ],
-      ),
     );
   }
 
@@ -482,7 +430,6 @@ class AudioRoomView extends StatelessWidget {
       body: loading
           ? const Center(child: CircularProgressIndicator(color: _remdyBlue))
           : Column(children: [
-              if (isModerator && hands.isNotEmpty) _handsStrip(t),
               Expanded(
                 child: Stack(children: [
                   Positioned.fill(
@@ -517,22 +464,14 @@ class AudioRoomView extends StatelessWidget {
           ),
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
           child: Row(children: [
-            if (!canSpeak)
-              _action(
-                Icons.back_hand_rounded,
-                myHandRaised
-                    ? t.get('audio_room_lower_hand')
-                    : t.get('audio_room_raise_hand'),
-                busy ? null : () => onToggleHand(myHandRaised),
-                active: myHandRaised,
-              )
-            else
-              _action(
-                micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-                t.get('audio_room_mic'),
-                busy ? null : onToggleMic,
-                active: micOn,
-              ),
+            // Todo mundo tem o Microfone; quem foi impedido de falar vê o
+            // botão desligado.
+            _action(
+              micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+              t.get('audio_room_mic'),
+              (busy || !canSpeak) ? null : onToggleMic,
+              active: micOn,
+            ),
             if (isModerator)
               _action(Icons.volume_off_rounded, t.get('audio_room_mute_all'),
                   busy ? null : onMuteAll),

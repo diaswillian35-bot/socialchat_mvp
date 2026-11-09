@@ -309,11 +309,6 @@ class AudioRoomController extends ChangeNotifier {
 
   Future<void> leave() async {
     final room = _room;
-    final gid = groupId;
-    if (gid != null && !isModerator) {
-      // Sai da fila de quem pediu a palavra, se estiver nela.
-      unawaited(service.lowerHand(gid).catchError((_) {}));
-    }
     _cleanup();
     if (room != null) {
       try {

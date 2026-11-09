@@ -83,14 +83,14 @@ const _peers = [
       uid: 'l1',
       name: 'Juliana',
       isLocal: false,
-      canSpeak: false,
+      canSpeak: true,
       micOn: false,
       speaking: false),
   AudioRoomPeer(
       uid: 'l2',
       name: 'Pedro',
       isLocal: false,
-      canSpeak: false,
+      canSpeak: true,
       micOn: false,
       speaking: false),
   AudioRoomPeer(
@@ -105,7 +105,6 @@ const _peers = [
 AudioRoomView _room(
         {required bool moderator,
         List<AudioRoomPeer> peers = _peers,
-        bool raised = false,
         List<AudioRoomChatMessage> chat = const [],
         Widget? composer}) =>
     AudioRoomView(
@@ -118,11 +117,7 @@ AudioRoomView _room(
               : '',
       isModerator: moderator,
       loading: false,
-      hands: moderator
-          ? const [AudioRoomHand('l1', 'Juliana'), AudioRoomHand('l2', 'Pedro')]
-          : const [],
-      myHandRaised: raised,
-      canSpeak: moderator,
+      canSpeak: true,
       micOn: moderator,
       busy: false,
       onApprove: (_) {},
@@ -130,7 +125,6 @@ AudioRoomView _room(
       canMuteOf: (uid) => uid != 'own',
       onMute: (_) {},
       onMuteAll: () {},
-      onToggleHand: (_) {},
       onToggleMic: () {},
       onMessage: () {},
       onGroupChat: () {},
@@ -175,6 +169,17 @@ void main() {
               '../../docs/audio_rooms/prints/${lang}_4_sala_mutar_pessoa.png'));
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
+      // Moderador tocou em quem foi impedido de falar: opção Permitir falar.
+      await tester.pumpWidget(_app(_room(moderator: true)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Marina'));
+      await tester.pumpAndSettle();
+      await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile(
+              '../../docs/audio_rooms/prints/${lang}_7_sala_permitir_falar.png'));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
 
       final listenerPeers = [
         for (final p in _peers)
@@ -186,8 +191,8 @@ void main() {
               micOn: p.micOn,
               speaking: p.speaking),
       ];
-      await shot(_room(moderator: false, peers: listenerPeers, raised: true),
-          '2_sala_ouvinte');
+      await shot(
+          _room(moderator: false, peers: listenerPeers), '2_sala_ouvinte');
 
       final base = DateTime(2026, 11, 8, 21, 40).millisecondsSinceEpoch;
       AudioRoomChatMessage msg(int i, String uid, String name, String text) =>

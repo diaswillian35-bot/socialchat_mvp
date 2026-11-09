@@ -68,8 +68,9 @@ function manageError(args) {
 /** Permissões do token LiveKit para o participante. */
 function grantFor({ group, room, uid }) {
   const role = roleOf(group, uid);
-  const speakers = Array.isArray(room?.speakerUids) ? room.speakerUids : [];
-  const canPublish = isModeratorRole(role) || speakers.includes(uid);
+  // Todo membro pode ligar o microfone; só quem o moderador impediu fica sem.
+  const blocked = Array.isArray(room?.blockedUids) ? room.blockedUids : [];
+  const canPublish = isModeratorRole(role) || !blocked.includes(uid);
   return {
     role,
     canPublish,
@@ -99,7 +100,7 @@ function isLive(room) {
   return Boolean(room) && room.status === "live";
 }
 
-/** Aprovar/revogar fala: moderador, alvo membro (não pode mexer em mod). */
+/** Permitir/impedir de falar: moderador, alvo membro (não pode mexer em mod). */
 function speakerChangeError({ group, uid, targetUid }) {
   if (!isModeratorRole(roleOf(group, uid))) return "not_moderator";
   const t = roleOf(group, targetUid);

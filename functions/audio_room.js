@@ -73,7 +73,7 @@ async function handleOpen(c) {
     status: "live", roomName, groupId: c.groupId,
     openedBy: c.uid, openedByName: displayName(c.user, c.uid),
     startedAt: admin.firestore.FieldValue.serverTimestamp(),
-    participantCount: 0, presentUids: [], speakerUids: [],
+    participantCount: 0, presentUids: [], blockedUids: [],
   });
   return { roomId: ref.id, alreadyLive: false };
 }
@@ -132,7 +132,8 @@ async function handleSpeaker(c, approve) {
   if (!targetUid) throw new HttpsError("invalid-argument", "targetUid");
   const se = L.speakerChangeError({ group: c.group, uid: c.uid, targetUid }); if (se) fail(se);
   const FV = admin.firestore.FieldValue;
-  await c.liveDoc.ref.set({ speakerUids: approve ? FV.arrayUnion(targetUid) : FV.arrayRemove(targetUid) }, { merge: true });
+  // approve = permitir falar (sai da lista de impedidos); revoke = impedir de falar.
+  await c.liveDoc.ref.set({ blockedUids: approve ? FV.arrayRemove(targetUid) : FV.arrayUnion(targetUid) }, { merge: true });
   await c.liveDoc.ref.collection("hands").doc(targetUid).delete();
   try {
     await roomService().updateParticipant(c.liveDoc.get("roomName"), targetUid, { permission: micPermission(approve) });
