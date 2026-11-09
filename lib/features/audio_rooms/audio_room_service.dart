@@ -91,8 +91,8 @@ class AudioRoomService {
           .map((d) => AudioRoomHand(d.id, '${d.data()['name'] ?? ''}'))
           .toList());
 
-  Future<Map<String, dynamic>> _call(
-      String action, String groupId, [String? targetUid]) async {
+  Future<Map<String, dynamic>> _call(String action, String groupId,
+      [String? targetUid]) async {
     final res = await functions.httpsCallable('audioRoomAction').call({
       'action': action,
       'groupId': groupId,
@@ -127,9 +127,10 @@ class AudioRoomService {
   DocumentReference<Map<String, dynamic>> _pref(String uid, String groupId) =>
       db.collection('users').doc(uid).collection('groupPrefs').doc(groupId);
 
-  Stream<bool> livePushEnabled(String uid, String groupId) => _pref(uid, groupId)
-      .snapshots()
-      .map((s) => s.data()?['audioRoomPush'] != false);
+  Stream<bool> livePushEnabled(String uid, String groupId) =>
+      _pref(uid, groupId)
+          .snapshots()
+          .map((s) => s.data()?['audioRoomPush'] != false);
 
   Future<void> setLivePushEnabled(String uid, String groupId, bool on) =>
       _pref(uid, groupId).set({

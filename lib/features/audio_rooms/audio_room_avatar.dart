@@ -37,14 +37,16 @@ class AudioRoomAvatar extends StatelessWidget {
     final fallback = CircleAvatar(
       radius: radius,
       backgroundColor: _remdyBlue,
-      child: Text(
-        UserAvatarResolver.initialFor(name),
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: radius * 0.75,
-        ),
-      ),
+      child: name.trim().isEmpty
+          ? Icon(Icons.person_rounded, color: Colors.white, size: radius)
+          : Text(
+              UserAvatarResolver.initialFor(name),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: radius * 0.75,
+              ),
+            ),
     );
     if (uid.isEmpty) return fallback;
     return FutureBuilder<String>(

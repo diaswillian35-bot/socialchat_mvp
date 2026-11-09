@@ -61,7 +61,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Remdy usa sua localização para mostrar pessoas e eventos próximos.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Remdy precisa acessar o microfone para gravar mensagens de áudio.</string>
+	<string>O Remdy usa o microfone para gravar mensagens de áudio e para você falar nas salas de áudio dos grupos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Remdy precisa salvar imagens na sua biblioteca quando você permitir.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

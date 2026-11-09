@@ -128,12 +128,89 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
     await _leave();
   }
 
-  String _roleLabel(AppTexts t, String uid) {
+  String _roleLabel(String uid) {
+    final t = AppTexts.current;
     final r = GroupRolePolicy.roleOf(widget.groupData, uid);
     if (r == 'owner') return t.get('audio_room_owner');
     if (r == 'admin' || r == 'moderator') return t.get('audio_room_moderator');
     return '';
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final peers = _c.isInGroup(widget.groupId) ? _c.peers : <AudioRoomPeer>[];
+    final roomId = _c.roomId;
+    Widget view(List<AudioRoomHand> hands) => AudioRoomView(
+          groupName: widget.groupName,
+          peers: peers,
+          roleLabelOf: _roleLabel,
+          isModerator: _c.isModerator,
+          loading: _c.connecting && peers.isEmpty,
+          hands: _c.isModerator ? hands : const [],
+          myHandRaised: hands.any((h) => h.uid == _myUid),
+          canSpeak: _c.canPublish,
+          micOn: _c.micOn,
+          busy: _busy,
+          onApprove: (uid) =>
+              _run(() => _svc.approveSpeaker(widget.groupId, uid)),
+          onRevoke: (uid) =>
+              _run(() => _svc.revokeSpeaker(widget.groupId, uid)),
+          onToggleHand: (raised) => _run(() => raised
+              ? _svc.lowerHand(widget.groupId)
+              : _svc.raiseHand(widget.groupId)),
+          onToggleMic: _toggleMic,
+          onMessage: () => Navigator.of(context).maybePop(),
+          onLeave: _leave,
+          onClose: _close,
+        );
+    if (roomId == null) return view(const []);
+    return StreamBuilder<List<AudioRoomHand>>(
+      stream: _svc.hands(widget.groupId, roomId),
+      builder: (context, snap) => view(snap.data ?? const <AudioRoomHand>[]),
+    );
+  }
+}
+
+/// Parte visual da sala, sem Firebase nem LiveKit (usada também nos prints).
+class AudioRoomView extends StatelessWidget {
+  final String groupName;
+  final List<AudioRoomPeer> peers;
+  final String Function(String uid) roleLabelOf;
+  final bool isModerator;
+  final bool loading;
+  final List<AudioRoomHand> hands;
+  final bool myHandRaised;
+  final bool canSpeak;
+  final bool micOn;
+  final bool busy;
+  final void Function(String uid) onApprove;
+  final void Function(String uid) onRevoke;
+  final void Function(bool raised) onToggleHand;
+  final VoidCallback onToggleMic;
+  final VoidCallback onMessage;
+  final VoidCallback onLeave;
+  final VoidCallback onClose;
+
+  const AudioRoomView({
+    super.key,
+    required this.groupName,
+    required this.peers,
+    required this.roleLabelOf,
+    required this.isModerator,
+    required this.loading,
+    required this.hands,
+    required this.myHandRaised,
+    required this.canSpeak,
+    required this.micOn,
+    required this.busy,
+    required this.onApprove,
+    required this.onRevoke,
+    required this.onToggleHand,
+    required this.onToggleMic,
+    required this.onMessage,
+    required this.onLeave,
+    required this.onClose,
+  });
 
   Widget _micIcon(AudioRoomPeer p) {
     if (p.canSpeak && p.micOn) {
@@ -144,11 +221,8 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
   }
 
   Widget _peerTile(AppTexts t, AudioRoomPeer p) {
-    final role = _roleLabel(t, p.uid);
-    final canRevoke = _c.isModerator &&
-        !p.isLocal &&
-        p.canSpeak &&
-        role.isEmpty;
+    final role = roleLabelOf(p.uid);
+    final canRevoke = isModerator && !p.isLocal && p.canSpeak && role.isEmpty;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       leading: AudioRoomAvatar(uid: p.uid, name: p.name),
@@ -162,7 +236,9 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
       subtitle: Text(
         role.isNotEmpty
             ? role
-            : (p.canSpeak ? t.get('audio_room_speaker') : t.get('audio_room_listening')),
+            : (p.canSpeak
+                ? t.get('audio_room_speaker')
+                : t.get('audio_room_listening')),
         style: TextStyle(
           color: role.isNotEmpty ? _remdyBlue : _muted,
           fontWeight: FontWeight.w700,
@@ -170,13 +246,11 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
         ),
       ),
       trailing: _micIcon(p),
-      onLongPress: canRevoke
-          ? () => _run(() => _svc.revokeSpeaker(widget.groupId, p.uid))
-          : null,
+      onLongPress: canRevoke ? () => onRevoke(p.uid) : null,
     );
   }
 
-  Widget _handsStrip(AppTexts t, List<AudioRoomHand> hands) {
+  Widget _handsStrip(AppTexts t) {
     final title = hands.length == 1
         ? t.get('audio_room_request_one')
         : t.get('audio_room_requests').replaceAll('{count}', '${hands.length}');
@@ -209,10 +283,7 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
                         color: _text, fontWeight: FontWeight.w600)),
               ),
               TextButton(
-                onPressed: _busy
-                    ? null
-                    : () => _run(
-                        () => _svc.approveSpeaker(widget.groupId, h.uid)),
+                onPressed: busy ? null : () => onApprove(h.uid),
                 child: Text(t.get('audio_room_approve'),
                     style: const TextStyle(
                         color: _remdyBlue, fontWeight: FontWeight.w800)),
@@ -233,9 +304,7 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon,
-                color: onTap == null
-                    ? _border
-                    : (active ? _remdyBlue : _muted),
+                color: onTap == null ? _border : (active ? _remdyBlue : _muted),
                 size: 26),
             const SizedBox(height: 4),
             Text(label,
@@ -255,10 +324,6 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
-    final peers = _c.isInGroup(widget.groupId) ? _c.peers : <AudioRoomPeer>[];
-    final roomId = _c.roomId;
-    final iCanSpeak = _c.canPublish;
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -270,7 +335,7 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.groupName,
+            Text(groupName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -287,28 +352,19 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
           ],
         ),
         actions: [
-          if (_c.isModerator)
+          if (isModerator)
             TextButton(
-              onPressed: _busy ? null : _close,
+              onPressed: busy ? null : onClose,
               child: Text(t.get('audio_room_close'),
                   style: const TextStyle(
                       color: _remdyBlue, fontWeight: FontWeight.w800)),
             ),
         ],
       ),
-      body: _c.connecting && peers.isEmpty
+      body: loading
           ? const Center(child: CircularProgressIndicator(color: _remdyBlue))
           : Column(children: [
-              if (_c.isModerator && roomId != null)
-                StreamBuilder<List<AudioRoomHand>>(
-                  stream: _svc.hands(widget.groupId, roomId),
-                  builder: (context, snap) {
-                    final hands = snap.data ?? const <AudioRoomHand>[];
-                    return hands.isEmpty
-                        ? const SizedBox.shrink()
-                        : _handsStrip(t, hands);
-                  },
-                ),
+              if (isModerator && hands.isNotEmpty) _handsStrip(t),
               Expanded(
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -327,36 +383,25 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
           ),
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
           child: Row(children: [
-            if (!iCanSpeak && roomId != null)
-              StreamBuilder<List<AudioRoomHand>>(
-                stream: _svc.hands(widget.groupId, roomId),
-                builder: (context, snap) {
-                  final raised = (snap.data ?? const <AudioRoomHand>[])
-                      .any((h) => h.uid == _myUid);
-                  return _action(
-                    Icons.back_hand_rounded,
-                    raised
-                        ? t.get('audio_room_lower_hand')
-                        : t.get('audio_room_raise_hand'),
-                    _busy
-                        ? null
-                        : () => _run(() => raised
-                            ? _svc.lowerHand(widget.groupId)
-                            : _svc.raiseHand(widget.groupId)),
-                    active: raised,
-                  );
-                },
+            if (!canSpeak)
+              _action(
+                Icons.back_hand_rounded,
+                myHandRaised
+                    ? t.get('audio_room_lower_hand')
+                    : t.get('audio_room_raise_hand'),
+                busy ? null : () => onToggleHand(myHandRaised),
+                active: myHandRaised,
               )
             else
               _action(
-                _c.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+                micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
                 t.get('audio_room_mic'),
-                _busy || !iCanSpeak ? null : _toggleMic,
-                active: _c.micOn,
+                busy ? null : onToggleMic,
+                active: micOn,
               ),
             _action(Icons.chat_bubble_outline_rounded,
-                t.get('audio_room_message'), () => Navigator.of(context).maybePop()),
-            _action(Icons.logout_rounded, t.get('audio_room_leave'), _leave),
+                t.get('audio_room_message'), onMessage),
+            _action(Icons.logout_rounded, t.get('audio_room_leave'), onLeave),
           ]),
         ),
       ),
