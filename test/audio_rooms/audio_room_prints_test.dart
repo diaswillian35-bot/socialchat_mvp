@@ -78,7 +78,7 @@ const _peers = [
       isLocal: false,
       canSpeak: true,
       micOn: true,
-      speaking: false),
+      speaking: true),
   AudioRoomPeer(
       uid: 'l1',
       name: 'Juliana',

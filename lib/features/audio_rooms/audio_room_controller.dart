@@ -151,6 +151,8 @@ class AudioRoomController extends ChangeNotifier {
           notifyListeners();
         });
       listener.on<DataReceivedEvent>((e) => _onData(room, e));
+      // Liga e desliga o anel de quem está falando.
+      listener.on<ActiveSpeakersChangedEvent>((_) => notifyListeners());
       room.addListener(notifyListeners);
       await room.connect(t.url, t.token);
       _room = room;

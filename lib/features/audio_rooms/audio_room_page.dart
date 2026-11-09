@@ -328,7 +328,8 @@ class AudioRoomView extends StatelessWidget {
         isModerator && !p.isLocal && p.canSpeak && p.micOn && canMuteOf(p.uid);
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      leading: AudioRoomAvatar(uid: p.uid, name: p.name),
+      leading: AudioRoomAvatar(
+          uid: p.uid, name: p.name, speaking: p.canSpeak && p.speaking),
       title: Text(
         p.isLocal ? '${p.name} (${t.get('audio_room_you')})' : p.name,
         maxLines: 1,
