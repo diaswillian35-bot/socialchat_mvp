@@ -6371,7 +6371,10 @@ exports.onAudioRoomOpened = onDocumentCreated(
     await groupRef.collection("messages").doc(`audio_room_${roomId}`).set({
       type: "audio_room", systemEvent: "audio_room_opened",
       senderId: openedBy, fromUid: openedBy, senderName: openerName,
-      roomId, text: "",
+      roomId,
+      // Apps 1.0.6/1.0.7 não conhecem o tipo audio_room e mostram `text` numa
+      // bolha comum; o app novo mostra a linha de sistema traduzida.
+      text: `🎧 ${openerName || "Alguém"} abriu uma sala de áudio`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     const members = uidList(group.members).filter((u) => u && u !== openedBy);
