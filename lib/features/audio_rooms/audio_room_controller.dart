@@ -25,6 +25,42 @@ class AudioRoomPeer {
   });
 }
 
+/// Mensagem do chat da sala. Só existe na memória de quem está na sala:
+/// nada é salvo, e tudo some quando a sala acaba.
+class AudioRoomChatMessage {
+  final String id;
+  final String uid;
+  final String name;
+  final String text;
+  final int ts;
+  const AudioRoomChatMessage({
+    required this.id,
+    required this.uid,
+    required this.name,
+    required this.text,
+    required this.ts,
+  });
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'uid': uid, 'name': name, 'text': text, 'ts': ts};
+
+  static AudioRoomChatMessage? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final id = '${j['id'] ?? ''}';
+    final text = '${j['text'] ?? ''}';
+    if (id.isEmpty || text.trim().isEmpty) return null;
+    return AudioRoomChatMessage(
+      id: id,
+      uid: '${j['uid'] ?? ''}',
+      name: '${j['name'] ?? ''}',
+      text: text.length > AudioRoomController.chatMaxChars
+          ? text.substring(0, AudioRoomController.chatMaxChars)
+          : text,
+      ts: j['ts'] is int ? j['ts'] as int : 0,
+    );
+  }
+}
+
 /// Mantém a conexão com a sala enquanto a pessoa navega pelo app
 /// (o botão Mensagem volta pro chat sem sair da sala).
 class AudioRoomController extends ChangeNotifier {
@@ -43,6 +79,16 @@ class AudioRoomController extends ChangeNotifier {
 
   /// Pedido de "mutar" mandado por dono/admin/moderador pela sala.
   static const String muteTopic = 'remdy_mute';
+
+  static const String chatTopic = 'remdy_chat';
+  static const String chatDeleteTopic = 'remdy_chat_del';
+  static const String chatSyncTopic = 'remdy_chat_sync';
+  static const int chatMaxChars = 500;
+  static const int _chatKeep = 200;
+
+  final List<AudioRoomChatMessage> chat = [];
+  int chatUnread = 0;
+  bool _chatOpen = false;
 
   /// Avisos para a tela mostrar (chave de texto).
   final StreamController<String> _notices =
@@ -103,7 +149,10 @@ class AudioRoomController extends ChangeNotifier {
           }
           notifyListeners();
         });
-      listener.on<DataReceivedEvent>((e) => _onData(room, e));
+      listener
+        ..on<DataReceivedEvent>((e) => _onData(room, e))
+        ..on<ParticipantConnectedEvent>(
+            (e) => _sendHistory(e.participant.identity));
       room.addListener(notifyListeners);
       await room.connect(t.url, t.token);
       _room = room;
@@ -157,6 +206,12 @@ class AudioRoomController extends ChangeNotifier {
   Future<void> muteAll() => _sendMute('*');
 
   Future<void> _onData(Room room, DataReceivedEvent e) async {
+    if (e.topic == chatTopic ||
+        e.topic == chatDeleteTopic ||
+        e.topic == chatSyncTopic) {
+      _onChatData(e);
+      return;
+    }
     if (e.topic != muteTopic) return;
     final from = e.participant?.identity ?? '';
     final fromRole = _roleOf(from);
@@ -177,6 +232,114 @@ class AudioRoomController extends ChangeNotifier {
       await local.setMicrophoneEnabled(false);
     } catch (_) {}
     _notices.add('audio_room_muted_by_mod');
+    notifyListeners();
+  }
+
+  // ---------- Chat da sala ----------
+
+  void setChatOpen(bool open) {
+    _chatOpen = open;
+    if (open && chatUnread != 0) {
+      chatUnread = 0;
+      notifyListeners();
+    }
+  }
+
+  void _addChat(AudioRoomChatMessage m, {bool countUnread = true}) {
+    if (chat.any((x) => x.id == m.id)) return;
+    chat.add(m);
+    chat.sort((a, b) => a.ts.compareTo(b.ts));
+    if (chat.length > _chatKeep) chat.removeRange(0, chat.length - _chatKeep);
+    if (countUnread && !_chatOpen) chatUnread++;
+  }
+
+  Future<void> sendChat(String raw) async {
+    final local = _room?.localParticipant;
+    var text = raw.trim();
+    if (local == null || text.isEmpty) return;
+    if (text.length > chatMaxChars) text = text.substring(0, chatMaxChars);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final m = AudioRoomChatMessage(
+      id: '${local.identity}_$now',
+      uid: local.identity,
+      name: local.name.isNotEmpty ? local.name : local.identity,
+      text: text,
+      ts: now,
+    );
+    await local.publishData(utf8.encode(jsonEncode(m.toJson())),
+        reliable: true, topic: chatTopic);
+    _addChat(m, countUnread: false);
+    notifyListeners();
+  }
+
+  /// Dono, admin e moderadores apagam qualquer mensagem, para todos.
+  Future<void> deleteChat(String id) async {
+    final local = _room?.localParticipant;
+    if (local == null || !isModerator) return;
+    await local.publishData(utf8.encode(jsonEncode({'id': id})),
+        reliable: true, topic: chatDeleteTopic);
+    chat.removeWhere((m) => m.id == id);
+    notifyListeners();
+  }
+
+  /// Quem chega depois recebe as mensagens anteriores de um moderador
+  /// que já está na sala (o de menor id, pra não chegar repetido).
+  Future<void> _sendHistory(String to) async {
+    final room = _room;
+    final local = room?.localParticipant;
+    if (room == null || local == null || !isModerator || chat.isEmpty) return;
+    final mods = <String>[
+      local.identity,
+      for (final p in room.remoteParticipants.values)
+        if (p.identity != to && audioRoomIsModeratorRole(_roleOf(p.identity)))
+          p.identity,
+    ]..sort();
+    if (mods.first != local.identity) return;
+    for (var i = 0; i < chat.length; i += 10) {
+      final part = chat.skip(i).take(10).map((m) => m.toJson()).toList();
+      try {
+        await local.publishData(utf8.encode(jsonEncode({'list': part})),
+            reliable: true, topic: chatSyncTopic, destinationIdentities: [to]);
+      } catch (_) {}
+    }
+  }
+
+  void _onChatData(DataReceivedEvent e) {
+    final sender = e.participant;
+    if (sender == null) return;
+    Object? body;
+    try {
+      body = jsonDecode(utf8.decode(e.data));
+    } catch (_) {
+      return;
+    }
+    if (body is! Map) return;
+    final Map data = body;
+    final fromMod = audioRoomIsModeratorRole(_roleOf(sender.identity));
+    if (e.topic == chatTopic) {
+      final m = AudioRoomChatMessage.fromJson(body);
+      if (m == null) return;
+      // Nome e autor vêm da sala, não do texto recebido.
+      _addChat(AudioRoomChatMessage(
+        id: m.id,
+        uid: sender.identity,
+        name: sender.name.isNotEmpty ? sender.name : sender.identity,
+        text: m.text,
+        ts: m.ts,
+      ));
+    } else if (e.topic == chatDeleteTopic) {
+      if (!fromMod) return;
+      final id = '${data['id'] ?? ''}';
+      chat.removeWhere((m) => m.id == id);
+    } else if (e.topic == chatSyncTopic) {
+      if (!fromMod) return;
+      final list = data['list'];
+      if (list is! List) return;
+      for (final j in list) {
+        final m = AudioRoomChatMessage.fromJson(j);
+        if (m != null) _addChat(m, countUnread: false);
+      }
+    }
     notifyListeners();
   }
 
@@ -205,6 +368,9 @@ class AudioRoomController extends ChangeNotifier {
     roomId = null;
     role = 'member';
     _groupData = const {};
+    chat.clear();
+    chatUnread = 0;
+    _chatOpen = false;
     notifyListeners();
   }
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:socialchat_mvp/features/audio_rooms/audio_room_chat_page.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_controller.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_page.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_service.dart';
@@ -128,6 +129,8 @@ AudioRoomView _room(
       onToggleHand: (_) {},
       onToggleMic: () {},
       onMessage: () {},
+      chatUnread: moderator ? 3 : 0,
+      onChat: () {},
       onLeave: () {},
       onClose: () {},
     );
@@ -178,6 +181,54 @@ void main() {
       ];
       await shot(_room(moderator: false, peers: listenerPeers, raised: true),
           '2_sala_ouvinte');
+
+      final base = DateTime(2026, 11, 8, 21, 40).millisecondsSinceEpoch;
+      AudioRoomChatMessage msg(int i, String uid, String name, String text) =>
+          AudioRoomChatMessage(
+              id: '$i', uid: uid, name: name, text: text, ts: base + i * 60000);
+      final pt = lang == 'pt-BR';
+      final chatMsgs = [
+        msg(
+            0,
+            'l1',
+            'Juliana',
+            pt
+                ? 'Boa noite, pessoal! Chegando agora.'
+                : 'Good evening, everyone! Just got here.'),
+        msg(
+            1,
+            'spk',
+            'Rafael',
+            pt
+                ? 'Alguém sabe o nome do bar que o Pedro falou?'
+                : 'Does anyone know the name of the bar Pedro mentioned?'),
+        msg(
+            2,
+            'l2',
+            'Pedro',
+            pt
+                ? 'Bar do Zé, na rua de baixo.'
+                : 'Bar do Zé, on the street below.'),
+        msg(
+            3,
+            'own',
+            'Willian',
+            pt
+                ? 'Valeu! Já já a gente abre pra perguntas.'
+                : "Thanks! We'll open up for questions soon."),
+      ];
+      await shot(
+        AudioRoomChatView(
+          groupName: 'Papo De BUTECO',
+          messages: chatMsgs,
+          myUid: 'own',
+          isModerator: true,
+          controller: TextEditingController(),
+          onSend: () {},
+          onDelete: (_) {},
+        ),
+        '5_chat_da_sala',
+      );
 
       await shot(
         Scaffold(

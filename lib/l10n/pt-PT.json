@@ -1500,5 +1500,10 @@
   "audio_room_mute_all": "Silenciar todos",
   "audio_room_revoke": "Retirar a palavra",
   "audio_room_muted_by_mod": "Um moderador desligou o seu microfone. Pode voltar a ligá-lo quando quiser.",
-  "audio_room_muted_all": "Os microfones de todos foram desligados."
+  "audio_room_muted_all": "Os microfones de todos foram desligados.",
+  "audio_room_chat": "Chat da sala",
+  "audio_room_chat_hint": "Só quem está na sala vê. As mensagens desaparecem quando a sala termina.",
+  "audio_room_chat_empty": "Ainda ninguém escreveu.",
+  "audio_room_chat_delete": "Apagar mensagem",
+  "audio_room_chat_type": "Escreva para a sala…"
 }

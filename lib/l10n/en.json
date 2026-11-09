@@ -1766,5 +1766,10 @@
   "audio_room_mute_all": "Mute all",
   "audio_room_revoke": "Remove from speakers",
   "audio_room_muted_by_mod": "A moderator muted your mic. You can turn it back on anytime.",
-  "audio_room_muted_all": "Everyone’s mic was muted."
+  "audio_room_muted_all": "Everyone’s mic was muted.",
+  "audio_room_chat": "Room chat",
+  "audio_room_chat_hint": "Only people in the room can see this. Messages disappear when the room ends.",
+  "audio_room_chat_empty": "No messages yet.",
+  "audio_room_chat_delete": "Delete message",
+  "audio_room_chat_type": "Write to the room…"
 }

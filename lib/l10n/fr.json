@@ -1766,5 +1766,10 @@
   "audio_room_mute_all": "Tout couper",
   "audio_room_revoke": "Retirer la parole",
   "audio_room_muted_by_mod": "Un modérateur a coupé votre micro. Vous pouvez le réactiver quand vous voulez.",
-  "audio_room_muted_all": "Les micros de tout le monde ont été coupés."
+  "audio_room_muted_all": "Les micros de tout le monde ont été coupés.",
+  "audio_room_chat": "Chat du salon",
+  "audio_room_chat_hint": "Visible seulement par les personnes du salon. Les messages disparaissent à la fin du salon.",
+  "audio_room_chat_empty": "Aucun message pour l’instant.",
+  "audio_room_chat_delete": "Supprimer le message",
+  "audio_room_chat_type": "Écrivez au salon…"
 }

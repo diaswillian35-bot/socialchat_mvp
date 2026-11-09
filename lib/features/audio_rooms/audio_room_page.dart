@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_texts.dart';
 import '../../services/group_role_policy.dart';
 import 'audio_room_avatar.dart';
+import 'audio_room_chat_page.dart';
 import 'audio_room_controller.dart';
 import 'audio_room_service.dart';
 
@@ -169,6 +170,9 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
               : _svc.raiseHand(widget.groupId)),
           onToggleMic: _toggleMic,
           onMessage: () => Navigator.of(context).maybePop(),
+          chatUnread: _c.chatUnread,
+          onChat: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => AudioRoomChatPage(groupName: widget.groupName))),
           onLeave: _leave,
           onClose: _close,
         );
@@ -200,6 +204,8 @@ class AudioRoomView extends StatelessWidget {
   final void Function(bool raised) onToggleHand;
   final VoidCallback onToggleMic;
   final VoidCallback onMessage;
+  final int chatUnread;
+  final VoidCallback onChat;
   final VoidCallback onLeave;
   final VoidCallback onClose;
 
@@ -223,6 +229,8 @@ class AudioRoomView extends StatelessWidget {
     required this.onToggleHand,
     required this.onToggleMic,
     required this.onMessage,
+    required this.chatUnread,
+    required this.onChat,
     required this.onLeave,
     required this.onClose,
   });
@@ -415,6 +423,16 @@ class AudioRoomView extends StatelessWidget {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: t.get('audio_room_chat'),
+            onPressed: onChat,
+            icon: Badge(
+              isLabelVisible: chatUnread > 0,
+              backgroundColor: _remdyBlue,
+              label: Text(chatUnread > 99 ? '99+' : '$chatUnread'),
+              child: const Icon(Icons.forum_outlined, color: _muted),
+            ),
+          ),
           if (isModerator)
             TextButton(
               onPressed: busy ? null : onClose,
