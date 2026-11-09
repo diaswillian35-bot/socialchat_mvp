@@ -140,7 +140,12 @@ function livePushText(locale, groupName, openerName) {
   return { title: fill(t.title), body: fill(t.body) };
 }
 
+// Mensagem "abriu uma sala de áudio" no chat do grupo. Desligada até o
+// build 42 estar nas lojas (apps antigos mostrariam uma bolha comum).
+const AUDIO_ROOM_SYSTEM_MESSAGE_ENABLED = false;
+
 module.exports = {
+  AUDIO_ROOM_SYSTEM_MESSAGE_ENABLED,
   MAX_PARTICIPANTS, FREE_COUNTRY_CODES, AUDIO_PUSH_TEST_GROUP_IDS, LIVEKIT_URL, LIVEKIT_HOST,
   isCountryOpen, userCountry, groupCountry, canAccessGroupCountry, isModeratorRole,
   joinError, manageError, grantFor, capacityError, roomNameFor, groupIdFromRoomName,

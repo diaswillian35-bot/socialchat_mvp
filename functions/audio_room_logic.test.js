@@ -88,3 +88,7 @@ test("sem gravação: o código nunca usa Egress", () => {
   const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "audio_room.js"), "utf8");
   assert.doesNotMatch(src, /Egress/);
 });
+
+test("opção B: mensagem de sistema desligada até o 42 estar nas lojas", () => {
+  assert.equal(L.AUDIO_ROOM_SYSTEM_MESSAGE_ENABLED, false);
+});

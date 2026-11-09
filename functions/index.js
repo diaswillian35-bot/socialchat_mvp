@@ -6368,6 +6368,8 @@ exports.onAudioRoomOpened = onDocumentCreated(
     const group = groupSnap.data() || {};
     const openedBy = (room.openedBy || "").toString();
     const openerName = (room.openedByName || "").toString();
+    // Opção B do Willian: sem mensagem no chat até o build 42 estar nas lojas.
+    if (audioLogic.AUDIO_ROOM_SYSTEM_MESSAGE_ENABLED) {
     await groupRef.collection("messages").doc(`audio_room_${roomId}`).set({
       type: "audio_room", systemEvent: "audio_room_opened",
       senderId: openedBy, fromUid: openedBy, senderName: openerName,
@@ -6377,6 +6379,7 @@ exports.onAudioRoomOpened = onDocumentCreated(
       text: `🎧 ${openerName || "Alguém"} abriu uma sala de áudio`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+    }
     const members = uidList(group.members).filter((u) => u && u !== openedBy);
     const byLocale = new Map();
     for (const uid of members) {
