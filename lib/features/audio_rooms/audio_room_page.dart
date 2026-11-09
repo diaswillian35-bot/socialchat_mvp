@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/chat_composer_text.dart';
+
 import '../../l10n/app_texts.dart';
 import '../../services/group_role_policy.dart';
 import 'audio_room_avatar.dart';
-import 'audio_room_chat_page.dart';
+import 'audio_room_float_chat.dart';
 import 'audio_room_controller.dart';
 import 'audio_room_service.dart';
 
@@ -38,6 +40,9 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
   String get _myUid => FirebaseAuth.instance.currentUser?.uid ?? '';
   bool _busy = false;
   StreamSubscription<String>? _noticeSub;
+  bool _composerOpen = false;
+  final TextEditingController _textC = TextEditingController();
+  final FocusNode _focus = FocusNode();
 
   @override
   void initState() {
@@ -53,6 +58,8 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
   void dispose() {
     _c.removeListener(_onChange);
     _noticeSub?.cancel();
+    _textC.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -103,6 +110,27 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
           _toast('audio_room_mic_denied');
         }
       });
+
+  void _toggleComposer() {
+    setState(() => _composerOpen = !_composerOpen);
+    if (_composerOpen) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _focus.requestFocus());
+    } else {
+      _focus.unfocus();
+    }
+  }
+
+  Future<void> _sendChat(String text) async {
+    if (!ChatComposerText.hasSendableText(text)) return;
+    final isTyped = text == _textC.text;
+    try {
+      await _c.sendChat(text);
+      if (isTyped) _textC.clear();
+    } catch (_) {
+      _toast('chat_send_failed');
+    }
+  }
 
   Future<void> _leave() async {
     await _c.leave();
@@ -169,10 +197,18 @@ class _AudioRoomPageState extends State<AudioRoomPage> {
               ? _svc.lowerHand(widget.groupId)
               : _svc.raiseHand(widget.groupId)),
           onToggleMic: _toggleMic,
-          onMessage: () => Navigator.of(context).maybePop(),
-          chatUnread: _c.chatUnread,
-          onChat: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => AudioRoomChatPage(groupName: widget.groupName))),
+          onMessage: _toggleComposer,
+          onGroupChat: () => Navigator.of(context).maybePop(),
+          chatMessages: List.of(_c.chat),
+          onDeleteChat: (id) => _c.deleteChat(id),
+          composer: _composerOpen
+              ? AudioRoomComposer(
+                  controller: _textC,
+                  focusNode: _focus,
+                  onSend: _sendChat,
+                  onClose: _toggleComposer,
+                )
+              : null,
           onLeave: _leave,
           onClose: _close,
         );
@@ -204,8 +240,11 @@ class AudioRoomView extends StatelessWidget {
   final void Function(bool raised) onToggleHand;
   final VoidCallback onToggleMic;
   final VoidCallback onMessage;
-  final int chatUnread;
-  final VoidCallback onChat;
+  final VoidCallback onGroupChat;
+  final List<AudioRoomChatMessage> chatMessages;
+  final void Function(String id) onDeleteChat;
+  final Widget? composer;
+  final bool animateChat;
   final VoidCallback onLeave;
   final VoidCallback onClose;
 
@@ -229,8 +268,11 @@ class AudioRoomView extends StatelessWidget {
     required this.onToggleHand,
     required this.onToggleMic,
     required this.onMessage,
-    required this.chatUnread,
-    required this.onChat,
+    required this.onGroupChat,
+    required this.chatMessages,
+    required this.onDeleteChat,
+    this.composer,
+    this.animateChat = true,
     required this.onLeave,
     required this.onClose,
   });
@@ -424,14 +466,9 @@ class AudioRoomView extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            tooltip: t.get('audio_room_chat'),
-            onPressed: onChat,
-            icon: Badge(
-              isLabelVisible: chatUnread > 0,
-              backgroundColor: _remdyBlue,
-              label: Text(chatUnread > 99 ? '99+' : '$chatUnread'),
-              child: const Icon(Icons.forum_outlined, color: _muted),
-            ),
+            tooltip: t.get('audio_room_group_chat'),
+            onPressed: onGroupChat,
+            icon: const Icon(Icons.forum_outlined, color: _muted),
           ),
           if (isModerator)
             TextButton(
@@ -447,14 +484,30 @@ class AudioRoomView extends StatelessWidget {
           : Column(children: [
               if (isModerator && hands.isNotEmpty) _handsStrip(t),
               Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: peers.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: _border, indent: 72),
-                  itemBuilder: (_, i) => _peerTile(context, t, peers[i]),
-                ),
+                child: Stack(children: [
+                  Positioned.fill(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.only(top: 8, bottom: 96),
+                      itemCount: peers.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: _border, indent: 72),
+                      itemBuilder: (_, i) => _peerTile(context, t, peers[i]),
+                    ),
+                  ),
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 12,
+                    child: AudioRoomFloatingMessages(
+                      messages: chatMessages,
+                      isModerator: isModerator,
+                      onDelete: onDeleteChat,
+                      animate: animateChat,
+                    ),
+                  ),
+                ]),
               ),
+              if (composer != null) composer!,
             ]),
       bottomNavigationBar: SafeArea(
         top: false,
@@ -484,7 +537,8 @@ class AudioRoomView extends StatelessWidget {
               _action(Icons.volume_off_rounded, t.get('audio_room_mute_all'),
                   busy ? null : onMuteAll),
             _action(Icons.chat_bubble_outline_rounded,
-                t.get('audio_room_message'), onMessage),
+                t.get('audio_room_message'), onMessage,
+                active: composer != null),
             _action(Icons.logout_rounded, t.get('audio_room_leave'), onLeave),
           ]),
         ),

@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:socialchat_mvp/features/audio_rooms/audio_room_chat_page.dart';
+import 'package:socialchat_mvp/features/audio_rooms/audio_room_float_chat.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_controller.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_page.dart';
 import 'package:socialchat_mvp/features/audio_rooms/audio_room_service.dart';
@@ -52,7 +52,9 @@ Widget _app(Widget home) => MaterialApp(
           onSurfaceVariant: Color(0xFF6B7280),
         ),
       ),
-      home: RepaintBoundary(key: const Key('shot'), child: home),
+      home: RepaintBoundary(
+          key: const Key('shot'),
+          child: TooltipVisibility(visible: false, child: home)),
     );
 
 const _peers = [
@@ -103,7 +105,9 @@ const _peers = [
 AudioRoomView _room(
         {required bool moderator,
         List<AudioRoomPeer> peers = _peers,
-        bool raised = false}) =>
+        bool raised = false,
+        List<AudioRoomChatMessage> chat = const [],
+        Widget? composer}) =>
     AudioRoomView(
       groupName: 'Papo De BUTECO',
       peers: peers,
@@ -129,8 +133,11 @@ AudioRoomView _room(
       onToggleHand: (_) {},
       onToggleMic: () {},
       onMessage: () {},
-      chatUnread: moderator ? 3 : 0,
-      onChat: () {},
+      onGroupChat: () {},
+      chatMessages: chat,
+      onDeleteChat: (_) {},
+      composer: composer,
+      animateChat: false,
       onLeave: () {},
       onClose: () {},
     );
@@ -217,17 +224,20 @@ void main() {
                 ? 'Valeu! Já já a gente abre pra perguntas.'
                 : "Thanks! We'll open up for questions soon."),
       ];
+      await shot(_room(moderator: false, peers: listenerPeers, chat: chatMsgs),
+          '5_sala_mensagens_flutuando');
       await shot(
-        AudioRoomChatView(
-          groupName: 'Papo De BUTECO',
-          messages: chatMsgs,
-          myUid: 'own',
-          isModerator: true,
-          controller: TextEditingController(),
-          onSend: () {},
-          onDelete: (_) {},
+        _room(
+          moderator: false,
+          peers: listenerPeers,
+          chat: [chatMsgs[2], msg(4, 'spk', 'Rafael', '👏')],
+          composer: AudioRoomComposer(
+            controller: TextEditingController(),
+            onSend: (_) {},
+            onClose: () {},
+          ),
         ),
-        '5_chat_da_sala',
+        '6_sala_caixinha_emojis',
       );
 
       await shot(

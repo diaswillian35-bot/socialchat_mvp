@@ -83,16 +83,13 @@ class AudioRoomController extends ChangeNotifier {
   static const String chatTopic = 'remdy_chat';
   static const String chatDeleteTopic = 'remdy_chat_del';
   static const int chatMaxChars = 500;
-  static const int _chatKeep = 200;
+  static const int _chatKeep = 20;
 
   /// Quanto tempo cada mensagem fica na tela antes de sumir.
-  static const Duration chatTtl = Duration(seconds: 30);
+  static const Duration chatTtl = Duration(seconds: 6);
   final Map<String, Timer> _chatTimers = {};
-  final Set<String> _unread = {};
 
   final List<AudioRoomChatMessage> chat = [];
-  int get chatUnread => _unread.length;
-  bool _chatOpen = false;
 
   /// Avisos para a tela mostrar (chave de texto).
   final StreamController<String> _notices =
@@ -236,26 +233,16 @@ class AudioRoomController extends ChangeNotifier {
 
   // ---------- Chat da sala ----------
 
-  void setChatOpen(bool open) {
-    _chatOpen = open;
-    if (open && _unread.isNotEmpty) {
-      _unread.clear();
-      notifyListeners();
-    }
-  }
-
-  void _addChat(AudioRoomChatMessage m, {bool countUnread = true}) {
+  void _addChat(AudioRoomChatMessage m) {
     if (chat.any((x) => x.id == m.id)) return;
     chat.add(m);
     chat.sort((a, b) => a.ts.compareTo(b.ts));
     if (chat.length > _chatKeep) chat.removeRange(0, chat.length - _chatKeep);
-    if (countUnread && !_chatOpen) _unread.add(m.id);
     _chatTimers[m.id] = Timer(chatTtl, () => _removeChat(m.id));
   }
 
   void _removeChat(String id) {
     _chatTimers.remove(id)?.cancel();
-    _unread.remove(id);
     final before = chat.length;
     chat.removeWhere((m) => m.id == id);
     if (chat.length != before) notifyListeners();
@@ -276,7 +263,7 @@ class AudioRoomController extends ChangeNotifier {
     );
     await local.publishData(utf8.encode(jsonEncode(m.toJson())),
         reliable: true, topic: chatTopic);
-    _addChat(m, countUnread: false);
+    _addChat(m);
     notifyListeners();
   }
 
@@ -350,8 +337,6 @@ class AudioRoomController extends ChangeNotifier {
     }
     _chatTimers.clear();
     chat.clear();
-    _unread.clear();
-    _chatOpen = false;
     notifyListeners();
   }
 }

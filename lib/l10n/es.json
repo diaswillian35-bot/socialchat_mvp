@@ -1767,9 +1767,7 @@
   "audio_room_revoke": "Quitar la palabra",
   "audio_room_muted_by_mod": "Un moderador apagó tu micrófono. Puedes volver a activarlo cuando quieras.",
   "audio_room_muted_all": "Se apagaron los micrófonos de todos.",
-  "audio_room_chat": "Chat de la sala",
-  "audio_room_chat_hint": "Solo lo ven quienes están en la sala. Cada mensaje desaparece a los 30 segundos y no se guarda nada.",
-  "audio_room_chat_empty": "Nadie ha escrito todavía.",
   "audio_room_chat_delete": "Eliminar mensaje",
-  "audio_room_chat_type": "Escribe a la sala…"
+  "audio_room_chat_type": "Escribe a la sala…",
+  "audio_room_group_chat": "Chat del grupo"
 }
