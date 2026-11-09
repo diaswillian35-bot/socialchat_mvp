@@ -39,6 +39,10 @@ import '../services/block_visibility.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'group_info_page.dart';
+import '../features/audio_rooms/audio_room_page.dart';
+import '../features/audio_rooms/audio_room_service.dart';
+import '../features/audio_rooms/group_live_card.dart';
+import '../services/group_role_policy.dart';
 import '../widget/audio_bubble.dart';
 import '../widget/recording_button.dart';
 import '../widgets/message_text_with_links.dart';
@@ -2430,6 +2434,24 @@ class _GroupChatPageState extends State<GroupChatPage>
     );
   }
 
+  /// Dono, admin ou moderador podem abrir a sala de áudio do grupo.
+  bool get _canOpenAudioRoom {
+    final me = uid;
+    if (me == null || !_isMember || _isBanned) return false;
+    return audioRoomIsModeratorRole(
+      GroupRolePolicy.roleOf(_groupData ?? const <String, dynamic>{}, me),
+    );
+  }
+
+  Future<void> _enterAudioRoom(String groupName, {bool create = false}) =>
+      openAndEnterAudioRoom(
+        context,
+        groupId: widget.groupId,
+        groupName: groupName,
+        groupData: _groupData ?? const <String, dynamic>{},
+        create: create,
+      );
+
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
@@ -2451,6 +2473,11 @@ class _GroupChatPageState extends State<GroupChatPage>
         iconTheme: const IconThemeData(color: _muted),
         centerTitle: true,
         actions: [
+          if (!_searchMode && _canOpenAudioRoom)
+            IconButton(
+              onPressed: () => _enterAudioRoom(headerName, create: true),
+              icon: const Icon(Icons.headset_mic_outlined, color: _muted),
+            ),
           if (!_searchMode)
             IconButton(
               onPressed: _openGroupReportSheet,
@@ -2525,6 +2552,11 @@ class _GroupChatPageState extends State<GroupChatPage>
           : ChatKeyboardScope(
               child: Column(
               children: [
+                if (_isMember && !_isBanned)
+                  GroupLiveCard(
+                    groupId: widget.groupId,
+                    onEnter: () => _enterAudioRoom(headerName),
+                  ),
                 GroupJoinUiLogic.shouldListenToMemberStreams(
                   isMember: _isMember,
                   isBanned: _isBanned,
@@ -2855,6 +2887,24 @@ class _GroupChatPageState extends State<GroupChatPage>
 
                                 if (hiddenForMe) {
                                   return const SizedBox.shrink();
+                                }
+
+                                if (type == 'audio_room') {
+                                  final opener =
+                                      (d['senderName'] ?? '').toString().trim();
+                                  return KeyedSubtree(
+                                    key: bubbleKey,
+                                    child: _DateHeader(
+                                      label: t
+                                          .get('audio_room_opened_by')
+                                          .replaceAll(
+                                            '{name}',
+                                            opener.isEmpty
+                                                ? t.get('audio_room_someone')
+                                                : opener,
+                                          ),
+                                    ),
+                                  );
                                 }
 
                                 final deletedText =

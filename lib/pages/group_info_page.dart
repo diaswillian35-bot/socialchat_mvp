@@ -34,6 +34,7 @@ import '../widgets/group_invite_share_button.dart';
 import '../widgets/group_pending_request_row.dart';
 import '../widgets/international_premium_dialog.dart';
 import 'chat_page.dart';
+import '../features/audio_rooms/audio_room_service.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 class GroupInfoPage extends StatefulWidget {
@@ -1872,6 +1873,58 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     );
   }
 
+  /// Aviso de "sala ao vivo" deste grupo (preferência pessoal do membro).
+  Widget _audioRoomPushCard(AppTexts t) {
+    final me = _uid!;
+    final svc = AudioRoomService();
+    return _card(
+      child: StreamBuilder<bool>(
+        stream: svc.livePushEnabled(me, widget.groupId),
+        builder: (context, snap) {
+          final on = snap.data ?? true;
+          return Row(
+            children: [
+              const Icon(Icons.headset_mic_outlined, color: _muted, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  t.get('audio_room_push_setting'),
+                  style: const TextStyle(
+                    color: _text,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              Switch(
+                value: on,
+                activeThumbColor: Colors.white,
+                activeTrackColor: _remdyBlue,
+                inactiveThumbColor: const Color(0xFF6B7280),
+                inactiveTrackColor: const Color(0xFFE5E7EB),
+                trackOutlineColor: WidgetStateProperty.resolveWith<Color?>(
+                  (states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return _remdyBlue;
+                    }
+                    return const Color(0xFFE5E7EB);
+                  },
+                ),
+                onChanged: (v) async {
+                  try {
+                    await svc.setLivePushEnabled(me, widget.groupId, v);
+                  } catch (_) {
+                    _toast(t.get('audio_room_error'));
+                  }
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
@@ -1966,6 +2019,10 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                     ],
                     if (_canModerate) ...[
                       _bannedUsersCard(),
+                      const SizedBox(height: 14),
+                    ],
+                    if (_uid != null) ...[
+                      _audioRoomPushCard(t),
                       const SizedBox(height: 14),
                     ],
                     _card(
