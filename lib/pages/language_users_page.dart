@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 
-import '../services/explore_only.dart';
+import '../services/dm_block.dart';
 import 'chat_page.dart';
 import 'public_profile_page.dart';
 import '../l10n/app_texts.dart';
@@ -106,7 +106,7 @@ class LanguageUsersPage extends StatelessWidget {
           otherUid,
         ) &&
         context.mounted &&
-        await ExploreOnly.blocksNewChat(context, otherUid)) {
+        await DmBlock.blocksNewChatAny(context, otherUid)) {
       return;
     }
 

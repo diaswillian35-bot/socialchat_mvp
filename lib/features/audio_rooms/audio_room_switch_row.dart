@@ -10,19 +10,21 @@ class AudioRoomSwitchRow extends StatelessWidget {
   final String label;
   final bool value;
   final ValueChanged<bool>? onChanged;
+  final IconData icon;
 
   const AudioRoomSwitchRow({
     super.key,
     required this.label,
     required this.value,
     required this.onChanged,
+    this.icon = Icons.headset_mic_outlined,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.headset_mic_outlined, color: _muted, size: 18),
+        Icon(icon, color: _muted, size: 18),
         const SizedBox(width: 10),
         Expanded(
           child: Text(

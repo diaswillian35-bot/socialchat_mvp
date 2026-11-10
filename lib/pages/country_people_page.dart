@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../services/remdy_launch_access.dart';
 import '../widgets/publish_cta_card.dart';
 import '../services/explore_only.dart';
+import '../services/dm_block.dart';
 import '../services/nearby_visibility.dart';
 import '../services/user_interests.dart';
 import '../widgets/common_carousel.dart';
@@ -300,7 +301,7 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
     }
     if (!await InternationalChatService.conversationExists(_myUid, otherUid) &&
         mounted &&
-        await ExploreOnly.blocksNewChat(context, otherUid)) {
+        await DmBlock.blocksNewChatAny(context, otherUid)) {
       return;
     }
     final convoId = await InternationalChatService.getOrCreateConversation(

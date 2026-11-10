@@ -89,6 +89,14 @@ class EventCommentsService {
   }
 
   static String createErrorKey(FirebaseFunctionsException e) {
+    // b44: insulto / sem falar / filtro do servidor.
+    final details = e.details;
+    if (details is Map) {
+      final c = (details['code'] ?? details['reason'] ?? '').toString();
+      if (c == 'insult_blocked') return 'insult_blocked_notice';
+      if (c == 'muted') return 'mod_muted_send_blocked';
+      if (c == 'content_filter_blocked') return 'content_filter_blocked';
+    }
     switch (e.code) {
       case 'unauthenticated':
         return 'event_detail_login_required';

@@ -57,3 +57,9 @@ test("profanityLevel: off desliga, strict liga palavrão em todo lugar", () => {
 test("prepare não estraga números", () => {
   assert.equal(prepare("2024 10 13"), "2024 10 13");
 });
+
+test("parity_cases.json (lido pelo app) está atualizado", () => {
+  const { cases } = require("./parity_cases");
+  const saved = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "parity_cases.json"), "utf8"));
+  assert.deepEqual(saved, cases(), "rode: node functions/moderation/parity_cases.js");
+});

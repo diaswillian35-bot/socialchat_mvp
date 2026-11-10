@@ -1,3 +1,4 @@
+import 'chat_rules_filter.dart';
 import 'package:flutter/foundation.dart';
 
 import '../utils/user_search_normalize.dart';
@@ -17,6 +18,7 @@ class ObjectionableContentFilter {
   ObjectionableContentFilter._();
 
   static const String blockedErrorKey = 'content_filter_blocked';
+  static const String insultErrorKey = 'insult_blocked_notice';
 
   /// Phrases / tokens that must not be posted (normalized match).
   /// Kept deliberately narrow to reduce false positives while satisfying
@@ -184,8 +186,10 @@ class ObjectionableContentFilter {
   /// Returns null when allowed; otherwise [blockedErrorKey].
   static String? rejectReason(String? raw) {
     final decision = evaluate(raw);
-    if (decision == null) return null;
-    return blockedErrorKey;
+    if (decision != null) return blockedErrorKey;
+    // b44: insulto/ofensa dirigida (lista em chat_rules_filter.dart).
+    if (ChatRulesFilter.isInsult(raw)) return insultErrorKey;
+    return null;
   }
 
   static bool allows(String? raw) => rejectReason(raw) == null;

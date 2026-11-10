@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/chat_composer_text.dart';
 
 import '../../l10n/app_texts.dart';
+import '../../services/dm_block.dart';
 import '../../services/group_role_policy.dart';
 import 'audio_room_avatar.dart';
 import 'audio_room_float_chat.dart';
@@ -330,13 +331,18 @@ class AudioRoomView extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       leading: AudioRoomAvatar(
           uid: p.uid, name: p.name, speaking: p.canSpeak && p.speaking),
-      title: Text(
-        p.isLocal ? '${p.name} (${t.get('audio_room_you')})' : p.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-            color: _text, fontWeight: FontWeight.w700, fontSize: 15),
-      ),
+      title: Row(children: [
+        Flexible(
+          child: Text(
+            p.isLocal ? '${p.name} (${t.get('audio_room_you')})' : p.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                color: _text, fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+        ),
+        ProfileMarks(uid: p.uid, size: 15),
+      ]),
       subtitle: Text(
         role.isNotEmpty
             ? role

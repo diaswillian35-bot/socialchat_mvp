@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../services/explore_only.dart';
+import '../services/dm_block.dart';
+import '../services/chat_rules_filter.dart';
+import '../services/objectionable_content_filter.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/block_visibility.dart';
@@ -1015,7 +1017,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       final snap = await convRef.get();
 
       if (!snap.exists) {
-        if (mounted && await ExploreOnly.blocksNewChat(context, otherUid)) {
+        if (mounted &&
+            await DmBlock.blocksNewChatAny(context, otherUid)) {
           return;
         }
         final myData = await InternationalChatService.fetchUserData(myUid);
@@ -1875,6 +1878,180 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     );
   }
 
+  // ===== b44: bot moderador do grupo (dono/admin) =====
+  bool _modBotSaving = false;
+
+  Future<void> _saveModBot(Map<String, dynamic> changes) async {
+    final t = AppTexts.current;
+    if (!_canModerate || _modBotSaving) return;
+    final prev = Map<String, dynamic>.from(
+        (_groupData?['modBot'] as Map?)?.cast<String, dynamic>() ?? const {});
+    setState(() {
+      _modBotSaving = true;
+      _groupData = {
+        ...?_groupData,
+        'modBot': {...prev, ...changes},
+      };
+    });
+    try {
+      await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('updateGroupModBot')
+          .call(<String, dynamic>{'groupId': widget.groupId, 'changes': changes});
+      _toast(t.get('bot_settings_saved'));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _groupData = {...?_groupData, 'modBot': prev});
+      }
+      _toast(t.get('save_error'));
+    } finally {
+      if (mounted) setState(() => _modBotSaving = false);
+    }
+  }
+
+  Future<void> _editModBotRules() async {
+    final t = AppTexts.current;
+    if (!_canModerate || _modBotSaving) return;
+    final controller =
+        TextEditingController(text: ChatRulesFilter.botRules(_groupData));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(t.get('bot_rules_edit')),
+        content: TextField(
+          controller: controller,
+          maxLines: 6,
+          maxLength: ChatRulesFilter.rulesMax,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(
+            hintText: t.get('bot_default_rules'),
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(t.get('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t.get('save')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final rules = controller.text.trim();
+    final reject = ObjectionableContentFilter.rejectReason(rules);
+    if (rules.isNotEmpty && reject != null) {
+      _toast(t.get(reject));
+      return;
+    }
+    await _saveModBot({'rules': rules});
+  }
+
+  Widget _modBotCard(AppTexts t) {
+    bool flag(String k) => ChatRulesFilter.botFlag(_groupData, k);
+    final rules = ChatRulesFilter.botRules(_groupData);
+    final busy = _modBotSaving || _saving;
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.get('bot_settings_title'),
+            style: const TextStyle(
+              color: _text,
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            t.get('bot_settings_info'),
+            style: const TextStyle(
+              color: _muted,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 8),
+          AudioRoomSwitchRow(
+            key: const Key('modbot_welcome'),
+            icon: Icons.waving_hand_outlined,
+            label: t.get('bot_welcome_toggle'),
+            value: flag('welcomeEnabled'),
+            onChanged: busy ? null : (v) => _saveModBot({'welcomeEnabled': v}),
+          ),
+          AudioRoomSwitchRow(
+            key: const Key('modbot_links'),
+            icon: Icons.link_off_rounded,
+            label: t.get('bot_block_links'),
+            value: flag('blockLinks'),
+            onChanged: busy ? null : (v) => _saveModBot({'blockLinks': v}),
+          ),
+          AudioRoomSwitchRow(
+            key: const Key('modbot_phones'),
+            icon: Icons.phone_disabled_outlined,
+            label: t.get('bot_block_phones'),
+            value: flag('blockPhones'),
+            onChanged: busy ? null : (v) => _saveModBot({'blockPhones': v}),
+          ),
+          AudioRoomSwitchRow(
+            key: const Key('modbot_profanity'),
+            icon: Icons.do_not_disturb_on_outlined,
+            label: t.get('bot_block_profanity'),
+            value: flag('blockProfanity'),
+            onChanged: busy ? null : (v) => _saveModBot({'blockProfanity': v}),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            key: const Key('modbot_rules'),
+            onTap: busy ? null : _editModBotRules,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.rule_rounded, color: _muted, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          t.get('bot_rules_edit'),
+                          style: const TextStyle(
+                            color: _text,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          rules.isEmpty ? t.get('bot_default_rules') : rules,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _muted,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.edit_outlined, color: _muted, size: 18),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Aviso de "sala ao vivo" deste grupo (preferência pessoal do membro).
   Widget _audioRoomPushCard(AppTexts t) {
     final me = _uid!;
@@ -2021,6 +2198,10 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                         isPrivate: isPrivate,
                         joinPolicy: joinPolicy,
                       ),
+                      const SizedBox(height: 14),
+                    ],
+                    if (_canModerate) ...[
+                      _modBotCard(t),
                       const SizedBox(height: 14),
                     ],
                     if (_canModerate) ...[

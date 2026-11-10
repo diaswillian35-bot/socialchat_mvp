@@ -12,6 +12,8 @@ import 'package:flutter/material.dart';
 import '../services/admin_access.dart';
 import '../widgets/admin_mode_sheet.dart';
 import '../l10n/app_texts.dart';
+import '../services/dm_block.dart';
+import '../pages/verify_phone_page.dart';
 import '../pages/system_inbox_page.dart';
 import '../pages/delete_account_page.dart';
 import '../pages/blocked_users_page.dart';
@@ -81,6 +83,8 @@ class _MenuPageState extends State<MenuPage> {
   // Configurações: "Não aparecer na minha cidade" e avisos de interesses.
   bool _hideInCity = false;
   bool _interestPush = true;
+  bool _blockDms = false;
+  bool _dmAllowExisting = false;
   bool _savingPrefs = false;
 
   @override
@@ -110,6 +114,8 @@ class _MenuPageState extends State<MenuPage> {
       setState(() {
         _hideInCity = NearbyVisibility.hideInCityFromData(data);
         _interestPush = InterestPushPref.enabledFromData(data);
+        _blockDms = DmBlock.isBlockedData(data);
+        _dmAllowExisting = data?[DmBlock.allowExistingField] == true;
       });
     } catch (_) {}
   }
@@ -156,6 +162,22 @@ class _MenuPageState extends State<MenuPage> {
         _interestPush,
         (x) => _interestPush = x,
         (uid) => InterestPushPref.save(uid, v),
+        null,
+      );
+
+  void _setBlockDms(bool v) => _savePref(
+        v,
+        _blockDms,
+        (x) => _blockDms = x,
+        (uid) => DmBlock.save(uid, blocked: v, allowExisting: _dmAllowExisting),
+        v ? 'menu_block_dms_now_on' : 'menu_block_dms_now_off',
+      );
+
+  void _setDmAllowExisting(bool v) => _savePref(
+        v,
+        _dmAllowExisting,
+        (x) => _dmAllowExisting = x,
+        (uid) => DmBlock.save(uid, blocked: _blockDms, allowExisting: v),
         null,
       );
 
@@ -396,6 +418,33 @@ Stream<int> _unreadSystemCount() {
                   title: t.get('menu_interest_push'),
                   value: _interestPush,
                   onChanged: _savingPrefs ? null : _setInterestPush,
+                ),
+                const Divider(height: 1),
+                MenuSwitchTile(
+                  tileKey: const Key('menu_block_dms'),
+                  switchKey: const Key('menu_block_dms_switch'),
+                  icon: Icons.lock_outline_rounded,
+                  title: t.get('menu_block_dms'),
+                  value: _blockDms,
+                  onChanged: _savingPrefs ? null : _setBlockDms,
+                ),
+                if (_blockDms) ...[
+                  const Divider(height: 1),
+                  MenuSwitchTile(
+                    tileKey: const Key('menu_block_dms_keep'),
+                    switchKey: const Key('menu_block_dms_keep_switch'),
+                    icon: Icons.chat_bubble_outline_rounded,
+                    title: t.get('menu_block_dms_keep_existing'),
+                    value: _dmAllowExisting,
+                    onChanged: _savingPrefs ? null : _setDmAllowExisting,
+                  ),
+                ],
+                const Divider(height: 1),
+                _item(
+                  context: context,
+                  icon: Icons.verified_outlined,
+                  title: t.get('verify_profile_title'),
+                  onTap: () => _open(context, const VerifyPhonePage()),
                 ),
                 const Divider(height: 1),
                 _item(

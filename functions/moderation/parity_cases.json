@@ -1,0 +1,1766 @@
+[
+ {
+  "text": "seu idiota",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "SEU IDIOTA!!!",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai tomar no cuuuu",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "f.d.p",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "F D P",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "0tári0",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "b1tch",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "f u c k you",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "p o r r a",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "foda-se",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "que merda",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "Moro em Cuiabá",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "computador",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "je suis en retard",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "ele pede ajuda",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "me chama no (11) 98765-4321",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_phone",
+  "groupStrict": "bot_phone"
+ },
+ {
+  "text": "+55 11 98765 4321",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_phone",
+  "groupStrict": "bot_phone"
+ },
+ {
+  "text": "ligue 912 345 678",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_phone",
+  "groupStrict": "bot_phone"
+ },
+ {
+  "text": "+1 416 555 1234",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_phone",
+  "groupStrict": "bot_phone"
+ },
+ {
+  "text": "416-555-1234",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_phone",
+  "groupStrict": "bot_phone"
+ },
+ {
+  "text": "zap 98765-4321",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_phone",
+  "groupStrict": "bot_phone"
+ },
+ {
+  "text": "encontro dia 10/11/2026 às 19:30",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "19h30 no bar",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "custa R$ 1.500,00",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "$1,299.99",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "CEP 01310-100",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "1000-001 Lisboa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "anos 2024 2025 2026",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "2026-11-10",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "12,50 €",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "id 123456",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "https://remdy.app/g/abc",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "www.site.com",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "veja meusite.com.br",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "ana@gmail.com",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "bit.ly/xyz",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "t.me/grupo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "vou.de carro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "ok.me liga",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "site.pt/abc",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "loja ponto com",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "sr.silva chegou",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "nota 9.5",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Ça va, Zoë? Ñandú",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "filho da puta",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "filha da puta",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "fdp",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vagabunda",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "arrombado",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "arrombada",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "desgracado",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "desgracada",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "otario",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "otaria",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "babaca",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "retardado",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "retardada",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "corno",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vadia",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "cuzao",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "escroto",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "escrota",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai tomar no cu",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai toma no cu",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "tomar no cu",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vtnc",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai se foder",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai se fuder",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai te foder",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vsf",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu viado",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua bicha",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu macaco",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua macaca",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua puta",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua piranha",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu lixo",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu merda",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua vagabunda",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu vagabundo",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu imbecil",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua imbecil",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua idiota",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu burro",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua burra",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "piranha do caralho",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "cabrao",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "cabra do caralho",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "paneleiro",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "atrasado mental",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai-te foder",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai para o caralho",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai po caralho",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vai pro caralho",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu anormal",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua anormal",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sua cona",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "seu cabrao",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "filho da mae",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "grande cabrao",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "motherfucker",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "son of a bitch",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "bitch",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "asshole",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "dickhead",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "cunt",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "whore",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "slut",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "faggot",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "fag",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "nigger",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "nigga",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "bastard",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "fuck you",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "fuck u",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "go fuck yourself",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "stfu bitch",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "you idiot",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "you moron",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "piece of shit",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "kill yourself",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "kys",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "you retard",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "fucking retard",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "hijo de puta",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "hija de puta",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "hdp",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "pendejo",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "pendeja",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "gilipollas",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "cabron",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "cabrona",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "maricon",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "marica",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "subnormal",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "culero",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "culera",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "vete a la mierda",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "chinga tu madre",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "concha de tu madre",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "tu puta madre",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "eres una zorra",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "tu puta",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "malparido",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "malparida",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "imbecil de mierda",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "fils de pute",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "connard",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "connasse",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "salope",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "encule",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "batard",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "abruti",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "abrutie",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "nique ta mere",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "ntm",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "va te faire foutre",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "pauvre con",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sale con",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sale pute",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "ta gueule connard",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sale chienne",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "sale pede",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "espece de pede",
+  "insultsOnly": "insult",
+  "loose": "insult",
+  "groupDefault": "insult",
+  "groupStrict": "insult"
+ },
+ {
+  "text": "porra",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "merda",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "caralho",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "puta que pariu",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "pqp",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "foda",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "foda se",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "fodase",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "cacete",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "bosta",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "puta",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "cu",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "buceta",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "piroca",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "fuder",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "foder",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "putaria",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "krl",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "crl",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "fodasse",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "cona",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "fuck",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "fucking",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "fucked",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "shit",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "bullshit",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "wtf",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "stfu",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "motherfucking",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "dumbass",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "jackass",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "mierda",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "joder",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "jodido",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "puta madre",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "carajo",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "verga",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "chingada",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "chingar",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "pinche",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "cojones",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "putain",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "merde",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "chier",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "fait chier",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "foutre",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "nique",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "niquer",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "couilles",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "bordel de merde",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "putain de merde",
+  "insultsOnly": null,
+  "loose": "profanity",
+  "groupDefault": null,
+  "groupStrict": "profanity"
+ },
+ {
+  "text": "disputa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "reputacao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Bitche fica na Franca",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Scunthorpe",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Cuiaba",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Pacui",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pau brasil",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cafe negro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "o veado correu",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "fila da bicha em Lisboa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "macaco no zoologico",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "piranha e um peixe",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cabra e um animal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "zorro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "la zorra corre en el bosque",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "con plaisir",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "contre",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "conte",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Concha y Toro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "assassin",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "classic",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "passport",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cocktail",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Dickens",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Shitake",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "hello",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "putz",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Sussex",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Essex",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Cumbria",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "therapist",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "grape",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pedestre",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pedido",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cuco",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cucumber",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "el cono de helado",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ }
+]

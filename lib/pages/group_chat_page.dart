@@ -12,6 +12,8 @@ import '../widgets/chat_keyboard_inset.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import '../l10n/app_texts.dart';
+import '../services/dm_block.dart';
+import '../services/chat_rules_filter.dart';
 import '../pages/forward_message_page.dart';
 import '../services/forward_message_service.dart';
 import '../services/group_ban_service.dart';
@@ -1365,6 +1367,22 @@ class _GroupChatPageState extends State<GroupChatPage>
       final filterReject = ObjectionableContentFilter.rejectReason(text);
       if (filterReject != null) {
         _toast(AppTexts.current.get(filterReject));
+        return;
+      }
+
+      // b44: bot moderador do grupo (links, telefones, palavrão conforme o dono).
+      final botReason = ChatRulesFilter.evaluateGroup(text, _groupData);
+      if (botReason != null) {
+        _toast(AppTexts.current.get(ChatRulesFilter.noticeKey(botReason)));
+        return;
+      }
+
+      // b44: "sem falar" (degraus 2 e 3). O servidor barra de qualquer jeito.
+      final mutedUntil = ModerationMute.until(mySnap.data());
+      if (mutedUntil != null) {
+        _toast(AppTexts.current
+            .get('mod_muted_notice')
+            .replaceAll('{until}', ModerationMute.format(mutedUntil)));
         return;
       }
 
@@ -2901,6 +2919,27 @@ class _GroupChatPageState extends State<GroupChatPage>
                                   return const SizedBox.shrink();
                                 }
 
+                                // b44: boas-vindas do bot Remdy (só quem entrou vê),
+                                // no estilo de aviso do sistema que já existe.
+                                if (type == 'bot_welcome') {
+                                  if ((d['botFor'] ?? '').toString() != uid) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final rules =
+                                      (d['text'] ?? '').toString().trim();
+                                  return KeyedSubtree(
+                                    key: bubbleKey,
+                                    child: _DateHeader(
+                                      label: t.get('bot_welcome').replaceAll(
+                                            '{rules}',
+                                            rules.isEmpty
+                                                ? t.get('bot_default_rules')
+                                                : rules,
+                                          ),
+                                    ),
+                                  );
+                                }
+
                                 if (type == 'audio_room') {
                                   final opener =
                                       (d['senderName'] ?? '').toString().trim();
@@ -2944,9 +2983,17 @@ class _GroupChatPageState extends State<GroupChatPage>
                                     (d['replyToImageUrl'] ?? '').toString();
 
                                 if (deleted) {
-                                  final text = deletedText.isNotEmpty
-                                      ? deletedText
-                                      : t.get('group_message_deleted_by_admin');
+                                  final botReason = d['deletedBy'] == 'remdy_bot'
+                                      ? ((d['moderation'] is Map
+                                              ? (d['moderation'] as Map)['reason']
+                                              : null) ??
+                                          '')
+                                      : null;
+                                  final text = botReason != null
+                                      ? t.get(_botRemovedKey(botReason.toString()))
+                                      : deletedText.isNotEmpty
+                                          ? deletedText
+                                          : t.get('group_message_deleted_by_admin');
 
                                   bubbleWidget = _Bubble(
                                     text: text,
@@ -3938,6 +3985,20 @@ class _FullScreenImagePage extends StatelessWidget {
   }
 }
 
+/// b44: texto do balão "apagada" quando o bot Remdy removeu a mensagem.
+String _botRemovedKey(String reason) {
+  switch (reason) {
+    case 'bot_link':
+      return 'bot_removed_link';
+    case 'bot_phone':
+      return 'bot_removed_phone';
+    case 'profanity':
+      return 'bot_removed_profanity';
+    default:
+      return 'bot_removed_insult';
+  }
+}
+
 class _DateHeader extends StatelessWidget {
   final String label;
 
@@ -4209,6 +4270,22 @@ class MessageRow extends StatelessWidget {
                       const SizedBox(width: 6),
                       const Icon(
                         Icons.shield_outlined,
+                        size: 12,
+                        color: _muted,
+                      ),
+                    ],
+                    if (ProfileMarks.isVerifiedData(userData)) ...[
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.verified_outlined,
+                        size: 12,
+                        color: Color(0xFF313A5F),
+                      ),
+                    ],
+                    if (DmBlock.isBlockedData(userData)) ...[
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.lock_outline,
                         size: 12,
                         color: _muted,
                       ),

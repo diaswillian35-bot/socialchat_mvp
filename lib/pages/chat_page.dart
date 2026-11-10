@@ -22,6 +22,7 @@ import 'package:socialchat_mvp/widgets/blocked_uids_builder.dart';
 import '../services/dm_quota_config.dart';
 import '../services/admin_access.dart';
 import '../l10n/app_texts.dart';
+import '../services/dm_block.dart';
 import '../widgets/chat_composer_text.dart';
 import '../widgets/remdy_keyboard_caps.dart';
 import '../widgets/chat_keyboard_inset.dart';
@@ -1539,6 +1540,13 @@ class _ChatPageState extends State<ChatPage>
             await _showQuotaExhaustedDialog();
             return;
           }
+          // b44: PV bloqueado / sem falar / insulto: aviso próprio.
+          final b44Key = DmBlock.errorNoticeKey(result.errorCode);
+          if (b44Key != null) {
+            _markPendingTextFailed(pendingId);
+            _warn(t.get(b44Key));
+            return;
+          }
           _markPendingTextFailed(pendingId);
           _notifySendFailed();
           return;
@@ -2760,8 +2768,16 @@ class _ChatPageState extends State<ChatPage>
               initialData: false,
               builder: (context, blockSnap) {
                 final isBlocked = blockSnap.data ?? false;
+                // b44: PV bloqueado (dos dois lados) / "sem falar" da moderação.
+                final mutedUntil = ModerationMute.until(_scopeMyData);
+                final dmLockedOther =
+                    DmBlock.blocksSend(_scopeOtherData, hasHistory: true);
+                final dmLockedSelf =
+                    DmBlock.blocksSend(_scopeMyData, hasHistory: true);
+                final dmLocked = dmLockedOther || dmLockedSelf;
+                final composerLocked = isBlocked || dmLocked || mutedUntil != null;
 
-                final locked = isBlocked;
+                final locked = composerLocked;
 
                 return Column(
                   children: [
@@ -3431,7 +3447,7 @@ class _ChatPageState extends State<ChatPage>
                                                 horizontal: 14, vertical: 4),
                                             child: TextField(
                                               controller: _textC,
-                                              enabled: !isBlocked,
+                                              enabled: !composerLocked,
                                               minLines: 1,
                                               maxLines: 5,
                                               keyboardType:
@@ -3446,11 +3462,20 @@ class _ChatPageState extends State<ChatPage>
                                               textInputAction:
                                                   TextInputAction.newline,
                                               decoration: InputDecoration(
-                                                hintText: isBlocked
-                                                    ? t.get(
-                                                        'chat_cannot_send_blocked')
-                                                    : t.get(
-                                                        'chat_type_message'),
+                                                hintText: mutedUntil != null
+                                                    ? t
+                                                        .get('mod_muted_hint')
+                                                        .replaceAll('{until}',
+                                                            ModerationMute.format(mutedUntil))
+                                                    : dmLocked && !isBlocked
+                                                        ? t.get(dmLockedOther
+                                                            ? 'dm_blocked_hint'
+                                                            : 'dm_blocked_self_hint')
+                                                        : composerLocked
+                                                            ? t.get(
+                                                                'chat_cannot_send_blocked')
+                                                            : t.get(
+                                                                'chat_type_message'),
                                                 border: InputBorder.none,
                                                 suffixIcon: _usesReplyQuota
                                                     ? Padding(
@@ -3488,7 +3513,7 @@ class _ChatPageState extends State<ChatPage>
                                         Opacity(
                                           opacity: locked ? 0.45 : 1.0,
                                           child: InkWell(
-                                            onTap: isBlocked
+                                            onTap: composerLocked
                                                 ? null
                                                 : _openPlusMenu,
                                             borderRadius:
@@ -3523,7 +3548,7 @@ class _ChatPageState extends State<ChatPage>
                                             ? Opacity(
                                                 opacity: locked ? 0.45 : 1.0,
                                                 child: IgnorePointer(
-                                                  ignoring: isBlocked,
+                                                  ignoring: composerLocked,
                                                   child: RecordingButton(
                                                     onRecordStart: () async {
                                                       await _setRecording(true);
@@ -3544,10 +3569,10 @@ class _ChatPageState extends State<ChatPage>
                                                 ),
                                               )
                                             : Opacity(
-                                                opacity: isBlocked ? 0.45 : 1.0,
+                                                opacity: composerLocked ? 0.45 : 1.0,
                                                 child: InkWell(
                                                   onTap:
-                                                      isBlocked ? null : _send,
+                                                      composerLocked ? null : _send,
                                                   borderRadius:
                                                       BorderRadius.circular(
                                                           999),

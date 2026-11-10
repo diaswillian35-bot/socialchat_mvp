@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../l10n/app_texts.dart';
+import '../services/dm_block.dart';
 import '../services/block_service.dart';
 import '../services/block_visibility.dart';
 import '../widgets/blocked_uids_builder.dart';
@@ -301,15 +302,31 @@ class PublicProfilePage extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    name.isEmpty ? t.get('user') : name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w900,
-                                      color: _text,
-                                    ),
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          name.isEmpty ? t.get('user') : name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.w900,
+                                            color: _text,
+                                          ),
+                                        ),
+                                      ),
+                                      if (ProfileMarks.isVerifiedData(data)) ...[
+                                        const SizedBox(width: 6),
+                                        const Icon(Icons.verified,
+                                            size: 22, color: _primary),
+                                      ],
+                                      if (DmBlock.isBlockedData(data)) ...[
+                                        const SizedBox(width: 6),
+                                        const Icon(Icons.lock_rounded,
+                                            size: 20, color: _muted),
+                                      ],
+                                    ],
                                   ),
                                   const SizedBox(height: 6),
 
@@ -461,6 +478,25 @@ class PublicProfilePage extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 14),
+
+                  if (DmBlock.isBlockedData(data)) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.lock_rounded, size: 16, color: _muted),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            t.get('profile_dm_blocked'),
+                            style: const TextStyle(
+                              color: _muted,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
 
                   // ===== Idiomas (card clean) =====
                   Container(

@@ -81,7 +81,7 @@ class SendDmMessageService {
       DmReplyQuota? quota;
       final details = e.details;
       if (details is Map) {
-        detailCode = (details['code'] ?? '').toString();
+        detailCode = (details['code'] ?? details['reason'] ?? '').toString();
         final rq = details['replyQuota'];
         if (rq is Map) {
           quota = DmReplyQuota.fromMap(Map<String, dynamic>.from(rq));

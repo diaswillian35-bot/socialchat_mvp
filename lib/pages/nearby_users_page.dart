@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../services/explore_only.dart';
+import '../services/dm_block.dart';
 import '../l10n/app_texts.dart';
 import '../services/block_service.dart';
 import '../services/international_chat_service.dart';
@@ -101,7 +101,7 @@ class NearbyUsersPage extends StatelessWidget {
 
       if (!await InternationalChatService.conversationExists(myUid, target) &&
           context.mounted &&
-          await ExploreOnly.blocksNewChat(context, target)) {
+          await DmBlock.blocksNewChatAny(context, target)) {
         return;
       }
       final convoId = await InternationalChatService.getOrCreateConversation(
