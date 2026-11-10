@@ -23,6 +23,8 @@ const {
   sanitizeLinkPreview,
 } = require("./forward_message_logic");
 const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
+const { dmBlockedBetween, conversationHasHistory } = require("./dm_block_logic");
+const { moderationSendBlock, moderationMuted } = require("./moderation/account");
 const {
   appendDmUnreadArgs,
   buildDmUnreadUpdatePairs,
@@ -71,14 +73,23 @@ async function loadActiveUser(uid) {
   const data = snap.data() || {};
   const block = accountBlocked(data);
   if (block) throw new HttpsError("permission-denied", "Not allowed.");
+  // b44: suspenso/"sem falar" não encaminha.
+  if (moderationSendBlock(data)) throw new HttpsError("permission-denied", "Not allowed.");
+  if (moderationMuted(data)) throw new HttpsError("permission-denied", "Muted.", { reason: "muted" });
   return data;
 }
 
-async function isEitherBlocked(uid, otherUid) {
+// b44: com convData, também checa "Bloquear mensagens privadas" (dois sentidos).
+async function isEitherBlocked(uid, otherUid, convData) {
   const [a, b] = await Promise.all([
     db().collection("users").doc(uid).get(),
     db().collection("users").doc(otherUid).get(),
   ]);
+  if (convData !== undefined && dmBlockedBetween(a.data(), b.data(), {
+    hasHistory: conversationHasHistory(convData),
+  })) {
+    return true;
+  }
   return isEitherBlockedFromUserSnaps(a.data(), b.data(), uid, otherUid);
 }
 
@@ -199,6 +210,9 @@ async function findOrCreateDm(uid, otherUid, myData) {
       convRef = q.docs[0].ref;
       convSnap = q.docs[0];
     }
+  }
+  if (await isEitherBlocked(uid, otherUid, convSnap.exists ? convSnap.data() : null)) {
+    return { error: "blocked" };
   }
   if (!convSnap.exists) {
     await convRef.set(
@@ -387,7 +401,7 @@ async function forwardToDestination(uid, myData, dest, content) {
       const otherData =
         (await db().collection("users").doc(otherUid).get()).data() || {};
       if (accountBlocked(otherData)) return { ok: false, error: "not_allowed" };
-      if (await isEitherBlocked(uid, otherUid)) {
+      if (await isEitherBlocked(uid, otherUid, convSnap.data())) {
         return { ok: false, error: "blocked" };
       }
       if (!canSendInternational(myData, otherData)) {

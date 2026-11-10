@@ -300,6 +300,9 @@ function safeChatPreview(text, config) {
   const raw = text == null ? "" : String(text);
   if (!raw.trim()) return raw;
   if (evaluateText(raw, config)) return "";
+  // b44: insulto não aparece em prévia/push.
+  if (!(config && config.profanityLevel === "off")
+    && require("./moderation/profanity").evaluateProfanity(raw, { loose: false })) return "";
   return raw;
 }
 

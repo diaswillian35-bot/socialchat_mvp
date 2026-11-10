@@ -39,6 +39,8 @@ const {
   idempotencyDocId,
 } = require("./share_extension_logic");
 const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
+const { dmBlockedBetween, conversationHasHistory } = require("./dm_block_logic");
+const { moderationSendBlock, moderationMuted } = require("./moderation/account");
 const {
   appendDmUnreadArgs,
   buildDmUnreadUpdatePairs,
@@ -123,11 +125,24 @@ async function assertUserActive(uid) {
   return data;
 }
 
-async function isEitherBlocked(uid, otherUid) {
+// b44: suspenso/"sem falar" não envia pelo compartilhar (a listagem continua).
+function assertCanSend(data) {
+  if (moderationSendBlock(data) || moderationMuted(data)) {
+    throw new HttpsError("permission-denied", "Not allowed.", { reason: "muted" });
+  }
+}
+
+// b44: com convData, também checa "Bloquear mensagens privadas" (dois sentidos).
+async function isEitherBlocked(uid, otherUid, convData) {
   const [a, b] = await Promise.all([
     db().collection("users").doc(uid).get(),
     db().collection("users").doc(otherUid).get(),
   ]);
+  if (convData !== undefined && dmBlockedBetween(a.data(), b.data(), {
+    hasHistory: conversationHasHistory(convData),
+  })) {
+    return true;
+  }
   return isEitherBlockedFromUserSnaps(a.data(), b.data(), uid, otherUid);
 }
 
@@ -326,7 +341,7 @@ const listShareDestinations = onCall(
       ]);
       const pub = pubSnap.data() || {};
       const otherData = otherUserSnap.data() || {};
-      const blocked = await isEitherBlocked(uid, otherUid);
+      const blocked = await isEitherBlocked(uid, otherUid, data);
       const intlOk = canSendInternational(myData, otherData);
       let allowed = true;
       let blockedReason = "";
@@ -431,6 +446,7 @@ const sendShareMessage = onCall(
     );
 
     const myData = await assertUserActive(uid);
+    assertCanSend(myData);
     const parsed = normalizeShareText(textRaw);
     if (!parsed.ok) {
       throw new HttpsError("invalid-argument", "Invalid content.");
@@ -476,7 +492,7 @@ const sendShareMessage = onCall(
       if (!resolvedOther) {
         throw new HttpsError("permission-denied", "Not allowed.");
       }
-      if (await isEitherBlocked(uid, resolvedOther)) {
+      if (await isEitherBlocked(uid, resolvedOther, convSnap.data())) {
         throw new HttpsError("permission-denied", "Not allowed.");
       }
       const otherSnap = await db().collection("users").doc(resolvedOther).get();

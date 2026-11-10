@@ -482,6 +482,12 @@ async function deleteMyAccountHandler(request) {
     summary.reports = await processReports(db, uid);
     summary.posts = await processPosts(db, uid);
 
+    // b44: libera o número usado no selo de verificado.
+    try {
+      const phones = await db.collection("verificationPhones").where("uid", "==", uid).get();
+      for (const d of phones.docs) await d.ref.delete();
+    } catch (_) {}
+
     // public profile / organizer / admin
     try {
       await db.collection("publicUsers").doc(uid).delete();

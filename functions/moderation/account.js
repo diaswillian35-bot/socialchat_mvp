@@ -8,4 +8,9 @@ function moderationSendBlock(userData) {
   return null;
 }
 
-module.exports = { moderationSendBlock };
+/** b44: "sem falar" temporário (degraus 2 e 3). Só bloqueia quem envia. */
+function moderationMuted(userData, nowMs = Date.now()) {
+  return require("./ladder").isMutedNow(userData, nowMs);
+}
+
+module.exports = { moderationSendBlock, moderationMuted };

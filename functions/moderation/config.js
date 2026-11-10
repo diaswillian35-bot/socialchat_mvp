@@ -23,6 +23,9 @@ function normalizeConfig(data) {
     autoActionThreshold: Number.isFinite(threshold) && threshold > 0 ? threshold : 3,
     strikeThreshold: Number.isFinite(strikes) && strikes > 0 ? strikes : 3,
     reportDailyLimit: Number.isFinite(daily) && daily > 0 ? daily : 20,
+    // b44: off | insults (padrão) | strict (palavrão solto em todo lugar)
+    profanityLevel: ["off", "insults", "strict"].includes(d.profanityLevel) ? d.profanityLevel : "insults",
+    ladder: d.ladder && typeof d.ladder === "object" ? d.ladder : {},
     blockedDomains: Array.isArray(d.blockedDomains) && d.blockedDomains.length
       ? d.blockedDomains
       : DEFAULT_BLOCKED_DOMAINS.slice(),

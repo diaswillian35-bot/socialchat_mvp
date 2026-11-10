@@ -20,6 +20,25 @@ const {
 } = require("./moderation/image_policy");
 const { applyContentBlock, markMessageModeration } = require("./moderation/apply_block");
 const { safeModerationLog } = require("./moderation/safe_log");
+const { evaluateProfanity, profanityOpts } = require("./moderation/profanity");
+const { evaluateGroupMessage, BOT_SENDER_ID } = require("./moderation/group_bot");
+
+/** b44: insulto (PV e grupo) e regras do bot do grupo (links, telefones, palavrão solto). */
+async function ruleDecision(db, kind, parentId, text, cfg) {
+  if (!String(text || "").trim()) return null;
+  if (kind === "group") {
+    let group = null;
+    try {
+      const g = await db.collection("groups").doc(parentId).get();
+      group = g.exists ? g.data() : null;
+    } catch (_) {
+      group = null;
+    }
+    return evaluateGroupMessage(text, group, cfg);
+  }
+  const opts = profanityOpts(cfg, false);
+  return opts ? evaluateProfanity(text, opts) : null;
+}
 
 const REGION = "northamerica-northeast1";
 
@@ -34,6 +53,7 @@ async function moderateCreatedMessage(kind, parentId, messageId, data) {
 
   const type = String(data.type || "text").trim().toLowerCase();
   const uid = senderOf(data);
+  if (data.bot === true || uid === BOT_SENDER_ID) return;
   const textDecision = (type === "text" || type === "image")
     ? worseDecision(
       evaluateText(data.text || "", cfg),
@@ -43,6 +63,23 @@ async function moderateCreatedMessage(kind, parentId, messageId, data) {
 
   if (type === "text") {
     if (!textDecision) {
+      const rule = await ruleDecision(db, kind, parentId, data.text || "", cfg);
+      if (rule) {
+        await applyContentBlock(admin, db, {
+          kind,
+          parentId,
+          messageId,
+          uid,
+          reason: rule.reason,
+          clearText: true,
+          botRemoval: kind === "group",
+          // links/telefones/palavrão solto não viram denúncia (só insulto vai para a fila do admin)
+          skipReport: rule.reason !== "insult",
+          source: kind === "group" ? "group_bot" : "auto_text",
+          config: cfg,
+        });
+        return;
+      }
       safeModerationLog("moderate_message", {
         decision: "allow",
         uid,

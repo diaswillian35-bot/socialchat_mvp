@@ -1,6 +1,6 @@
-/** Strikes contam só dentro de uma janela (padrão 30 dias). */
+/** Strikes contam só dentro de uma janela (b44: padrão 90 dias; antes 30). */
 
-const WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
 function eventsInWindow(events, nowMs, windowMs = WINDOW_MS) {
   const since = Number(nowMs) - Number(windowMs);

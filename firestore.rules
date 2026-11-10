@@ -103,6 +103,18 @@ service cloud.firestore {
         && userDoc(userId).data.get('exploreOnly', false) == true;
     }
 
+    // b44: "Bloquear mensagens privadas". Vale nos dois sentidos e sem exceção
+    // de admin. Com dmAllowExisting, conversa que já tem mensagem continua.
+    function userDmBlocked(userId, hasHistory) {
+      return exists(/databases/$(database)/documents/users/$(userId))
+        && userDocData(userId).get('dmBlocked', false) == true
+        && !(userDocData(userId).get('dmAllowExisting', false) == true && hasHistory);
+    }
+
+    function convHasHistory(cid) {
+      return conv(cid).data.get('lastMessage', '') != '';
+    }
+
     function peerIsExploreOnly(parts) {
       return (parts[0] != uid() && isExploreOnlyUser(parts[0]))
         || (parts[1] != uid() && isExploreOnlyUser(parts[1]));
@@ -170,7 +182,10 @@ service cloud.firestore {
         'ageTermsAcceptedAt',
         'ageVerifiedAt',
         'ageVerificationCheckedAt',
-        'moderation'
+        'moderation',
+        // b44: selo de verificado só pelo servidor (markPhoneVerified).
+        'verification',
+        'verified'
       ];
     }
 
@@ -222,6 +237,8 @@ service cloud.firestore {
         && (!('isPremium' in d) || d.isPremium == false)
         && (!('isBanned' in d) || d.isBanned == false)
         && (!('moderation' in d))
+        && (!('verification' in d))
+        && (!('verified' in d))
         && (!('accountDeleted' in d) || d.accountDeleted == false)
         && (!('role' in d) || d.role == null || d.role == '')
         && (!('roles' in d))
@@ -270,7 +287,11 @@ service cloud.firestore {
         && d.moderation is map
         && d.moderation.keys().hasAll(['status']);
       let st = hasStatus ? d.moderation.status : '';
-      return st == 'suspended_pending_review' || st == 'banned';
+      // b44: degraus 2/3 = "sem falar" até moderation.mutedUntil.
+      let muted = st == 'muted'
+        && d.moderation.get('mutedUntil', null) is timestamp
+        && d.moderation.mutedUntil > request.time;
+      return st == 'suspended_pending_review' || st == 'banned' || muted;
     }
 
     function isValidTextMessage() {
@@ -366,7 +387,10 @@ service cloud.firestore {
       return (!ch.hasAny(['interests']) || (d.interests is list && d.interests.size() <= 20))
         && (!ch.hasAny(['about']) || (d.about is string && d.about.size() <= 300))
         && (!ch.hasAny(['welcomeChoiceDone']) || d.welcomeChoiceDone is bool)
-        && (!ch.hasAny(['interestPushEnabled']) || d.interestPushEnabled is bool);
+        && (!ch.hasAny(['interestPushEnabled']) || d.interestPushEnabled is bool)
+        // b44: chave de PV
+        && (!ch.hasAny(['dmBlocked']) || d.dmBlocked is bool)
+        && (!ch.hasAny(['dmAllowExisting']) || d.dmAllowExisting is bool);
     }
 
     match /users/{userId} {
@@ -446,10 +470,13 @@ service cloud.firestore {
       allow create: if signedIn()
         && uid() == userId
         && !request.resource.data.keys().hasAny(['dateOfBirth', 'age'])
+        // b44: selo só pelo servidor
+        && !request.resource.data.keys().hasAny(['verified', 'verification'])
         && profileExtrasOk(false);
       allow update: if signedIn()
         && uid() == userId
         && !request.resource.data.keys().hasAny(['dateOfBirth', 'age'])
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['verified', 'verification'])
         && profileExtrasOk(true)
         && (
           !('isOnline' in request.resource.data.diff(resource.data).affectedKeys())
@@ -572,6 +599,9 @@ service cloud.firestore {
         // replyQuota é somente Admin SDK (sendDmMessage). Cliente nunca cria.
         && !('replyQuota' in request.resource.data)
         && !peerIsExploreOnly(request.resource.data.participants)
+        // b44: ninguém cria conversa com quem bloqueou PV (nem quem bloqueou cria)
+        && !userDmBlocked(request.resource.data.participants[0], false)
+        && !userDmBlocked(request.resource.data.participants[1], false)
         && (
           !isInternationalParticipants(request.resource.data.participants)
           || canCreateInternationalConversation(request.resource.data.participants)
@@ -605,6 +635,9 @@ service cloud.firestore {
           && request.resource.data.toUid != uid()
           && isValidMessagePayload()
           && canSendMessageInConversation(cid)
+          // b44: PV bloqueado (destinatário ou remetente)
+          && !userDmBlocked(request.resource.data.toUid, convHasHistory(cid))
+          && !userDmBlocked(uid(), convHasHistory(cid))
           && !senderModerationBlocksSend()
           && dmMediaUrlsOk(cid)
           // linkPreview/linkPreviewStatus são escritos somente pela Cloud
@@ -1221,6 +1254,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /moderationAudit/{id} {
+      allow read, write: if false;
+    }
+    // b44: hash do telefone do selo (um número = uma conta). Só Admin SDK.
+    match /verificationPhones/{id} {
       allow read, write: if false;
     }
     match /moderationReportDaily/{id} {

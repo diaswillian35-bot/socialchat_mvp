@@ -32,6 +32,13 @@ const entries = {
   moderateChatImage: ["trigger", "Automatic image moderation; no client callable and no content in logs."],
   moderateMessageText: ["trigger", "Automatic DM text moderation after a verified sender create."],
   moderateGroupMessageText: ["trigger", "Automatic group text moderation after a verified sender create."],
+  // b44 (segurança)
+  markPhoneVerified: ["essential", "Verified badge: reads the phone from Firebase Auth server-side; no social content."],
+  unlinkVerifiedPhone: ["essential", "User removes their own phone/badge; must stay available."],
+  revokeVerification: ["admin", "Admin-only (admins.permissions.verification or super admin)."],
+  adjustModeration: ["admin", "Admin-only forgive/unmute/confirm ban (admins.permissions.moderation)."],
+  onUserVerificationGuard: ["trigger", "Revokes the badge on ban; no content."],
+  onGroupMembersWelcomeBot: ["trigger", "Group bot welcome visible only to the new member; no push."],
   onReportCreated: ["trigger", "Automatic report enrichment and ops notice; no message text in the push."],
 };
 
@@ -52,7 +59,7 @@ for (const name of [
   "submitPlaceReview", "replyPlaceReview", "claimPlaceForAccount",
   "listPlaceReviews", "submitPlace", "updateMyPlace", "getMyPlace",
   "listMyPlaces", "listPendingPlaces", "moderatePlace", "translatePlaceDescription",
-  "audioRoomAction",
+  "audioRoomAction", "updateGroupModBot",
 ]) {
   entries[name] = ["adult", "User-initiated social operation; verified adult required."];
 }

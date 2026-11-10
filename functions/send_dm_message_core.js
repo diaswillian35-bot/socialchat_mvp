@@ -15,7 +15,9 @@ const {
 const { isObjectionableText } = require("./objectionable_content_filter");
 const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
 const { readDmQuotaConfig } = require("./dm_quota_config");
-const { moderationSendBlock } = require("./moderation/account");
+const { moderationSendBlock, moderationMuted } = require("./moderation/account");
+const { dmBlockedBetween, conversationHasHistory } = require("./dm_block_logic");
+const { evaluateProfanity, profanityOpts } = require("./moderation/profanity");
 const { evaluateText } = require("./moderation/text_filter");
 const { loadModerationConfig } = require("./moderation/config");
 
@@ -74,6 +76,11 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
   const modCfg = await loadModerationConfig(db);
   if (modCfg.enabled && evaluateText(text, modCfg)) {
     throw new HttpsError("failed-precondition", "content_filter_blocked");
+  }
+  // b44: insulto/ofensa dirigida sempre bloqueado (sem ponto: a mensagem não saiu).
+  const profOpts = modCfg.enabled ? profanityOpts(modCfg, false) : null;
+  if (profOpts && evaluateProfanity(text, profOpts)) {
+    throw new HttpsError("failed-precondition", "insult_blocked", { reason: "insult" });
   }
 
   const idemRef = db.collection("dmSendIdempotency").doc(`${uid}_${requestId}`);
@@ -143,6 +150,10 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
     ) {
       throw new HttpsError("permission-denied", "Account not allowed.");
     }
+    // b44: degraus 2/3 ("sem falar" 24 h / 7 dias).
+    if (moderationMuted(senderData)) {
+      throw new HttpsError("permission-denied", "Muted.", { reason: "muted" });
+    }
     if (blockedSelf === "shadow_ban") {
       throw new HttpsError("permission-denied", "Temporarily silenced.");
     }
@@ -154,6 +165,13 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
     if (otherData.exploreOnly === true && !String(conv.lastMessage || "").trim()) {
       throw new HttpsError("permission-denied", "Peer is explore-only.", {
         reason: "explore-only",
+      });
+    }
+
+    // b44: PV bloqueado (nos dois sentidos, sem exceção de admin).
+    if (dmBlockedBetween(senderData, otherData, { hasHistory: conversationHasHistory(conv) })) {
+      throw new HttpsError("permission-denied", "Private messages blocked.", {
+        reason: "dm-blocked",
       });
     }
 

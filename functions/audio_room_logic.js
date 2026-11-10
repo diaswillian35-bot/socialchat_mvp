@@ -66,16 +66,17 @@ function manageError(args) {
 }
 
 /** Permissões do token LiveKit para o participante. */
-function grantFor({ group, room, uid }) {
+function grantFor({ group, room, uid, muted = false }) {
   const role = roleOf(group, uid);
   // Todo membro pode ligar o microfone; só quem o moderador impediu fica sem.
+  // b44: "sem falar" da moderação vale para todos (inclusive dono/admin do grupo).
   const blocked = Array.isArray(room?.blockedUids) ? room.blockedUids : [];
-  const canPublish = isModeratorRole(role) || !blocked.includes(uid);
+  const canPublish = !muted && (isModeratorRole(role) || !blocked.includes(uid));
   return {
     role,
     canPublish,
     canSubscribe: true,
-    canPublishData: true,
+    canPublishData: !muted,
     canPublishSources: canPublish ? ["microphone"] : [],
   };
 }

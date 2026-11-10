@@ -10,6 +10,7 @@ const { isSuperAdminAuth } = require("./super_admin");
 const { assertVerifiedAdult } = require("./social_age_guard");
 const L = require("./audio_room_logic");
 const { roleOf } = require("./group_role_policy");
+const { isMutedNow } = require("./moderation/ladder");
 
 const LIVEKIT_API_KEY = defineSecret("LIVEKIT_API_KEY");
 const LIVEKIT_API_SECRET = defineSecret("LIVEKIT_API_SECRET");
@@ -20,6 +21,7 @@ const ERR = {
   country_blocked: "permission-denied", not_moderator: "permission-denied",
   target_is_moderator: "failed-precondition", room_full: "resource-exhausted",
   no_live_room: "failed-precondition", room_disabled: "failed-precondition",
+  muted: "permission-denied",
 };
 function fail(code) {
   throw new HttpsError(ERR[code] || "failed-precondition", code);
@@ -29,8 +31,9 @@ function roomService() {
   return new RoomServiceClient(L.LIVEKIT_HOST, LIVEKIT_API_KEY.value(), LIVEKIT_API_SECRET.value());
 }
 
-const micPermission = (canPublish) => ({
-  canPublish, canSubscribe: true, canPublishData: true,
+// b44: "sem falar" (moderação) entra só para ouvir: sem microfone e sem dados.
+const micPermission = (canPublish, canPublishData = true) => ({
+  canPublish, canSubscribe: true, canPublishData,
   canPublishSources: canPublish ? [TrackSource.MICROPHONE] : [],
 });
 
@@ -100,12 +103,12 @@ async function handleToken(c) {
   if (!c.liveDoc) fail("no_live_room");
   const room = c.liveDoc.data();
   const cap = L.capacityError(room, c.uid); if (cap) fail(cap);
-  const grant = L.grantFor({ group: c.group, room, uid: c.uid });
+  const grant = L.grantFor({ group: c.group, room, uid: c.uid, muted: isMutedNow(c.user) });
   const at = new AccessToken(LIVEKIT_API_KEY.value(), LIVEKIT_API_SECRET.value(), {
     identity: c.uid, name: displayName(c.user, c.uid), ttl: "2h",
     metadata: JSON.stringify({ role: grant.role }),
   });
-  at.addGrant({ roomJoin: true, room: room.roomName, ...micPermission(grant.canPublish) });
+  at.addGrant({ roomJoin: true, room: room.roomName, ...micPermission(grant.canPublish, grant.canPublishData) });
   return {
     token: await at.toJwt(), url: L.LIVEKIT_URL, roomName: room.roomName,
     roomId: c.liveDoc.id, role: grant.role, canPublish: grant.canPublish,
@@ -115,6 +118,7 @@ async function handleToken(c) {
 async function handleHand(c, raise) {
   const e = L.joinError(c); if (e) fail(e);
   if (!c.liveDoc) fail("no_live_room");
+  if (raise && isMutedNow(c.user)) fail("muted");
   const target = raise ? c.uid : ((c.targetUid || c.uid));
   if (target !== c.uid && !L.isModeratorRole(roleOf(c.group, c.uid))) {
     fail("not_moderator");
@@ -135,6 +139,10 @@ async function handleSpeaker(c, approve) {
   const targetUid = (c.targetUid || "").toString().trim();
   if (!targetUid) throw new HttpsError("invalid-argument", "targetUid");
   const se = L.speakerChangeError({ group: c.group, uid: c.uid, targetUid }); if (se) fail(se);
+  if (approve) {
+    const t = await c.db.collection("users").doc(targetUid).get();
+    if (isMutedNow(t.data() || {})) fail("muted");
+  }
   const FV = admin.firestore.FieldValue;
   // approve = permitir falar (sai da lista de impedidos); revoke = impedir de falar.
   await c.liveDoc.ref.set({ blockedUids: approve ? FV.arrayRemove(targetUid) : FV.arrayUnion(targetUid) }, { merge: true });

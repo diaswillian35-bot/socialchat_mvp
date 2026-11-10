@@ -286,6 +286,20 @@ const { onReportCreated } = require("./on_report_created");
 exports.moderateChatImage = moderateChatImage;
 exports.moderateMessageText = moderateMessageText;
 exports.moderateGroupMessageText = moderateGroupMessageText;
+
+// b44 (segurança): selo por SMS, ajuste de moderação, bot dos grupos.
+const { moderationSendBlock: moderationSendBlockB44, moderationMuted: moderationMutedB44 } = require("./moderation/account");
+const { evaluateProfanity: evaluateProfanityB44 } = require("./moderation/profanity");
+const { evaluateGroupMessage: evaluateGroupMessageB44 } = require("./moderation/group_bot");
+const securityB44 = require("./security_b44");
+exports.markPhoneVerified = securityB44.markPhoneVerified;
+exports.unlinkVerifiedPhone = securityB44.unlinkVerifiedPhone;
+exports.revokeVerification = securityB44.revokeVerification;
+exports.onUserVerificationGuard = securityB44.onUserVerificationGuard;
+exports.adjustModeration = securityB44.adjustModeration;
+exports.updateGroupModBot = socialOnCall({ region: "us-central1" }, async (request) =>
+  securityB44.updateGroupModBotCore(admin.firestore(), request.auth, request.data?.groupId, request.data?.changes));
+exports.onGroupMembersWelcomeBot = securityB44.onGroupMembersWelcomeBot;
 exports.onReportCreated = onReportCreated;
 
 function pushAllowed(userData, kind) {
@@ -684,6 +698,15 @@ exports.onGroupMessageCreated = onDocumentCreated(
         const text = (msg.text || "").toString().trim();
         const safe = safeChatPreview(text, modCfg);
         textBlocked = text.length > 0 && safe === "";
+        // b44: mensagem que o bot do grupo vai remover não vai para o push/prévia.
+        if (!textBlocked && text) {
+          try {
+            const gSnap = await admin.firestore().collection("groups").doc(groupId).get();
+            if (evaluateGroupMessageB44(text, gSnap.exists ? gSnap.data() : null, modCfg)) {
+              textBlocked = true;
+            }
+          } catch (_) {}
+        }
         lastMessage = (textBlocked ? "Nova mensagem" : text || "Nova mensagem").slice(0, 200);
       }
 
@@ -4421,6 +4444,12 @@ exports.createEventComment = socialOnCall(
         code: "content_filter_blocked",
       });
     }
+    // b44: insulto/ofensa dirigida bloqueado também nos comentários.
+    if (evaluateProfanityB44(sanitized.text || "", { loose: false })) {
+      throw new HttpsError("invalid-argument", "Insult.", {
+        code: "insult_blocked",
+      });
+    }
     const text = sanitized.text;
 
     let replyToCommentId = "";
@@ -4543,6 +4572,13 @@ exports.createEventComment = socialOnCall(
           : publicSnap.data() || {};
         if (userData.isBanned === true || isAccountDisabledData(userData)) {
           throw new HttpsError("permission-denied", "Account is banned.");
+        }
+        // b44: suspensão e "sem falar" também valem para comentário de evento.
+        if (moderationSendBlockB44(userData)) {
+          throw new HttpsError("permission-denied", "Account is suspended.");
+        }
+        if (moderationMutedB44(userData)) {
+          throw new HttpsError("permission-denied", "Muted.", { reason: "muted" });
         }
 
         let replyToName = null;

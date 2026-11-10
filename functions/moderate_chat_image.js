@@ -17,10 +17,14 @@ const {
   confirmedUploader,
   contextFromPath,
   storagePathFromImageUrl,
+  assetContextFromPath,
+  assetDocPaths,
+  scrubPatch,
   uncheckedOutcome,
   isTemporaryVisionError,
 } = require("./moderation/image_policy");
-const { applyContentBlock, markMessageModeration } = require("./moderation/apply_block");
+const { applyContentBlock, markMessageModeration, applyStrike } = require("./moderation/apply_block");
+const { pushNotice } = require("./moderation/notices");
 const { safeModerationLog } = require("./moderation/safe_log");
 
 const REGION = "northamerica-northeast1";
@@ -119,6 +123,86 @@ async function bumpUnchecked(db, filePath) {
   });
 }
 
+/** b44: tira a foto bloqueada dos docs (perfil, evento, local, grupo). */
+async function scrubAsset(db, ctx, filePath) {
+  let changed = 0;
+  for (const path of assetDocPaths(ctx)) {
+    const ref = db.doc(path);
+    const snap = await ref.get();
+    if (!snap.exists) continue;
+    const patch = scrubPatch(snap.data(), filePath);
+    if (!Object.keys(patch).length) continue;
+    if (ctx.kind === "place") patch.moderationStatus = "review";
+    patch.photoModeratedAt = admin.firestore.FieldValue.serverTimestamp();
+    await ref.set(patch, { merge: true });
+    changed += 1;
+  }
+  return changed;
+}
+
+/** Dono a avisar: perfil = o próprio; evento = organizador; grupo = dono. */
+async function assetOwnerUid(db, ctx) {
+  if (ctx.kind === "profile") return ctx.ownerUid;
+  try {
+    if (ctx.kind === "event") {
+      const d = (await db.doc(`events/${ctx.docId}`).get()).data() || {};
+      return String(d.ownerId || d.userId || d.organizerId || "");
+    }
+    if (ctx.kind === "group_avatar") {
+      const d = (await db.doc(`groups/${ctx.docId}`).get()).data() || {};
+      return String(d.ownerId || "");
+    }
+  } catch (_) {
+    return "";
+  }
+  return "";
+}
+
+async function moderateAsset(db, ctx, filePath, uid, decision, cfg, deps) {
+  const hash = pathHash(filePath);
+  if (decision.action === "allow") {
+    await writePending(db, filePath, { status: "clean", action: "allow", reason: "", uid, kind: ctx.kind });
+    return { status: "allow", kind: ctx.kind };
+  }
+  const blocked = decision.action === "block";
+  if (blocked && deps.moveToQuarantine) await deps.moveToQuarantine(filePath);
+  await writePending(db, filePath, {
+    status: blocked ? "blocked" : "review",
+    action: blocked ? "block" : "review",
+    reason: decision.reason,
+    uid,
+    kind: ctx.kind,
+    docId: ctx.docId,
+  });
+  let scrubbed = 0;
+  if (blocked) {
+    scrubbed = await scrubAsset(db, ctx, filePath);
+    if (uid) await applyStrike(admin, db, uid, { reason: decision.reason, config: cfg });
+    const owner = await assetOwnerUid(db, ctx);
+    if (owner) await pushNotice(admin, db, owner, "photo_blocked_notice", {}, { kind: ctx.kind });
+  }
+  const reportId = `auto_${blocked ? "photo" : "review"}_${hash}`.slice(0, 700);
+  try {
+    await db.collection("reports").doc(reportId).create({
+      fromUid: "system",
+      reportedUid: uid,
+      reasonCode: decision.reason || "image_adult",
+      reason: decision.reason || "image_adult",
+      priority: "normal",
+      status: "open",
+      source: "auto_vision",
+      contextType: `${ctx.kind}_photo`,
+      targetDocId: ctx.docId,
+      pathHash: hash,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    if (!(err && (err.code === 6 || err.code === "already-exists"))) throw err;
+  }
+  safeModerationLog("moderate_asset", { decision: decision.action, reason: decision.reason, uid, pathHash: hash, source: ctx.kind });
+  return { status: blocked ? "blocked" : "review", kind: ctx.kind, scrubbed };
+}
+
 /**
  * Núcleo testável. vision e bucket são injetáveis.
  */
@@ -179,6 +263,9 @@ async function runImageModeration(object, deps) {
     uid,
     pathHash: hash,
   });
+
+  const asset = assetContextFromPath(filePath);
+  if (asset.kind) return moderateAsset(db, asset, filePath, uid, decision, cfg, deps);
 
   if (decision.action === "allow") {
     await writePending(db, filePath, {

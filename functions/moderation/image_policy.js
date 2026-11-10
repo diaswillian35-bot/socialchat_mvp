@@ -48,7 +48,7 @@ function storagePathFromImageUrl(url) {
       return rest;
     }
   }
-  if (s.startsWith("chat_images/") || s.startsWith("groups/")) return s.split("?")[0];
+  if (/^(?:chat_images|groups|users|events|places)\//.test(s)) return s.split("?")[0];
   return "";
 }
 
@@ -59,7 +59,65 @@ function isModeratedImagePath(filePath) {
     const parts = p.split("/");
     return parts.length === 3 && Boolean(parts[1]) && Boolean(parts[2]);
   }
-  return /^groups\/[^/]+\/images\/[^/]+\/[^/]+$/.test(p);
+  if (/^groups\/[^/]+\/images\/[^/]+\/[^/]+$/.test(p)) return true;
+  return assetContextFromPath(p).kind !== "";
+}
+
+/**
+ * b44: fotos fora do chat que também passam pelo SafeSearch.
+ * users/{uid}/(profile|gallery|...)/{file}  -> perfil/galeria
+ * events/{eventId}/photos/{file}            -> evento
+ * places/{placeId}/(photos|menu)/{file}     -> local (o PDF do cardápio fica de fora pelo contentType)
+ * groups/{groupId}/avatar/{file}            -> avatar/capa do grupo
+ */
+function assetContextFromPath(filePath) {
+  const p = String(filePath || "");
+  let m = p.match(/^users\/([^/]+)\/(?:[^/]+\/)*[^/]+$/);
+  if (m) return { kind: "profile", ownerUid: m[1], docId: m[1] };
+  m = p.match(/^events\/([^/]+)\/photos\/[^/]+$/);
+  if (m) return { kind: "event", docId: m[1], ownerUid: "" };
+  m = p.match(/^places\/([^/]+)\/(?:photos|menu)\/[^/]+$/);
+  if (m && m[1] !== "inbox") return { kind: "place", docId: m[1], ownerUid: "" };
+  m = p.match(/^groups\/([^/]+)\/avatar\/[^/]+$/);
+  if (m) return { kind: "group_avatar", docId: m[1], ownerUid: "" };
+  return { kind: "", docId: "", ownerUid: "" };
+}
+
+/** Docs que podem apontar para a foto (o servidor limpa o campo quando bloqueia). */
+function assetDocPaths(ctx) {
+  switch (ctx && ctx.kind) {
+    case "profile": return [`users/${ctx.docId}`, `publicUsers/${ctx.docId}`];
+    case "event": return [`events/${ctx.docId}`];
+    case "place": return [`places/${ctx.docId}`];
+    case "group_avatar": return [`groups/${ctx.docId}`];
+    default: return [];
+  }
+}
+
+function refersTo(value, filePath) {
+  return typeof value === "string" && value.length > 0 && storagePathFromImageUrl(value) === filePath;
+}
+
+/**
+ * Patch que remove a foto de um doc: string vira "", lista perde o item,
+ * item de lista que é mapa com a URL sai. Só campos de 1º nível.
+ */
+function scrubPatch(data, filePath) {
+  const patch = {};
+  for (const [k, v] of Object.entries(data || {})) {
+    if (refersTo(v, filePath)) patch[k] = "";
+    else if (Array.isArray(v)) {
+      const next = v.filter((item) => {
+        if (refersTo(item, filePath)) return false;
+        if (item && typeof item === "object" && !Array.isArray(item)) {
+          return !Object.values(item).some((x) => refersTo(x, filePath));
+        }
+        return true;
+      });
+      if (next.length !== v.length) patch[k] = next;
+    }
+  }
+  return patch;
 }
 
 function pathHash(filePath) {
@@ -90,6 +148,10 @@ function confirmedUploader(filePath, metadata) {
   const group = p.match(/^groups\/[^/]+\/images\/([^/]+)\//);
   const pathUid = group ? group[1] : "";
   if (p.startsWith("chat_images/")) return metaUid;
+  // b44: users/{uid}/... só o próprio uid grava (storage.rules), então o path confirma.
+  const asset = assetContextFromPath(p);
+  if (asset.kind === "profile") return asset.ownerUid;
+  if (asset.kind) return "";
   if (pathUid && metaUid && pathUid !== metaUid) return "";
   return metaUid || pathUid;
 }
@@ -124,6 +186,9 @@ function uncheckedOutcome(attempts) {
 }
 
 module.exports = {
+  assetContextFromPath,
+  assetDocPaths,
+  scrubPatch,
   RANK,
   decideSafeSearch,
   storagePathFromImageUrl,
