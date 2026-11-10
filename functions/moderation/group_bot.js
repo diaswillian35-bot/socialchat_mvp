@@ -95,11 +95,14 @@ function findLinkHosts(raw) {
     const multiDot = host.split(".").length > 2;
     const tldOk = TLDS.includes(tld) && (!AMBIGUOUS_TLDS.includes(tld) || hasPath || multiDot);
     if (explicit || SHORT_HOSTS.includes(host) || tldOk) {
-      // evita "1.5" (precisa letra) e abreviações tipo "sr.silva" (tld desconhecido)
-      if (!/[a-z]/.test(host.split(".")[0])) continue;
+      // evita "1.5" sem esquema. URL explícita (http/www) e host com letra (192.168.0.1x.io) entram.
+      if (!explicit && !/[a-z]/.test(host)) continue;
       hosts.push(host);
     }
   }
+  // IP com http(s):// (o regex de domínio exige TLD com letra e não pega 192.168.1.1).
+  const ipRe = /https?:\/\/((?:\d{1,3}\.){3}\d{1,3})(?::\d+)?(?:\/[^\s]*)?/g;
+  while ((m = ipRe.exec(s))) hosts.push(m[1]);
   return hosts;
 }
 

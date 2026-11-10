@@ -138,9 +138,13 @@ class ChatRulesFilter {
       final multiDot = host.split('.').length > 2;
       final tldOk = _tlds.contains(tld) && (!_ambiguousTlds.contains(tld) || hasPath || multiDot);
       if (explicit || _shortHosts.contains(host) || tldOk) {
-        if (!RegExp('[a-z]').hasMatch(host.split('.').first)) continue;
+        // evita "1.5" sem esquema. URL explícita e host com letra (192.168.0.1x.io) entram.
+        if (!explicit && !RegExp('[a-z]').hasMatch(host)) continue;
         hosts.add(host);
       }
+    }
+    for (final m in RegExp(r'https?:\/\/((?:\d{1,3}\.){3}\d{1,3})(?::\d+)?(?:\/[^\s]*)?').allMatches(s)) {
+      hosts.add(m[1]!);
     }
     return hosts;
   }

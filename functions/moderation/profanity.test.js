@@ -45,6 +45,10 @@ test("lista tem as duas seções nos 5 idiomas", () => {
       assert.ok(Array.isArray(LISTS[sec][lang]) && LISTS[sec][lang].length > 0, `${sec}/${lang}`);
     }
   }
+  assert.ok(LISTS.mustNotBlock.length >= 200, "pelo menos 200 frases inocentes");
+  const insults = new Set(MUST_BLOCK);
+  for (const lang of Object.keys(LISTS.insults)) for (const t of LISTS.insults[lang]) insults.add(t);
+  assert.ok(insults.size >= 100, "pelo menos 100 ofensas");
 });
 
 test("profanityLevel: off desliga, strict liga palavrão em todo lugar", () => {

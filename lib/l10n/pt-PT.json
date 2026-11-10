@@ -1521,6 +1521,7 @@
   "mod_warning_notice": "Aviso: a sua mensagem violou as regras. Da próxima vez, ficará 24 h sem enviar mensagens.",
   "mod_muted_hint": "Sem enviar mensagens até {until}",
   "mod_muted_notice": "Está suspenso até {until} por ofensas repetidas. Pode ler, mas não pode enviar mensagens nem falar nas salas.",
+  "mod_banned_notice": "A sua conta foi suspensa por violar as regras do Remdy. A equipa vai rever o caso.",
   "bot_settings_title": "Bot moderador Remdy",
   "bot_settings_info": "Dá as boas-vindas a quem entra e remove mensagens que quebram as regras do grupo.",
   "bot_welcome_toggle": "Boas-vindas com as regras",

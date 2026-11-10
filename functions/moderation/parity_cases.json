@@ -308,6 +308,34 @@
   "groupStrict": null
  },
  {
+  "text": "http://192.168.0.1x.io",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "https://192.168.1.1",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "http://10.0.0.8:8080/a",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": "bot_link",
+  "groupStrict": "bot_link"
+ },
+ {
+  "text": "build 1.2.3.4",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
   "text": "filho da puta",
   "insultsOnly": "insult",
   "loose": "insult",
@@ -1758,6 +1786,2155 @@
  },
  {
   "text": "el cono de helado",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Sao Paulo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Rio de Janeiro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Belo Horizonte",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Salvador",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Recife",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Fortaleza",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Curitiba",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Porto Alegre",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Brasilia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Manaus",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Belem",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Goiania",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Campinas",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Florianopolis",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Vitoria",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Natal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Maceio",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Joao Pessoa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Teresina",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Cuiaba no Mato Grosso",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Campo Grande",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Sao Luis",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Aracaju",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Palmas",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Macapa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Boa Vista",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Porto Velho",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Ribeirao Preto",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Santos",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Niteroi",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Guarulhos",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Osasco",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Sorocaba",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Londrina",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Joinville",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Blumenau",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Caxias do Sul",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Juiz de Fora",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Uberlandia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Maringa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Lisboa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Porto",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Coimbra",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Braga",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Setubal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Faro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Aveiro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Evora",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Funchal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Ponta Delgada",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Guimaraes",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Viseu",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Leiria",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Viana do Castelo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Portalegre",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Vila Nova de Gaia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Cascais",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Sintra",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Oeiras",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Almada",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Algarve no verao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Toronto",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Montreal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Vancouver",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Calgary",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Ottawa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Edmonton",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Quebec",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Winnipeg",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Halifax",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Victoria na Columbia Britanica",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Mississauga",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Brampton",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Hamilton",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Kitchener",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "London Ontario",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Windsor",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Saskatoon",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Regina",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Kelowna",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Gatineau",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "New York",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Miami",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Chicago",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Boston",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Los Angeles",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "San Francisco",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Seattle",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Manchester",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "London",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Edinburgh",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Dublin",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Sydney",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Melbourne",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Madrid",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Barcelona",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Valencia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Sevilla",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Bilbao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Zaragoza",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Malaga",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Granada",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Paris",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Lyon",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Marseille",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Toulouse",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Bordeaux",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Nice",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Lille",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Nantes",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Bruxelles",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Geneve",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Lausanne",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Strasbourg",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "Montpellier",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pao de queijo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "feijoada no domingo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pastel de feira",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "coxinha de frango",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "brigadeiro de festa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "acai na tigela",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "tapioca com queijo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "churrasco no parque",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "arroz e feijao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "farofa de banana",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "moqueca de peixe",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "bobo de camarao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "bacalhau a bras",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pastel de nata",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "francesinha no Porto",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "caldo verde",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "sardinhas assadas",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "azeite de oliva",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "queijo da serra",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "vinho do Porto",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "poutine em Montreal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "maple syrup",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "tourtiere",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "bagels de Montreal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "croissant au beurre",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "baguette crocante",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "ratatouille",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "creme brulee",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "paella valenciana",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "tortilla espanola",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "churros com chocolate",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "gazpacho andaluz",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "taco al pastor",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "burrito de frango",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "guacamole fresco",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "queijo manchego",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cafe com leite",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cha verde",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "suco de laranja",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "agua com gas",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "chocolate quente",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "sorvete de creme",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "bolo de cenoura",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "torta de limao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "salada de frutas",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "bom dia pessoal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "boa tarde",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "boa noite a todos",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "ate logo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "por favor aguarde",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "muito obrigado",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "de nada",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "tudo bem com voce",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "como vai voce",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "estou a caminho",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "vamos ao cinema",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "jogo de futebol hoje",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "reuniao de trabalho as 10",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "aula de ingles",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "passeio no parque",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "corrida de rua",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "treino na academia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "leitura na biblioteca",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "concerto de piano",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "exposicao de arte",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "feira de artesanato",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "aniversario da Maria",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "casamento no sabado",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "formatura da turma",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "viagem de ferias",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "passagem de onibus",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "horario do trem",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "previsao do tempo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "esta frio hoje",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "sol forte na praia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "chuva a tarde",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "preciso de ajuda",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "envio o arquivo amanha",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "o aplicativo abriu",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "a internet caiu",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "o wifi esta lento",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "atualizacao do sistema",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "bateria do celular",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "camera do predio",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "senha temporaria enviada",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "documento assinado",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "contrato de aluguel",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "reuniao no escritorio",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "projeto da faculdade",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "trabalho de conclusao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pesquisa de mercado",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "grupo de estudos",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "aula de yoga",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "caminhada na orla",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pedal no fim de semana",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "partida de basquete",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "campeonato de volei",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "treino de natacao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "clube do livro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "oficina de fotografia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "curso de culinaria",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "jantar com a familia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "almoco no trabalho",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cafe da manha simples",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "mercado da esquina",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "padaria aberta",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "farmacia de plantao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "banco na praca",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "teatro municipal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "museu da cidade",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "biblioteca central",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "estacao do metro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "ponto de onibus",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "estacionamento cheio",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pedagio da estrada",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "hotel perto da praia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pousada no centro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "aeroporto internacional",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "visto de turismo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "passaporte renovado",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "mala despachada",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "ingresso do show",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "fila do cinema",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "pipoca com manteiga",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "playlist de viagem",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "podcast interessante",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "serie nova na TV",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "noticia do jornal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "revista de gastronomia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "mapa da cidade",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "ponto turistico",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "guia de viagem",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "foto da paisagem",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "por do sol lindo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "lua cheia hoje",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "estrela cadente",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "arco-iris depois da chuva",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "jardim botanico",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "zoologico da cidade",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "aquario municipal",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "parque nacional",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "trilha leve",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cachoeira perto",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "rio calmo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "ponte antiga",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "castelo historico",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "igreja no centro",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "praca da matriz",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "beleza entao",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "fechado combinado",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "valeu pela dica",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "show de bola",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "tranquilo por aqui",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "suave nessa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "massa essa ideia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "a gente se fala",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "depois te chamo no grupo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "manda o endereco do bar",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "je vais au marche",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "nous sommes en vacances",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "il fait beau aujourd hui",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "rendez-vous a midi",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "j aime ce restaurant",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "la reunion est terminee",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "merci beaucoup",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "bonne soiree",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "a bientot",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "s il vous plait",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "vamos a la playa",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "queda poca gasolina",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "el tren llega puntual",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "buenos dias amigos",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "hasta manana",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "que tengas un buen dia",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "the weather is nice",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "see you tomorrow",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "thanks for the help",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "meeting starts at noon",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "looking forward to dinner",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "have a nice trip",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "esta tudo bem por aqui",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "fico à espera",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "vamos beber um cafe",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "preciso de um talher",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "o autocarro atrasou",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "esta um dia lindo",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "bitter chocolate cake",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "classic cocktail bar",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "grape juice please",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "therapy appointment",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "cucumber salad",
+  "insultsOnly": null,
+  "loose": null,
+  "groupDefault": null,
+  "groupStrict": null
+ },
+ {
+  "text": "passport control",
   "insultsOnly": null,
   "loose": null,
   "groupDefault": null,

@@ -1921,7 +1921,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
           controller: controller,
           maxLines: 6,
           maxLength: ChatRulesFilter.rulesMax,
-          textCapitalization: TextCapitalization.sentences,
+          textCapitalization: RemdyKeyboardCaps.sentences,
           decoration: InputDecoration(
             hintText: t.get('bot_default_rules'),
             border: const OutlineInputBorder(),

@@ -12,6 +12,11 @@ void main() {
 
   test('paridade app x servidor (insultos, palavrão, links, telefones)', () {
     expect(cases.length, greaterThan(150));
+    expect(cases.where((c) => c['insultsOnly'] == 'insult').length, greaterThanOrEqualTo(100));
+    expect(
+      cases.where((c) => c['insultsOnly'] == null && c['loose'] == null).length,
+      greaterThanOrEqualTo(200),
+    );
     for (final c in cases) {
       final text = c['text'] as String;
       expect(ChatRulesFilter.profanity(text), c['insultsOnly'], reason: 'insultos: $text');

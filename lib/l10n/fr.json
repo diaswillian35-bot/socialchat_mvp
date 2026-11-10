@@ -1787,6 +1787,7 @@
   "mod_warning_notice": "Avertissement : votre message enfreint les règles. La prochaine fois, vous ne pourrez plus envoyer de messages pendant 24 h.",
   "mod_muted_hint": "Envoi de messages bloqué jusqu’au {until}",
   "mod_muted_notice": "Vous êtes suspendu jusqu’au {until} pour insultes répétées. Vous pouvez lire, mais pas envoyer de messages ni parler dans les salons.",
+  "mod_banned_notice": "Votre compte a été suspendu pour non-respect des règles de Remdy. L’équipe va examiner le dossier.",
   "bot_settings_title": "Bot modérateur Remdy",
   "bot_settings_info": "Accueille les nouveaux membres et supprime les messages qui enfreignent les règles du groupe.",
   "bot_welcome_toggle": "Accueil avec les règles",

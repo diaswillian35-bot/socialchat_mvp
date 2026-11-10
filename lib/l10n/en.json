@@ -1787,6 +1787,7 @@
   "mod_warning_notice": "Warning: your message broke the rules. Next time, you won't be able to send messages for 24 h.",
   "mod_muted_hint": "Can't send messages until {until}",
   "mod_muted_notice": "You're suspended until {until} for repeated insults. You can read, but you can't send messages or speak in rooms.",
+  "mod_banned_notice": "Your account was suspended for breaking Remdy's rules. Our team will review it.",
   "bot_settings_title": "Remdy moderator bot",
   "bot_settings_info": "Welcomes new members and removes messages that break the group rules.",
   "bot_welcome_toggle": "Welcome with the rules",

@@ -21,9 +21,11 @@ test("datas, horas, preços e CEPs não são telefone", () => {
 });
 
 const LINKS = ["https://site.com", "www.site.com.br", "veja meusite.com.br", "bit.ly/abc", "t.me/grupo",
-  "wa.me/5511987654321", "chat.whatsapp.com/XYZ", "ana@gmail.com", "loja ponto com", "site.pt/abc"];
+  "wa.me/5511987654321", "chat.whatsapp.com/XYZ", "ana@gmail.com", "loja ponto com", "site.pt/abc",
+  "http://192.168.0.1x.io", "https://192.168.1.1", "http://10.0.0.8:8080/a"];
 const NOT_LINKS = ["https://remdy.app/g/abc", "remdy.app", "www.remdy.app/e/1", "convite.remdy.app",
-  "sr.silva chegou", "ok... vamos", "vou.de carro", "ok.me liga", "nota 9.5", "fim.Vamos", "e.g. isso"];
+  "sr.silva chegou", "ok... vamos", "vou.de carro", "ok.me liga", "nota 9.5", "fim.Vamos", "e.g. isso",
+  "build 1.2.3.4", "versão 10.11.12"];
 test("links bloqueados (menos remdy.app)", () => {
   for (const s of LINKS) assert.equal(b.hasBlockedLink(s), true, s);
   for (const s of NOT_LINKS) assert.equal(b.hasBlockedLink(s), false, s);

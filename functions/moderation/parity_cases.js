@@ -10,6 +10,7 @@ const EXTRA = [
   "CEP 01310-100", "1000-001 Lisboa", "anos 2024 2025 2026", "2026-11-10", "12,50 €", "id 123456",
   "https://remdy.app/g/abc", "www.site.com", "veja meusite.com.br", "ana@gmail.com", "bit.ly/xyz", "t.me/grupo",
   "vou.de carro", "ok.me liga", "site.pt/abc", "loja ponto com", "sr.silva chegou", "nota 9.5", "Ça va, Zoë? Ñandú",
+  "http://192.168.0.1x.io", "https://192.168.1.1", "http://10.0.0.8:8080/a", "build 1.2.3.4",
 ];
 
 function cases() {

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 
 import '../services/dm_block.dart';
+import '../services/explore_only.dart';
 import 'chat_page.dart';
 import 'public_profile_page.dart';
 import '../l10n/app_texts.dart';

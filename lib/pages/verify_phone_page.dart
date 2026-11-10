@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
+import '../widgets/remdy_keyboard_caps.dart';
 
 /// b44: selo de verificado por SMS (sem selfie).
 /// O telefone é vinculado no Firebase Auth e a callable markPhoneVerified lê o
@@ -179,7 +180,7 @@ class _VerifyPhonePageState extends State<VerifyPhonePage> {
                         controller: _phoneC,
                         enabled: !_busy && _verificationId == null,
                         keyboardType: TextInputType.phone,
-                        textCapitalization: TextCapitalization.none,
+                        textCapitalization: RemdyKeyboardCaps.none,
                         decoration: InputDecoration(
                           hintText: t.get('verify_phone_hint'),
                           border: const OutlineInputBorder(),
@@ -192,7 +193,7 @@ class _VerifyPhonePageState extends State<VerifyPhonePage> {
                           controller: _codeC,
                           enabled: !_busy,
                           keyboardType: TextInputType.number,
-                          textCapitalization: TextCapitalization.none,
+                          textCapitalization: RemdyKeyboardCaps.none,
                           decoration: InputDecoration(
                             hintText: t.get('verify_code_hint'),
                             border: const OutlineInputBorder(),
