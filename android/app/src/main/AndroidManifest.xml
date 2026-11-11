@@ -221,6 +221,12 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- geolocator: o app só lê a posição aproximada com a tela aberta
+             ("Perto de você" em Grupos). Sem serviço em primeiro plano de
+             localização. -->
+        <service
+            android:name="com.baseflow.geolocator.GeolocatorLocationService"
+            tools:node="remove" />
     </application>
 
     <!-- Package visibility (Android 11+): mailto + Maps (https/geo). -->

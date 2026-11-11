@@ -1,1 +1,2 @@
 "NSMicrophoneUsageDescription" = "O Remdy usa o microfone para gravar mensagens de áudio e para falar nas salas de áudio dos grupos.";
+"NSLocationWhenInUseUsageDescription" = "O Remdy usa a sua localização para mostrar grupos, pessoas e eventos perto de si. Não é mostrada a ninguém.";

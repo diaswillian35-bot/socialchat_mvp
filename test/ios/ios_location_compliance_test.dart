@@ -2,16 +2,46 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Guardrails for ITMS-90683: Remdy uses profile city coords (Google Places),
-/// not device GPS or background location. geolocator must stay out of iOS build.
+/// Guardrails for ITMS-90683. Build 44 (aprovado pelo Willian): a aba Grupos
+/// usa a posição aproximada do aparelho só "durante o uso", com geolocator
+/// compilado SEM o pedido "sempre" (BYPASS_PERMISSION_LOCATION_ALWAYS=1).
+/// Nada de localização em segundo plano.
 void main() {
-  test('pubspec does not depend on geolocator', () {
+  test('geolocator only with the Always request compiled out', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
-    expect(pubspec.contains('geolocator:'), isFalse);
-    final lock = File('pubspec.lock');
-    if (lock.existsSync()) {
-      final lockText = lock.readAsStringSync();
-      expect(lockText.contains('geolocator'), isFalse);
+    expect(pubspec.contains('geolocator:'), isTrue);
+    final podfile = File('ios/Podfile').readAsStringSync();
+    expect(podfile, contains("target.name == 'geolocator_apple'"));
+    expect(podfile, contains('BYPASS_PERMISSION_LOCATION_ALWAYS=1'));
+    final manifest =
+        File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    expect(
+      manifest,
+      contains('com.baseflow.geolocator.GeolocatorLocationService'),
+    );
+    expect(manifest, contains('tools:node="remove"'));
+    expect(manifest.contains('ACCESS_BACKGROUND_LOCATION'), isFalse);
+  });
+
+  test('only the Groups nearby service touches Geolocator', () {
+    final hits = <String>[];
+    for (final f in Directory('lib').listSync(recursive: true)) {
+      if (f is! File || !f.path.endsWith('.dart')) continue;
+      if (f.readAsStringSync().contains('Geolocator.')) hits.add(f.path);
+    }
+    expect(hits, ['lib/services/device_location_service.dart']);
+    final src =
+        File('lib/services/device_location_service.dart').readAsStringSync();
+    expect(src, contains('LocationAccuracy.low'));
+    expect(src.contains('getPositionStream'), isFalse);
+    expect(src.contains('requestAlwaysAuthorization'), isFalse);
+  });
+
+  test('location usage text is localized in the 5 app languages', () {
+    for (final l in ['pt-BR', 'pt-PT', 'en', 'es', 'fr']) {
+      final s =
+          File('ios/Runner/$l.lproj/InfoPlist.strings').readAsStringSync();
+      expect(s, contains('NSLocationWhenInUseUsageDescription'), reason: l);
     }
   });
 
@@ -23,13 +53,6 @@ void main() {
     expect(plist, isNot(contains('<string>location</string>')));
   });
 
-  test('iOS plugin registrant does not link geolocator_apple', () {
-    final registrant = File('ios/Runner/GeneratedPluginRegistrant.m');
-    expect(registrant.existsSync(), isTrue);
-    final src = registrant.readAsStringSync();
-    expect(src.contains('GeolocatorPlugin'), isFalse);
-    expect(src.contains('geolocator_apple'), isFalse);
-  });
 
   test('Runner entitlements have no location background capability', () {
     final entitlements = File('ios/Runner/Runner.entitlements').readAsStringSync();
@@ -121,6 +144,5 @@ void main() {
     expect(hay.contains('requestAlwaysAuthorization'), isFalse);
     expect(hay.contains('NSLocationAlwaysAndWhenInUseUsageDescription'), isFalse);
     expect(hay.contains('NSLocationAlwaysUsageDescription'), isFalse);
-    expect(hay.contains('GeolocatorPlugin'), isFalse);
   });
 }
