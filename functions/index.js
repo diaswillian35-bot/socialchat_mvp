@@ -2940,6 +2940,9 @@ exports.updateGroupSettings = socialOnCall(
       "regionCenterCountryCode",
       "latitude",
       "longitude",
+      "stateCode",
+      "stateKey",
+      "geohash3",
     ];
     for (const key of keys) {
       if (GROUP_SETTINGS_FORBIDDEN.has(key) || blockedDirectGeo.includes(key)) {
@@ -3515,6 +3518,9 @@ exports.createGroup = socialOnCall(
           regionCenterLng: payload.regionCenterLng,
           regionRadiusKm: payload.regionRadiusKm,
           regionCenterGeohash: payload.regionCenterGeohash,
+          stateCode: payload.stateCode || "",
+          stateKey: payload.stateKey || "",
+          geohash3: payload.geohash3 || "",
           avatarUrl: "",
           avatarPath: "",
           ownerId: uid,

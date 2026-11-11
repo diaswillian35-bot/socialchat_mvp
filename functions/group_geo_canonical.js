@@ -61,6 +61,8 @@ function canonicalDisplayLocation(cityName, stateName, countryName, clientDispla
     .join(", ");
 }
 
+const { normalizeStateCode, stateKeyFor } = require("./group_state_codes");
+
 function foldCityKey(value) {
   return (value || "")
     .toString()
@@ -117,6 +119,9 @@ function buildCanonicalGeoFields(scope, opts = {}) {
       placeId: "",
       latitude: null,
       longitude: null,
+      stateCode: "",
+      stateKey: "",
+      geohash3: "",
       ...emptyRegion,
     };
   }
@@ -134,6 +139,10 @@ function buildCanonicalGeoFields(scope, opts = {}) {
     (place.stateName || "").toString().trim() ||
     (opts.stateName || "").toString().trim()
   );
+  const stateCode = normalizeStateCode(countryCode, stateName);
+  const stateKey = stateKeyFor(countryCode, stateCode);
+  // Célula de ~150 km do centro público da cidade (nunca posição de pessoa).
+  const geohash3 = encodeGroupGeohash(place.latitude, place.longitude, 3);
   const countryLabel = countryName || place.countryName || "";
   const display = canonicalDisplayLocation(
     cityName,
@@ -155,12 +164,15 @@ function buildCanonicalGeoFields(scope, opts = {}) {
       placeId: place.placeId,
       latitude: place.latitude,
       longitude: place.longitude,
+      stateCode,
+      stateKey,
+      geohash3,
       ...emptyRegion,
     };
   }
 
   // region
-  const geohash = encodeGroupGeohash(place.latitude, place.longitude, 3);
+  const geohash = geohash3;
   return {
     scope: "region",
     country: countryName || place.countryName,
@@ -173,6 +185,9 @@ function buildCanonicalGeoFields(scope, opts = {}) {
     placeId: place.placeId,
     latitude: place.latitude,
     longitude: place.longitude,
+    stateCode,
+    stateKey,
+    geohash3,
     regionKey: "",
     regionCenterCity: cityName,
     regionCenterCountryCode: countryCode,
