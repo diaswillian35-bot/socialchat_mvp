@@ -16,3 +16,18 @@ exports.translatePlaceDescription=verifiedAdultOnCall(onCall,{region:"us-central
   console.log("MOCK provider completed");
   return{text:`mock-${target}`,sourceLanguage:"pt"};
  }}),{getFirestore:()=>db,HttpsError});
+// Build 44: gatilho de tradução única na aprovação, com provedor MOCK.
+const {onDocumentWritten}=require("firebase-functions/v2/firestore");
+const i18n=require("../place_description_i18n");
+const mockMetric=async(kind)=>db.doc("testMetrics/approval").set({[kind]:FieldValue.increment(1)},{merge:true});
+exports.onPlaceDescriptionApproved=onDocumentWritten({document:"places/{placeId}",region:"us-central1"},async(event)=>{
+ const before=event.data?.before?.exists?event.data.before.data():null;
+ const after=event.data?.after?.exists?event.data.after.data():null;
+ // Isola o E2E antigo do callable (EmulatorPlace): o gatilho só age nos docs Approval*.
+ if(!event.params.placeId.startsWith("Approval"))return;
+ if(!i18n.shouldHandleWrite(before,after))return;
+ const r=await i18n.translatePlaceOnApproval(event.params.placeId,{db,enabled:true,
+  detect:async()=>{await mockMetric("detect");return "pt";},
+  translate:async(text,target)=>{await mockMetric("translate");return{text:`mock-approval-${target}`,sourceLanguage:"pt"};}});
+ console.log("MOCK onPlaceDescriptionApproved",r.outcome);
+});

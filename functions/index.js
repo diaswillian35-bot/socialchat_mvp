@@ -6384,6 +6384,22 @@ exports.onPlacePendingNotifyAdmins = onDocumentWritten(
   },
 );
 
+// Build 44: tradução da descrição UMA vez quando o local fica público
+// (aprovação no app/painel web ou edição de admin). Só traduz de novo quando
+// o hash do texto muda. Mesmo kill switch e limites do callable; nunca
+// bloqueia a aprovação (roda depois da escrita). Ver place_description_i18n.js.
+const placeDescriptionI18n = require("./place_description_i18n");
+exports.onPlaceDescriptionApproved = onDocumentWritten(
+  { document: "places/{placeId}", region: "us-central1", maxInstances: 2, timeoutSeconds: 120 },
+  async (event) => {
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    if (!placeDescriptionI18n.shouldHandleWrite(before, after)) return;
+    const result = await placeDescriptionI18n.translatePlaceOnApproval(event.params.placeId);
+    console.log("onPlaceDescriptionApproved", result.outcome);
+  },
+);
+
 // Public place pages (read-only SSR). Deploy only the named functions.
 exports.renderPublicPlacePage = require('./public_places').renderPublicPlacePage;
 exports.renderPlacesSitemap = require('./public_places').renderPlacesSitemap;
