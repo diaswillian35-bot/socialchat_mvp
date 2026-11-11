@@ -54,8 +54,10 @@ void main() {
     ).map((item) => item.id).toList();
   }
 
-  test('York and Toronto city centers are inside 50 km', () {
-    expect(GroupGeo.nearbyCityRadiusKm, 50);
+  test('York and Toronto city centers are inside the 110 km region', () {
+    // Build 44: cidade vizinha usa o mesmo raio da região (110 km).
+    expect(GroupGeo.nearbyCityRadiusKm, GroupGeo.regionRadiusKm);
+    expect(GroupGeo.nearbyCityRadiusKm, 110);
     final distance = GroupGeo.distanceKm(
       lat1: yorkLat,
       lng1: yorkLng,
@@ -141,7 +143,7 @@ void main() {
     );
   });
 
-  test('a city group beyond 50 km stays off Região', () {
+  test('a city group beyond 110 km stays off Região', () {
     Map<String, dynamic> torontoAt(double lat, double lng) {
       return yorkCity(lat: lat, lng: lng)
         ..['displayLocation'] = 'Toronto, ON, Canada'
@@ -151,7 +153,7 @@ void main() {
     final far = GroupGeo.destinationPoint(
       latitude: yorkLat,
       longitude: yorkLng,
-      distanceKm: 60,
+      distanceKm: 120,
       bearingDeg: 0,
     );
     expect(

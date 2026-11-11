@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'group_discovery_logic.dart';
 import 'group_geo.dart';
 import 'group_location_normalize.dart';
+import 'group_nearby_logic.dart';
 
 /// Cursor de paginação determinístico.
 ///
@@ -178,6 +179,8 @@ class GroupDiscoveryService {
         break;
       case GroupDiscoveryTab.mine:
         throw StateError('use fetchMine');
+      case GroupDiscoveryTab.nearby:
+        throw StateError('use fetchNearby');
     }
 
     if (tab == GroupDiscoveryTab.region) {
@@ -204,6 +207,130 @@ class GroupDiscoveryService {
       pendingIds: pendingIds,
       startAfter: startAfter,
       pageSize: pageSize,
+    );
+  }
+
+  /// Limite por consulta de "Perto de você".
+  static const int nearbyQueryLimit = 40;
+
+  /// "Perto de você": todos os grupos do país do usuário, ordenados depois no
+  /// cliente por [GroupNearbyLogic.sections]. Na primeira página, consultas
+  /// dirigidas (cidade, células geohash da região, estado) garantem que os
+  /// grupos próximos chegam mesmo quando o país tem muitos grupos. A consulta
+  /// do país é paginada pela rolagem.
+  ///
+  /// Sem os índices novos (ou antes do backfill de stateKey/geohash3), as
+  /// dirigidas falham em silêncio e o país cai para uma consulta só por
+  /// igualdade (sem orderBy), que não precisa de índice composto.
+  Future<GroupDiscoveryPage> fetchNearby({
+    required String uid,
+    required NearbyViewer viewer,
+    required Set<String> pendingIds,
+    GroupDiscoveryCursor? startAfter,
+    int limit = nearbyQueryLimit,
+  }) async {
+    final cc = GroupLocationNormalize.countryCode(viewer.countryCode);
+    if (cc.isEmpty) {
+      return const GroupDiscoveryPage(items: [], hasMore: false);
+    }
+    final firstPage = startAfter == null;
+    final docs = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+
+    Future<void> boost(Query<Map<String, dynamic>> q) async {
+      try {
+        final snap = await q.get();
+        for (final d in snap.docs) {
+          docs.putIfAbsent(d.id, () => d);
+        }
+      } catch (_) {
+        // Índice ainda não publicado ou campo ausente: o país cobre.
+      }
+    }
+
+    final base = _groups
+        .where('deleted', isEqualTo: false)
+        .where('countryCode', isEqualTo: cc);
+
+    if (firstPage) {
+      final boosts = <Future<void>>[];
+      final cityKey = GroupLocationNormalize.cityKey(viewer.cityKey);
+      if (cityKey.isNotEmpty) {
+        boosts.add(boost(base
+            .where('cityKey', isEqualTo: cityKey)
+            .orderBy('updatedAt', descending: true)
+            .limit(limit)));
+      }
+      if (viewer.hasPoint) {
+        for (final batch in GroupGeo.geohashBatches(
+          latitude: viewer.latitude,
+          longitude: viewer.longitude,
+        )) {
+          boosts.add(boost(base
+              .where('geohash3', whereIn: batch)
+              .orderBy('updatedAt', descending: true)
+              .limit(limit)));
+        }
+      }
+      if (viewer.stateKey.isNotEmpty) {
+        boosts.add(boost(base
+            .where('stateKey', isEqualTo: viewer.stateKey)
+            .orderBy('updatedAt', descending: true)
+            .limit(limit)));
+      }
+      await Future.wait(boosts);
+    }
+
+    DocumentSnapshot<Map<String, dynamic>>? last = startAfter?.document;
+    var hasMore = false;
+    try {
+      Query<Map<String, dynamic>> q =
+          base.orderBy('updatedAt', descending: true).limit(limit);
+      if (last != null) q = q.startAfterDocument(last);
+      final snap = await q.get();
+      for (final d in snap.docs) {
+        docs.putIfAbsent(d.id, () => d);
+      }
+      if (snap.docs.isNotEmpty) last = snap.docs.last;
+      hasMore = snap.docs.length >= limit;
+    } on FirebaseException catch (e) {
+      if (e.code != 'failed-precondition' && e.code != 'invalid-argument') {
+        if (docs.isEmpty) rethrow;
+      } else if (firstPage) {
+        // Fallback sem índice composto: igualdade pura, sem paginação.
+        final snap = await base.limit(maxDocsPerPageRequest).get();
+        for (final d in snap.docs) {
+          docs.putIfAbsent(d.id, () => d);
+        }
+        last = null;
+        hasMore = false;
+      }
+    }
+
+    final items = <GroupDiscoveryItem>[];
+    for (final doc in docs.values) {
+      final data = Map<String, dynamic>.from(doc.data());
+      data['id'] = doc.id;
+      if (!GroupNearbyLogic.eligible(
+        data: data,
+        uid: uid,
+        viewerCountryCode: cc,
+      )) {
+        continue;
+      }
+      items.add(GroupDiscoveryItem(
+        id: doc.id,
+        data: data,
+        isMember: GroupDiscoveryLogic.isParticipating(data: data, uid: uid),
+        isPending: pendingIds.contains(doc.id),
+      ));
+    }
+    items.sort(
+      (a, b) => GroupDiscoveryLogic.compareByRecentActivity(a.data, b.data),
+    );
+    return GroupDiscoveryPage(
+      items: items,
+      hasMore: hasMore,
+      cursor: GroupDiscoveryCursor(document: last),
     );
   }
 
@@ -510,7 +637,7 @@ class GroupDiscoveryService {
     );
   }
 
-  /// Cidades do mesmo país, já limitadas. O Haversine de 50 km descarta o resto.
+  /// Cidades do mesmo país, já limitadas. O Haversine de 110 km descarta o resto.
   Future<_NearbyCityRead> _readNearbyCityItems({
     required String uid,
     required String countryCode,
@@ -594,6 +721,7 @@ class GroupDiscoveryService {
         );
         break;
       case GroupDiscoveryTab.mine:
+      case GroupDiscoveryTab.nearby:
         matches = false;
         break;
     }

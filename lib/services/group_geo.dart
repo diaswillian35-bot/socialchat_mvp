@@ -12,7 +12,9 @@ class GroupGeo {
   /// Grupos de escopo cidade entram na aba Região quando o centro canônico
   /// da cidade do grupo está a no máximo esta distância do centro da cidade
   /// do usuário. Independente de cityKey e de divisão administrativa.
-  static const double nearbyCityRadiusKm = 50;
+  /// Alinhado com [regionRadiusKm] (110 km) no build 44: a seção "Na sua
+  /// região" de "Perto de você" e o chip Região mostram os mesmos grupos.
+  static const double nearbyCityRadiusKm = regionRadiusKm;
 
   static const double earthRadiusKm = 6371.0088;
   static const int geohashPrecision = 3;

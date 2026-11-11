@@ -818,6 +818,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                             base: _dec(
                               AppTexts.t('city'),
                               hint: AppTexts.t('city_example'),
+                              helper: AppTexts.t('create_group_city_helper'),
                             ),
                             pending: RequiredFieldChrome.reveal(
                               invalid: _cityLooksInvalid,

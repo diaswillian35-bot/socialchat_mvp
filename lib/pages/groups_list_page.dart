@@ -6,6 +6,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/admin_access.dart';
+import '../services/device_location_service.dart';
+import '../services/group_nearby_logic.dart';
+import '../services/group_state_codes.dart';
+import '../services/user_location_scope.dart';
 import 'create_group_page.dart';
 import 'group_chat_page.dart';
 import 'hidden_groups_page.dart';
@@ -46,13 +50,14 @@ class _TabCache {
   bool loadedOnce = false;
 }
 
-class GroupsListPageState extends State<GroupsListPage> {
+class GroupsListPageState extends State<GroupsListPage>
+    with WidgetsBindingObserver {
   final TextEditingController _searchC = TextEditingController();
   final TextEditingController _inviteCodeC = TextEditingController();
   final GroupDiscoveryService _discovery = GroupDiscoveryService();
   final ScrollController _scrollC = ScrollController();
 
-  GroupDiscoveryTab _tab = GroupDiscoveryTab.mine;
+  GroupDiscoveryTab _tab = GroupDiscoveryTab.nearby;
   final Map<GroupDiscoveryTab, _TabCache> _caches = {
     for (final t in GroupDiscoveryTab.values) t: _TabCache(),
   };
@@ -63,6 +68,12 @@ class GroupsListPageState extends State<GroupsListPage> {
   String _myCountryCode = '';
   double? _myCityLatitude;
   double? _myCityLongitude;
+  String _myStateCode = '';
+  String _myCityLabel = '';
+  bool _adminOtherCountry = false;
+  final DeviceLocationService _deviceLocation = DeviceLocationService.instance;
+  NearbyResolution? _nearby;
+  bool _nearbyRequesting = false;
   bool _profileLoaded = false;
   int _retryToken = 0;
   Set<String> _pendingIds = {};
@@ -84,6 +95,7 @@ class GroupsListPageState extends State<GroupsListPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollC.addListener(_onScroll);
     AdminAccess.instance.addListener(_onAdminChanged);
     _loadProfile();
@@ -106,6 +118,7 @@ class GroupsListPageState extends State<GroupsListPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     AdminAccess.instance.removeListener(_onAdminChanged);
     _memberUnreadSub?.cancel();
     for (final sub in _discoverySubs) {
@@ -385,6 +398,79 @@ class GroupsListPageState extends State<GroupsListPage> {
     if (mounted) _loadProfile();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Volta dos Ajustes: a pessoa pode ter ligado a localização.
+    if (state == AppLifecycleState.resumed && _profileLoaded) {
+      final banner = _nearby?.banner;
+      if (banner == NearbyBanner.usingProfile ||
+          banner == NearbyBanner.prompt) {
+        _resolveNearby(reload: true);
+      }
+    }
+  }
+
+  NearbyViewer get _profileViewer => NearbyViewer(
+        countryCode: _myCountryCode,
+        cityKey: _myCityKey,
+        placeId: _myPlaceId,
+        latitude: _myCityLatitude,
+        longitude: _myCityLongitude,
+        stateCode: _adminOtherCountry ? '' : _myStateCode,
+        cityLabel: _adminOtherCountry ? '' : _myCityLabel,
+        source: _myCityKey.isEmpty && _myCityLatitude == null
+            ? NearbyLocationSource.none
+            : NearbyLocationSource.profile,
+      );
+
+  NearbyViewer get _nearbyViewer => _nearby?.viewer ?? _profileViewer;
+
+  /// Decide entre GPS e perfil sem abrir aviso nenhum. O GPS (se já
+  /// permitido) chega depois e só recarrega "Perto de você" se mudar o ponto.
+  Future<void> _resolveNearby({bool reload = false}) async {
+    final access = await _deviceLocation.access();
+    final snoozed = await _deviceLocation.isSnoozed();
+    if (!mounted) return;
+    final first = NearbyLocationDecision.decide(
+      profile: _profileViewer,
+      access: access,
+      snoozed: snoozed,
+      adminOtherCountry: _adminOtherCountry,
+    );
+    setState(() => _nearby = first);
+    if (reload) await _ensureTabLoaded(GroupDiscoveryTab.nearby, force: true);
+    if (access != DeviceLocationAccess.granted || _adminOtherCountry) return;
+    final fix = await _deviceLocation.currentFix();
+    if (!mounted || fix == null) return;
+    final next = NearbyLocationDecision.decide(
+      profile: _profileViewer,
+      access: access,
+      snoozed: snoozed,
+      fix: fix,
+      adminOtherCountry: _adminOtherCountry,
+    );
+    setState(() => _nearby = next);
+    if (_tab == GroupDiscoveryTab.nearby) {
+      await _ensureTabLoaded(GroupDiscoveryTab.nearby);
+    }
+  }
+
+  Future<void> _requestNearbyLocation() async {
+    if (_nearbyRequesting) return;
+    setState(() => _nearbyRequesting = true);
+    try {
+      await _deviceLocation.requestAccess();
+      await _resolveNearby(reload: true);
+    } finally {
+      if (mounted) setState(() => _nearbyRequesting = false);
+    }
+  }
+
+  Future<void> _snoozeNearbyLocation() async {
+    await _deviceLocation.snooze();
+    await _resolveNearby();
+  }
+
   Future<void> _loadProfile() async {
     final myUid = _uid;
     if (myUid == null) {
@@ -416,6 +502,12 @@ class GroupsListPageState extends State<GroupsListPage> {
       final viewCode = AdminAccess.effectiveCountry(code);
       final sameCountry = viewCode == code;
       setState(() {
+        _adminOtherCountry = !sameCountry;
+        _myStateCode = GroupStateCodes.normalize(
+          code,
+          UserLocationScope.stateLabelFromUserData(data),
+        );
+        _myCityLabel = sameCountry ? city : '';
         _myCityKey = sameCountry
             ? GroupLocationNormalize.cityKey(data['cityKey'] ?? city)
             : '';
@@ -430,6 +522,7 @@ class GroupsListPageState extends State<GroupsListPage> {
       });
       _bindMemberUnread(myUid);
       _bindDiscovery(myUid);
+      await _resolveNearby();
       await _ensureTabLoaded(_tab, force: true);
     } catch (_) {
       if (mounted) {
@@ -440,6 +533,19 @@ class GroupsListPageState extends State<GroupsListPage> {
   }
 
   String _keyFor(GroupDiscoveryTab tab) {
+    if (tab == GroupDiscoveryTab.nearby) {
+      final v = _nearbyViewer;
+      return GroupDiscoveryLogic.cacheKey(
+        tab: tab,
+        uid: _uid ?? '',
+        countryCode: v.countryCode,
+        cityKey: '${v.cityKey}|${v.stateKey}|${v.source.name}',
+        placeId: v.placeId,
+        cityLatitude: v.latitude,
+        cityLongitude: v.longitude,
+        retryToken: _retryToken,
+      );
+    }
     return GroupDiscoveryLogic.cacheKey(
       tab: tab,
       uid: _uid ?? '',
@@ -562,6 +668,14 @@ class GroupsListPageState extends State<GroupsListPage> {
     if (tab == GroupDiscoveryTab.mine) {
       return _discovery.fetchMine(uid: uid, startAfter: startAfter);
     }
+    if (tab == GroupDiscoveryTab.nearby) {
+      return _discovery.fetchNearby(
+        uid: uid,
+        viewer: _nearbyViewer,
+        pendingIds: _pendingIds,
+        startAfter: startAfter,
+      );
+    }
     return _discovery.fetchDiscovery(
       tab: tab,
       uid: uid,
@@ -644,12 +758,24 @@ class GroupsListPageState extends State<GroupsListPage> {
         ]) {
           _caches[tab]!.items.removeWhere((e) => e.id == groupId);
         }
+        // Perto de você mantém o grupo na mesma seção, agora com "Abrir".
+        final near = _caches[GroupDiscoveryTab.nearby]!.items;
+        for (var i = 0; i < near.length; i++) {
+          if (near[i].id == groupId) {
+            near[i] = GroupDiscoveryItem(
+              id: near[i].id,
+              data: near[i].data,
+              isMember: true,
+            );
+          }
+        }
         // Invalida Meus grupos para refletir o novo membro.
         _caches[GroupDiscoveryTab.mine]!.cacheKey = '';
         _caches[GroupDiscoveryTab.mine]!.loadedOnce = false;
       } else if (pending) {
         _pendingIds.add(groupId);
         for (final tab in [
+          GroupDiscoveryTab.nearby,
           GroupDiscoveryTab.city,
           GroupDiscoveryTab.region,
           GroupDiscoveryTab.country,
@@ -668,6 +794,7 @@ class GroupsListPageState extends State<GroupsListPage> {
       } else {
         _pendingIds.remove(groupId);
         for (final tab in [
+          GroupDiscoveryTab.nearby,
           GroupDiscoveryTab.city,
           GroupDiscoveryTab.region,
           GroupDiscoveryTab.country,
@@ -1521,6 +1648,10 @@ class GroupsListPageState extends State<GroupsListPage> {
           retry: true,
         );
       case GroupDiscoveryUiState.empty:
+        if (_tab == GroupDiscoveryTab.nearby &&
+            (_nearby?.banner ?? NearbyBanner.none) != NearbyBanner.none) {
+          return _nearbyList(cache, const [], scheme, t);
+        }
         return _messageState(
           t.get(GroupDiscoveryLogic.emptyMessageKey(_tab)),
           scheme,
@@ -1528,6 +1659,9 @@ class GroupsListPageState extends State<GroupsListPage> {
         );
       case GroupDiscoveryUiState.list:
         final items = _visibleItems(cache);
+        if (_tab == GroupDiscoveryTab.nearby) {
+          return _nearbyList(cache, items, scheme, t);
+        }
         if (items.isEmpty && _searchC.text.trim().isNotEmpty) {
           return _messageState(t.get('no_groups_found'), scheme, retry: false);
         }
@@ -1546,6 +1680,325 @@ class GroupsListPageState extends State<GroupsListPage> {
           },
         );
     }
+  }
+
+  /// Título de seção: mesmo estilo de `_sectionTitle` em Conheça pessoas
+  /// (16/w800 + texto à direita 12/w600). O ListView já tem o recuo de 16.
+  Widget _nearbySectionTitle(
+    ColorScheme scheme,
+    String text, {
+    String? trailing,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(0, 18, 0, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ),
+            if (trailing != null)
+              Text(
+                trailing,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
+      );
+
+  String _countLabel(AppTexts t, int n) => n == 1
+      ? t.get('groups_section_count_one')
+      : t.get('groups_section_count_many').replaceAll('{n}', '$n');
+
+  String _cityOrDash(String city) => city.trim().isEmpty ? '--' : city.trim();
+
+  /// Linha de info acima da lista (ícone 18 + texto 12/w600 + link 14/w700).
+  Widget _nearbyInfoRow(
+    ColorScheme scheme, {
+    required IconData icon,
+    required String text,
+    String? action,
+    VoidCallback? onAction,
+    bool brandIcon = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: brandIcon ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurfaceVariant,
+                height: 1.3,
+              ),
+            ),
+          ),
+          if (action != null)
+            TextButton(
+              onPressed: _nearbyRequesting ? null : onAction,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF264E9A),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                action,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Cartão da primeira vez: explica antes do aviso do sistema.
+  Widget _nearbyPromptCard(ColorScheme scheme, AppTexts t) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.near_me_rounded, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  t.get('groups_location_prompt_title'),
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            t.get('groups_location_prompt_body'),
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilledButton(
+                onPressed: _nearbyRequesting ? null : _requestNearbyLocation,
+                style: FilledButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(t.get('groups_location_prompt_allow')),
+              ),
+              TextButton(
+                onPressed: _nearbyRequesting ? null : _snoozeNearbyLocation,
+                child: Text(t.get('groups_location_prompt_later')),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _nearbyHeader(ColorScheme scheme, AppTexts t) {
+    final res = _nearby;
+    final viewer = _nearbyViewer;
+    final profileCity = _cityOrDash(_myCityLabel);
+    final out = <Widget>[];
+    switch (res?.banner ?? NearbyBanner.none) {
+      case NearbyBanner.prompt:
+        out.add(_nearbyPromptCard(scheme, t));
+        if (_myCityLabel.isNotEmpty) {
+          out.add(_nearbyInfoRow(
+            scheme,
+            icon: Icons.person_pin_circle_outlined,
+            text: t
+                .get('groups_location_meanwhile_profile')
+                .replaceAll('{city}', profileCity),
+          ));
+        }
+        break;
+      case NearbyBanner.usingProfile:
+        out.add(_nearbyInfoRow(
+          scheme,
+          icon: Icons.location_off_outlined,
+          text: t
+              .get('groups_location_using_profile')
+              .replaceAll('{city}', profileCity),
+          action: t.get('groups_location_enable'),
+          onAction: _requestNearbyLocation,
+        ));
+        break;
+      case NearbyBanner.abroad:
+        out.add(_nearbyInfoRow(
+          scheme,
+          icon: Icons.location_off_outlined,
+          text: t.get('groups_location_abroad').replaceAll('{city}', profileCity),
+        ));
+        break;
+      case NearbyBanner.none:
+        if (viewer.source == NearbyLocationSource.gps &&
+            viewer.cityLabel.isNotEmpty) {
+          out.add(_nearbyInfoRow(
+            scheme,
+            icon: Icons.near_me_rounded,
+            brandIcon: true,
+            text: t.get('groups_near_city').replaceAll('{city}', viewer.cityLabel),
+          ));
+        }
+        break;
+    }
+    return out;
+  }
+
+  Widget _nearbyList(
+    _TabCache cache,
+    List<GroupDiscoveryItem> items,
+    ColorScheme scheme,
+    AppTexts t,
+  ) {
+    final viewer = _nearbyViewer;
+    final lang = Localizations.localeOf(context).toLanguageTag();
+    final province = GroupStateCodes.usesProvince(viewer.countryCode);
+    final children = <Widget>[..._nearbyHeader(scheme, t)];
+    final sections = GroupNearbyLogic.sections(items: items, viewer: viewer);
+    var otherHeaderShown = false;
+    for (final section in sections) {
+      switch (section.kind) {
+        case NearbySectionKind.city:
+          children.add(_nearbySectionTitle(
+            scheme,
+            t.get('groups_section_city'),
+            trailing: _countLabel(t, section.items.length),
+          ));
+          break;
+        case NearbySectionKind.region:
+          children.add(_nearbySectionTitle(
+            scheme,
+            t.get('groups_section_region'),
+            trailing: _countLabel(t, section.items.length),
+          ));
+          break;
+        case NearbySectionKind.state:
+          children.add(_nearbySectionTitle(
+            scheme,
+            GroupStateCodes.displayName(
+              countryCode: viewer.countryCode,
+              stateCode: section.stateCode,
+              languageCode: lang,
+            ),
+            trailing: t.get(province
+                ? 'groups_section_your_province'
+                : 'groups_section_your_state'),
+          ));
+          break;
+        case NearbySectionKind.national:
+          children.add(_nearbySectionTitle(
+            scheme,
+            t.get('groups_section_national'),
+            trailing: _prettyCountry(viewer.countryCode),
+          ));
+          break;
+        case NearbySectionKind.otherState:
+          if (!otherHeaderShown) {
+            otherHeaderShown = true;
+            children.add(_nearbySectionTitle(
+              scheme,
+              t.get(province
+                  ? 'groups_section_other_provinces'
+                  : 'groups_section_other_states'),
+            ));
+          }
+          final name = section.stateCode.isEmpty
+              ? t.get('people_state_other')
+              : GroupStateCodes.displayName(
+                  countryCode: viewer.countryCode,
+                  stateCode: section.stateCode,
+                  languageCode: lang,
+                  fallback: section.stateLabel,
+                );
+          children.add(_nearbySectionTitle(
+            scheme,
+            name,
+            trailing: _countLabel(t, section.items.length),
+          ));
+          break;
+      }
+      for (final item in section.items) {
+        children.add(_groupCard(item, scheme, t));
+      }
+    }
+    if (items.isEmpty) {
+      final searching = _searchC.text.trim().isNotEmpty;
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+        child: Text(
+          t.get(searching ? 'no_groups_found' : 'groups_empty_country'),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: scheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ));
+    }
+    if (cache.loadingMore) {
+      children.add(const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator()),
+      ));
+    }
+    return ListView(
+      controller: _scrollC,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: children,
+    );
   }
 
   Widget _messageState(

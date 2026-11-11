@@ -2,7 +2,8 @@ import 'group_geo.dart';
 import 'group_location_normalize.dart';
 
 /// Seletor da tela de grupos Remdy.
-enum GroupDiscoveryTab { mine, city, region, country }
+/// `nearby` ("Perto de você") é o primeiro chip e o padrão ao abrir a aba.
+enum GroupDiscoveryTab { nearby, mine, city, region, country }
 
 /// Estado visual por aba (independente).
 enum GroupDiscoveryUiState {
@@ -524,7 +525,7 @@ class GroupDiscoveryLogic {
     );
   }
 
-  /// Aba Região: documento regional no raio de 110 km, ou cidade dentro de 50 km.
+  /// Aba Região: documento regional no raio de 110 km, ou cidade dentro de 110 km.
   static bool matchesRegionTab({
     required Map<String, dynamic> data,
     required String uid,
@@ -708,6 +709,8 @@ class GroupDiscoveryLogic {
 
   static String emptyMessageKey(GroupDiscoveryTab tab) {
     switch (tab) {
+      case GroupDiscoveryTab.nearby:
+        return 'groups_empty_country';
       case GroupDiscoveryTab.mine:
         return 'groups_empty_mine';
       case GroupDiscoveryTab.city:
@@ -721,6 +724,8 @@ class GroupDiscoveryLogic {
 
   static String tabLabelKey(GroupDiscoveryTab tab) {
     switch (tab) {
+      case GroupDiscoveryTab.nearby:
+        return 'groups_tab_nearby';
       case GroupDiscoveryTab.mine:
         return 'groups_tab_mine';
       case GroupDiscoveryTab.city:
@@ -734,6 +739,8 @@ class GroupDiscoveryLogic {
 
   static String tabSemanticsKey(GroupDiscoveryTab tab) {
     switch (tab) {
+      case GroupDiscoveryTab.nearby:
+        return 'groups_tab_nearby_a11y';
       case GroupDiscoveryTab.mine:
         return 'groups_tab_mine_a11y';
       case GroupDiscoveryTab.city:
@@ -800,6 +807,8 @@ class GroupDiscoveryLogic {
     if (tab == GroupDiscoveryTab.mine) return true;
     final cc = GroupLocationNormalize.countryCode(countryCode);
     if (cc.isEmpty) return false;
+    // Perto de você funciona só com o país (mostra nacionais e estados).
+    if (tab == GroupDiscoveryTab.nearby) return true;
     if (tab == GroupDiscoveryTab.city) return cityKey.isNotEmpty;
     if (tab == GroupDiscoveryTab.region) {
       return GroupGeo.validCoordinates(cityLatitude, cityLongitude);
