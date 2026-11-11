@@ -1,4 +1,5 @@
 import '../logic/place_hours_logic.dart';
+import '../models/place_description_translations.dart';
 import '../models/place_listing.dart';
 
 /// Adaptador único entre `remdy.places.v1` (portal/Admin) e a apresentação do
@@ -79,6 +80,8 @@ class FirestorePlaceMapper {
         timeZone: _zone(data['timeZone']),
         hoursNote: _text(data['hoursNote']),
         promotionScore: _promotionScore(data),
+        descriptionTranslations:
+            PlaceDescriptionTranslations.tryParse(data['descriptionI18n']),
       );
     } catch (_) {
       return null;

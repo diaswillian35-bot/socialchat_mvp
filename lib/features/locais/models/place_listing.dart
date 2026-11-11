@@ -1,3 +1,4 @@
+import 'place_description_translations.dart';
 import '../logic/place_hours_logic.dart';
 
 /// Contrato público `places.v1`, o mesmo documento que o portal web do
@@ -398,6 +399,7 @@ class PlaceListing {
     this.timeZone,
     this.hoursNote = '',
     this.promotionScore = 0,
+    this.descriptionTranslations,
   });
 
   final String id;
@@ -405,6 +407,9 @@ class PlaceListing {
   final String name;
   final PlaceCategory category;
   final String description;
+
+  /// Traduções da descrição gravadas pelo servidor na aprovação (build 44).
+  final PlaceDescriptionTranslations? descriptionTranslations;
   final List<PlacePhoto> photos;
   final double rating;
   final int ratingCount;
@@ -483,6 +488,7 @@ class PlaceListing {
         timeZone: timeZone,
         hoursNote: hoursNote,
         promotionScore: promotionScore ?? this.promotionScore,
+        descriptionTranslations: descriptionTranslations,
       );
 
   /// Aberto no fuso do local, contando a madrugada da faixa do dia anterior.

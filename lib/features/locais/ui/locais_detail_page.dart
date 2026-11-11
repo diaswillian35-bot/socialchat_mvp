@@ -246,6 +246,7 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
             PlaceDescription(
                 placeId: place.id,
                 original: place.description,
+                stored: place.descriptionTranslations,
                 service: widget.translationService),
           ],
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../l10n/app_texts.dart';
 import '../data/place_description_translation_service.dart';
+import '../models/place_description_translations.dart';
 import 'locais_layout.dart';
 
 /// Preserves the existing description text style; uses the existing TextButton link.
@@ -9,10 +10,14 @@ class PlaceDescription extends StatefulWidget {
       {super.key,
       required this.placeId,
       required this.original,
+      this.stored,
       this.service,
       this.locale});
   final String placeId;
   final String original;
+
+  /// Traduções gravadas na aprovação; quando valem, não há chamada de rede.
+  final PlaceDescriptionTranslations? stored;
   final PlaceDescriptionTranslationService? service;
   final Locale? locale;
   @override
@@ -57,13 +62,19 @@ class _PlaceDescriptionState extends State<PlaceDescription>
 
   void _load() {
     final locale = widget.locale ?? View.of(context).platformDispatcher.locale;
-    final key =
-        '${widget.placeId}/${locale.toLanguageTag()}/${widget.original}';
+    final key = '${widget.placeId}/${locale.toLanguageTag()}/'
+        '${widget.stored?.sourceHash}/${widget.original}';
     if (_key == key) return;
     _key = key;
     _translation = null;
     _original = false;
     final generation = ++_generation;
+    final stored = widget.stored?.resolve(widget.original, locale);
+    if (stored != null && stored.use != StoredTranslationUse.unavailable) {
+      // Tradução única feita na aprovação (ou texto já no idioma do aparelho).
+      _translation = stored.text;
+      return;
+    }
     (widget.service ?? PlaceDescriptionTranslationService.shared)
         .load(widget.placeId, widget.original, locale)
         .then((text) {
