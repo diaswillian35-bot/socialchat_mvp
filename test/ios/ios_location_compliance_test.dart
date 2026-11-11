@@ -140,7 +140,14 @@ void main() {
 
     final strings = Process.runSync('strings', [binary.path]);
     expect(strings.exitCode, 0, reason: strings.stderr.toString());
-    final hay = strings.stdout.toString();
+    // geolocator_apple ships one human-readable error sentence that names
+    // NSLocationAlwaysUsageDescription; it is not an API call nor a plist
+    // key, so only standalone occurrences count.
+    final hay = strings.stdout
+        .toString()
+        .split('\n')
+        .where((l) => !l.startsWith('Permission definitions not found'))
+        .join('\n');
     expect(hay.contains('requestAlwaysAuthorization'), isFalse);
     expect(hay.contains('NSLocationAlwaysAndWhenInUseUsageDescription'), isFalse);
     expect(hay.contains('NSLocationAlwaysUsageDescription'), isFalse);
