@@ -3,6 +3,7 @@
  * Marcos: 3→1d, 10→7d, 20→30d, 50→60d, 100→90d + embaixador.
  */
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 const {
   premiumGrantsEnabled,
@@ -128,7 +129,7 @@ async function claimInvitePremiumRewardHandler(request) {
     getFirestore: () => admin.firestore(), HttpsError,
   });
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
@@ -139,12 +140,12 @@ async function claimInvitePremiumRewardHandler(request) {
     const result = await db.runTransaction(async (tx) => {
       const snap = await tx.get(userRef);
       if (!snap.exists) {
-        throw new HttpsError("not-found", "User not found.");
+        throw httpsError("not-found", "User not found.");
       }
 
       const data = snap.data() || {};
       if (data.isBanned === true || data.accountDeleted === true) {
-        throw new HttpsError("permission-denied", "Account unavailable.");
+        throw httpsError("permission-denied", "Account unavailable.");
       }
 
       const built = buildInviteRewardPatch(data, new Date());
@@ -188,7 +189,7 @@ async function claimInvitePremiumRewardHandler(request) {
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro claimInvitePremiumReward:", e);
-    throw new HttpsError("internal", "Could not claim invite reward.");
+    throw httpsError("internal", "Could not claim invite reward.");
   }
 }
 
@@ -205,7 +206,7 @@ async function applyInviteCodeHandler(request) {
     getFirestore: () => admin.firestore(), HttpsError,
   });
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const inviteeUid = request.auth.uid;
@@ -214,7 +215,7 @@ async function applyInviteCodeHandler(request) {
     .trim();
 
   if (!inviteCode) {
-    throw new HttpsError("invalid-argument", "inviteCode required.");
+    throw httpsError("invalid-argument", "inviteCode required.");
   }
 
   const db = admin.firestore();
@@ -226,12 +227,12 @@ async function applyInviteCodeHandler(request) {
     .get();
 
   if (inviterQuery.empty) {
-    throw new HttpsError("not-found", "Invite code not found.");
+    throw httpsError("not-found", "Invite code not found.");
   }
 
   const inviterUid = inviterQuery.docs[0].id;
   if (inviterUid === inviteeUid) {
-    throw new HttpsError("failed-precondition", "Cannot use own invite.");
+    throw httpsError("failed-precondition", "Cannot use own invite.");
   }
 
   const inviteeRef = db.collection("users").doc(inviteeUid);
@@ -243,20 +244,20 @@ async function applyInviteCodeHandler(request) {
       const inviterSnap = await tx.get(inviterRef);
 
       if (!inviteeSnap.exists) {
-        throw new HttpsError("not-found", "User not found.");
+        throw httpsError("not-found", "User not found.");
       }
       if (!inviterSnap.exists) {
-        throw new HttpsError("not-found", "Inviter not found.");
+        throw httpsError("not-found", "Inviter not found.");
       }
 
       const inviteeData = inviteeSnap.data() || {};
       const inviterData = inviterSnap.data() || {};
 
       if (inviteeData.isBanned === true || inviteeData.accountDeleted === true) {
-        throw new HttpsError("permission-denied", "Account unavailable.");
+        throw httpsError("permission-denied", "Account unavailable.");
       }
       if (inviterData.isBanned === true || inviterData.accountDeleted === true) {
-        throw new HttpsError("failed-precondition", "Inviter unavailable.");
+        throw httpsError("failed-precondition", "Inviter unavailable.");
       }
 
       const already =
@@ -331,7 +332,7 @@ async function applyInviteCodeHandler(request) {
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro applyInviteCode:", e);
-    throw new HttpsError("internal", "Could not apply invite.");
+    throw httpsError("internal", "Could not apply invite.");
   }
 }
 

@@ -6,6 +6,7 @@
  * NÃO devem ser alterados sem aprovação de produto (não publicar novos limites).
  */
 const { HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 
 /**
@@ -100,50 +101,50 @@ function perMinuteLimitForPlan(plan) {
 
 function assertUserCanUseRemi(userData) {
   if (!userData) {
-    throw new HttpsError("failed-precondition", "REMI_USER_NOT_FOUND");
+    throw httpsError("failed-precondition", "REMI_USER_NOT_FOUND");
   }
   if (userData.isBanned === true) {
-    throw new HttpsError("permission-denied", "REMI_PERMISSION_DENIED");
+    throw httpsError("permission-denied", "REMI_PERMISSION_DENIED");
   }
   if (userData.accountDeleted === true || userData.deleted === true) {
-    throw new HttpsError("permission-denied", "REMI_PERMISSION_DENIED");
+    throw httpsError("permission-denied", "REMI_PERMISSION_DENIED");
   }
   const status = (userData.status || "").toString().trim().toLowerCase();
   if (status === "deleted" || status === "banned") {
-    throw new HttpsError("permission-denied", "REMI_PERMISSION_DENIED");
+    throw httpsError("permission-denied", "REMI_PERMISSION_DENIED");
   }
   if (isAccountDisabledData(userData)) {
-    throw new HttpsError("permission-denied", "REMI_PERMISSION_DENIED");
+    throw httpsError("permission-denied", "REMI_PERMISSION_DENIED");
   }
 }
 
 function validateMessageText(raw) {
   if (raw != null && typeof raw !== "string") {
-    throw new HttpsError("invalid-argument", "REMI_INVALID_MESSAGE");
+    throw httpsError("invalid-argument", "REMI_INVALID_MESSAGE");
   }
   const text = (raw ?? "").toString().trim();
   if (text.length < 1) {
-    throw new HttpsError("invalid-argument", "REMI_INVALID_MESSAGE");
+    throw httpsError("invalid-argument", "REMI_INVALID_MESSAGE");
   }
   if (text.length > REMI_LIMITS.MAX_TEXT) {
-    throw new HttpsError("invalid-argument", "REMI_MESSAGE_TOO_LONG");
+    throw httpsError("invalid-argument", "REMI_MESSAGE_TOO_LONG");
   }
   return text;
 }
 
 function validateRequestId(raw) {
   if (raw == null || typeof raw !== "string") {
-    throw new HttpsError("invalid-argument", "REMI_INVALID_REQUEST_ID");
+    throw httpsError("invalid-argument", "REMI_INVALID_REQUEST_ID");
   }
   const id = raw.trim();
   if (
     id.length < REMI_LIMITS.MIN_REQUEST_ID ||
     id.length > REMI_LIMITS.MAX_REQUEST_ID
   ) {
-    throw new HttpsError("invalid-argument", "REMI_INVALID_REQUEST_ID");
+    throw httpsError("invalid-argument", "REMI_INVALID_REQUEST_ID");
   }
   if (!/^[A-Za-z0-9_-]+$/.test(id)) {
-    throw new HttpsError("invalid-argument", "REMI_INVALID_REQUEST_ID");
+    throw httpsError("invalid-argument", "REMI_INVALID_REQUEST_ID");
   }
   return id;
 }
@@ -226,13 +227,13 @@ function sanitizeHistory(raw) {
   if (raw == null) return [];
   if (typeof raw === "string") {
     if (raw.trim() === "") return [];
-    throw new HttpsError("invalid-argument", "REMI_INVALID_HISTORY");
+    throw httpsError("invalid-argument", "REMI_INVALID_HISTORY");
   }
   if (!Array.isArray(raw)) {
-    throw new HttpsError("invalid-argument", "REMI_INVALID_HISTORY");
+    throw httpsError("invalid-argument", "REMI_INVALID_HISTORY");
   }
   if (raw.length > REMI_LIMITS.MAX_HISTORY_ITEMS) {
-    throw new HttpsError("invalid-argument", "REMI_INVALID_HISTORY");
+    throw httpsError("invalid-argument", "REMI_INVALID_HISTORY");
   }
 
   const items = [];
@@ -240,32 +241,32 @@ function sanitizeHistory(raw) {
 
   for (const item of raw) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new HttpsError("invalid-argument", "REMI_INVALID_HISTORY");
+      throw httpsError("invalid-argument", "REMI_INVALID_HISTORY");
     }
 
     let role = (item.role || "").toString().trim().toLowerCase();
     if (role === "remi") role = "assistant";
     if (role !== "user" && role !== "assistant") {
-      throw new HttpsError("invalid-argument", "REMI_INVALID_HISTORY");
+      throw httpsError("invalid-argument", "REMI_INVALID_HISTORY");
     }
 
     const text = (item.text ?? "").toString().trim();
     if (!text) continue;
 
     if (text.length > REMI_LIMITS.MAX_HISTORY_ITEM_TEXT) {
-      throw new HttpsError("invalid-argument", "REMI_MESSAGE_TOO_LONG");
+      throw httpsError("invalid-argument", "REMI_MESSAGE_TOO_LONG");
     }
 
     totalChars += text.length;
     if (totalChars > REMI_LIMITS.MAX_HISTORY_TOTAL) {
-      throw new HttpsError("invalid-argument", "REMI_INVALID_HISTORY");
+      throw httpsError("invalid-argument", "REMI_INVALID_HISTORY");
     }
 
     items.push({ role, text });
   }
 
   if (items.length > REMI_LIMITS.MAX_HISTORY_ITEMS) {
-    throw new HttpsError("invalid-argument", "REMI_INVALID_HISTORY");
+    throw httpsError("invalid-argument", "REMI_INVALID_HISTORY");
   }
 
   return items;
@@ -349,10 +350,10 @@ function assertWithinLimits(plan, dailyCount, minuteCount) {
   if (dailyCount >= dailyLimit) {
     const code =
       plan === "free" ? "REMI_DAILY_LIMIT_FREE" : "REMI_DAILY_LIMIT_PREMIUM";
-    throw new HttpsError("resource-exhausted", code);
+    throw httpsError("resource-exhausted", code);
   }
   if (minuteCount >= minuteLimit) {
-    throw new HttpsError("resource-exhausted", "REMI_MINUTE_LIMIT");
+    throw httpsError("resource-exhausted", "REMI_MINUTE_LIMIT");
   }
 }
 
@@ -431,7 +432,7 @@ async function acquireRemiLock(db, uid, plan) {
     const data = snap.exists ? snap.data() || {} : {};
 
     if (isLockActive(data, nowMs)) {
-      throw new HttpsError("failed-precondition", "REMI_REQUEST_IN_PROGRESS");
+      throw httpsError("failed-precondition", "REMI_REQUEST_IN_PROGRESS");
     }
 
     const counters = readUsageCounters(data, nowMs);
@@ -579,7 +580,7 @@ async function beginIdempotentRequest(db, uid, requestId) {
             ? data.expiresAt.toMillis()
             : 0;
         if (exp && exp > nowMs && data.lockUntilMs && data.lockUntilMs > nowMs) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "REMI_REQUEST_IN_PROGRESS"
           );
@@ -667,7 +668,7 @@ async function releaseRemiLock(db, uid) {
 function assertAppCheckIfEnforced(request) {
   if (process.env.REMI_ENFORCE_APP_CHECK !== "true") return;
   if (!request.app) {
-    throw new HttpsError("failed-precondition", "REMI_APP_CHECK_REQUIRED");
+    throw httpsError("failed-precondition", "REMI_APP_CHECK_REQUIRED");
   }
 }
 

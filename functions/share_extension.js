@@ -8,6 +8,7 @@
 
 const crypto = require("crypto");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 const {
   assertVerifiedAdult,
@@ -52,7 +53,7 @@ const db = () => admin.firestore();
 
 function assertAppCheckSoft(request) {
   if (process.env.SHARE_EXT_ENFORCE_APP_CHECK === "true" && !request.app) {
-    throw new HttpsError(
+    throw httpsError(
       "failed-precondition",
       "App Check required for share extension.",
     );
@@ -61,7 +62,7 @@ function assertAppCheckSoft(request) {
 
 function requireAuth(request) {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
   return request.auth.uid;
 }
@@ -73,7 +74,7 @@ async function bumpRate(key, max, windowMs) {
     const snap = await tx.get(ref);
     const next = evaluateRateLimit(snap.data() || {}, now, max, windowMs);
     if (!next.allowed) {
-      throw new HttpsError("resource-exhausted", "Rate limit exceeded.");
+      throw httpsError("resource-exhausted", "Rate limit exceeded.");
     }
     tx.set(
       ref,
@@ -90,7 +91,7 @@ async function bumpRate(key, max, windowMs) {
 async function loadValidSession(token) {
   const raw = String(token || "").trim();
   if (raw.length < 20) {
-    throw new HttpsError("unauthenticated", "Invalid session.");
+    throw httpsError("unauthenticated", "Invalid session.");
   }
   const tokenHash = hashToken(raw);
   const q = await db()
@@ -99,15 +100,15 @@ async function loadValidSession(token) {
     .limit(1)
     .get();
   if (q.empty) {
-    throw new HttpsError("unauthenticated", "Invalid session.");
+    throw httpsError("unauthenticated", "Invalid session.");
   }
   const doc = q.docs[0];
   const data = doc.data() || {};
   if (data.revoked === true) {
-    throw new HttpsError("unauthenticated", "Session revoked.");
+    throw httpsError("unauthenticated", "Session revoked.");
   }
   if (isExpired(data.expiresAtMs)) {
-    throw new HttpsError("unauthenticated", "Session expired.");
+    throw httpsError("unauthenticated", "Session expired.");
   }
   return { sid: doc.id, ref: doc.ref, data };
 }
@@ -117,10 +118,10 @@ async function assertUserActive(uid) {
   const data = snap.data() || {};
   const block = accountBlocked(data);
   if (block === "banned" || block === "deleted") {
-    throw new HttpsError("permission-denied", "Not allowed.");
+    throw httpsError("permission-denied", "Not allowed.");
   }
   if (block === "shadow_ban") {
-    throw new HttpsError("permission-denied", "Not allowed.");
+    throw httpsError("permission-denied", "Not allowed.");
   }
   return data;
 }
@@ -128,7 +129,7 @@ async function assertUserActive(uid) {
 // b44: suspenso/"sem falar" não envia pelo compartilhar (a listagem continua).
 function assertCanSend(data) {
   if (moderationSendBlock(data) || moderationMuted(data)) {
-    throw new HttpsError("permission-denied", "Not allowed.", { reason: "muted" });
+    throw httpsError("permission-denied", "Not allowed.", { reason: "muted" });
   }
 }
 
@@ -307,7 +308,7 @@ const listShareDestinations = onCall(
       .slice(0, 64);
     const session = await loadValidSession(token);
     if (!Array.isArray(session.data.scopes) || !session.data.scopes.includes("share.list")) {
-      throw new HttpsError("permission-denied", "Missing scope.");
+      throw httpsError("permission-denied", "Missing scope.");
     }
     const uid = session.data.uid;
     await assertVerifiedAdultUid(uid, ageGuardDeps);
@@ -433,7 +434,7 @@ const sendShareMessage = onCall(
 
     const session = await loadValidSession(token);
     if (!Array.isArray(session.data.scopes) || !session.data.scopes.includes("share.send")) {
-      throw new HttpsError("permission-denied", "Missing scope.");
+      throw httpsError("permission-denied", "Missing scope.");
     }
     const uid = session.data.uid;
     await assertVerifiedAdultUid(uid, ageGuardDeps);
@@ -449,13 +450,13 @@ const sendShareMessage = onCall(
     assertCanSend(myData);
     const parsed = normalizeShareText(textRaw);
     if (!parsed.ok) {
-      throw new HttpsError("invalid-argument", "Invalid content.");
+      throw httpsError("invalid-argument", "Invalid content.");
     }
     if (!destinationId || (kind !== "dm" && kind !== "group")) {
-      throw new HttpsError("invalid-argument", "Invalid destination.");
+      throw httpsError("invalid-argument", "Invalid destination.");
     }
     if (!intentId) {
-      throw new HttpsError("invalid-argument", "intentId required.");
+      throw httpsError("invalid-argument", "intentId required.");
     }
 
     const idemRef = db()
@@ -477,27 +478,27 @@ const sendShareMessage = onCall(
       const otherUid = String(request.data?.otherUid || "").trim();
       const convSnap = await db().collection("conversations").doc(destinationId).get();
       if (!convSnap.exists) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
       const participants = Array.isArray(convSnap.data()?.participants)
         ? convSnap.data().participants.map(String)
         : [];
       if (!participants.includes(uid)) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
       const resolvedOther =
         otherUid && participants.includes(otherUid)
           ? otherUid
           : participants.find((p) => p !== uid);
       if (!resolvedOther) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
       if (await isEitherBlocked(uid, resolvedOther, convSnap.data())) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
       const otherSnap = await db().collection("users").doc(resolvedOther).get();
       if (!canSendInternational(myData, otherSnap.data() || {})) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
 
       const msgRef = db()
@@ -572,17 +573,17 @@ const sendShareMessage = onCall(
       const groupRef = db().collection("groups").doc(destinationId);
       const groupSnap = await groupRef.get();
       if (!groupSnap.exists) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
       const g = groupSnap.data() || {};
       if (g.deleted === true || g.isDeleted === true || g.isActive === false) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
       if (!isParticipating(g, uid)) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
       if (await isGroupBanned(destinationId, uid)) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
       const myCountry = countryOf(myData);
       const gCountry = groupCountry(g);
@@ -593,7 +594,7 @@ const sendShareMessage = onCall(
         !isPremiumUser(myData) &&
         g.isPremiumGroup !== true
       ) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
 
       const msgRef = groupRef.collection("messages").doc();

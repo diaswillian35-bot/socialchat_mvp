@@ -5,6 +5,7 @@
 "use strict";
 
 const { HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 
 const EVENT_ALLOWED_CATEGORIES = new Set([
   "Restaurante",
@@ -105,22 +106,22 @@ const SUBCATEGORIES_MAX = 12;
 function asTrimmedString(value, field, { required = false, max = 500 } = {}) {
   if (value === undefined || value === null) {
     if (required) {
-      throw new HttpsError("invalid-argument", `${field} required.`);
+      throw httpsError("invalid-argument", `${field} required.`);
     }
     return "";
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+    throw httpsError("invalid-argument", `Invalid ${field}.`);
   }
   if (typeof value === "object") {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+    throw httpsError("invalid-argument", `Invalid ${field}.`);
   }
   const out = value.toString().trim();
   if (required && !out) {
-    throw new HttpsError("invalid-argument", `${field} required.`);
+    throw httpsError("invalid-argument", `${field} required.`);
   }
   if (out.length > max) {
-    throw new HttpsError("invalid-argument", `${field} too long.`);
+    throw httpsError("invalid-argument", `${field} too long.`);
   }
   return out;
 }
@@ -129,7 +130,7 @@ function asOptionalNumber(value, field) {
   if (value === undefined || value === null || value === "") return null;
   const n = Number(value);
   if (!Number.isFinite(n)) {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+    throw httpsError("invalid-argument", `Invalid ${field}.`);
   }
   return n;
 }
@@ -137,12 +138,12 @@ function asOptionalNumber(value, field) {
 function asHttpsUrl(value, field, { allowEmpty = true } = {}) {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+    throw httpsError("invalid-argument", `Invalid ${field}.`);
   }
   const url = value.trim();
   if (!url) return allowEmpty ? "" : null;
   if (url.length > 2048 || !/^https:\/\//i.test(url)) {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+    throw httpsError("invalid-argument", `Invalid ${field}.`);
   }
   return url;
 }
@@ -159,21 +160,21 @@ function normalizeMediaKey(url) {
 function asPhotoUrls(value) {
   if (value === undefined || value === null) return null;
   if (!Array.isArray(value)) {
-    throw new HttpsError("invalid-argument", "Invalid photoUrls.");
+    throw httpsError("invalid-argument", "Invalid photoUrls.");
   }
   if (value.length > 5) {
-    throw new HttpsError("invalid-argument", "Too many photos.");
+    throw httpsError("invalid-argument", "Too many photos.");
   }
   const out = [];
   const seen = new Set();
   for (const item of value) {
     if (typeof item !== "string") {
-      throw new HttpsError("invalid-argument", "Invalid photoUrls.");
+      throw httpsError("invalid-argument", "Invalid photoUrls.");
     }
     const url = item.trim();
     if (!url) continue;
     if (url.length > 2048 || !/^https:\/\//i.test(url)) {
-      throw new HttpsError("invalid-argument", "Invalid photoUrls.");
+      throw httpsError("invalid-argument", "Invalid photoUrls.");
     }
     const key = normalizeMediaKey(url);
     if (seen.has(key)) continue;
@@ -196,10 +197,10 @@ function asLogoUrl(value) {
 function asStringList(value, field, { maxItems, maxItemLen }) {
   if (value === undefined || value === null) return null;
   if (!Array.isArray(value)) {
-    throw new HttpsError("invalid-argument", `Invalid ${field}.`);
+    throw httpsError("invalid-argument", `Invalid ${field}.`);
   }
   if (value.length > maxItems) {
-    throw new HttpsError("invalid-argument", `${field} too many items.`);
+    throw httpsError("invalid-argument", `${field} too many items.`);
   }
   const out = [];
   for (const item of value) {
@@ -212,10 +213,10 @@ function asStringList(value, field, { maxItems, maxItemLen }) {
 function asSchedule(value) {
   if (value === undefined || value === null) return null;
   if (!Array.isArray(value)) {
-    throw new HttpsError("invalid-argument", "Invalid schedule.");
+    throw httpsError("invalid-argument", "Invalid schedule.");
   }
   if (value.length > SCHEDULE_MAX) {
-    throw new HttpsError("invalid-argument", "schedule too many items.");
+    throw httpsError("invalid-argument", "schedule too many items.");
   }
   const out = [];
   value.forEach((raw, index) => {
@@ -235,7 +236,7 @@ function asSchedule(value) {
       return;
     }
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
-      throw new HttpsError("invalid-argument", "Invalid schedule item.");
+      throw httpsError("invalid-argument", "Invalid schedule item.");
     }
     const title = asTrimmedString(raw.title, "schedule.title", {
       required: true,
@@ -263,10 +264,10 @@ function asSchedule(value) {
 function asAttractions(value) {
   if (value === undefined || value === null) return null;
   if (!Array.isArray(value)) {
-    throw new HttpsError("invalid-argument", "Invalid attractions.");
+    throw httpsError("invalid-argument", "Invalid attractions.");
   }
   if (value.length > ATTRACTIONS_MAX) {
-    throw new HttpsError("invalid-argument", "attractions too many items.");
+    throw httpsError("invalid-argument", "attractions too many items.");
   }
   const out = [];
   value.forEach((raw, index) => {
@@ -284,7 +285,7 @@ function asAttractions(value) {
       return;
     }
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
-      throw new HttpsError("invalid-argument", "Invalid attractions item.");
+      throw httpsError("invalid-argument", "Invalid attractions item.");
     }
     const name = asTrimmedString(raw.name, "attractions.name", {
       required: true,
@@ -310,28 +311,28 @@ function asAttractions(value) {
 
 function parseStartAtMs(value) {
   if (value === undefined || value === null) {
-    throw new HttpsError("invalid-argument", "startAtMs required.");
+    throw httpsError("invalid-argument", "startAtMs required.");
   }
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) {
-    throw new HttpsError("invalid-argument", "Invalid startAtMs.");
+    throw httpsError("invalid-argument", "Invalid startAtMs.");
   }
   if (n < 946684800000 || n > 4102444800000) {
-    throw new HttpsError("invalid-argument", "Invalid startAtMs.");
+    throw httpsError("invalid-argument", "Invalid startAtMs.");
   }
   return n;
 }
 
 function parseEndAtMs(value) {
   if (value === undefined || value === null) {
-    throw new HttpsError("invalid-argument", "endAtMs required.");
+    throw httpsError("invalid-argument", "endAtMs required.");
   }
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) {
-    throw new HttpsError("invalid-argument", "Invalid endAtMs.");
+    throw httpsError("invalid-argument", "Invalid endAtMs.");
   }
   if (n < 946684800000 || n > 4102444800000) {
-    throw new HttpsError("invalid-argument", "Invalid endAtMs.");
+    throw httpsError("invalid-argument", "Invalid endAtMs.");
   }
   return n;
 }
@@ -339,21 +340,21 @@ function parseEndAtMs(value) {
 function parseEventTimeZone(value, { required = false } = {}) {
   if (value === undefined || value === null || value === "") {
     if (required) {
-      throw new HttpsError("invalid-argument", "eventTimeZone required.");
+      throw httpsError("invalid-argument", "eventTimeZone required.");
     }
     return null;
   }
   if (typeof value !== "string") {
-    throw new HttpsError("invalid-argument", "Invalid eventTimeZone.");
+    throw httpsError("invalid-argument", "Invalid eventTimeZone.");
   }
   const z = value.trim();
   if (z.length < 3 || z.length > 64) {
-    throw new HttpsError("invalid-argument", "Invalid eventTimeZone.");
+    throw httpsError("invalid-argument", "Invalid eventTimeZone.");
   }
   if (
     !/^(?:UTC|[A-Za-z_]+\/(?:[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)?))$/.test(z)
   ) {
-    throw new HttpsError("invalid-argument", "Invalid eventTimeZone.");
+    throw httpsError("invalid-argument", "Invalid eventTimeZone.");
   }
   return z;
 }
@@ -380,7 +381,7 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
   for (const key of Object.keys(dataIn || {})) {
     if (key === "eventId" && forUpdate) continue;
     if (!allowed.has(key)) {
-      throw new HttpsError("invalid-argument", `Field not allowed: ${key}`);
+      throw httpsError("invalid-argument", `Field not allowed: ${key}`);
     }
   }
 
@@ -402,7 +403,7 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
     max: 40,
   });
   if (rawCategory && !EVENT_ALLOWED_CATEGORIES.has(rawCategory)) {
-    throw new HttpsError("invalid-argument", "Invalid category.");
+    throw httpsError("invalid-argument", "Invalid category.");
   }
   const category = normalizeEventCategory(rawCategory);
 
@@ -420,14 +421,14 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
   if (dataIn.startAtMs !== undefined && dataIn.startAtMs !== null) {
     startAtMs = parseStartAtMs(dataIn.startAtMs);
   } else if (!forUpdate) {
-    throw new HttpsError("invalid-argument", "startAtMs required.");
+    throw httpsError("invalid-argument", "startAtMs required.");
   }
 
   let endAtMs = null;
   if (dataIn.endAtMs !== undefined && dataIn.endAtMs !== null) {
     endAtMs = parseEndAtMs(dataIn.endAtMs);
   } else if (!forUpdate) {
-    throw new HttpsError("invalid-argument", "endAtMs required.");
+    throw httpsError("invalid-argument", "endAtMs required.");
   }
 
   let eventTimeZone = null;
@@ -436,16 +437,16 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
       required: !forUpdate,
     });
   } else if (!forUpdate) {
-    throw new HttpsError("invalid-argument", "eventTimeZone required.");
+    throw httpsError("invalid-argument", "eventTimeZone required.");
   }
 
   if (startAtMs != null && endAtMs != null && !(endAtMs > startAtMs)) {
-    throw new HttpsError("invalid-argument", "endAtMs must be after startAtMs.");
+    throw httpsError("invalid-argument", "endAtMs must be after startAtMs.");
   }
 
   const clock = typeof nowMs === "number" ? nowMs : Date.now();
   if (!forUpdate && endAtMs != null && endAtMs < clock) {
-    throw new HttpsError(
+    throw httpsError(
       "invalid-argument",
       "endAtMs must not be in the past.",
     );
@@ -482,16 +483,16 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
   let noStreetNumber = false;
   if (dataIn.noStreetNumber !== undefined) {
     if (typeof dataIn.noStreetNumber !== "boolean") {
-      throw new HttpsError("invalid-argument", "Invalid noStreetNumber.");
+      throw httpsError("invalid-argument", "Invalid noStreetNumber.");
     }
     noStreetNumber = dataIn.noStreetNumber === true;
   }
   if (streetNumber) {
     if (/[<>\n]/.test(streetNumber)) {
-      throw new HttpsError("invalid-argument", "Invalid streetNumber.");
+      throw httpsError("invalid-argument", "Invalid streetNumber.");
     }
     if (!/^[0-9A-Za-zÀ-ÿ][0-9A-Za-zÀ-ÿ.\-\/ ]{0,19}$/.test(streetNumber)) {
-      throw new HttpsError("invalid-argument", "Invalid streetNumber.");
+      throw httpsError("invalid-argument", "Invalid streetNumber.");
     }
   }
   if (
@@ -502,7 +503,7 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
       dataIn.streetNumber !== undefined ||
       dataIn.noStreetNumber !== undefined)
   ) {
-    throw new HttpsError(
+    throw httpsError(
       "invalid-argument",
       "streetNumber required when street is set.",
     );
@@ -550,16 +551,16 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
   const lng =
     dataIn.lng !== undefined ? asOptionalNumber(dataIn.lng, "lng") : undefined;
   if (lat != null && (lat < -90 || lat > 90)) {
-    throw new HttpsError("invalid-argument", "Invalid lat.");
+    throw httpsError("invalid-argument", "Invalid lat.");
   }
   if (lng != null && (lng < -180 || lng > 180)) {
-    throw new HttpsError("invalid-argument", "Invalid lng.");
+    throw httpsError("invalid-argument", "Invalid lng.");
   }
 
   let sponsorInterested;
   if (dataIn.sponsorInterested !== undefined) {
     if (typeof dataIn.sponsorInterested !== "boolean") {
-      throw new HttpsError("invalid-argument", "Invalid sponsorInterested.");
+      throw httpsError("invalid-argument", "Invalid sponsorInterested.");
     }
     sponsorInterested = dataIn.sponsorInterested;
   }
@@ -574,14 +575,14 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
       max: 16,
     }).toLowerCase();
     if (ticketType && !TICKET_TYPES.has(ticketType)) {
-      throw new HttpsError("invalid-argument", "Invalid ticketType.");
+      throw httpsError("invalid-argument", "Invalid ticketType.");
     }
   }
 
   let isFree;
   if (dataIn.isFree !== undefined) {
     if (typeof dataIn.isFree !== "boolean") {
-      throw new HttpsError("invalid-argument", "Invalid isFree.");
+      throw httpsError("invalid-argument", "Invalid isFree.");
     }
     isFree = dataIn.isFree;
   }
@@ -591,7 +592,7 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
     max: 3,
   }).toUpperCase();
   if (priceCurrency && !/^[A-Z]{3}$/.test(priceCurrency)) {
-    throw new HttpsError("invalid-argument", "Invalid priceCurrency.");
+    throw httpsError("invalid-argument", "Invalid priceCurrency.");
   }
   const ticketUrl = asHttpsUrl(dataIn.ticketUrl, "ticketUrl", {
     allowEmpty: true,
@@ -621,7 +622,7 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
       n < 1 ||
       n > EXPECTED_AUDIENCE_MAX
     ) {
-      throw new HttpsError("invalid-argument", "Invalid expectedAudience.");
+      throw httpsError("invalid-argument", "Invalid expectedAudience.");
     }
     expectedAudience = n;
   }
@@ -644,18 +645,18 @@ function validateEventEditorial(dataIn, { forUpdate = false, nowMs } = {}) {
   let publicContactConsent;
   if (dataIn.publicContactConsent !== undefined) {
     if (typeof dataIn.publicContactConsent !== "boolean") {
-      throw new HttpsError("invalid-argument", "Invalid publicContactConsent.");
+      throw httpsError("invalid-argument", "Invalid publicContactConsent.");
     }
     publicContactConsent = dataIn.publicContactConsent;
   }
   if (publicContact && publicContactConsent !== true && !forUpdate) {
-    throw new HttpsError(
+    throw httpsError(
       "invalid-argument",
       "publicContactConsent required when publicContact is set.",
     );
   }
   if (publicContact && dataIn.publicContactConsent === false) {
-    throw new HttpsError(
+    throw httpsError(
       "invalid-argument",
       "publicContactConsent required when publicContact is set.",
     );

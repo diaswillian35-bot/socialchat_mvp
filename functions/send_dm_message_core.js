@@ -3,6 +3,7 @@
  * Usado pela Callable e pelos testes de concorrência no emulador.
  */
 const { HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 const {
   authorizeFreeTextSend,
@@ -58,7 +59,7 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
   const conversationId = String(data.conversationId || "").trim();
   const text = data.text == null ? "" : String(data.text);
   if (isObjectionableText(text)) {
-    throw new HttpsError("invalid-argument", "Objectionable content.", {
+    throw httpsError("invalid-argument", "Objectionable content.", {
       code: "content_filter_blocked",
     });
   }
@@ -66,21 +67,21 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
   const messageIdIn = String(data.messageId || "").trim();
   const requestIdCheck = validateRequestId(data.requestId);
   if (!requestIdCheck.ok) {
-    throw new HttpsError("invalid-argument", "Invalid requestId.");
+    throw httpsError("invalid-argument", "Invalid requestId.");
   }
   const requestId = requestIdCheck.requestId;
 
   if (!conversationId) {
-    throw new HttpsError("invalid-argument", "conversationId required.");
+    throw httpsError("invalid-argument", "conversationId required.");
   }
   const modCfg = await loadModerationConfig(db);
   if (modCfg.enabled && evaluateText(text, modCfg)) {
-    throw new HttpsError("failed-precondition", "content_filter_blocked");
+    throw httpsError("failed-precondition", "content_filter_blocked");
   }
   // b44: insulto/ofensa dirigida sempre bloqueado (sem ponto: a mensagem não saiu).
   const profOpts = modCfg.enabled ? profanityOpts(modCfg, false) : null;
   if (profOpts && evaluateProfanity(text, profOpts)) {
-    throw new HttpsError("failed-precondition", "insult_blocked", { reason: "insult" });
+    throw httpsError("failed-precondition", "insult_blocked", { reason: "insult" });
   }
 
   const idemRef = db.collection("dmSendIdempotency").doc(`${uid}_${requestId}`);
@@ -121,19 +122,19 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
     }
 
     if (!convSnap.exists) {
-      throw new HttpsError("not-found", "Conversation not found.");
+      throw httpsError("not-found", "Conversation not found.");
     }
     const conv = convSnap.data() || {};
     const participants = asUidList(conv.participants);
     if (!participants.includes(uid) || participants.length !== 2) {
-      throw new HttpsError("permission-denied", "Not a participant.");
+      throw httpsError("permission-denied", "Not a participant.");
     }
     const otherUid =
       otherUidHint && participants.includes(otherUidHint)
         ? otherUidHint
         : participants.find((p) => p !== uid);
     if (!otherUid) {
-      throw new HttpsError("failed-precondition", "Peer missing.");
+      throw httpsError("failed-precondition", "Peer missing.");
     }
 
     const otherRef = db.collection("users").doc(otherUid);
@@ -148,35 +149,35 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
       blockedSelf === "disabled" ||
       blockedSelf === "suspended"
     ) {
-      throw new HttpsError("permission-denied", "Account not allowed.");
+      throw httpsError("permission-denied", "Account not allowed.");
     }
     // b44: degraus 2/3 ("sem falar" 24 h / 7 dias).
     if (moderationMuted(senderData)) {
-      throw new HttpsError("permission-denied", "Muted.", { reason: "muted" });
+      throw httpsError("permission-denied", "Muted.", { reason: "muted" });
     }
     if (blockedSelf === "shadow_ban") {
-      throw new HttpsError("permission-denied", "Temporarily silenced.");
+      throw httpsError("permission-denied", "Temporarily silenced.");
     }
     if (accountBlocked(otherData)) {
-      throw new HttpsError("failed-precondition", "Peer unavailable.");
+      throw httpsError("failed-precondition", "Peer unavailable.");
     }
     // Modo "Só explorar": ninguém inicia conversa nova com quem está nele.
     // (conversa já existente continua). Sem exceção de administrador.
     if (otherData.exploreOnly === true && !String(conv.lastMessage || "").trim()) {
-      throw new HttpsError("permission-denied", "Peer is explore-only.", {
+      throw httpsError("permission-denied", "Peer is explore-only.", {
         reason: "explore-only",
       });
     }
 
     // b44: PV bloqueado (nos dois sentidos, sem exceção de admin).
     if (dmBlockedBetween(senderData, otherData, { hasHistory: conversationHasHistory(conv) })) {
-      throw new HttpsError("permission-denied", "Private messages blocked.", {
+      throw httpsError("permission-denied", "Private messages blocked.", {
         reason: "dm-blocked",
       });
     }
 
     if (isEitherBlockedFromUserSnaps(senderData, otherData, uid, otherUid)) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
 
     // Re-read conv inside tx for latest replyQuota (concurrency).
@@ -201,7 +202,7 @@ async function executeSendDmMessage(db, uid, data, opts = {}) {
               authz.code === "premium-required"
             ? "permission-denied"
             : "invalid-argument";
-      throw new HttpsError(status, authz.message || "Send denied.", {
+      throw httpsError(status, authz.message || "Send denied.", {
         code: authz.code,
         replyQuota: authz.quota || null,
       });

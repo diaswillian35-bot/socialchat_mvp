@@ -3,6 +3,7 @@
  * Cliente Flutter NÃO concede isPremium.
  */
 const { onRequest } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -536,7 +537,7 @@ exports.syncRevenueCatEntitlement = onCall(
   },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const uid = request.auth.uid;
@@ -577,7 +578,7 @@ exports.syncRevenueCatEntitlement = onCall(
       const userRef = admin.firestore().collection("users").doc(uid);
       const snap = await userRef.get();
       if (!snap.exists) {
-        throw new HttpsError("not-found", "User not found.");
+        throw httpsError("not-found", "User not found.");
       }
 
       if (patch.isPremium === false) {
@@ -604,7 +605,7 @@ exports.syncRevenueCatEntitlement = onCall(
           message: (e && e.message) || "unknown",
         })
       );
-      throw new HttpsError("internal", "Could not sync entitlement.");
+      throw httpsError("internal", "Could not sync entitlement.");
     }
   }
 );

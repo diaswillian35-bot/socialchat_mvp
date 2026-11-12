@@ -1,6 +1,7 @@
 "use strict";
 const admin = require("firebase-admin");
 const { HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const { GoogleAuth } = require("google-auth-library");
 const c = require("./place_description_cache");
 // Fixed ceilings: no remote config can raise these accidentally.
@@ -28,11 +29,11 @@ function periods(now) {
   return { day, month: day.slice(0, 7) };
 }
 function validate(request) {
-  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "authentication_required");
+  if (!request.auth?.uid) throw httpsError("unauthenticated", "authentication_required");
   const { placeId, language, sourceHash } = request.data || {};
   if (typeof placeId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(placeId) ||
       !c.language(language) || typeof sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(sourceHash))
-    throw new HttpsError("invalid-argument", "invalid_translation_request");
+    throw httpsError("invalid-argument", "invalid_translation_request");
   return { placeId, target: c.language(language), sourceHash };
 }
 function original(reason) { return { translated: false, reason }; }

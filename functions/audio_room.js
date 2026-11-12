@@ -2,6 +2,7 @@
 // Salas de áudio ao vivo nos grupos (LiveKit Cloud). Sem gravação: nunca usa
 // a API de gravação do LiveKit. Escritas em audioRooms só por aqui (Admin SDK).
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const { AccessToken, RoomServiceClient, WebhookReceiver, TrackSource } =
@@ -24,7 +25,7 @@ const ERR = {
   muted: "permission-denied",
 };
 function fail(code) {
-  throw new HttpsError(ERR[code] || "failed-precondition", code);
+  throw httpsError(ERR[code] || "failed-precondition", code);
 }
 
 function roomService() {
@@ -46,7 +47,7 @@ async function loadContext(request) {
   if (!uid) fail("unauthenticated");
   const groupId = (request.data?.groupId || "").toString().trim();
   if (!groupId || groupId.length > 128 || groupId.includes("/")) {
-    throw new HttpsError("invalid-argument", "groupId");
+    throw httpsError("invalid-argument", "groupId");
   }
   const db = admin.firestore();
   const groupRef = db.collection("groups").doc(groupId);
@@ -137,7 +138,7 @@ async function handleSpeaker(c, approve) {
   const e = L.joinError(c); if (e) fail(e);
   if (!c.liveDoc) fail("no_live_room");
   const targetUid = (c.targetUid || "").toString().trim();
-  if (!targetUid) throw new HttpsError("invalid-argument", "targetUid");
+  if (!targetUid) throw httpsError("invalid-argument", "targetUid");
   const se = L.speakerChangeError({ group: c.group, uid: c.uid, targetUid }); if (se) fail(se);
   if (approve) {
     const t = await c.db.collection("users").doc(targetUid).get();
@@ -161,7 +162,7 @@ exports.audioRoomAction = onCall(
   { region: "us-central1", secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET] },
   async (request) => {
     const action = (request.data?.action || "").toString();
-    if (!ACTIONS.has(action)) throw new HttpsError("invalid-argument", "action");
+    if (!ACTIONS.has(action)) throw httpsError("invalid-argument", "action");
     await assertVerifiedAdult(request, { getFirestore: () => admin.firestore(), HttpsError });
     const c = await loadContext(request);
     c.targetUid = request.data?.targetUid;
@@ -183,15 +184,15 @@ exports.setGroupAudioRoom = onCall(
   { region: "us-central1" },
   async (request) => {
     const uid = request.auth?.uid || "";
-    if (!uid) throw new HttpsError("unauthenticated", "unauthenticated");
+    if (!uid) throw httpsError("unauthenticated", "unauthenticated");
     const db = admin.firestore();
     const isAppAdmin = isSuperAdminAuth(request.auth) ||
       (await db.collection("admins").doc(uid).get()).exists;
-    if (!isAppAdmin) throw new HttpsError("permission-denied", "not_app_admin");
+    if (!isAppAdmin) throw httpsError("permission-denied", "not_app_admin");
     const input = L.parseGroupAudioRoomInput(request.data);
-    if (!input) throw new HttpsError("invalid-argument", "groupId/enabled");
+    if (!input) throw httpsError("invalid-argument", "groupId/enabled");
     const g = await db.collection("groups").doc(input.groupId).get();
-    if (!g.exists) throw new HttpsError("not-found", "group_not_found");
+    if (!g.exists) throw httpsError("not-found", "group_not_found");
     await db.collection("audioRoomGroups").doc(input.groupId).set({
       enabled: input.enabled,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),

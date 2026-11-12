@@ -4,6 +4,7 @@
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 const {
   MAX_DESTINATIONS,
@@ -37,7 +38,7 @@ const db = () => admin.firestore();
 
 function requireAuth(request) {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
   return request.auth.uid;
 }
@@ -54,7 +55,7 @@ async function bumpRate(uid) {
       RATE.forwardPerUid.windowMs,
     );
     if (!next.allowed) {
-      throw new HttpsError("resource-exhausted", "Rate limit exceeded.");
+      throw httpsError("resource-exhausted", "Rate limit exceeded.");
     }
     tx.set(
       ref,
@@ -72,10 +73,10 @@ async function loadActiveUser(uid) {
   const snap = await db().collection("users").doc(uid).get();
   const data = snap.data() || {};
   const block = accountBlocked(data);
-  if (block) throw new HttpsError("permission-denied", "Not allowed.");
+  if (block) throw httpsError("permission-denied", "Not allowed.");
   // b44: suspenso/"sem falar" não encaminha.
-  if (moderationSendBlock(data)) throw new HttpsError("permission-denied", "Not allowed.");
-  if (moderationMuted(data)) throw new HttpsError("permission-denied", "Muted.", { reason: "muted" });
+  if (moderationSendBlock(data)) throw httpsError("permission-denied", "Not allowed.");
+  if (moderationMuted(data)) throw httpsError("permission-denied", "Muted.", { reason: "muted" });
   return data;
 }
 
@@ -116,74 +117,74 @@ function groupCountry(groupData = {}) {
 async function resolveSourceMessage(uid, source) {
   const kind = String(source?.kind || "").trim();
   const messageId = String(source?.messageId || "").trim();
-  if (!messageId) throw new HttpsError("invalid-argument", "Missing message.");
+  if (!messageId) throw httpsError("invalid-argument", "Missing message.");
 
   if (kind === "dm") {
     const conversationId = String(source.conversationId || "").trim();
     if (!conversationId) {
-      throw new HttpsError("invalid-argument", "Missing conversation.");
+      throw httpsError("invalid-argument", "Missing conversation.");
     }
     const convRef = db().collection("conversations").doc(conversationId);
     const convSnap = await convRef.get();
     if (!convSnap.exists) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
     const conv = convSnap.data() || {};
     const parts = Array.isArray(conv.participants)
       ? conv.participants.map(String)
       : [];
     if (!parts.includes(uid)) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
     const msgSnap = await convRef.collection("messages").doc(messageId).get();
     if (!msgSnap.exists) {
-      throw new HttpsError("not-found", "Message not found.");
+      throw httpsError("not-found", "Message not found.");
     }
     const msg = msgSnap.data() || {};
     if (!callerCanReadMessage(msg, uid, { hiddenField: "hiddenFor" })) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
     const content = extractForwardableContent(msg);
     if (!content.ok) {
-      throw new HttpsError("failed-precondition", content.error || "invalid");
+      throw httpsError("failed-precondition", content.error || "invalid");
     }
     return { content, sourceKind: "dm", sourceId: conversationId };
   }
 
   if (kind === "group") {
     const groupId = String(source.groupId || "").trim();
-    if (!groupId) throw new HttpsError("invalid-argument", "Missing group.");
+    if (!groupId) throw httpsError("invalid-argument", "Missing group.");
     const groupRef = db().collection("groups").doc(groupId);
     const groupSnap = await groupRef.get();
     if (!groupSnap.exists) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
     const g = groupSnap.data() || {};
     if (g.deleted === true || g.isDeleted === true || g.isActive === false) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
     if (!isParticipating(g, uid)) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
     if (await isGroupBanned(groupId, uid)) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
     const msgSnap = await groupRef.collection("messages").doc(messageId).get();
     if (!msgSnap.exists) {
-      throw new HttpsError("not-found", "Message not found.");
+      throw httpsError("not-found", "Message not found.");
     }
     const msg = msgSnap.data() || {};
     if (!callerCanReadMessage(msg, uid)) {
-      throw new HttpsError("permission-denied", "Not allowed.");
+      throw httpsError("permission-denied", "Not allowed.");
     }
     const content = extractForwardableContent(msg);
     if (!content.ok) {
-      throw new HttpsError("failed-precondition", content.error || "invalid");
+      throw httpsError("failed-precondition", content.error || "invalid");
     }
     return { content, sourceKind: "group", sourceId: groupId };
   }
 
-  throw new HttpsError("invalid-argument", "Bad source.");
+  throw httpsError("invalid-argument", "Bad source.");
 }
 
 async function findOrCreateDm(uid, otherUid, myData) {
@@ -464,7 +465,7 @@ const forwardMessage = onCall({ region: "us-central1" }, async (request) => {
 
   const intentId = String(request.data?.intentId || "").trim();
   if (!intentId || intentId.length < 8) {
-    throw new HttpsError("invalid-argument", "Missing intentId.");
+    throw httpsError("invalid-argument", "Missing intentId.");
   }
 
   const idemRef = db()
@@ -484,7 +485,7 @@ const forwardMessage = onCall({ region: "us-central1" }, async (request) => {
   const { content } = await resolveSourceMessage(uid, request.data?.source);
   const normalized = normalizeDestinations(request.data?.destinations);
   if (!normalized.ok) {
-    throw new HttpsError("invalid-argument", normalized.error);
+    throw httpsError("invalid-argument", normalized.error);
   }
 
   const results = [];

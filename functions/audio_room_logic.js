@@ -1,4 +1,5 @@
 "use strict";
+const { langFromUser, t } = require("./i18n/serverTexts");
 // Regras puras das salas de áudio dos grupos (sem firebase-admin).
 // O país segue RemdyLaunchAccess.canAccessGroupCountry do app (lançamento
 // gratuito BR/CA: mesmo país aberto; admin total vê todos).
@@ -141,18 +142,17 @@ const PUSH_TEXTS = Object.freeze({
 });
 
 function pushLocale(user) {
-  const raw = norm(user?.appLanguage || user?.language || user?.locale).replace("_", "-");
-  if (raw === "pt-pt") return "pt-PT";
-  if (raw.startsWith("pt")) return "pt-BR";
-  const p = raw.split("-")[0];
-  if (p === "en" || p === "es" || p === "fr") return p;
-  return userCountry(user) === "ca" ? "en" : "pt-BR";
+  // appLanguageCode primeiro (campo já lido nas outras functions), depois os
+  // fallbacks antigos; sem idioma, Canadá -> en, resto -> pt-BR.
+  return langFromUser(user, { countryFallback: true });
 }
 
 function livePushText(locale, groupName, openerName) {
-  const t = PUSH_TEXTS[locale] || PUSH_TEXTS["pt-BR"];
-  const fill = (s) => s.replace("{group}", groupName || "Remdy").replace("{name}", openerName || "Remdy");
-  return { title: fill(t.title), body: fill(t.body) };
+  const vars = { group: groupName || "Remdy", name: openerName || "Remdy" };
+  return {
+    title: t("push_audio_live_title", locale, vars),
+    body: t("push_audio_live_body", locale, vars),
+  };
 }
 
 // Mensagem "abriu uma sala de áudio" no chat do grupo. Desligada até o

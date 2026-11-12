@@ -1,3 +1,4 @@
+const { httpsError } = require("./i18n/httpsError");
 /**
  * Busca segura e global de usuários (server-side).
  *
@@ -311,7 +312,7 @@ async function loadUsersByIds(db, uids) {
  */
 async function assertSearchRateLimit(db, uid, HttpsError) {
   if (!uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
   const ref = db.collection("_rateLimits").doc(`searchUsers_${uid}`);
   const now = Date.now();
@@ -333,7 +334,7 @@ async function assertSearchRateLimit(db, uid, HttpsError) {
     }
 
     if (count >= RATE_LIMIT_MAX) {
-      throw new HttpsError(
+      throw httpsError(
         "resource-exhausted",
         "Too many search requests. Please wait a moment."
       );
@@ -362,14 +363,14 @@ function createSearchUsersHandler({
 
   return async function searchUsersHandler(request) {
     if (!request || !request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const callerUid = request.auth.uid;
     const data = request.data || {};
     const type = resolveSearchType(data.type);
     if (!type) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "Invalid search type. Allowed: name, city, region, country."
       );

@@ -5,6 +5,7 @@
 const { onValueWritten } = require("firebase-functions/v2/database");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 
 const {
@@ -102,13 +103,13 @@ async function readConnectionCount(rtdb, uid) {
 
 async function assertPresenceReconcileAdmin(request) {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
   try {
     assertAppCheckIfEnforced(request);
   } catch (e) {
     if (e instanceof HttpsError) throw e;
-    throw new HttpsError("failed-precondition", "App Check required.");
+    throw httpsError("failed-precondition", "App Check required.");
   }
 
   const uid = request.auth.uid;
@@ -126,7 +127,7 @@ async function assertPresenceReconcileAdmin(request) {
   });
 
   if (!verdict.allowed) {
-    throw new HttpsError(
+    throw httpsError(
       verdict.code === "unauthenticated" ? "unauthenticated" : "permission-denied",
       "Admin or master only."
     );
@@ -681,7 +682,7 @@ const reconcilePresenceCountersNow = onCall(
 
     const parsed = parseReconcileCallArgs(request.data || {});
     if (!parsed.ok) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         parsed.errors.join("; ") || "Invalid arguments"
       );
@@ -702,7 +703,7 @@ const reconcilePresenceCountersNow = onCall(
       // e sem próxima página — admin deve paginar até o fim antes)
       rebuilt = await rebuildAbsoluteCounters(firestore, rtdb);
     } else if (request.data?.rebuild === true && page.nextPage) {
-      throw new HttpsError(
+      throw httpsError(
         "failed-precondition",
         "Finish paging all users before rebuild (nextPage present)."
       );

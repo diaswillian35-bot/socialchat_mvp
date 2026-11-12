@@ -1,4 +1,5 @@
 "use strict";
+const { langFromUser, compactLang, t } = require("./i18n/serverTexts");
 
 /** Push ao dono com o resultado da moderação do local (5 idiomas). */
 const MAX_REASON = 300;
@@ -46,12 +47,7 @@ function cleanReason(raw) {
 }
 
 function langOf(userData) {
-  const raw = String(
-    (userData && (userData.appLanguageCode || userData.appLang || userData.languageCode)) || "pt_BR",
-  ).toLowerCase().replace("-", "_");
-  if (raw.startsWith("pt")) return raw === "pt_pt" ? "pt" : "br";
-  const two = raw.substring(0, 2);
-  return COPY[two] ? two : "br";
+  return compactLang(langFromUser(userData));
 }
 
 /** "approved" | "rejected" | null — só na transição a partir de pendente. */

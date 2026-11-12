@@ -1,4 +1,5 @@
 "use strict";
+const { httpsError } = require("./i18n/httpsError");
 
 const VERIFIED_STATUS = "verified";
 
@@ -8,11 +9,11 @@ function isVerifiedAdultData(data) {
 
 async function assertVerifiedAdultUid(uid, { getFirestore, HttpsError }) {
   if (!uid) {
-    throw new HttpsError("unauthenticated", "Authentication required.");
+    throw httpsError("unauthenticated", "Authentication required.");
   }
   const snap = await getFirestore().collection("users").doc(uid).get();
   if (!snap.exists || !isVerifiedAdultData(snap.data())) {
-    throw new HttpsError(
+    throw httpsError(
       "permission-denied",
       "Adult age verification is required.",
     );

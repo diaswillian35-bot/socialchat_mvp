@@ -37,7 +37,7 @@ test("both real handlers are wired to the shared validator", () => {
   assert.match(update, /value = validatedGroupBio\(value\)/);
   assert.match(create, /const bio = validatedGroupBio\(dataIn.bio\)/);
   assert.match(src, /return normalizeGroupBio\(value\)/);
-  assert.match(src, /throw new HttpsError\(error.code, error.message\)/);
+  assert.match(src, /throw httpsError\(error.code, error.message\)/);
 });
 
 test("optional bio normalization is unchanged", () => {

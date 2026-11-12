@@ -1,3 +1,4 @@
+const { t, langFromUser } = require("../i18n/serverTexts");
 /**
  * Aviso de denúncia ao admin (FCM).
  * Módulo separado de qualquer aviso de usuário novo.
@@ -59,15 +60,6 @@ async function sendOpsNoticeIfReady(input) {
     safeModerationLog("report_notice", { decision: "skipped", reason: "no_admins" });
     return { sent: false, reason: "no_admins" };
   }
-  const tokens = await collectTokens(db, found.uids);
-  if (!tokens.length) {
-    safeModerationLog("report_notice", {
-      decision: "skipped",
-      reason: "no_tokens",
-      attempts: found.uids.length,
-    });
-    return { sent: false, reason: "no_tokens" };
-  }
   const data = {};
   const src = input.data || {};
   for (const key of Object.keys(src)) {
@@ -79,23 +71,59 @@ async function sendOpsNoticeIfReady(input) {
     safeModerationLog("report_notice", { decision: "skipped", reason: "no_messaging" });
     return { sent: false, reason: "no_messaging" };
   }
-  const response = await messaging.sendEachForMulticast({
-    tokens,
-    notification: {
-      title: String(input.title || "Remdy").slice(0, 80),
-      body: String(input.body || "").slice(0, 180),
-    },
-    data,
-  });
+
+  const byLang = new Map();
+  let tokenCount = 0;
+  for (const uid of found.uids) {
+    const userSnap = await db.collection("users").doc(uid).get();
+    const lang = langFromUser(userSnap.exists ? userSnap.data() : null);
+    const tokens = await collectTokens(db, [uid]);
+    if (!tokens.length) continue;
+    if (!byLang.has(lang)) byLang.set(lang, []);
+    byLang.get(lang).push(...tokens);
+    tokenCount += tokens.length;
+  }
+  if (tokenCount === 0) {
+    safeModerationLog("report_notice", {
+      decision: "skipped",
+      reason: "no_tokens",
+      attempts: found.uids.length,
+    });
+    return { sent: false, reason: "no_tokens" };
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
+  const reason = input.reasonCode;
+  const total = input.total;
+  for (const [lang, list] of byLang) {
+    const tokens = [...new Set(list)];
+    const title = (reason != null && total != null)
+      ? t("push_report_title", lang)
+      : String(input.title || "Remdy");
+    const body = (reason != null && total != null)
+      ? t("push_report_body", lang, { reason, total })
+      : String(input.body || "");
+    const response = await messaging.sendEachForMulticast({
+      tokens,
+      notification: {
+        title: title.slice(0, 80),
+        body: body.slice(0, 180),
+      },
+      data,
+    });
+    successCount += response ? response.successCount : 0;
+    failureCount += response ? response.failureCount : 0;
+  }
   safeModerationLog("report_notice", {
     decision: "sent",
-    attempts: tokens.length,
-    reason: `ok:${response && response.successCount ? response.successCount : 0}`,
+    attempts: tokenCount,
+    reason: `ok:${successCount}`,
   });
   return {
     sent: true,
-    successCount: response ? response.successCount : 0,
-    failureCount: response ? response.failureCount : 0,
+    successCount,
+    failureCount,
   };
 }
 

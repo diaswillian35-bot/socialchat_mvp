@@ -6,6 +6,7 @@
 
 const crypto = require("crypto");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -57,7 +58,7 @@ async function markPhoneVerifiedCore(db, uid, { phoneNumber, pepper }) {
     if (u.exists && u.data()?.verification?.status === "verified") {
       await revokeVerificationCore(db, uid, { by: "system", reason: "phone_unlinked" });
     }
-    throw new HttpsError("failed-precondition", "no_phone", { reason: "no_phone" });
+    throw httpsError("failed-precondition", "no_phone", { reason: "no_phone" });
   }
   const hash = phoneHash(phone, pepper);
   const phoneRef = db.collection("verificationPhones").doc(hash);
@@ -83,7 +84,7 @@ async function markPhoneVerifiedCore(db, uid, { phoneNumber, pepper }) {
     return { ok: true };
   });
   if (result.error) {
-    throw new HttpsError("failed-precondition", result.error, { reason: result.error });
+    throw httpsError("failed-precondition", result.error, { reason: result.error });
   }
   return { verified: true };
 }
@@ -114,7 +115,7 @@ const markPhoneVerified = onCall(
   { region: REGION_CALL, secrets: [VERIFY_PHONE_PEPPER] },
   async (request) => {
     const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Login required.");
+    if (!uid) throw httpsError("unauthenticated", "Login required.");
     const user = await admin.auth().getUser(uid);
     return markPhoneVerifiedCore(admin.firestore(), uid, {
       phoneNumber: user.phoneNumber || "",
@@ -126,7 +127,7 @@ const markPhoneVerified = onCall(
 /** A própria pessoa desvincula o telefone: tira do Auth e revoga o selo. */
 const unlinkVerifiedPhone = onCall({ region: REGION_CALL }, async (request) => {
   const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Login required.");
+  if (!uid) throw httpsError("unauthenticated", "Login required.");
   await admin.auth().updateUser(uid, { phoneNumber: null });
   return revokeVerificationCore(admin.firestore(), uid, { by: uid, reason: "unlinked_by_user" });
 });
@@ -134,10 +135,10 @@ const unlinkVerifiedPhone = onCall({ region: REGION_CALL }, async (request) => {
 const revokeVerification = onCall({ region: REGION_CALL }, async (request) => {
   const db = admin.firestore();
   if (!(await hasAdminPermission(db, request.auth, "verification"))) {
-    throw new HttpsError("permission-denied", "not_admin");
+    throw httpsError("permission-denied", "not_admin");
   }
   const target = String(request.data?.uid || "").trim();
-  if (!target || target.includes("/")) throw new HttpsError("invalid-argument", "uid");
+  if (!target || target.includes("/")) throw httpsError("invalid-argument", "uid");
   return revokeVerificationCore(db, target, { by: request.auth.uid, reason: String(request.data?.reason || "admin").slice(0, 120) });
 });
 
@@ -183,7 +184,7 @@ async function adjustModerationCore(db, targetUid, action, { by, points } = {}) 
   } else if (action === "confirm_ban") {
     await userRef.set({ isBanned: true, moderation: { status: "banned", level: 4, mutedUntil: del, at: ts(), reason: "admin_confirm" } }, { merge: true });
   } else {
-    throw new HttpsError("invalid-argument", "action");
+    throw httpsError("invalid-argument", "action");
   }
   await audit(db, { action: `moderation_${action}`, targetUid, by: String(by || ""), points: Number(points) || 0 });
   return { ok: true, action };
@@ -192,10 +193,10 @@ async function adjustModerationCore(db, targetUid, action, { by, points } = {}) 
 const adjustModeration = onCall({ region: REGION_CALL }, async (request) => {
   const db = admin.firestore();
   if (!(await hasAdminPermission(db, request.auth, "moderation"))) {
-    throw new HttpsError("permission-denied", "not_admin");
+    throw httpsError("permission-denied", "not_admin");
   }
   const target = String(request.data?.uid || "").trim();
-  if (!target || target.includes("/")) throw new HttpsError("invalid-argument", "uid");
+  if (!target || target.includes("/")) throw httpsError("invalid-argument", "uid");
   return adjustModerationCore(db, target, String(request.data?.action || ""), {
     by: request.auth.uid,
     points: request.data?.points,
@@ -211,25 +212,25 @@ function isGroupOwnerOrAdmin(group, uid) {
 
 async function updateGroupModBotCore(db, auth, groupId, changesIn) {
   const uid = auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Login required.");
+  if (!uid) throw httpsError("unauthenticated", "Login required.");
   const gid = String(groupId || "").trim();
-  if (!gid || gid.includes("/")) throw new HttpsError("invalid-argument", "groupId");
+  if (!gid || gid.includes("/")) throw httpsError("invalid-argument", "groupId");
   let changes;
   try {
     changes = sanitizeBotChanges(changesIn);
   } catch (e) {
-    throw new HttpsError("invalid-argument", String(e.message || "invalid"));
+    throw httpsError("invalid-argument", String(e.message || "invalid"));
   }
   if (changes.rules && (evaluateText(changes.rules, {}) || evaluateProfanity(changes.rules, { loose: false }))) {
-    throw new HttpsError("invalid-argument", "content_filter_blocked", { code: "content_filter_blocked" });
+    throw httpsError("invalid-argument", "content_filter_blocked", { code: "content_filter_blocked" });
   }
   const ref = db.collection("groups").doc(gid);
   const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError("not-found", "group_not_found");
+  if (!snap.exists) throw httpsError("not-found", "group_not_found");
   const g = snap.data() || {};
-  if (g.deleted === true || g.isActive === false) throw new HttpsError("failed-precondition", "group_unavailable");
+  if (g.deleted === true || g.isActive === false) throw httpsError("failed-precondition", "group_unavailable");
   if (!isGroupOwnerOrAdmin(g, uid) && !isSuperAdminAuth(auth)) {
-    throw new HttpsError("permission-denied", "not_group_admin");
+    throw httpsError("permission-denied", "not_group_admin");
   }
   const next = { ...botConfig(g), ...changes, updatedBy: uid, updatedAt: ts() };
   await ref.set({ modBot: next }, { merge: true });

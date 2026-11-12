@@ -1,6 +1,8 @@
 "use strict";
 
 const { HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
+const { t, langFromUser } = require("./i18n/serverTexts");
 const admin = require("firebase-admin");
 const {
   parseReviewInput,
@@ -17,7 +19,7 @@ const {
 } = require("./place_actions_logic");
 
 function fail(code, message) {
-  throw new HttpsError(code, message);
+  throw httpsError(code, message);
 }
 
 async function tokensFor(db, uid) {
@@ -30,13 +32,18 @@ async function tokensFor(db, uid) {
     const token = String(doc.data().token || doc.id || "").trim();
     if (token) tokens.add(token);
   });
-  return [...tokens];
+  return { tokens: [...tokens], userData: user.exists ? user.data() : null };
 }
 
-async function placePush(db, uid, title, body, placeId, type) {
+async function placePush(db, uid, titleKey, bodyKey, vars, placeId, type) {
   if (!uid) return;
-  const tokens = await tokensFor(db, uid);
+  const { tokens, userData } = await tokensFor(db, uid);
   if (!tokens.length) return;
+  const lang = langFromUser(userData);
+  const v = { ...(vars || {}) };
+  if (!v.name) v.name = t("push_place_fallback", lang);
+  const title = t(titleKey, lang, v);
+  const body = t(bodyKey, lang, v);
   await admin.messaging().sendEachForMulticast({
     tokens,
     notification: { title, body },
@@ -107,8 +114,8 @@ async function submitReviewHandler(request, deps = {}) {
   });
   const access = accessSnap.data() || {};
   const recipients = [...new Set([access.ownerUid, ...(Array.isArray(access.managerUids) ? access.managerUids : [])])].filter((id) => id && id !== uid);
-  const placeName = String(place.name || "Local").slice(0, 80);
-  await Promise.all(recipients.map((id) => placePush(db, id, "Nova avaliação", `Há uma nova avaliação em ${placeName}.`, parsed.placeId, "place_review").catch(() => undefined)));
+  const placeName = String(place.name || "").slice(0, 80);
+  await Promise.all(recipients.map((id) => placePush(db, id, "push_place_review_title", "push_place_review_body", { name: placeName }, parsed.placeId, "place_review").catch(() => undefined)));
   return { ok: true, action, moderationStatus: "pending" };
 }
 
@@ -131,7 +138,7 @@ async function replyHandler(request, deps = {}) {
   // Só a resposta: estrelas, comentário, autor e status ficam intactos.
   await review.ref.set({ ...ownerReplyPatch(data.ownerReply, parsed.text, now.toISOString()), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   const place = (await placeRef.get()).data() || {};
-  await placePush(db, review.id, "Resposta do estabelecimento", `${String(place.name || "Local").slice(0, 80)} respondeu sua avaliação.`, parsed.placeId, "place_reply").catch(() => undefined);
+  await placePush(db, review.id, "push_place_reply_title", "push_place_reply_body", { name: String(place.name || "").slice(0, 80) }, parsed.placeId, "place_reply").catch(() => undefined);
   return { ok: true };
 }
 

@@ -1,3 +1,4 @@
+const { langFromUser, t: serverT } = require("../i18n/serverTexts");
 /**
  * b44: Avisos Remdy (users/{uid}/systemInbox) da moderação, nos 5 idiomas.
  * Mesmos textos das chaves do app (lib/l10n/*.json).
@@ -36,16 +37,12 @@ const T = {
 };
 
 function langOf(userData) {
-  const raw = String((userData && (userData.appLanguageCode || userData.languageCode || userData.locale)) || "pt")
-    .replace("_", "-").toLowerCase();
-  if (raw === "pt-pt") return "pt-PT";
-  const two = raw.slice(0, 2);
-  if (two === "pt") return "pt-BR";
-  if (["en", "es", "fr"].includes(two)) return two;
-  return "en";
+  return langFromUser(userData);
 }
 
 function text(key, lang, vars = {}) {
+  const fromServer = serverT(key, lang, vars);
+  if (fromServer) return fromServer;
   const row = T[key] || {};
   let s = row[lang] || row.en || "";
   for (const k of Object.keys(vars)) s = s.replaceAll(`{${k}}`, vars[k]);

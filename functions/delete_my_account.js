@@ -3,6 +3,7 @@
  * UID vem exclusivamente de request.auth.uid — nunca do cliente.
  */
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 const { accountDeletionGroupPatch } = require("./group_role_policy");
 
@@ -427,7 +428,7 @@ async function tombstoneUser(db, uid) {
  */
 async function deleteMyAccountHandler(request) {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   // Never trust client UID
@@ -526,7 +527,7 @@ async function deleteMyAccountHandler(request) {
             message: e.message || "unknown",
           })
         );
-        throw new HttpsError(
+        throw httpsError(
           "internal",
           "Account data cleaned but auth delete failed. Please retry."
         );
@@ -569,7 +570,7 @@ async function deleteMyAccountHandler(request) {
         message: (e && e.message) || "unknown",
       })
     );
-    throw new HttpsError("internal", "Could not delete account. Please retry.");
+    throw httpsError("internal", "Could not delete account. Please retry.");
   }
 }
 

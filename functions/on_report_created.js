@@ -247,6 +247,8 @@ async function handleReportCreated(reportId, report) {
     messaging: admin.messaging(),
     title: "Nova denúncia",
     body: decision.body,
+    reasonCode: decision.reasonCode,
+    total: decision.total,
     data: {
       reportId,
       reportedUid,

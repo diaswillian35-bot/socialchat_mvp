@@ -6,6 +6,7 @@
  * locais `published`. Dono lê o pendente via places/{id}/private/access.
  */
 const { HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 const { isSuperAdminAuth } = require("./super_admin");
 const {
@@ -19,7 +20,7 @@ const MAX_PENDING_PER_USER = 5;
 
 function requireAuth(request) {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
   return request.auth.uid;
 }
@@ -27,14 +28,14 @@ function requireAuth(request) {
 function requireSuperAdmin(request) {
   requireAuth(request);
   if (!isSuperAdminAuth(request.auth)) {
-    throw new HttpsError("permission-denied", "Admin only.");
+    throw httpsError("permission-denied", "Admin only.");
   }
 }
 
 function placeIdOf(data) {
   const id = String((data && data.placeId) || "").trim();
   if (!id || id.length > 128 || id.includes("/")) {
-    throw new HttpsError("invalid-argument", "Invalid placeId.");
+    throw httpsError("invalid-argument", "Invalid placeId.");
   }
   return id;
 }
@@ -43,7 +44,7 @@ async function submitPlaceHandler(request) {
   const uid = requireAuth(request);
   const parsed = parsePlaceInput(request.data, { creating: true });
   if (parsed.error) {
-    throw new HttpsError("invalid-argument", parsed.error);
+    throw httpsError("invalid-argument", parsed.error);
   }
   const db = admin.firestore();
   const pending = await db.collection("places")
@@ -52,7 +53,7 @@ async function submitPlaceHandler(request) {
     .limit(MAX_PENDING_PER_USER)
     .get();
   if (pending.size >= MAX_PENDING_PER_USER && !isSuperAdminAuth(request.auth)) {
-    throw new HttpsError("resource-exhausted", "too_many_pending");
+    throw httpsError("resource-exhausted", "too_many_pending");
   }
   const ref = db.collection("places").doc();
   const now = admin.firestore.FieldValue.serverTimestamp();
@@ -91,7 +92,7 @@ async function loadEditable(request, placeId) {
     ref.collection("private").doc("access").get(),
   ]);
   if (!snap.exists || snap.data().deleted === true) {
-    throw new HttpsError("not-found", "Place not found.");
+    throw httpsError("not-found", "Place not found.");
   }
   if (!canEditPlace({
     uid,
@@ -99,7 +100,7 @@ async function loadEditable(request, placeId) {
     placeData: snap.data(),
     accessData: access.exists ? access.data() : null,
   })) {
-    throw new HttpsError("permission-denied", "Not the owner.");
+    throw httpsError("permission-denied", "Not the owner.");
   }
   return { ref, snap };
 }
@@ -109,7 +110,7 @@ async function updateMyPlaceHandler(request) {
   const { ref, snap } = await loadEditable(request, placeId);
   const parsed = parsePlaceInput(request.data, { creating: false, placeId });
   if (parsed.error) {
-    throw new HttpsError("invalid-argument", parsed.error);
+    throw httpsError("invalid-argument", parsed.error);
   }
   const patch = {
     ...parsed.fields,
@@ -173,14 +174,14 @@ async function moderatePlaceHandler(request) {
     String((request.data || {}).decision || ""),
     (request.data || {}).reason,
   );
-  if (!patch) throw new HttpsError("invalid-argument", "Invalid decision.");
+  if (!patch) throw httpsError("invalid-argument", "Invalid decision.");
   const ref = admin.firestore().collection("places").doc(placeId);
   const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError("not-found", "Place not found.");
+  if (!snap.exists) throw httpsError("not-found", "Place not found.");
   const d = snap.data() || {};
   if (patch.active && !(d.coverUrl || (d.photoUrls || []).length)) {
     // O app só exibe locais com ao menos uma foto.
-    throw new HttpsError("failed-precondition", "photo_required");
+    throw httpsError("failed-precondition", "photo_required");
   }
   await ref.update({
     ...patch,

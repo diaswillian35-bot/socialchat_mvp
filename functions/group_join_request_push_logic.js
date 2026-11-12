@@ -36,17 +36,28 @@ function resolveJoinRequestAdminUids(groupData, requestUid) {
   return [...set].filter((uid) => uid && uid !== requester);
 }
 
+const { t } = require("./i18n/serverTexts");
+
 /**
- * Copy canônico do push (pt-BR servidor).
+ * Copy do push no idioma do destinatário (padrão pt-BR, compatível com os testes).
  * Título: Nova solicitação
  * Corpo: {nome} solicitou entrada no grupo {grupo}.
  */
-function formatJoinRequestPushCopy(userName, groupName) {
-  const name = (userName || "Alguém").toString().trim() || "Alguém";
-  const group = (groupName || "Grupo").toString().trim() || "Grupo";
+function formatJoinRequestPushCopy(userName, groupName, lang, flags = {}) {
+  const code = lang || "pt-BR";
+  const rawName = (userName || "").toString().trim();
+  const rawGroup = (groupName || "").toString().trim();
+  const name =
+    rawName && !flags.usedNameFallback
+      ? rawName
+      : t("push_someone", code);
+  const group =
+    rawGroup && !flags.usedGroupFallback
+      ? rawGroup
+      : t("push_group_fallback", code);
   return {
-    title: "Nova solicitação",
-    body: `${name} solicitou entrada no grupo ${group}.`,
+    title: t("push_join_request_title", code),
+    body: t("push_join_request_body", code, { name, group }),
   };
 }
 

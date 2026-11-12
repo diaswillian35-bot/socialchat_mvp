@@ -48,6 +48,7 @@ const https = require("https");
 const dns = require("dns");
 const { URL } = require("url");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 
 const {

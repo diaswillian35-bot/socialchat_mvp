@@ -1,6 +1,7 @@
 "use strict";
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
 const admin = require("firebase-admin");
 const {
   POLICY_VERSION,
@@ -9,13 +10,13 @@ const {
 
 async function confirmAdultAgeHandler(request) {
   const uid = request.auth && request.auth.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  if (!uid) throw httpsError("unauthenticated", "Authentication required.");
   const input = request.data || {};
   if (input.policyVersion !== POLICY_VERSION) {
-    throw new HttpsError("failed-precondition", "Policy version is outdated.");
+    throw httpsError("failed-precondition", "Policy version is outdated.");
   }
   const result = validateAdultDate(input.dateOfBirth, new Date());
-  if (!result.valid) throw new HttpsError("invalid-argument", "Invalid date of birth.");
+  if (!result.valid) throw httpsError("invalid-argument", "Invalid date of birth.");
 
   const ref = admin.firestore().collection("users").doc(uid);
   const timestamp = admin.firestore.Timestamp.fromDate(result.dateOfBirth);
@@ -28,11 +29,11 @@ async function confirmAdultAgeHandler(request) {
       const sameBirth = priorBirth && priorBirth.toMillis &&
         priorBirth.toMillis() === timestamp.toMillis();
       if (!sameBirth) {
-        throw new HttpsError("failed-precondition",
+        throw httpsError("failed-precondition",
           "Date of birth can only be corrected through support.");
       }
       if (priorStatus === "rejected") {
-        throw new HttpsError("permission-denied", "Remdy is only for adults.");
+        throw httpsError("permission-denied", "Remdy is only for adults.");
       }
       return;
     }
@@ -50,7 +51,7 @@ async function confirmAdultAgeHandler(request) {
     }, { merge: true });
   });
   if (!result.adult) {
-    throw new HttpsError("permission-denied", "Remdy is only for adults.");
+    throw httpsError("permission-denied", "Remdy is only for adults.");
   }
   return { verified: true, policyVersion: POLICY_VERSION };
 }

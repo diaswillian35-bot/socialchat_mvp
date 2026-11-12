@@ -4,13 +4,30 @@ const {
   onDocumentUpdated,
 } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { httpsError } = require("./i18n/httpsError");
+const { t: serverT, langFromUser } = require("./i18n/serverTexts");
+
+/** Só traduz prévias fixas (Nova mensagem / Áudio / Foto). O texto gravado no
+ *  lastMessage permanece em pt-BR; a tradução é só no push. */
+const PREVIEW_PUSH_KEYS = Object.freeze({
+  "Nova mensagem": "push_new_message",
+  "🎤 Áudio": "push_audio",
+  "📷 Foto": "push_photo",
+});
+function localizePreview(preview, lang) {
+  const key = PREVIEW_PUSH_KEYS[preview];
+  return key ? serverT(key, lang) : preview;
+}
+function localizeName(name, usedFallback, key, lang) {
+  return usedFallback ? serverT(key, lang) : name;
+}
 const { defineSecret } = require("firebase-functions/params");
 
 const admin = require("firebase-admin");
 const { permissionError, roleOf, uidList } = require("./group_role_policy");
 function assertGroupRoleAction(group, actorUid, targetUid, action) {
   const key = permissionError(group, actorUid, targetUid, action);
-  if (key) throw new HttpsError("permission-denied", key, { localizationKey: key });
+  if (key) throw httpsError("permission-denied", key, { localizationKey: key });
 }
 
 const { normalizeGroupBio } = require("./group_bio_logic");
@@ -19,7 +36,7 @@ function validatedGroupBio(value) {
   try {
     return normalizeGroupBio(value);
   } catch (error) {
-    throw new HttpsError(error.code, error.message);
+    throw httpsError(error.code, error.message);
   }
 }
 
@@ -462,7 +479,7 @@ function isInternationalGroupAccess(groupData, userData) {
 function assertCanAccessInternationalGroup(groupData, userData) {
   if (!isInternationalGroupAccess(groupData, userData)) return;
   if (isPremiumUserData(userData)) return;
-  throw new HttpsError(
+  throw httpsError(
     "permission-denied",
     "Premium required for international groups.",
   );
@@ -541,7 +558,7 @@ async function sendPush({
   return response;
 }
 
-async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
+async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey, localize }) {
   const uniqueUids = [...new Set((uids || []).filter(Boolean))];
   if (uniqueUids.length === 0) return null;
   let success = 0;
@@ -556,6 +573,10 @@ async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
       policyBlocked += 1;
       continue;
     }
+    const userData = userSnap.data();
+    const localized = typeof localize === "function" ? localize(userData) : null;
+    const pushTitle = (localized && localized.title) || title;
+    const pushBody = (localized && localized.body) || body;
     const entries = await collectTokenEntriesForUid(uid, prefKey);
     if (!entries.length) {
       zeroTokens += 1;
@@ -569,8 +590,8 @@ async function sendPushToUids({ uids, title, body, data, imageUrl, prefKey }) {
     const badge = badgeForImmediateMessagePush();
     const response = await sendPush({
       tokens,
-      title,
-      body,
+      title: pushTitle,
+      body: pushBody,
       data,
       imageUrl,
       badge,
@@ -726,6 +747,7 @@ exports.onGroupMessageCreated = onDocumentCreated(
       );
 
       let groupName = "Grupo";
+      let usedGroupNameFallback = true;
       let groupImage = "";
       let targetUids = [];
 
@@ -758,6 +780,7 @@ exports.onGroupMessageCreated = onDocumentCreated(
         }
 
         groupName = (group.name || "Grupo").toString().trim() || "Grupo";
+        usedGroupNameFallback = !(group.name || "").toString().trim();
         groupImage = groupImageUrl(group);
 
         const applied = applyGroupMessageUnread({
@@ -813,21 +836,43 @@ exports.onGroupMessageCreated = onDocumentCreated(
       }
 
       let senderName = "Alguém";
+      let usedSenderFallback = true;
       try {
         const senderSnap = await db.collection("users").doc(senderId).get();
         const senderData = senderSnap.data() || {};
         const n = (senderData.name || "").toString().trim();
-        if (n) senderName = n;
+        if (n) {
+          senderName = n;
+          usedSenderFallback = false;
+        }
       } catch (_) {}
 
       if (targetUids.length === 0) return;
 
+      const storedPreview = lastMessage;
       const response = await sendPushToUids({
         uids: targetUids,
         title: groupName,
-        body: `${senderName}: ${lastMessage}`,
+        body: `${senderName}: ${storedPreview}`,
         imageUrl: groupImage,
         prefKey: "group",
+        localize: (userData) => {
+          const lang = langFromUser(userData);
+          const title = localizeName(
+            groupName,
+            usedGroupNameFallback,
+            "push_group_fallback",
+            lang,
+          );
+          const who = localizeName(
+            senderName,
+            usedSenderFallback,
+            "push_someone",
+            lang,
+          );
+          const preview = localizePreview(storedPreview, lang);
+          return { title, body: `${who}: ${preview}` };
+        },
         data: {
           type: "group",
           groupId: groupId,
@@ -1049,11 +1094,15 @@ exports.onPrivateMessageCreated = onDocumentCreated(
 
       let body = preview;
       let senderName = "Alguém";
+      let usedSenderFallback = true;
       let senderImage = "";
       const senderSnap = await db.collection("users").doc(senderId).get();
       const senderData = senderSnap.data() || {};
       const senderLabel = (senderData.name || "").toString().trim();
-      if (senderLabel) senderName = senderLabel;
+      if (senderLabel) {
+        senderName = senderLabel;
+        usedSenderFallback = false;
+      }
       senderImage = profileImageUrl(senderData);
 
       // Badge only after unread confirmed on the conversation doc.
@@ -1063,6 +1112,16 @@ exports.onPrivateMessageCreated = onDocumentCreated(
         body,
         imageUrl: senderImage,
         prefKey: "chat",
+        localize: (userData) => {
+          const lang = langFromUser(userData);
+          const title = localizeName(
+            senderName,
+            usedSenderFallback,
+            "push_someone",
+            lang,
+          );
+          return { title, body: localizePreview(preview, lang) };
+        },
         data: {
           type: "chat",
           conversationId,
@@ -1137,7 +1196,7 @@ exports.askRemi = socialOnCall(
 
     try {
       if (!request.auth || !request.auth.uid) {
-        throw new HttpsError("unauthenticated", "REMI_UNAUTHENTICATED");
+        throw httpsError("unauthenticated", "REMI_UNAUTHENTICATED");
       }
 
       uid = request.auth.uid;
@@ -1178,7 +1237,7 @@ exports.askRemi = socialOnCall(
 
       const userSnap = await db.collection("users").doc(uid).get();
       if (!userSnap.exists) {
-        throw new HttpsError("failed-precondition", "REMI_USER_NOT_FOUND");
+        throw httpsError("failed-precondition", "REMI_USER_NOT_FOUND");
       }
       const userData = userSnap.data() || {};
       assertUserCanUseRemi(userData);
@@ -1270,7 +1329,7 @@ exports.askRemi = socialOnCall(
             netErr.name === "AbortError" ||
             /timeout/i.test(String(netErr.message || "")));
         await failAndMaybeRefund(isTimeout ? "timeout" : "gemini_network");
-        throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+        throw httpsError("internal", "REMI_TEMPORARY_ERROR");
       }
 
       let json;
@@ -1278,12 +1337,12 @@ exports.askRemi = socialOnCall(
         json = await response.json();
       } catch (_) {
         await failAndMaybeRefund("gemini_parse");
-        throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+        throw httpsError("internal", "REMI_TEMPORARY_ERROR");
       }
 
       if (!response.ok) {
         await failAndMaybeRefund("gemini_http");
-        throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+        throw httpsError("internal", "REMI_TEMPORARY_ERROR");
       }
 
       const reply = (
@@ -1292,7 +1351,7 @@ exports.askRemi = socialOnCall(
 
       if (!reply) {
         await failAndMaybeRefund("gemini_empty");
-        throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+        throw httpsError("internal", "REMI_TEMPORARY_ERROR");
       }
 
       // Resposta válida entregue — NÃO reembolsar cota daqui em diante.
@@ -1443,7 +1502,7 @@ exports.askRemi = socialOnCall(
         throw e;
       }
       await failAndMaybeRefund("internal");
-      throw new HttpsError("internal", "REMI_TEMPORARY_ERROR");
+      throw httpsError("internal", "REMI_TEMPORARY_ERROR");
     } finally {
       if (lockHeld && uid) {
         await releaseRemiLock(db, uid);
@@ -1502,7 +1561,8 @@ async function notifyAdminsOfGroupJoinRequest({ groupId, requestUid, req }) {
   if (!groupSnap.exists) return;
 
   const group = groupSnap.data() || {};
-  const groupName = (group.name || "Grupo").toString();
+  const rawGroupName = (group.name || "").toString().trim();
+  const groupName = rawGroupName || "Grupo";
   const targetAdmins = resolveJoinRequestAdminUids(group, requestUid);
   if (targetAdmins.length === 0) {
     console.log(
@@ -1511,44 +1571,74 @@ async function notifyAdminsOfGroupJoinRequest({ groupId, requestUid, req }) {
     return;
   }
 
-  const userName = (req.name || "Alguém").toString();
-  const adminEntries = [];
+  const rawUserName = (req.name || "").toString().trim();
+  const userName = rawUserName || "Alguém";
+
+  // Mesmos destinatários e preferência de token; o texto é agrupado por idioma.
+  const byLang = new Map();
+  let totalEntries = 0;
   for (const adminUid of targetAdmins) {
-    adminEntries.push(
-      ...(await collectTokenEntriesForUid(adminUid, "group_join_request")),
-    );
+    const [userSnap, entries] = await Promise.all([
+      admin.firestore().collection("users").doc(adminUid).get(),
+      collectTokenEntriesForUid(adminUid, "group_join_request"),
+    ]);
+    if (!entries.length) continue;
+    const lang = langFromUser(userSnap.exists ? userSnap.data() : null);
+    if (!byLang.has(lang)) byLang.set(lang, []);
+    byLang.get(lang).push(...entries);
+    totalEntries += entries.length;
   }
-  const uniqueTokens = [
-    ...new Set(adminEntries.map((e) => e.token).filter(Boolean)),
-  ];
-  if (uniqueTokens.length === 0) {
+  if (totalEntries === 0) {
     console.log(
       `Push pedido de entrada skip: sem tokens (${groupId}/${requestUid}) admins=${targetAdmins.length}`,
     );
     return;
   }
 
-  const { title, body } = formatJoinRequestPushCopy(userName, groupName);
-
-  const response = await sendPush({
-    tokens: uniqueTokens,
-    title,
-    body,
-    platformByToken: platformMapFromEntries(adminEntries),
-    data: {
-      type: "group_join_request",
-      groupId: String(groupId),
-      requestUid: String(requestUid),
-      groupName: String(groupName),
-    },
-  });
+  let success = 0;
+  let fail = 0;
+  for (const [lang, adminEntries] of byLang) {
+    const uniqueTokens = [
+      ...new Set(adminEntries.map((e) => e.token).filter(Boolean)),
+    ];
+    if (uniqueTokens.length === 0) continue;
+    const { title, body } = formatJoinRequestPushCopy(
+      userName,
+      groupName,
+      lang,
+      { usedNameFallback: !rawUserName, usedGroupFallback: !rawGroupName },
+    );
+    const response = await sendPush({
+      tokens: uniqueTokens,
+      title,
+      body,
+      platformByToken: platformMapFromEntries(adminEntries),
+      data: {
+        type: "group_join_request",
+        groupId: String(groupId),
+        requestUid: String(requestUid),
+        groupName: String(groupName),
+      },
+    });
+    success += response?.successCount ?? 0;
+    fail += response?.failureCount ?? 0;
+  }
 
   console.log(
-    `Push pedido de entrada enviado (${groupId}/${requestUid}). Success: ${response?.successCount ?? 0}, Fail: ${response?.failureCount ?? 0}`,
+    `Push pedido de entrada enviado (${groupId}/${requestUid}). Success: ${success}, Fail: ${fail}`,
   );
 }
 
-async function notifyEventCreator({ creatorUid, title, body, eventId, type }) {
+async function notifyEventCreator({
+  creatorUid,
+  title,
+  body,
+  eventId,
+  type,
+  titleKey,
+  bodyKey,
+  vars,
+}) {
   if (!creatorUid) return;
   // Same immediate path as DMs, groups, and event comments. A badge scan
   // here held the organizer alert until every unread thread was counted.
@@ -1561,6 +1651,17 @@ async function notifyEventCreator({ creatorUid, title, body, eventId, type }) {
       type: type || "event_moderation",
       eventId: eventId || "",
     },
+    localize: titleKey
+      ? (userData) => {
+          const lang = langFromUser(userData);
+          const v = { ...(vars || {}) };
+          if (!v.title) v.title = serverT("push_event_your", lang);
+          return {
+            title: serverT(titleKey, lang, v),
+            body: bodyKey ? serverT(bodyKey, lang, v) : body,
+          };
+        }
+      : undefined,
   });
 }
 
@@ -1590,7 +1691,8 @@ exports.onEventUpdated = onDocumentUpdated(
       )
         .toString()
         .trim();
-      const eventTitle = (data.title || "Seu evento").toString().trim();
+      const rawEventTitle = (data.title || "").toString().trim();
+      const eventTitle = rawEventTitle || "Seu evento";
       const statusBefore = (before?.status || "")
         .toString()
         .trim()
@@ -1606,6 +1708,9 @@ exports.onEventUpdated = onDocumentUpdated(
             type: "event_approved",
             title: "Evento aprovado",
             body: `"${eventTitle}" foi aprovado e já pode aparecer no app.`,
+            titleKey: "push_event_approved_title",
+            bodyKey: "push_event_approved_body",
+            vars: { title: rawEventTitle },
           });
         } else if (statusAfter === "rejected") {
           await notifyEventCreator({
@@ -1614,6 +1719,9 @@ exports.onEventUpdated = onDocumentUpdated(
             type: "event_rejected",
             title: "Evento rejeitado",
             body: `"${eventTitle}" foi rejeitado. Revise e envie novamente.`,
+            titleKey: "push_event_rejected_title",
+            bodyKey: "push_event_rejected_body",
+            vars: { title: rawEventTitle },
           });
         }
       }
@@ -1632,6 +1740,9 @@ exports.onEventUpdated = onDocumentUpdated(
             type: "event_needs_changes",
             title: "Alterações solicitadas",
             body: `"${eventTitle}" precisa de ajustes antes de republicar as mudanças.`,
+            titleKey: "push_event_changes_requested_title",
+            bodyKey: "push_event_changes_requested_body",
+            vars: { title: rawEventTitle },
           });
         } else if (!approvedAtBefore && approvedAtAfter) {
           await notifyEventCreator({
@@ -1640,6 +1751,9 @@ exports.onEventUpdated = onDocumentUpdated(
             type: "event_changes_approved",
             title: "Alterações aprovadas",
             body: `As alterações de "${eventTitle}" foram aprovadas.`,
+            titleKey: "push_event_changes_approved_title",
+            bodyKey: "push_event_changes_approved_body",
+            vars: { title: rawEventTitle },
           });
         }
       } else if (creatorUid && !pendingBefore && pendingAfter) {
@@ -1651,6 +1765,9 @@ exports.onEventUpdated = onDocumentUpdated(
           type: "event_changes_submitted",
           title: "Alterações enviadas",
           body: `As alterações de "${eventTitle}" foram enviadas para análise.`,
+          titleKey: "push_event_changes_sent_title",
+          bodyKey: "push_event_changes_sent_body",
+          vars: { title: rawEventTitle },
         });
       }
 
@@ -1662,7 +1779,8 @@ exports.onEventUpdated = onDocumentUpdated(
       if (!isActive) return;
       if (status !== "approved") return;
 
-      const title = (data.title || "Novo evento").toString().trim();
+      const title = (data.title || "").toString().trim() || "Novo evento";
+      const nearbyTitleRaw = (data.title || "").toString().trim();
       const city = (data.city || "").toString().trim();
       const category = (data.category || "").toString().trim();
       const countryCode = (data.countryCode || "")
@@ -1684,7 +1802,8 @@ exports.onEventUpdated = onDocumentUpdated(
       const radiusKm = 50;
 
       const tokensByLang = {
-        pt: [],
+        "pt-BR": [],
+        "pt-PT": [],
         en: [],
         es: [],
         fr: [],
@@ -1707,12 +1826,7 @@ exports.onEventUpdated = onDocumentUpdated(
         const userData = userDoc.data() || {};
         if (!pushAllowed(userData, "event")) continue;
 
-        const lang = (userData.appLanguageCode || userData.languageCode || "pt")
-          .toString()
-          .substring(0, 2)
-          .toLowerCase();
-
-        const finalLang = tokensByLang[lang] ? lang : "pt";
+        const finalLang = langFromUser(userData);
 
         const userLat = Number(userData.lat || userData.latitude);
         const userLng = Number(userData.lng || userData.longitude);
@@ -1754,26 +1868,11 @@ exports.onEventUpdated = onDocumentUpdated(
         const uniqueTokens = [...new Set(tokenList)];
         if (uniqueTokens.length === 0) continue;
 
-        let pushTitle = "📍 Novo evento perto de você";
-        let pushBody = `${title} • Toque para ver detalhes`;
-
-        if (lang === "en") {
-          pushTitle = "📍 New event near you";
-          pushBody = `${title} • Tap to view details`;
-        }
-
-        if (lang === "es") {
-          pushTitle = "📍 Nuevo evento cerca de ti";
-          pushBody = `${title} • Toca para ver detalles`;
-        }
-
-        if (lang === "fr") {
-          pushTitle = "📍 Nouvel événement près de vous";
-          pushBody = `${title} • Touchez pour voir les détails`;
-        }
-
+        const pushTitle = serverT("push_nearby_event_title", lang);
         const notifTitle = city ? `${pushTitle} (${city})` : pushTitle;
-        const notifBody = `${title}${category ? " • " + category : ""}`;
+        // Corpo: título do evento (+ categoria), como já era enviado.
+        const eventLabel = nearbyTitleRaw || serverT("push_event_new_fallback", lang);
+        const notifBody = `${eventLabel}${category ? " • " + category : ""}`;
 
         console.log(
           `Idioma ${lang}: ${uniqueTokens.length} token(s) para envio`,
@@ -1824,13 +1923,13 @@ function normalizeGroupJoinPolicy(raw) {
  */
 exports.joinOpenGroup = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth?.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
   const groupId = (request.data?.groupId || "").toString().trim();
   if (!groupId || groupId.length > 128) {
-    throw new HttpsError("invalid-argument", "Invalid groupId.");
+    throw httpsError("invalid-argument", "Invalid groupId.");
   }
 
   const db = admin.firestore();
@@ -1859,7 +1958,7 @@ exports.joinOpenGroup = socialOnCall({ region: "us-central1" }, async (request) 
       });
 
       if (decision.error) {
-        throw new HttpsError(decision.error, decision.reason);
+        throw httpsError(decision.error, decision.reason);
       }
 
       const groupName = (
@@ -1904,7 +2003,7 @@ exports.joinOpenGroup = socialOnCall({ region: "us-central1" }, async (request) 
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     console.error("joinOpenGroup:", error);
-    throw new HttpsError("internal", "Could not join group.");
+    throw httpsError("internal", "Could not join group.");
   }
 });
 
@@ -1918,26 +2017,26 @@ exports.joinGroupByInviteCode = socialOnCall(
   },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const uid = request.auth.uid;
     const code = normalizeGroupInviteCode(request.data?.inviteCode);
 
     if (!code || code.length < 4 || code.length > 16) {
-      throw new HttpsError("invalid-argument", "Invalid invite code.");
+      throw httpsError("invalid-argument", "Invalid invite code.");
     }
 
     const db = admin.firestore();
 
     const userSnap = await db.collection("users").doc(uid).get();
     if (!userSnap.exists) {
-      throw new HttpsError("failed-precondition", "User profile not found.");
+      throw httpsError("failed-precondition", "User profile not found.");
     }
 
     const userData = userSnap.data() || {};
     if (userData.isBanned === true) {
-      throw new HttpsError("permission-denied", "Account is banned.");
+      throw httpsError("permission-denied", "Account is banned.");
     }
 
     const querySnap = await db
@@ -1947,12 +2046,12 @@ exports.joinGroupByInviteCode = socialOnCall(
       .get();
 
     if (querySnap.empty) {
-      throw new HttpsError("not-found", "Invite not found.");
+      throw httpsError("not-found", "Invite not found.");
     }
 
     if (querySnap.size > 1) {
       console.error("inviteCode conflict: multiple groups share same code");
-      throw new HttpsError("failed-precondition", "Invite code conflict.");
+      throw httpsError("failed-precondition", "Invite code conflict.");
     }
 
     const groupRef = querySnap.docs[0].ref;
@@ -1961,7 +2060,7 @@ exports.joinGroupByInviteCode = socialOnCall(
       const result = await db.runTransaction(async (tx) => {
         const groupSnap = await tx.get(groupRef);
         if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
+          throw httpsError("not-found", "Group not found.");
         }
 
         const data = groupSnap.data() || {};
@@ -1969,17 +2068,17 @@ exports.joinGroupByInviteCode = socialOnCall(
         const groupName = (data.name || data.title || "Grupo").toString();
 
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
+          throw httpsError("failed-precondition", "Group unavailable.");
         }
 
         const docCode = normalizeGroupInviteCode(data.inviteCode);
         if (!docCode || docCode !== code) {
-          throw new HttpsError("not-found", "Invite not found.");
+          throw httpsError("not-found", "Invite not found.");
         }
 
         const policy = normalizeGroupJoinPolicy(data.joinPolicy);
         if (policy !== "inviteOnly") {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Group does not accept invite-only join.",
           );
@@ -1991,7 +2090,7 @@ exports.joinGroupByInviteCode = socialOnCall(
           groupRef.collection("bannedUsers").doc(uid),
         );
         if (banSnap.exists && banSnap.data()?.isActive === true) {
-          throw new HttpsError("permission-denied", "Cannot join this group.");
+          throw httpsError("permission-denied", "Cannot join this group.");
         }
 
         const membersRaw = Array.isArray(data.members) ? data.members : [];
@@ -2044,7 +2143,7 @@ exports.joinGroupByInviteCode = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro joinGroupByInviteCode:", e);
-      throw new HttpsError("internal", "Could not join group.");
+      throw httpsError("internal", "Could not join group.");
     }
   },
 );
@@ -2068,7 +2167,7 @@ function isGroupOwnerOrAdminData(data, uid) {
  */
 exports.banGroupMember = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const actorUid = request.auth.uid;
@@ -2077,7 +2176,7 @@ exports.banGroupMember = socialOnCall({ region: "us-central1" }, async (request)
   const reason = (request.data?.reason || "").toString().trim().slice(0, 300);
 
   if (!groupId || !targetUid) {
-    throw new HttpsError("invalid-argument", "groupId and targetUid required.");
+    throw httpsError("invalid-argument", "groupId and targetUid required.");
   }
 
   const db = admin.firestore();
@@ -2096,27 +2195,27 @@ exports.banGroupMember = socialOnCall({ region: "us-central1" }, async (request)
       const pendingSnap = await tx.get(pendingRef);
 
       if (!groupSnap.exists) {
-        throw new HttpsError("not-found", "Group not found.");
+        throw httpsError("not-found", "Group not found.");
       }
 
       const data = groupSnap.data() || {};
       if (data.deleted === true) {
-        throw new HttpsError("failed-precondition", "Group unavailable.");
+        throw httpsError("failed-precondition", "Group unavailable.");
       }
 
       assertGroupRoleAction(data, actorUid, targetUid, "ban");
 
       const ownerId = (data.ownerId || "").toString().trim();
       if (targetUid === ownerId) {
-        throw new HttpsError("failed-precondition", "Cannot ban the owner.");
+        throw httpsError("failed-precondition", "Cannot ban the owner.");
       }
 
       if (!actorSnap.exists) {
-        throw new HttpsError("failed-precondition", "Actor profile missing.");
+        throw httpsError("failed-precondition", "Actor profile missing.");
       }
       const actorData = actorSnap.data() || {};
       if (actorData.isBanned === true) {
-        throw new HttpsError("permission-denied", "Account is banned.");
+        throw httpsError("permission-denied", "Account is banned.");
       }
       const actorName = (actorData.name || "").toString().trim() || "Admin";
 
@@ -2205,7 +2304,7 @@ exports.banGroupMember = socialOnCall({ region: "us-central1" }, async (request)
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro banGroupMember:", e);
-    throw new HttpsError("internal", "Could not ban member.");
+    throw httpsError("internal", "Could not ban member.");
   }
 });
 
@@ -2216,7 +2315,7 @@ exports.unbanGroupMember = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const actorUid = request.auth.uid;
@@ -2224,7 +2323,7 @@ exports.unbanGroupMember = socialOnCall(
     const targetUid = (request.data?.targetUid || "").toString().trim();
 
     if (!groupId || !targetUid) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "groupId and targetUid required.",
       );
@@ -2242,29 +2341,29 @@ exports.unbanGroupMember = socialOnCall(
         const banSnap = await tx.get(banRef);
 
         if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
+          throw httpsError("not-found", "Group not found.");
         }
 
         const data = groupSnap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
+          throw httpsError("failed-precondition", "Group unavailable.");
         }
 
         if (!isGroupOwnerOrAdminData(data, actorUid)) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
 
         if (!actorSnap.exists) {
-          throw new HttpsError("failed-precondition", "Actor profile missing.");
+          throw httpsError("failed-precondition", "Actor profile missing.");
         }
         const actorData = actorSnap.data() || {};
         if (actorData.isBanned === true) {
-          throw new HttpsError("permission-denied", "Account is banned.");
+          throw httpsError("permission-denied", "Account is banned.");
         }
         const actorName = (actorData.name || "").toString().trim() || "Admin";
 
         if (!banSnap.exists) {
-          throw new HttpsError("not-found", "Ban record not found.");
+          throw httpsError("not-found", "Ban record not found.");
         }
 
         const banData = banSnap.data() || {};
@@ -2309,7 +2408,7 @@ exports.unbanGroupMember = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro unbanGroupMember:", e);
-      throw new HttpsError("internal", "Could not unban member.");
+      throw httpsError("internal", "Could not unban member.");
     }
   },
 );
@@ -2321,7 +2420,7 @@ exports.promoteGroupAdmin = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const actorUid = request.auth.uid;
@@ -2329,7 +2428,7 @@ exports.promoteGroupAdmin = socialOnCall(
     const targetUid = (request.data?.targetUid || "").toString().trim();
 
     if (!groupId || !targetUid) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "groupId and targetUid required.",
       );
@@ -2337,7 +2436,7 @@ exports.promoteGroupAdmin = socialOnCall(
 
     const role = request.data?.role ?? "admin";
     if (!["admin", "moderator"].includes(role)) {
-      throw new HttpsError("invalid-argument", "Invalid role.");
+      throw httpsError("invalid-argument", "Invalid role.");
     }
     const db = admin.firestore();
     const groupRef = db.collection("groups").doc(groupId);
@@ -2351,40 +2450,40 @@ exports.promoteGroupAdmin = socialOnCall(
         const banSnap = await tx.get(banRef);
 
         if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
+          throw httpsError("not-found", "Group not found.");
         }
 
         const data = groupSnap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
+          throw httpsError("failed-precondition", "Group unavailable.");
         }
 
         assertGroupRoleAction(data, actorUid, targetUid, "promote");
         const ownerId = (data.ownerId || "").toString().trim();
         if (actorUid !== ownerId) {
-          throw new HttpsError("permission-denied", "Only owner can promote.");
+          throw httpsError("permission-denied", "Only owner can promote.");
         }
 
         if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
 
         if (targetUid === ownerId) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Owner is already admin.",
           );
         }
 
         if (banSnap.exists && banSnap.data()?.isActive === true) {
-          throw new HttpsError("failed-precondition", "Target is banned.");
+          throw httpsError("failed-precondition", "Target is banned.");
         }
 
         const members = asUidList(data.members);
         let admins = asUidList(data.admins);
 
         if (!members.includes(targetUid)) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Target is not a member.",
           );
@@ -2430,7 +2529,7 @@ exports.promoteGroupAdmin = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro promoteGroupAdmin:", e);
-      throw new HttpsError("internal", "Could not promote admin.");
+      throw httpsError("internal", "Could not promote admin.");
     }
   },
 );
@@ -2442,7 +2541,7 @@ exports.demoteGroupAdmin = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const actorUid = request.auth.uid;
@@ -2450,7 +2549,7 @@ exports.demoteGroupAdmin = socialOnCall(
     const targetUid = (request.data?.targetUid || "").toString().trim();
 
     if (!groupId || !targetUid) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "groupId and targetUid required.",
       );
@@ -2466,26 +2565,26 @@ exports.demoteGroupAdmin = socialOnCall(
         const actorSnap = await tx.get(actorRef);
 
         if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
+          throw httpsError("not-found", "Group not found.");
         }
 
         const data = groupSnap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
+          throw httpsError("failed-precondition", "Group unavailable.");
         }
 
         assertGroupRoleAction(data, actorUid, targetUid, "demote");
         const ownerId = (data.ownerId || "").toString().trim();
         if (actorUid !== ownerId) {
-          throw new HttpsError("permission-denied", "Only owner can demote.");
+          throw httpsError("permission-denied", "Only owner can demote.");
         }
 
         if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
 
         if (targetUid === ownerId) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Cannot demote the owner.",
           );
@@ -2499,7 +2598,7 @@ exports.demoteGroupAdmin = socialOnCall(
         }
 
         if (!members.includes(targetUid)) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Target is not a member.",
           );
@@ -2535,7 +2634,7 @@ exports.demoteGroupAdmin = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro demoteGroupAdmin:", e);
-      throw new HttpsError("internal", "Could not demote admin.");
+      throw httpsError("internal", "Could not demote admin.");
     }
   },
 );
@@ -2549,7 +2648,7 @@ exports.removeGroupMember = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const actorUid = request.auth.uid;
@@ -2557,7 +2656,7 @@ exports.removeGroupMember = socialOnCall(
     const targetUid = (request.data?.targetUid || "").toString().trim();
 
     if (!groupId || !targetUid) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "groupId and targetUid required.",
       );
@@ -2573,23 +2672,23 @@ exports.removeGroupMember = socialOnCall(
         const actorSnap = await tx.get(actorRef);
 
         if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
+          throw httpsError("not-found", "Group not found.");
         }
 
         const data = groupSnap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
+          throw httpsError("failed-precondition", "Group unavailable.");
         }
 
         assertGroupRoleAction(data, actorUid, targetUid, "remove");
 
         if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
 
         const ownerId = (data.ownerId || "").toString().trim();
         if (targetUid === ownerId) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Cannot remove the owner.",
           );
@@ -2606,7 +2705,7 @@ exports.removeGroupMember = socialOnCall(
         }
 
         if (!actorIsOwner && targetIsAdmin) {
-          throw new HttpsError(
+          throw httpsError(
             "permission-denied",
             "Admin cannot remove another admin.",
           );
@@ -2651,7 +2750,7 @@ exports.removeGroupMember = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro removeGroupMember:", e);
-      throw new HttpsError("internal", "Could not remove member.");
+      throw httpsError("internal", "Could not remove member.");
     }
   },
 );
@@ -2662,7 +2761,7 @@ exports.removeGroupMember = socialOnCall(
 exports.transferGroupOwnership = socialOnCall(
   { region: "us-central1" },
   async () => {
-    throw new HttpsError("permission-denied", "group_owner_transfer_disabled", {
+    throw httpsError("permission-denied", "group_owner_transfer_disabled", {
       localizationKey: "group_owner_transfer_disabled",
     });
   },
@@ -2673,13 +2772,13 @@ exports.transferGroupOwnership = socialOnCall(
  */
 exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
   const groupId = (request.data?.groupId || "").toString().trim();
   if (!groupId) {
-    throw new HttpsError("invalid-argument", "groupId required.");
+    throw httpsError("invalid-argument", "groupId required.");
   }
 
   const db = admin.firestore();
@@ -2692,7 +2791,7 @@ exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => 
       const userSnap = await tx.get(userRef);
 
       if (!groupSnap.exists) {
-        throw new HttpsError("not-found", "Group not found.");
+        throw httpsError("not-found", "Group not found.");
       }
 
       const data = groupSnap.data() || {};
@@ -2701,12 +2800,12 @@ exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => 
       }
 
       if (userSnap.exists && userSnap.data()?.isBanned === true) {
-        throw new HttpsError("permission-denied", "Account is banned.");
+        throw httpsError("permission-denied", "Account is banned.");
       }
 
       const ownerId = (data.ownerId || "").toString().trim();
       if (uid === ownerId) {
-        throw new HttpsError(
+        throw httpsError(
           "failed-precondition",
           "group_owner_cannot_leave",
           { localizationKey: "group_owner_cannot_leave" },
@@ -2770,7 +2869,7 @@ exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => 
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro leaveGroup:", e);
-    throw new HttpsError("internal", "Could not leave group.");
+    throw httpsError("internal", "Could not leave group.");
   }
 });
 
@@ -2779,13 +2878,13 @@ exports.leaveGroup = socialOnCall({ region: "us-central1" }, async (request) => 
  */
 exports.deleteGroup = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
   const groupId = (request.data?.groupId || "").toString().trim();
   if (!groupId) {
-    throw new HttpsError("invalid-argument", "groupId required.");
+    throw httpsError("invalid-argument", "groupId required.");
   }
 
   const db = admin.firestore();
@@ -2798,18 +2897,18 @@ exports.deleteGroup = socialOnCall({ region: "us-central1" }, async (request) =>
       const userSnap = await tx.get(userRef);
 
       if (!groupSnap.exists) {
-        throw new HttpsError("not-found", "Group not found.");
+        throw httpsError("not-found", "Group not found.");
       }
 
       const data = groupSnap.data() || {};
       const ownerId = (data.ownerId || "").toString().trim();
 
       if (uid !== ownerId) {
-        throw new HttpsError("permission-denied", "Only owner can delete.");
+        throw httpsError("permission-denied", "Only owner can delete.");
       }
 
       if (userSnap.exists && userSnap.data()?.isBanned === true) {
-        throw new HttpsError("permission-denied", "Account is banned.");
+        throw httpsError("permission-denied", "Account is banned.");
       }
 
       if (data.deleted === true) {
@@ -2849,7 +2948,7 @@ exports.deleteGroup = socialOnCall({ region: "us-central1" }, async (request) =>
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro deleteGroup:", e);
-    throw new HttpsError("internal", "Could not delete group.");
+    throw httpsError("internal", "Could not delete group.");
   }
 });
 
@@ -2907,7 +3006,7 @@ exports.updateGroupSettings = socialOnCall(
   { region: "us-central1", secrets: [GOOGLE_PLACES_API_KEY] },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const actorUid = request.auth.uid;
@@ -2915,19 +3014,19 @@ exports.updateGroupSettings = socialOnCall(
     const changesIn = request.data?.changes;
 
     if (!groupId) {
-      throw new HttpsError("invalid-argument", "groupId required.");
+      throw httpsError("invalid-argument", "groupId required.");
     }
     if (
       !changesIn ||
       typeof changesIn !== "object" ||
       Array.isArray(changesIn)
     ) {
-      throw new HttpsError("invalid-argument", "changes object required.");
+      throw httpsError("invalid-argument", "changes object required.");
     }
 
     const keys = Object.keys(changesIn);
     if (keys.length === 0) {
-      throw new HttpsError("invalid-argument", "No changes provided.");
+      throw httpsError("invalid-argument", "No changes provided.");
     }
 
     // Cliente não pode gravar centro/geohash/raio diretamente.
@@ -2946,7 +3045,7 @@ exports.updateGroupSettings = socialOnCall(
     ];
     for (const key of keys) {
       if (GROUP_SETTINGS_FORBIDDEN.has(key) || blockedDirectGeo.includes(key)) {
-        throw new HttpsError("invalid-argument", `Field not allowed: ${key}`);
+        throw httpsError("invalid-argument", `Field not allowed: ${key}`);
       }
     }
 
@@ -2971,11 +3070,11 @@ exports.updateGroupSettings = socialOnCall(
     try {
       const groupSnapPre = await groupRef.get();
       if (!groupSnapPre.exists) {
-        throw new HttpsError("not-found", "Group not found.");
+        throw httpsError("not-found", "Group not found.");
       }
       const dataPre = groupSnapPre.data() || {};
       if (dataPre.deleted === true || dataPre.isActive === false) {
-        throw new HttpsError("failed-precondition", "Group unavailable.");
+        throw httpsError("failed-precondition", "Group unavailable.");
       }
 
       let trustedPlace = null;
@@ -2987,7 +3086,7 @@ exports.updateGroupSettings = socialOnCall(
           .toString()
           .trim();
         if (!["city", "region", "country"].includes(nextScope)) {
-          throw new HttpsError("invalid-argument", "Invalid scope.");
+          throw httpsError("invalid-argument", "Invalid scope.");
         }
         const nextCountryCode = normalizeIsoCountryCode(
           changesIn.countryCode !== undefined
@@ -3011,7 +3110,7 @@ exports.updateGroupSettings = socialOnCall(
 
         if (nextScope === "country") {
           if (!nextCountryCode || !nextCountryName) {
-            throw new HttpsError("invalid-argument", "Invalid location.");
+            throw httpsError("invalid-argument", "Invalid location.");
           }
           canonicalGeo = buildCanonicalGeoFields("country", {
             countryCode: nextCountryCode,
@@ -3019,10 +3118,10 @@ exports.updateGroupSettings = socialOnCall(
           });
         } else {
           if (!nextPlaceId) {
-            throw new HttpsError("invalid-argument", "placeId required.");
+            throw httpsError("invalid-argument", "placeId required.");
           }
           if (!nextCountryCode) {
-            throw new HttpsError("invalid-argument", "Invalid country.");
+            throw httpsError("invalid-argument", "Invalid country.");
           }
           try {
             const resolved = await resolveTrustedCityPlace({
@@ -3056,22 +3155,22 @@ exports.updateGroupSettings = socialOnCall(
         const actorSnap = await tx.get(actorRef);
 
         if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
+          throw httpsError("not-found", "Group not found.");
         }
 
         const data = groupSnap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
+          throw httpsError("failed-precondition", "Group unavailable.");
         }
 
         if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
         if (
           Object.prototype.hasOwnProperty.call(actorSnap.data() || {}, "isActive") &&
           actorSnap.data().isActive === false
         ) {
-          throw new HttpsError("permission-denied", "Account is disabled.");
+          throw httpsError("permission-denied", "Account is disabled.");
         }
 
         const ownerId = (data.ownerId || "").toString().trim();
@@ -3079,7 +3178,7 @@ exports.updateGroupSettings = socialOnCall(
         const isAdmin = isGroupOwnerOrAdminData(data, actorUid);
 
         if (!isAdmin) {
-          throw new HttpsError("permission-denied", "Not allowed to edit.");
+          throw httpsError("permission-denied", "Not allowed to edit.");
         }
 
         const actorName =
@@ -3092,10 +3191,10 @@ exports.updateGroupSettings = socialOnCall(
           const ownerOnly = GROUP_SETTINGS_OWNER_ONLY.has(key);
 
           if (!shared && !ownerOnly) {
-            throw new HttpsError("invalid-argument", `Unknown field: ${key}`);
+            throw httpsError("invalid-argument", `Unknown field: ${key}`);
           }
           if (ownerOnly && !isOwner) {
-            throw new HttpsError(
+            throw httpsError(
               "permission-denied",
               `Only owner can edit: ${key}`,
             );
@@ -3104,7 +3203,7 @@ exports.updateGroupSettings = socialOnCall(
           // Campos geo são aplicados via canonicalGeo (owner-only).
           if (geoKeys.has(key)) {
             if (!isOwner) {
-              throw new HttpsError(
+              throw httpsError(
                 "permission-denied",
                 `Only owner can edit: ${key}`,
               );
@@ -3117,10 +3216,10 @@ exports.updateGroupSettings = socialOnCall(
           if (key === "name") {
             const name = (value || "").toString().trim();
             if (!name) {
-              throw new HttpsError("invalid-argument", "Name is required.");
+              throw httpsError("invalid-argument", "Name is required.");
             }
             if (name.length > 80) {
-              throw new HttpsError("invalid-argument", "Name too long.");
+              throw httpsError("invalid-argument", "Name too long.");
             }
             value = name;
           } else if (key === "bio") {
@@ -3128,7 +3227,7 @@ exports.updateGroupSettings = socialOnCall(
           } else if (key === "joinPolicy") {
             const policy = normalizeJoinPolicyStrict(value);
             if (!policy) {
-              throw new HttpsError("invalid-argument", "Invalid joinPolicy.");
+              throw httpsError("invalid-argument", "Invalid joinPolicy.");
             }
             value = policy;
             patch.isPrivate = policy !== "open";
@@ -3145,7 +3244,7 @@ exports.updateGroupSettings = socialOnCall(
                 s.includes(`/groups/${groupId}/`) ||
                 s.includes(`groups%2F${groupId}%2F`);
               if (!ok) {
-                throw new HttpsError(
+                throw httpsError(
                   "invalid-argument",
                   key === "avatarPath"
                     ? "Invalid avatar path."
@@ -3194,7 +3293,7 @@ exports.updateGroupSettings = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro updateGroupSettings:", e);
-      throw new HttpsError("internal", "Could not update group.");
+      throw httpsError("internal", "Could not update group.");
     }
   },
 );
@@ -3202,18 +3301,18 @@ exports.updateGroupSettings = socialOnCall(
 function mapPlacesError(placeErr) {
   const code = placeErr && placeErr.code;
   if (code === "not-a-city") {
-    return new HttpsError("invalid-argument", "Place is not a city.");
+    return httpsError("invalid-argument", "Place is not a city.");
   }
   if (code === "country-mismatch") {
-    return new HttpsError("invalid-argument", "City/country mismatch.");
+    return httpsError("invalid-argument", "City/country mismatch.");
   }
   if (code === "invalid-place" || code === "invalid-country") {
-    return new HttpsError("invalid-argument", "Invalid placeId.");
+    return httpsError("invalid-argument", "Invalid placeId.");
   }
   if (code === "places-unavailable") {
-    return new HttpsError("failed-precondition", "Places lookup unavailable.");
+    return httpsError("failed-precondition", "Places lookup unavailable.");
   }
-  return new HttpsError("invalid-argument", "Invalid location.");
+  return httpsError("invalid-argument", "Invalid location.");
 }
 
 const GROUP_CREATE_ALLOWED = new Set([
@@ -3283,71 +3382,71 @@ exports.createGroup = socialOnCall(
   { region: "us-central1", secrets: [GOOGLE_PLACES_API_KEY] },
   async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
   const dataIn = request.data || {};
 
   if (!dataIn || typeof dataIn !== "object" || Array.isArray(dataIn)) {
-    throw new HttpsError("invalid-argument", "Invalid payload.");
+    throw httpsError("invalid-argument", "Invalid payload.");
   }
 
   const keys = Object.keys(dataIn);
   for (const key of keys) {
     if (GROUP_CREATE_FORBIDDEN.has(key)) {
-      throw new HttpsError("invalid-argument", `Field not allowed: ${key}`);
+      throw httpsError("invalid-argument", `Field not allowed: ${key}`);
     }
     if (!GROUP_CREATE_ALLOWED.has(key)) {
-      throw new HttpsError("invalid-argument", `Unknown field: ${key}`);
+      throw httpsError("invalid-argument", `Unknown field: ${key}`);
     }
   }
 
   const requestId = (dataIn.requestId || "").toString().trim();
   if (!requestId || requestId.length < 8 || requestId.length > 128) {
-    throw new HttpsError("invalid-argument", "requestId required.");
+    throw httpsError("invalid-argument", "requestId required.");
   }
   if (!/^[A-Za-z0-9_-]+$/.test(requestId)) {
-    throw new HttpsError("invalid-argument", "Invalid requestId.");
+    throw httpsError("invalid-argument", "Invalid requestId.");
   }
 
   const name = (dataIn.name || "").toString().trim();
   if (!name) {
-    throw new HttpsError("invalid-argument", "Name is required.");
+    throw httpsError("invalid-argument", "Name is required.");
   }
   if (name.length < 3) {
-    throw new HttpsError("invalid-argument", "Name too short.");
+    throw httpsError("invalid-argument", "Name too short.");
   }
   if (name.length > 80) {
-    throw new HttpsError("invalid-argument", "Name too long.");
+    throw httpsError("invalid-argument", "Name too long.");
   }
 
   const bio = validatedGroupBio(dataIn.bio);
 
   const joinPolicy = normalizeJoinPolicyStrict(dataIn.joinPolicy ?? "open");
   if (!joinPolicy) {
-    throw new HttpsError("invalid-argument", "Invalid joinPolicy.");
+    throw httpsError("invalid-argument", "Invalid joinPolicy.");
   }
   const isPrivate = joinPolicy !== "open";
 
   const strField = (key, max) => {
     if (dataIn[key] === undefined || dataIn[key] === null) return "";
     if (typeof dataIn[key] === "number" || typeof dataIn[key] === "boolean") {
-      throw new HttpsError("invalid-argument", `Invalid ${key}.`);
+      throw httpsError("invalid-argument", `Invalid ${key}.`);
     }
     if (typeof dataIn[key] === "object") {
-      throw new HttpsError("invalid-argument", `Invalid ${key}.`);
+      throw httpsError("invalid-argument", `Invalid ${key}.`);
     }
     const s = dataIn[key].toString().trim();
     if (s.length > max) {
-      throw new HttpsError("invalid-argument", `${key} too long.`);
+      throw httpsError("invalid-argument", `${key} too long.`);
     }
     return s;
   };
 
   const scope = strField("scope", 40) || "city";
   if (!["city", "region", "country"].includes(scope)) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
+    throw httpsError("invalid-argument", "Invalid location.");
   }
 
   const countryName = strField("country", 80);
@@ -3357,10 +3456,10 @@ exports.createGroup = socialOnCall(
   const displayLocation = strField("displayLocation", 160);
 
   if (!countryName) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
+    throw httpsError("invalid-argument", "Invalid location.");
   }
   if (!countryCode) {
-    throw new HttpsError("invalid-argument", "Invalid location.");
+    throw httpsError("invalid-argument", "Invalid location.");
   }
 
   // Cliente pode enviar radius/coords, mas não são autoritativos.
@@ -3370,7 +3469,7 @@ exports.createGroup = socialOnCall(
     dataIn.regionRadiusKm !== "" &&
     Number(dataIn.regionRadiusKm) !== REGION_RADIUS_KM
   ) {
-    throw new HttpsError("invalid-argument", "Invalid regional radius.");
+    throw httpsError("invalid-argument", "Invalid regional radius.");
   }
 
   const db = admin.firestore();
@@ -3383,7 +3482,7 @@ exports.createGroup = socialOnCall(
       });
     } else {
       if (!placeId) {
-        throw new HttpsError("invalid-argument", "placeId required.");
+        throw httpsError("invalid-argument", "placeId required.");
       }
       const resolved = await resolveTrustedCityPlace({
         placeId,
@@ -3399,7 +3498,7 @@ exports.createGroup = socialOnCall(
         displayLocation,
       });
       if (clientForgedRegionalGeo(dataIn, canonicalGeo)) {
-        throw new HttpsError(
+        throw httpsError(
           "invalid-argument",
           "Forged regional coordinates rejected.",
         );
@@ -3429,14 +3528,14 @@ exports.createGroup = socialOnCall(
 
   const userSnap = await userRef.get();
   if (!userSnap.exists) {
-    throw new HttpsError("failed-precondition", "User profile not found.");
+    throw httpsError("failed-precondition", "User profile not found.");
   }
   const userData = userSnap.data() || {};
   if (userData.isBanned === true) {
-    throw new HttpsError("permission-denied", "Account is banned.");
+    throw httpsError("permission-denied", "Account is banned.");
   }
   if (isAccountDisabledData(userData)) {
-    throw new HttpsError("permission-denied", "Account is disabled.");
+    throw httpsError("permission-denied", "Account is disabled.");
   }
 
   // Free/Premium: join internacional continua validado nos fluxos de join.
@@ -3461,7 +3560,7 @@ exports.createGroup = socialOnCall(
     existingRequest: existingReq.exists ? existingReq.data() : null,
   });
   if (decision.action === "deny") {
-    throw new HttpsError("resource-exhausted", "Group owner limit reached.");
+    throw httpsError("resource-exhausted", "Group owner limit reached.");
   }
   if (decision.action === "reuse") {
     return {
@@ -3493,7 +3592,7 @@ exports.createGroup = socialOnCall(
 
         const codeSnap = await tx.get(codeRef);
         if (codeSnap.exists) {
-          throw new HttpsError("aborted", "Invite code collision.");
+          throw httpsError("aborted", "Invite code collision.");
         }
 
         const now = admin.firestore.FieldValue.serverTimestamp();
@@ -3583,14 +3682,14 @@ exports.createGroup = socialOnCall(
       const code = e instanceof HttpsError ? e.code : "internal";
       console.error(JSON.stringify(createGroupFailureLog("transaction", code)));
       if (e instanceof HttpsError) throw e;
-      throw new HttpsError("internal", "Could not create group.");
+      throw httpsError("internal", "Could not create group.");
     }
   }
 
   console.error(
     JSON.stringify(createGroupFailureLog("invite", "invite_exhausted")),
   );
-  throw new HttpsError("internal", "Could not allocate invite code.");
+  throw httpsError("internal", "Could not allocate invite code.");
 },
 );
 
@@ -3619,13 +3718,16 @@ async function notifyJoinRequestDecision({
     const entries = await collectTokenEntriesForUid(requestUid, "group");
     if (!entries.length) return;
 
-    const name = (groupName || "group").toString().trim() || "group";
+    const name = (groupName || "").toString().trim();
+    const userSnap = await admin.firestore().collection("users").doc(requestUid).get();
+    const lang = langFromUser(userSnap.exists ? userSnap.data() : null);
+    const groupLabel = name || serverT("push_group_fallback", lang);
     const title = approved
-      ? "Sua solicitação foi aprovada."
-      : "Solicitação não aprovada";
+      ? serverT("push_join_approved_title", lang)
+      : serverT("push_join_rejected_title", lang);
     const body = approved
-      ? `Agora você pode participar de ${name}.`
-      : "Sua solicitação para entrar no grupo não foi aprovada.";
+      ? serverT("push_join_approved_body", lang, { name: groupLabel })
+      : serverT("push_join_rejected_body", lang);
 
     await sendPush({
       tokens: entries.map((e) => e.token),
@@ -3650,7 +3752,7 @@ exports.approveGroupJoinRequest = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const actorUid = request.auth.uid;
@@ -3658,13 +3760,13 @@ exports.approveGroupJoinRequest = socialOnCall(
     const requestUid = (request.data?.requestUid || "").toString().trim();
 
     if (!groupId || !requestUid) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "groupId and requestUid required.",
       );
     }
     if (actorUid === requestUid) {
-      throw new HttpsError(
+      throw httpsError(
         "permission-denied",
         "Cannot approve your own request.",
       );
@@ -3686,41 +3788,41 @@ exports.approveGroupJoinRequest = socialOnCall(
         const targetSnap = await tx.get(targetRef);
 
         if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
+          throw httpsError("not-found", "Group not found.");
         }
 
         const data = groupSnap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
+          throw httpsError("failed-precondition", "Group unavailable.");
         }
 
         if (!isGroupOwnerOrAdminData(data, actorUid)) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
 
         if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
         if (isAccountDisabledData(actorSnap.data() || {})) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
 
         const policy = normalizeJoinPolicyStrict(data.joinPolicy);
         if (policy !== "approval") {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Group does not accept join requests.",
           );
         }
 
         if (!pendingSnap.exists) {
-          throw new HttpsError("not-found", "Join request not found.");
+          throw httpsError("not-found", "Join request not found.");
         }
 
         const pending = pendingSnap.data() || {};
         const pendingUid = (pending.uid || requestUid).toString().trim();
         if (pendingUid && pendingUid !== requestUid) {
-          throw new HttpsError("failed-precondition", "Request mismatch.");
+          throw httpsError("failed-precondition", "Request mismatch.");
         }
 
         const status = (pending.status || "").toString().trim();
@@ -3742,25 +3844,25 @@ exports.approveGroupJoinRequest = socialOnCall(
         }
 
         if (status !== "pending") {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Request is not pending.",
           );
         }
 
         if (!targetSnap.exists) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Requester profile missing.",
           );
         }
         const targetData = targetSnap.data() || {};
         if (targetData.isBanned === true || isAccountDisabledData(targetData)) {
-          throw new HttpsError("failed-precondition", "Requester cannot join.");
+          throw httpsError("failed-precondition", "Requester cannot join.");
         }
 
         if (banSnap.exists && banSnap.data()?.isActive === true) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Requester is banned from this group.",
           );
@@ -3840,7 +3942,7 @@ exports.approveGroupJoinRequest = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro approveGroupJoinRequest:", e);
-      throw new HttpsError("internal", "Could not approve request.");
+      throw httpsError("internal", "Could not approve request.");
     }
   },
 );
@@ -3852,7 +3954,7 @@ exports.rejectGroupJoinRequest = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const actorUid = request.auth.uid;
@@ -3860,17 +3962,17 @@ exports.rejectGroupJoinRequest = socialOnCall(
     const requestUid = (request.data?.requestUid || "").toString().trim();
     let reason = (request.data?.reason || "").toString().trim();
     if (reason.length > 300) {
-      throw new HttpsError("invalid-argument", "Reason too long.");
+      throw httpsError("invalid-argument", "Reason too long.");
     }
 
     if (!groupId || !requestUid) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "groupId and requestUid required.",
       );
     }
     if (actorUid === requestUid) {
-      throw new HttpsError(
+      throw httpsError(
         "permission-denied",
         "Cannot reject your own request.",
       );
@@ -3888,33 +3990,33 @@ exports.rejectGroupJoinRequest = socialOnCall(
         const actorSnap = await tx.get(actorRef);
 
         if (!groupSnap.exists) {
-          throw new HttpsError("not-found", "Group not found.");
+          throw httpsError("not-found", "Group not found.");
         }
 
         const data = groupSnap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Group unavailable.");
+          throw httpsError("failed-precondition", "Group unavailable.");
         }
 
         if (!isGroupOwnerOrAdminData(data, actorUid)) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
 
         if (!actorSnap.exists || actorSnap.data()?.isBanned === true) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
         if (isAccountDisabledData(actorSnap.data() || {})) {
-          throw new HttpsError("permission-denied", "Not allowed.");
+          throw httpsError("permission-denied", "Not allowed.");
         }
 
         if (!pendingSnap.exists) {
-          throw new HttpsError("not-found", "Join request not found.");
+          throw httpsError("not-found", "Join request not found.");
         }
 
         const pending = pendingSnap.data() || {};
         const pendingUid = (pending.uid || requestUid).toString().trim();
         if (pendingUid && pendingUid !== requestUid) {
-          throw new HttpsError("failed-precondition", "Request mismatch.");
+          throw httpsError("failed-precondition", "Request mismatch.");
         }
 
         const status = (pending.status || "").toString().trim();
@@ -3934,14 +4036,14 @@ exports.rejectGroupJoinRequest = socialOnCall(
         }
 
         if (status === "approved") {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Request is not pending.",
           );
         }
 
         if (status !== "pending") {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Request is not pending.",
           );
@@ -3999,7 +4101,7 @@ exports.rejectGroupJoinRequest = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro rejectGroupJoinRequest:", e);
-      throw new HttpsError("internal", "Could not reject request.");
+      throw httpsError("internal", "Could not reject request.");
     }
   },
 );
@@ -4009,13 +4111,13 @@ exports.rejectGroupJoinRequest = socialOnCall(
  */
 exports.markGroupAsRead = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
   const groupId = (request.data?.groupId || "").toString().trim();
   if (!groupId) {
-    throw new HttpsError("invalid-argument", "groupId required.");
+    throw httpsError("invalid-argument", "groupId required.");
   }
 
   const db = admin.firestore();
@@ -4029,23 +4131,23 @@ exports.markGroupAsRead = socialOnCall({ region: "us-central1" }, async (request
       const banSnap = await tx.get(banRef);
 
       if (!groupSnap.exists) {
-        throw new HttpsError("not-found", "Group not found.");
+        throw httpsError("not-found", "Group not found.");
       }
 
       const data = groupSnap.data() || {};
       if (data.deleted === true) {
-        throw new HttpsError("failed-precondition", "Group unavailable.");
+        throw httpsError("failed-precondition", "Group unavailable.");
       }
 
       if (banSnap.exists && banSnap.data()?.isActive === true) {
-        throw new HttpsError("permission-denied", "Banned from group.");
+        throw httpsError("permission-denied", "Banned from group.");
       }
 
       const members = asUidList(data.members);
       const isOwner = (data.ownerId || "").toString().trim() === uid;
       const isAdmin = isGroupOwnerOrAdminData(data, uid);
       if (!members.includes(uid) && !isOwner && !isAdmin) {
-        throw new HttpsError("permission-denied", "Not a group member.");
+        throw httpsError("permission-denied", "Not a group member.");
       }
 
       tx.update(
@@ -4073,7 +4175,7 @@ exports.markGroupAsRead = socialOnCall({ region: "us-central1" }, async (request
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro markGroupAsRead:", e);
-    throw new HttpsError("internal", "Could not mark group as read.");
+    throw httpsError("internal", "Could not mark group as read.");
   }
 });
 
@@ -4122,13 +4224,13 @@ function eventStartAtHasPassed(data) {
  */
 exports.joinEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
   const eventId = (request.data?.eventId || "").toString().trim();
   if (!eventId) {
-    throw new HttpsError("invalid-argument", "eventId required.");
+    throw httpsError("invalid-argument", "eventId required.");
   }
 
   const db = admin.firestore();
@@ -4145,33 +4247,33 @@ exports.joinEvent = socialOnCall({ region: "us-central1" }, async (request) => {
       const publicSnap = await tx.get(publicRef);
 
       if (!eventSnap.exists) {
-        throw new HttpsError("not-found", "Event not found.");
+        throw httpsError("not-found", "Event not found.");
       }
 
       const data = eventSnap.data() || {};
       if (!eventAcceptsJoin(data)) {
-        throw new HttpsError(
+        throw httpsError(
           "failed-precondition",
           "Event is not available for joining.",
         );
       }
 
       if (eventStartAtHasPassed(data)) {
-        throw new HttpsError(
+        throw httpsError(
           "failed-precondition",
           "Event no longer accepts attendees.",
         );
       }
 
       if (!userSnap.exists && !publicSnap.exists) {
-        throw new HttpsError("failed-precondition", "User profile not found.");
+        throw httpsError("failed-precondition", "User profile not found.");
       }
 
       const userData = userSnap.exists
         ? userSnap.data() || {}
         : publicSnap.data() || {};
       if (userData.isBanned === true || isAccountDisabledData(userData)) {
-        throw new HttpsError("permission-denied", "Account is banned.");
+        throw httpsError("permission-denied", "Account is banned.");
       }
 
       let uids = asAttendeeUidList(data.attendeesUids);
@@ -4277,7 +4379,7 @@ exports.joinEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro joinEvent:", e);
-    throw new HttpsError("internal", "Could not join event.");
+    throw httpsError("internal", "Could not join event.");
   }
 });
 
@@ -4286,13 +4388,13 @@ exports.joinEvent = socialOnCall({ region: "us-central1" }, async (request) => {
  */
 exports.leaveEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
   const eventId = (request.data?.eventId || "").toString().trim();
   if (!eventId) {
-    throw new HttpsError("invalid-argument", "eventId required.");
+    throw httpsError("invalid-argument", "eventId required.");
   }
 
   const db = admin.firestore();
@@ -4307,7 +4409,7 @@ exports.leaveEvent = socialOnCall({ region: "us-central1" }, async (request) => 
       const userSnap = await tx.get(userRef);
 
       if (!eventSnap.exists) {
-        throw new HttpsError("not-found", "Event not found.");
+        throw httpsError("not-found", "Event not found.");
       }
 
       const data = eventSnap.data() || {};
@@ -4382,7 +4484,7 @@ exports.leaveEvent = socialOnCall({ region: "us-central1" }, async (request) => 
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro leaveEvent:", e);
-    throw new HttpsError("internal", "Could not leave event.");
+    throw httpsError("internal", "Could not leave event.");
   }
 });
 
@@ -4424,7 +4526,7 @@ exports.createEventComment = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const uid = request.auth.uid;
@@ -4432,27 +4534,27 @@ exports.createEventComment = socialOnCall(
     // Ignora uid/name/likesCount/autor enviados pelo cliente.
     const eventId = (dataIn.eventId || "").toString().trim();
     if (!eventInteractions.isValidEventId(eventId)) {
-      throw new HttpsError("invalid-argument", "eventId required.");
+      throw httpsError("invalid-argument", "eventId required.");
     }
 
     const sanitized = eventInteractions.sanitizeCommentText(dataIn.text);
     if (sanitized.error === "invalid") {
-      throw new HttpsError("invalid-argument", "Invalid text.");
+      throw httpsError("invalid-argument", "Invalid text.");
     }
     if (sanitized.error === "empty") {
-      throw new HttpsError("invalid-argument", "Comment is empty.");
+      throw httpsError("invalid-argument", "Comment is empty.");
     }
     if (sanitized.error === "too_long") {
-      throw new HttpsError("invalid-argument", "Comment is too long.");
+      throw httpsError("invalid-argument", "Comment is too long.");
     }
     if (sanitized.error === "objectionable") {
-      throw new HttpsError("invalid-argument", "Objectionable content.", {
+      throw httpsError("invalid-argument", "Objectionable content.", {
         code: "content_filter_blocked",
       });
     }
     // b44: insulto/ofensa dirigida bloqueado também nos comentários.
     if (evaluateProfanityB44(sanitized.text || "", { loose: false })) {
-      throw new HttpsError("invalid-argument", "Insult.", {
+      throw httpsError("invalid-argument", "Insult.", {
         code: "insult_blocked",
       });
     }
@@ -4465,20 +4567,20 @@ exports.createEventComment = socialOnCall(
       dataIn.replyToCommentId !== ""
     ) {
       if (typeof dataIn.replyToCommentId !== "string") {
-        throw new HttpsError("invalid-argument", "Invalid replyToCommentId.");
+        throw httpsError("invalid-argument", "Invalid replyToCommentId.");
       }
       replyToCommentId = dataIn.replyToCommentId.trim();
       if (
         replyToCommentId &&
         !eventInteractions.isValidClientId(replyToCommentId)
       ) {
-        throw new HttpsError("invalid-argument", "Invalid replyToCommentId.");
+        throw httpsError("invalid-argument", "Invalid replyToCommentId.");
       }
     }
 
     const requestId = (dataIn.requestId || "").toString().trim();
     if (!eventInteractions.isValidClientId(requestId)) {
-      throw new HttpsError("invalid-argument", "requestId required.");
+      throw httpsError("invalid-argument", "requestId required.");
     }
 
     let clientCommentId = "";
@@ -4488,11 +4590,11 @@ exports.createEventComment = socialOnCall(
       dataIn.commentId !== ""
     ) {
       if (typeof dataIn.commentId !== "string") {
-        throw new HttpsError("invalid-argument", "Invalid commentId.");
+        throw httpsError("invalid-argument", "Invalid commentId.");
       }
       clientCommentId = dataIn.commentId.trim();
       if (!eventInteractions.isValidClientId(clientCommentId)) {
-        throw new HttpsError("invalid-argument", "Invalid commentId.");
+        throw httpsError("invalid-argument", "Invalid commentId.");
       }
     }
 
@@ -4504,7 +4606,7 @@ exports.createEventComment = socialOnCall(
     ) {
       const n = Number(dataIn.clientCreatedAtMs);
       if (!Number.isFinite(n) || n <= 0) {
-        throw new HttpsError("invalid-argument", "Invalid clientCreatedAtMs.");
+        throw httpsError("invalid-argument", "Invalid clientCreatedAtMs.");
       }
       clientCreatedAtMs = Math.floor(n);
     }
@@ -4550,25 +4652,25 @@ exports.createEventComment = socialOnCall(
         }
 
         if (!eventSnap.exists) {
-          throw new HttpsError("not-found", "Event not found.");
+          throw httpsError("not-found", "Event not found.");
         }
         const eventData = eventSnap.data() || {};
         if (!eventAllowsComments(eventData)) {
           const status = (eventData.status || "").toString().toLowerCase();
           if (status === "cancelled" || status === "canceled") {
-            throw new HttpsError(
+            throw httpsError(
               "failed-precondition",
               "Event is cancelled.",
             );
           }
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Event is not available for comments.",
           );
         }
 
         if (!userSnap.exists && !publicSnap.exists) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "User profile not found.",
           );
@@ -4577,14 +4679,14 @@ exports.createEventComment = socialOnCall(
           ? userSnap.data() || {}
           : publicSnap.data() || {};
         if (userData.isBanned === true || isAccountDisabledData(userData)) {
-          throw new HttpsError("permission-denied", "Account is banned.");
+          throw httpsError("permission-denied", "Account is banned.");
         }
         // b44: suspensão e "sem falar" também valem para comentário de evento.
         if (moderationSendBlockB44(userData)) {
-          throw new HttpsError("permission-denied", "Account is suspended.");
+          throw httpsError("permission-denied", "Account is suspended.");
         }
         if (moderationMutedB44(userData)) {
-          throw new HttpsError("permission-denied", "Muted.", { reason: "muted" });
+          throw httpsError("permission-denied", "Muted.", { reason: "muted" });
         }
 
         let replyToName = null;
@@ -4595,7 +4697,7 @@ exports.createEventComment = socialOnCall(
 
         if (replyToCommentId) {
           if (!parentSnap || !parentSnap.exists) {
-            throw new HttpsError("not-found", "Parent comment not found.");
+            throw httpsError("not-found", "Parent comment not found.");
           }
           const parent = parentSnap.data() || {};
           const meta = eventInteractions.buildReplyMetaFromParent({
@@ -4603,13 +4705,13 @@ exports.createEventComment = socialOnCall(
             parent,
           });
           if (meta.error === "parent_deleted") {
-            throw new HttpsError(
+            throw httpsError(
               "failed-precondition",
               "Parent comment is deleted.",
             );
           }
           if (meta.error) {
-            throw new HttpsError("not-found", "Parent comment not found.");
+            throw httpsError("not-found", "Parent comment not found.");
           }
           replyToUid = meta.replyToUid;
           replyToName = meta.replyToName;
@@ -4621,7 +4723,7 @@ exports.createEventComment = socialOnCall(
         if (existingCommentSnap && existingCommentSnap.exists) {
           const existing = existingCommentSnap.data() || {};
           if ((existing.uid || "").toString() !== uid) {
-            throw new HttpsError(
+            throw httpsError(
               "already-exists",
               "Comment id already exists.",
             );
@@ -4741,6 +4843,18 @@ exports.createEventComment = socialOnCall(
                 uids: notifyUids,
                 title,
                 body,
+                localize: (userData) => {
+                  const lang = langFromUser(userData);
+                  const locTitle = result.isReply
+                    ? serverT("push_event_reply_title", lang)
+                    : serverT("push_event_comment_title", lang);
+                  const locBody = result.textPreview
+                    ? serverT("push_event_comment_body", lang, {
+                        preview: result.textPreview,
+                      })
+                    : serverT("push_event_comment_body_empty", lang);
+                  return { title: locTitle, body: locBody };
+                },
                 data: {
                   type,
                   eventId,
@@ -4765,7 +4879,7 @@ exports.createEventComment = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro createEventComment:", e);
-      throw new HttpsError("internal", "Could not create comment.");
+      throw httpsError("internal", "Could not create comment.");
     }
   },
 );
@@ -4790,9 +4904,9 @@ exports.exportEventParticipants = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
-    throw new HttpsError(
+    throw httpsError(
       "permission-denied",
       "Personal data export for event participants, likers, or sharers is not allowed.",
     );
@@ -4803,7 +4917,7 @@ exports.toggleEventLike = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const uid = request.auth.uid;
@@ -4811,15 +4925,15 @@ exports.toggleEventLike = socialOnCall(
     // Ignora qualquer uid/likesCount enviado pelo cliente.
     const eventId = (dataIn.eventId || "").toString().trim();
     if (!eventInteractions.isValidEventId(eventId)) {
-      throw new HttpsError("invalid-argument", "eventId required.");
+      throw httpsError("invalid-argument", "eventId required.");
     }
 
     const parsed = eventInteractions.parseDesiredLiked(dataIn.desiredLiked);
     if (parsed.error === "missing") {
-      throw new HttpsError("invalid-argument", "desiredLiked required.");
+      throw httpsError("invalid-argument", "desiredLiked required.");
     }
     if (parsed.error === "invalid_type") {
-      throw new HttpsError("invalid-argument", "desiredLiked must be boolean.");
+      throw httpsError("invalid-argument", "desiredLiked must be boolean.");
     }
     const desiredLiked = parsed.desiredLiked;
 
@@ -4838,32 +4952,32 @@ exports.toggleEventLike = socialOnCall(
         const userSnap = await tx.get(userRef);
 
         if (!eventSnap.exists) {
-          throw new HttpsError("not-found", "Event not found.");
+          throw httpsError("not-found", "Event not found.");
         }
         const eventData = eventSnap.data() || {};
         if (!eventAllowsLikes(eventData)) {
           const status = (eventData.status || "").toString().toLowerCase();
           if (status === "cancelled" || status === "canceled") {
-            throw new HttpsError(
+            throw httpsError(
               "failed-precondition",
               "Event is cancelled.",
             );
           }
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Event is not available.",
           );
         }
 
         if (!userSnap.exists) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "User profile not found.",
           );
         }
         const userData = userSnap.data() || {};
         if (userData.isBanned === true || isAccountDisabledData(userData)) {
-          throw new HttpsError("permission-denied", "Account is banned.");
+          throw httpsError("permission-denied", "Account is banned.");
         }
 
         const currentlyLiked = likeSnap.exists;
@@ -4912,7 +5026,7 @@ exports.toggleEventLike = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro toggleEventLike:", e);
-      throw new HttpsError("internal", "Could not toggle event like.");
+      throw httpsError("internal", "Could not toggle event like.");
     }
   },
 );
@@ -4924,14 +5038,14 @@ exports.toggleEventCommentLike = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const uid = request.auth.uid;
     const eventId = (request.data?.eventId || "").toString().trim();
     const commentId = (request.data?.commentId || "").toString().trim();
     if (!eventId || !commentId) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "eventId and commentId required.",
       );
@@ -4949,22 +5063,22 @@ exports.toggleEventCommentLike = socialOnCall(
         const userSnap = await tx.get(userRef);
 
         if (!eventSnap.exists) {
-          throw new HttpsError("not-found", "Event not found.");
+          throw httpsError("not-found", "Event not found.");
         }
         if (!commentSnap.exists) {
-          throw new HttpsError("not-found", "Comment not found.");
+          throw httpsError("not-found", "Comment not found.");
         }
 
         if (userSnap.exists) {
           const userData = userSnap.data() || {};
           if (userData.isBanned === true || isAccountDisabledData(userData)) {
-            throw new HttpsError("permission-denied", "Account is banned.");
+            throw httpsError("permission-denied", "Account is banned.");
           }
         }
 
         const comment = commentSnap.data() || {};
         if (comment.isDeleted === true) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Comment is no longer available.",
           );
@@ -5015,7 +5129,7 @@ exports.toggleEventCommentLike = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro toggleEventCommentLike:", e);
-      throw new HttpsError("internal", "Could not toggle like.");
+      throw httpsError("internal", "Could not toggle like.");
     }
   },
 );
@@ -5027,14 +5141,14 @@ exports.deleteEventComment = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const uid = request.auth.uid;
     const eventId = (request.data?.eventId || "").toString().trim();
     const commentId = (request.data?.commentId || "").toString().trim();
     if (!eventId || !commentId) {
-      throw new HttpsError(
+      throw httpsError(
         "invalid-argument",
         "eventId and commentId required.",
       );
@@ -5050,10 +5164,10 @@ exports.deleteEventComment = socialOnCall(
         const commentSnap = await tx.get(commentRef);
 
         if (!eventSnap.exists) {
-          throw new HttpsError("not-found", "Event not found.");
+          throw httpsError("not-found", "Event not found.");
         }
         if (!commentSnap.exists) {
-          throw new HttpsError("not-found", "Comment not found.");
+          throw httpsError("not-found", "Comment not found.");
         }
 
         const eventData = eventSnap.data() || {};
@@ -5070,7 +5184,7 @@ exports.deleteEventComment = socialOnCall(
         const canDelete = authorUid === uid || organizerUid === uid;
 
         if (!canDelete) {
-          throw new HttpsError(
+          throw httpsError(
             "permission-denied",
             "Not allowed to delete this comment.",
           );
@@ -5122,7 +5236,7 @@ exports.deleteEventComment = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro deleteEventComment:", e);
-      throw new HttpsError("internal", "Could not delete comment.");
+      throw httpsError("internal", "Could not delete comment.");
     }
   },
 );
@@ -5132,7 +5246,7 @@ exports.deleteEventComment = socialOnCall(
  */
 exports.createEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
@@ -5142,7 +5256,7 @@ exports.createEvent = socialOnCall({ region: "us-central1" }, async (request) =>
     max: 128,
   });
   if (requestId.length < 8 || !/^[A-Za-z0-9_-]+$/.test(requestId)) {
-    throw new HttpsError("invalid-argument", "Invalid requestId.");
+    throw httpsError("invalid-argument", "Invalid requestId.");
   }
 
   const editorial = validateEventEditorial(dataIn, { forUpdate: false });
@@ -5169,13 +5283,13 @@ exports.createEvent = socialOnCall({ region: "us-central1" }, async (request) =>
       const userSnap = await tx.get(userRef);
       const publicSnap = await tx.get(publicRef);
       if (!userSnap.exists && !publicSnap.exists) {
-        throw new HttpsError("failed-precondition", "User profile not found.");
+        throw httpsError("failed-precondition", "User profile not found.");
       }
       const userData = userSnap.exists
         ? userSnap.data() || {}
         : publicSnap.data() || {};
       if (userData.isBanned === true || isAccountDisabledData(userData)) {
-        throw new HttpsError("permission-denied", "Account is banned.");
+        throw httpsError("permission-denied", "Account is banned.");
       }
 
       const eventRef = db.collection("events").doc();
@@ -5236,7 +5350,7 @@ exports.createEvent = socialOnCall({ region: "us-central1" }, async (request) =>
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro createEvent:", e);
-    throw new HttpsError("internal", "Could not create event.");
+    throw httpsError("internal", "Could not create event.");
   }
 });
 
@@ -5248,7 +5362,7 @@ exports.abortIncompleteEvent = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const uid = request.auth.uid;
@@ -5279,7 +5393,7 @@ exports.abortIncompleteEvent = socialOnCall(
 
         const owner = resolveEventOwnerUid(data);
         if (!owner.ok || owner.uid !== uid) {
-          throw new HttpsError(
+          throw httpsError(
             "permission-denied",
             "Not allowed to abort this event.",
           );
@@ -5287,7 +5401,7 @@ exports.abortIncompleteEvent = socialOnCall(
 
         const statusNow = (data.status || "").toString().trim().toLowerCase();
         if (statusNow !== "pending" && statusNow !== "rejected") {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Only pending/rejected events can be aborted.",
           );
@@ -5324,7 +5438,7 @@ exports.abortIncompleteEvent = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro abortIncompleteEvent:", e);
-      throw new HttpsError("internal", "Could not abort incomplete event.");
+      throw httpsError("internal", "Could not abort incomplete event.");
     }
   },
 );
@@ -5335,7 +5449,7 @@ exports.abortIncompleteEvent = socialOnCall(
 
 exports.updateEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
 
   const uid = request.auth.uid;
@@ -5347,13 +5461,13 @@ exports.updateEvent = socialOnCall({ region: "us-central1" }, async (request) =>
 
   const keys = Object.keys(dataIn).filter((k) => k !== "eventId");
   if (keys.length === 0) {
-    throw new HttpsError("invalid-argument", "Empty update.");
+    throw httpsError("invalid-argument", "Empty update.");
   }
 
   const editorial = validateEventEditorial(dataIn, { forUpdate: true });
   const hasEditorialChange = keys.some((k) => EVENT_UPDATE_ALLOWED.has(k));
   if (!hasEditorialChange) {
-    throw new HttpsError("invalid-argument", "Empty update.");
+    throw httpsError("invalid-argument", "Empty update.");
   }
 
   const db = admin.firestore();
@@ -5366,12 +5480,12 @@ exports.updateEvent = socialOnCall({ region: "us-central1" }, async (request) =>
       const userSnap = await tx.get(userRef);
 
       if (!eventSnap.exists) {
-        throw new HttpsError("not-found", "Event not found.");
+        throw httpsError("not-found", "Event not found.");
       }
 
       const data = eventSnap.data() || {};
       if (data.deleted === true) {
-        throw new HttpsError("failed-precondition", "Event unavailable.");
+        throw httpsError("failed-precondition", "Event unavailable.");
       }
 
       const owner = resolveEventOwnerUid(data);
@@ -5385,13 +5499,13 @@ exports.updateEvent = socialOnCall({ region: "us-central1" }, async (request) =>
             performedBy: uid,
           }),
         );
-        throw new HttpsError(
+        throw httpsError(
           "failed-precondition",
           "Event ownership is inconsistent.",
         );
       }
       if (owner.uid !== uid) {
-        throw new HttpsError(
+        throw httpsError(
           "permission-denied",
           "Not allowed to edit this event.",
         );
@@ -5400,13 +5514,13 @@ exports.updateEvent = socialOnCall({ region: "us-central1" }, async (request) =>
       if (userSnap.exists) {
         const userData = userSnap.data() || {};
         if (userData.isBanned === true || isAccountDisabledData(userData)) {
-          throw new HttpsError("permission-denied", "Account is banned.");
+          throw httpsError("permission-denied", "Account is banned.");
         }
       }
 
       const statusNow = (data.status || "").toString().trim().toLowerCase();
       if (statusNow === "cancelled") {
-        throw new HttpsError(
+        throw httpsError(
           "failed-precondition",
           "Cancelled event cannot be edited.",
         );
@@ -5416,7 +5530,7 @@ exports.updateEvent = socialOnCall({ region: "us-central1" }, async (request) =>
 
       const editorialPatch = buildEventEditorialPatch(dataIn, editorial);
       if (Object.keys(editorialPatch).length === 0) {
-        throw new HttpsError("invalid-argument", "Empty update.");
+        throw httpsError("invalid-argument", "Empty update.");
       }
 
       if (published) {
@@ -5509,7 +5623,7 @@ exports.updateEvent = socialOnCall({ region: "us-central1" }, async (request) =>
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro updateEvent:", e);
-    throw new HttpsError("internal", "Could not update event.");
+    throw httpsError("internal", "Could not update event.");
   }
 });
 
@@ -5572,7 +5686,7 @@ function pickEditorialFromPendingChanges(pending) {
 
 async function assertPortalEventAdmin(request) {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
   const uid = request.auth.uid;
   if (request.auth.token?.admin === true) {
@@ -5592,7 +5706,7 @@ async function assertPortalEventAdmin(request) {
   if (adminSnap.exists) {
     return uid;
   }
-  throw new HttpsError("permission-denied", "Admin only.");
+  throw httpsError("permission-denied", "Admin only.");
 }
 
 /**
@@ -5614,25 +5728,25 @@ exports.approveEventPendingChanges = onCall(
       const result = await db.runTransaction(async (tx) => {
         const snap = await tx.get(eventRef);
         if (!snap.exists) {
-          throw new HttpsError("not-found", "Event not found.");
+          throw httpsError("not-found", "Event not found.");
         }
         const data = snap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Event unavailable.");
+          throw httpsError("failed-precondition", "Event unavailable.");
         }
         const statusNow = (data.status || "").toString().trim().toLowerCase();
         if (statusNow === "cancelled") {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Cancelled event cannot be updated.",
           );
         }
         if (data.hasPendingChanges !== true) {
-          throw new HttpsError("failed-precondition", "No pending changes.");
+          throw httpsError("failed-precondition", "No pending changes.");
         }
         const pending = data.pendingChanges;
         if (!pending || typeof pending !== "object" || Array.isArray(pending)) {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Invalid pendingChanges.",
           );
@@ -5673,7 +5787,7 @@ exports.approveEventPendingChanges = onCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro approveEventPendingChanges:", e);
-      throw new HttpsError("internal", "Could not approve pending changes.");
+      throw httpsError("internal", "Could not approve pending changes.");
     }
   },
 );
@@ -5701,15 +5815,15 @@ exports.rejectEventPendingChanges = onCall(
       const result = await db.runTransaction(async (tx) => {
         const snap = await tx.get(eventRef);
         if (!snap.exists) {
-          throw new HttpsError("not-found", "Event not found.");
+          throw httpsError("not-found", "Event not found.");
         }
         const data = snap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Event unavailable.");
+          throw httpsError("failed-precondition", "Event unavailable.");
         }
         const statusNow = (data.status || "").toString().trim().toLowerCase();
         if (statusNow === "cancelled") {
-          throw new HttpsError(
+          throw httpsError(
             "failed-precondition",
             "Cancelled event cannot be updated.",
           );
@@ -5752,7 +5866,7 @@ exports.rejectEventPendingChanges = onCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro rejectEventPendingChanges:", e);
-      throw new HttpsError("internal", "Could not reject pending changes.");
+      throw httpsError("internal", "Could not reject pending changes.");
     }
   },
 );
@@ -5764,13 +5878,13 @@ exports.registerEventView = socialOnCall(
   { region: "us-central1" },
   async (request) => {
     if (!request.auth || !request.auth.uid) {
-      throw new HttpsError("unauthenticated", "Login required.");
+      throw httpsError("unauthenticated", "Login required.");
     }
 
     const uid = request.auth.uid;
     const eventId = (request.data?.eventId || "").toString().trim();
     if (!eventId || eventId.length > 128) {
-      throw new HttpsError("invalid-argument", "eventId required.");
+      throw httpsError("invalid-argument", "eventId required.");
     }
 
     // viewerSessionId aceito mas não é fonte de verdade quando há auth.
@@ -5780,7 +5894,7 @@ exports.registerEventView = socialOnCall(
       sessionRaw !== null &&
       typeof sessionRaw !== "string"
     ) {
-      throw new HttpsError("invalid-argument", "Invalid viewerSessionId.");
+      throw httpsError("invalid-argument", "Invalid viewerSessionId.");
     }
 
     const db = admin.firestore();
@@ -5795,26 +5909,26 @@ exports.registerEventView = socialOnCall(
         const userSnap = await tx.get(userRef);
 
         if (!eventSnap.exists) {
-          throw new HttpsError("not-found", "Event not found.");
+          throw httpsError("not-found", "Event not found.");
         }
 
         const data = eventSnap.data() || {};
         if (data.deleted === true) {
-          throw new HttpsError("failed-precondition", "Event unavailable.");
+          throw httpsError("failed-precondition", "Event unavailable.");
         }
 
         const status = (data.status || "").toString().trim().toLowerCase();
         if (status === "cancelled") {
-          throw new HttpsError("failed-precondition", "Event unavailable.");
+          throw httpsError("failed-precondition", "Event unavailable.");
         }
         if (status !== "approved" || data.isActive !== true) {
-          throw new HttpsError("failed-precondition", "Event unavailable.");
+          throw httpsError("failed-precondition", "Event unavailable.");
         }
 
         if (userSnap.exists) {
           const userData = userSnap.data() || {};
           if (userData.isBanned === true || isAccountDisabledData(userData)) {
-            throw new HttpsError("permission-denied", "Account is banned.");
+            throw httpsError("permission-denied", "Account is banned.");
           }
         }
 
@@ -5923,7 +6037,7 @@ exports.registerEventView = socialOnCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("Erro registerEventView:", e);
-      throw new HttpsError("internal", "Could not register view.");
+      throw httpsError("internal", "Could not register view.");
     }
   },
 );
@@ -5933,12 +6047,12 @@ exports.registerEventView = socialOnCall(
  */
 exports.cancelEvent = socialOnCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
-    throw new HttpsError("unauthenticated", "Login required.");
+    throw httpsError("unauthenticated", "Login required.");
   }
   const uid = request.auth.uid;
   const eventId = (request.data?.eventId || "").toString().trim();
   if (!eventId) {
-    throw new HttpsError("invalid-argument", "eventId required.");
+    throw httpsError("invalid-argument", "eventId required.");
   }
 
   const db = admin.firestore();
@@ -5950,14 +6064,14 @@ exports.cancelEvent = socialOnCall({ region: "us-central1" }, async (request) =>
       const snap = await tx.get(eventRef);
       const userSnap = await tx.get(userRef);
       if (!snap.exists) {
-        throw new HttpsError("not-found", "Event not found.");
+        throw httpsError("not-found", "Event not found.");
       }
       const data = snap.data() || {};
       if (data.deleted === true) {
-        throw new HttpsError("failed-precondition", "Event unavailable.");
+        throw httpsError("failed-precondition", "Event unavailable.");
       }
       if (!userSnap.exists || userSnap.data()?.isBanned === true) {
-        throw new HttpsError("permission-denied", "Not allowed.");
+        throw httpsError("permission-denied", "Not allowed.");
       }
 
       const owner = (
@@ -5970,7 +6084,7 @@ exports.cancelEvent = socialOnCall({ region: "us-central1" }, async (request) =>
         .toString()
         .trim();
       if (owner !== uid) {
-        throw new HttpsError("permission-denied", "Only organizer can cancel.");
+        throw httpsError("permission-denied", "Only organizer can cancel.");
       }
 
       const statusNow = (data.status || "").toString().trim().toLowerCase();
@@ -6004,7 +6118,7 @@ exports.cancelEvent = socialOnCall({ region: "us-central1" }, async (request) =>
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("Erro cancelEvent:", e);
-    throw new HttpsError("internal", "Could not cancel event.");
+    throw httpsError("internal", "Could not cancel event.");
   }
 });
 
@@ -6016,7 +6130,7 @@ exports.cancelEvent = socialOnCall({ region: "us-central1" }, async (request) =>
 function assertEventOwner(uid, data) {
   const owner = resolveEventOwnerUid(data);
   if (!owner.ok || owner.uid !== uid) {
-    throw new HttpsError("permission-denied", "Only organizer can manage.");
+    throw httpsError("permission-denied", "Only organizer can manage.");
   }
   return owner.uid;
 }
@@ -6041,14 +6155,14 @@ function eventHasFinancialRetention(data) {
 }
 
 exports.archiveEvent = socialOnCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
+  if (!request.auth?.uid) throw httpsError("unauthenticated", "Login required.");
   const uid = request.auth.uid;
   const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
   const db = admin.firestore();
   const ref = db.collection("events").doc(eventId);
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) throw new HttpsError("not-found", "Event not found.");
+    if (!snap.exists) throw httpsError("not-found", "Event not found.");
     const data = snap.data() || {};
     assertEventOwner(uid, data);
     if (data.archived === true) return { eventId, alreadyArchived: true };
@@ -6069,14 +6183,14 @@ exports.archiveEvent = socialOnCall({ region: "us-central1" }, async (request) =
 });
 
 exports.restoreEvent = socialOnCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
+  if (!request.auth?.uid) throw httpsError("unauthenticated", "Login required.");
   const uid = request.auth.uid;
   const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
   const db = admin.firestore();
   const ref = db.collection("events").doc(eventId);
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) throw new HttpsError("not-found", "Event not found.");
+    if (!snap.exists) throw httpsError("not-found", "Event not found.");
     const data = snap.data() || {};
     assertEventOwner(uid, data);
     if (data.archived !== true) return { eventId, alreadyRestored: true };
@@ -6099,13 +6213,13 @@ exports.restoreEvent = socialOnCall({ region: "us-central1" }, async (request) =
 });
 
 exports.duplicateEvent = socialOnCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
+  if (!request.auth?.uid) throw httpsError("unauthenticated", "Login required.");
   const uid = request.auth.uid;
   const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
   const db = admin.firestore();
   const srcRef = db.collection("events").doc(eventId);
   const srcSnap = await srcRef.get();
-  if (!srcSnap.exists) throw new HttpsError("not-found", "Event not found.");
+  if (!srcSnap.exists) throw httpsError("not-found", "Event not found.");
   const src = srcSnap.data() || {};
   assertEventOwner(uid, src);
 
@@ -6160,12 +6274,12 @@ exports.duplicateEvent = socialOnCall({ region: "us-central1" }, async (request)
 });
 
 exports.deleteEventPermanently = socialOnCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
+  if (!request.auth?.uid) throw httpsError("unauthenticated", "Login required.");
   const uid = request.auth.uid;
   const eventId = asTrimmedString(request.data?.eventId, "eventId", { required: true, max: 128 });
   const confirm = asTrimmedString(request.data?.confirm, "confirm", { required: true, max: 64 });
   if (confirm !== "DELETE_PERMANENTLY") {
-    throw new HttpsError("invalid-argument", "Strong confirmation required.");
+    throw httpsError("invalid-argument", "Strong confirmation required.");
   }
   const db = admin.firestore();
   const ref = db.collection("events").doc(eventId);
@@ -6177,7 +6291,7 @@ exports.deleteEventPermanently = socialOnCall({ region: "us-central1" }, async (
   assertEventOwner(uid, data);
 
   if (eventHasFinancialRetention(data)) {
-    throw new HttpsError(
+    throw httpsError(
       "failed-precondition",
       "retention_required",
     );
@@ -6192,7 +6306,7 @@ exports.deleteEventPermanently = socialOnCall({ region: "us-central1" }, async (
   const isCancelled = status === "cancelled" || status === "canceled";
   const isArchived = data.archived === true;
   if (!(isPast || isCancelled || isArchived)) {
-    throw new HttpsError(
+    throw httpsError(
       "failed-precondition",
       "Only past, cancelled, or archived events can be permanently deleted.",
     );
