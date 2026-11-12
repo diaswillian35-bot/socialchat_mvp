@@ -12,6 +12,11 @@ const {
   SESSION_TTL_MS,
   evaluateRateLimit,
   accountBlocked,
+  shouldIncludeSharePerson,
+  collectGroupMemberUids,
+  mergeSharePeople,
+  pairKey,
+  SHARE_PEOPLE_CAP,
 } = require("./share_extension_logic");
 
 test("hashToken is stable sha256 hex", () => {
@@ -59,6 +64,140 @@ test("premium / international", () => {
     ),
     true,
   );
+  assert.equal(
+    canSendInternational({ countryCode: "br" }, { countryCode: "ca" }),
+    true,
+  );
+  assert.equal(
+    canSendInternational({ homeCountryCode: "PT" }, { countryCode: "BR" }),
+    true,
+  );
+  assert.equal(
+    canSendInternational({ countryCode: "ca" }, { countryCode: "pt" }),
+    true,
+  );
+  assert.equal(
+    canSendInternational({ countryCode: "us" }, { countryCode: "us" }),
+    true,
+  );
+  assert.equal(
+    canSendInternational({ countryCode: "us" }, { countryCode: "ca" }),
+    false,
+  );
+  assert.equal(
+    canSendInternational({ countryCode: "us", isPremium: true }, { countryCode: "ca" }),
+    true,
+  );
+  assert.equal(
+    canSendInternational({ countryCode: "br" }, { countryCode: "" }),
+    false,
+  );
+});
+
+test("pairKey is deterministic", () => {
+  assert.equal(pairKey("b", "a"), "a_b");
+  assert.equal(pairKey("a", "b"), "a_b");
+});
+
+test("collectGroupMemberUids dedupes and excludes self", () => {
+  const uids = collectGroupMemberUids(
+    [
+      { data: { members: ["me", "u1", "u2"], ownerId: "me", admins: ["u1"] } },
+      { members: ["u2", "u3"], ownerId: "u4" },
+    ],
+    "me",
+  );
+  assert.deepEqual(uids, ["u1", "u2", "u3", "u4"]);
+});
+
+test("shouldIncludeSharePerson filters self, blocked, hidden, banned, exploreOnly", () => {
+  assert.equal(
+    shouldIncludeSharePerson({ uid: "me", otherUid: "me", otherData: {} }),
+    false,
+  );
+  assert.equal(
+    shouldIncludeSharePerson({
+      uid: "me",
+      otherUid: "u1",
+      otherData: {},
+      blocked: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldIncludeSharePerson({
+      uid: "me",
+      otherUid: "u1",
+      otherData: { hiddenFromLists: true },
+    }),
+    false,
+  );
+  assert.equal(
+    shouldIncludeSharePerson({
+      uid: "me",
+      otherUid: "u1",
+      otherData: { isBanned: true },
+    }),
+    false,
+  );
+  assert.equal(
+    shouldIncludeSharePerson({
+      uid: "me",
+      otherUid: "u1",
+      otherData: { exploreOnly: true },
+      isContact: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldIncludeSharePerson({
+      uid: "me",
+      otherUid: "u1",
+      otherData: { exploreOnly: true },
+      isContact: true,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldIncludeSharePerson({
+      uid: "me",
+      otherUid: "u1",
+      otherData: {},
+    }),
+    true,
+  );
+});
+
+test("mergeSharePeople orders DMs first, then group members, then search, and caps", () => {
+  const conversations = [
+    { otherUid: "a", origin: "conversation" },
+    { otherUid: "b", origin: "conversation" },
+  ];
+  const groupMembers = [
+    { otherUid: "b", origin: "group_member" },
+    { otherUid: "c", origin: "group_member" },
+    { otherUid: "d", origin: "group_member" },
+  ];
+  const searchHits = [
+    { otherUid: "c", origin: "search" },
+    { otherUid: "e", origin: "search" },
+  ];
+  const merged = mergeSharePeople({
+    conversations,
+    groupMembers,
+    searchHits,
+    cap: 4,
+  });
+  assert.deepEqual(
+    merged.map((x) => x.otherUid),
+    ["a", "b", "c", "d"],
+  );
+  const full = mergeSharePeople({ conversations, groupMembers, searchHits });
+  assert.deepEqual(
+    full.map((x) => x.otherUid),
+    ["a", "b", "c", "d", "e"],
+  );
+  assert.equal(SHARE_PEOPLE_CAP, 50);
 });
 
 test("session expiry helpers", () => {

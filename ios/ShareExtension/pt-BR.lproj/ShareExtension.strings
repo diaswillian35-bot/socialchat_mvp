@@ -12,3 +12,6 @@
 "share_no_permission" = "Indisponível";
 "share_need_login" = "Abra o Remdy e faça login para ativar o compartilhamento.";
 "share_retry" = "Algo deu errado. Tente de novo.";
+"share_section_chats" = "Conversas";
+"share_section_people" = "Pessoas";
+"share_empty_search" = "Nenhuma pessoa encontrada.";

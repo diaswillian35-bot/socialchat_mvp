@@ -17,6 +17,7 @@ enum ShareCallableClient {
     let online: Bool
     let memberCount: Int
     let lastMessageAtMs: Int64
+    let origin: String // conversation | group_member | search
   }
 
   enum APIError: Error {
@@ -32,18 +33,35 @@ enum ShareCallableClient {
       name: "listShareDestinations",
       payload: ["token": token, "query": query]
     )
-    let dms = parseList(data["conversations"]).sorted { $0.lastMessageAtMs > $1.lastMessageAtMs }
+    let dms = parseList(data["conversations"]).sorted(by: comparePeople)
     let groups = parseList(data["groups"])
     return (dms, groups)
   }
 
-  static let maxCachedItems = 30
+  static let maxCachedItems = 50
+
+  private static func originRank(_ origin: String) -> Int {
+    switch origin {
+    case "group_member": return 1
+    case "search": return 2
+    default: return 0
+    }
+  }
+
+  static func comparePeople(_ a: Destination, _ b: Destination) -> Bool {
+    let ra = originRank(a.origin), rb = originRank(b.origin)
+    if ra != rb { return ra < rb }
+    if a.lastMessageAtMs != b.lastMessageAtMs {
+      return a.lastMessageAtMs > b.lastMessageAtMs
+    }
+    return a.displayName.localizedCaseInsensitiveCompare(b.displayName) == .orderedAscending
+  }
 
   static func cachedLists() -> (dms: [Destination], groups: [Destination])? {
     guard let obj = ShareAppGroupSession.loadDestinations() else { return nil }
     let dms = Array(
       parseList(obj["conversations"])
-        .sorted { $0.lastMessageAtMs > $1.lastMessageAtMs }
+        .sorted(by: comparePeople)
         .prefix(maxCachedItems)
     )
     let groups = Array(parseList(obj["groups"]).prefix(maxCachedItems))
@@ -90,7 +108,8 @@ enum ShareCallableClient {
         blockedReason: (row["blockedReason"] as? String) ?? "",
         online: (row["online"] as? Bool) ?? (row["isOnline"] as? Bool) ?? false,
         memberCount: intValue(row["memberCount"] ?? row["membersCount"] ?? row["participantCount"]),
-        lastMessageAtMs: int64Value(row["lastMessageAtMs"] ?? row["updatedAtMs"])
+        lastMessageAtMs: int64Value(row["lastMessageAtMs"] ?? row["updatedAtMs"]),
+        origin: (row["origin"] as? String) ?? "conversation"
       )
     }
   }

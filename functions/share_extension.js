@@ -38,7 +38,20 @@ const {
   publicLocationShort,
   evaluateRateLimit,
   idempotencyDocId,
+  pairKey,
+  SHARE_PEOPLE_CAP,
+  shouldIncludeSharePerson,
+  collectGroupMemberUids,
+  mergeSharePeople,
+  tsMs,
 } = require("./share_extension_logic");
+const {
+  normalizeSearchText,
+  isQueryReady,
+  isSearchableAccount,
+  loadUsersByIds,
+  computeFetchLimit,
+} = require("./user_search");
 const { isEitherBlockedFromUserSnaps } = require("./user_block_logic");
 const { dmBlockedBetween, conversationHasHistory } = require("./dm_block_logic");
 const { moderationSendBlock, moderationMuted } = require("./moderation/account");
@@ -47,6 +60,7 @@ const {
   buildDmUnreadUpdatePairs,
   buildServerUnreadApplied,
   firestoreDmUnreadAdapters,
+  initialNestedUnread,
 } = require("./private_message_unread_logic");
 
 const db = () => admin.firestore();
@@ -179,6 +193,154 @@ function isParticipating(groupData, uid) {
   return admins.includes(uid);
 }
 
+async function loadUsersAndPublic(uids) {
+  const unique = [...new Set((uids || []).map((id) => String(id || "").trim()).filter(Boolean))];
+  const usersById = await loadUsersByIds(db(), unique);
+  const pubById = new Map();
+  if (!unique.length) return { usersById, pubById };
+  const refs = unique.map((id) => db().collection("publicUsers").doc(id));
+  const snaps = typeof db().getAll === "function"
+    ? await db().getAll(...refs)
+    : await Promise.all(refs.map((r) => r.get()));
+  for (const snap of snaps) {
+    if (snap && snap.exists) pubById.set(snap.id, snap.data() || {});
+  }
+  return { usersById, pubById };
+}
+
+function personBlocked(myData, otherData, uid, otherUid, convData) {
+  if (isEitherBlockedFromUserSnaps(myData, otherData, uid, otherUid)) return true;
+  return dmBlockedBetween(myData, otherData, {
+    hasHistory: conversationHasHistory(convData),
+  });
+}
+
+function buildPersonDestination({
+  destinationId,
+  otherUid,
+  pub,
+  otherData,
+  myData,
+  origin,
+  lastMessageAtMs = 0,
+}) {
+  const intlOk = canSendInternational(myData, otherData);
+  return {
+    destinationId,
+    type: "dm",
+    otherUid,
+    displayName: publicDisplayName(pub, (otherData && otherData.name) || "Remdy user"),
+    photoUrl: publicPhotoUrl(pub),
+    location: publicLocationShort(pub),
+    allowed: intlOk,
+    blockedReason: intlOk ? "" : "unavailable",
+    origin,
+    lastMessageAtMs: lastMessageAtMs || 0,
+  };
+}
+
+/**
+ * Busca por nome — mesma coleção/campos e filtros de searchUsers
+ * (isSearchableAccount: ban, hiddenFromLists, exploreOnly, perfil incompleto).
+ */
+async function searchSharePeople(uid, rawQuery, myData) {
+  const q = normalizeSearchText(rawQuery);
+  if (q.length < 2) return [];
+  const pageSize = 20;
+  const fetchLimit = computeFetchLimit(pageSize);
+  const snap = await db()
+    .collection("publicUsers")
+    .where("nameSearch", ">=", q)
+    .where("nameSearch", "<", q + "\uf8ff")
+    .orderBy("nameSearch")
+    .limit(fetchLimit)
+    .get();
+  const docs = (snap.docs || []).filter((d) => d.id && d.id !== uid);
+  const usersById = await loadUsersByIds(db(), docs.map((d) => d.id));
+  const hits = [];
+  for (const doc of docs) {
+    const otherUid = doc.id;
+    const otherData = usersById.get(otherUid) || {};
+    if (!isSearchableAccount(otherData)) continue;
+    if (personBlocked(myData, otherData, uid, otherUid, null)) continue;
+    if (!shouldIncludeSharePerson({
+      uid,
+      otherUid,
+      otherData,
+      isContact: false,
+      blocked: false,
+    })) continue;
+    hits.push(buildPersonDestination({
+      destinationId: pairKey(uid, otherUid),
+      otherUid,
+      pub: doc.data() || {},
+      otherData,
+      myData,
+      origin: "search",
+    }));
+    if (hits.length >= pageSize) break;
+  }
+  return hits;
+}
+
+/**
+ * Encontra ou cria a conversa como forwardMessage.findOrCreateDm
+ * (pairKey determinístico, bloqueios, país, exploreOnly em conversa nova).
+ */
+async function findOrCreateDm(uid, otherUid, myData) {
+  if (!otherUid || otherUid === uid) {
+    return { error: "bad_dest" };
+  }
+  const otherSnap = await db().collection("users").doc(otherUid).get();
+  const otherData = otherSnap.data() || {};
+  if (accountBlocked(otherData) || otherData.hiddenFromLists === true) {
+    return { error: "not_allowed" };
+  }
+  const key = pairKey(uid, otherUid);
+  let convRef = db().collection("conversations").doc(key);
+  let convSnap = await convRef.get();
+  if (!convSnap.exists) {
+    const q = await db()
+      .collection("conversations")
+      .where("pairKey", "==", key)
+      .limit(1)
+      .get();
+    if (!q.empty) {
+      convRef = q.docs[0].ref;
+      convSnap = q.docs[0];
+    }
+  }
+  const exists = convSnap.exists;
+  if (await isEitherBlocked(uid, otherUid, exists ? convSnap.data() : null)) {
+    return { error: "blocked" };
+  }
+  if (!canSendInternational(myData, otherData)) return { error: "premium" };
+  if (!exists && otherData.exploreOnly === true) {
+    return { error: "explore_only" };
+  }
+  if (!exists) {
+    await convRef.set(
+      {
+        participants: [uid, otherUid].sort(),
+        pairKey: key,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessage: "",
+        unread: initialNestedUnread([uid, otherUid]),
+      },
+      { merge: true },
+    );
+  } else {
+    const parts = Array.isArray(convSnap.data()?.participants)
+      ? convSnap.data().participants.map(String)
+      : [];
+    if (!parts.includes(uid) || !parts.includes(otherUid)) {
+      return { error: "not_allowed" };
+    }
+  }
+  return { conversationId: convRef.id, otherUid };
+}
+
 async function pruneOldSessions(uid) {
   const q = await db()
     .collection("shareExtensionSessions")
@@ -302,10 +464,8 @@ const listShareDestinations = onCall(
   async (request) => {
     assertAppCheckSoft(request);
     const token = request.data?.token;
-    const query = String(request.data?.query || "")
-      .trim()
-      .toLowerCase()
-      .slice(0, 64);
+    const rawQuery = String(request.data?.query || "").trim().slice(0, 64);
+    const query = rawQuery.toLowerCase();
     const session = await loadValidSession(token);
     if (!Array.isArray(session.data.scopes) || !session.data.scopes.includes("share.list")) {
       throw httpsError("permission-denied", "Missing scope.");
@@ -317,6 +477,8 @@ const listShareDestinations = onCall(
 
     const conversations = [];
     const groups = [];
+    const contactUids = new Set();
+    const convRows = [];
 
     const convSnap = await db()
       .collection("conversations")
@@ -335,34 +497,8 @@ const listShareDestinations = onCall(
       if (hiddenFor.includes(uid)) continue;
       const otherUid = participants.find((p) => p !== uid);
       if (!otherUid) continue;
-
-      const [pubSnap, otherUserSnap] = await Promise.all([
-        db().collection("publicUsers").doc(otherUid).get(),
-        db().collection("users").doc(otherUid).get(),
-      ]);
-      const pub = pubSnap.data() || {};
-      const otherData = otherUserSnap.data() || {};
-      const blocked = await isEitherBlocked(uid, otherUid, data);
-      const intlOk = canSendInternational(myData, otherData);
-      let allowed = true;
-      let blockedReason = "";
-      if (blocked || accountBlocked(otherData) || !intlOk) {
-        allowed = false;
-        blockedReason = "unavailable";
-      }
-      const displayName = publicDisplayName(pub, "Chat");
-      if (query && !displayName.toLowerCase().includes(query)) continue;
-
-      conversations.push({
-        destinationId: doc.id,
-        type: "dm",
-        otherUid,
-        displayName,
-        photoUrl: publicPhotoUrl(pub),
-        location: publicLocationShort(pub),
-        allowed,
-        blockedReason,
-      });
+      contactUids.add(otherUid);
+      convRows.push({ doc, data, otherUid });
     }
 
     let groupSnap = await db()
@@ -378,13 +514,87 @@ const listShareDestinations = onCall(
         .get();
     }
 
+    const activeGroups = [];
     for (const doc of groupSnap.docs) {
       const data = doc.data() || {};
       if (data.deleted === true || data.isDeleted === true) continue;
       if (data.isActive === false) continue;
       if (!isParticipating(data, uid)) continue;
       if (await isGroupBanned(doc.id, uid)) continue;
+      activeGroups.push({ doc, data });
+    }
 
+    const groupMemberUids = collectGroupMemberUids(
+      activeGroups.map((g) => ({ data: g.data })),
+      uid,
+    );
+    const memberCandidates = groupMemberUids.filter((id) => !contactUids.has(id)).slice(0, 80);
+    const { usersById, pubById } = await loadUsersAndPublic([
+      ...contactUids,
+      ...memberCandidates,
+    ]);
+
+    for (const { doc, data, otherUid } of convRows) {
+      const pub = pubById.get(otherUid) || {};
+      const otherData = usersById.get(otherUid) || {};
+      const blocked = personBlocked(myData, otherData, uid, otherUid, data);
+      if (!shouldIncludeSharePerson({
+        uid,
+        otherUid,
+        otherData,
+        isContact: true,
+        blocked,
+      })) continue;
+      const displayName = publicDisplayName(pub, "Chat");
+      if (query && !displayName.toLowerCase().includes(query)) continue;
+      conversations.push(buildPersonDestination({
+        destinationId: doc.id,
+        otherUid,
+        pub,
+        otherData,
+        myData,
+        origin: "conversation",
+        lastMessageAtMs: tsMs(data.lastMessageAt || data.updatedAt),
+      }));
+    }
+
+    const groupMemberItems = [];
+    for (const otherUid of memberCandidates) {
+      const pub = pubById.get(otherUid) || {};
+      const otherData = usersById.get(otherUid) || {};
+      const blocked = personBlocked(myData, otherData, uid, otherUid, null);
+      if (!shouldIncludeSharePerson({
+        uid,
+        otherUid,
+        otherData,
+        isContact: false,
+        blocked,
+      })) continue;
+      const displayName = publicDisplayName(pub, (otherData && otherData.name) || "Remdy user");
+      if (query && !displayName.toLowerCase().includes(query)) continue;
+      groupMemberItems.push(buildPersonDestination({
+        destinationId: pairKey(uid, otherUid),
+        otherUid,
+        pub,
+        otherData,
+        myData,
+        origin: "group_member",
+      }));
+    }
+
+    let searchHits = [];
+    if (isQueryReady(rawQuery)) {
+      searchHits = await searchSharePeople(uid, rawQuery, myData);
+    }
+
+    const mergedPeople = mergeSharePeople({
+      conversations,
+      groupMembers: groupMemberItems,
+      searchHits,
+      cap: SHARE_PEOPLE_CAP,
+    });
+
+    for (const { doc, data } of activeGroups) {
       const myCountry = countryOf(myData);
       const gCountry = groupCountry(data);
       const world = myCountry && gCountry && myCountry !== gCountry;
@@ -414,10 +624,13 @@ const listShareDestinations = onCall(
 
     console.info("shareExt.list", {
       uidLen: uid.length,
-      dm: conversations.length,
+      dm: mergedPeople.length,
       groups: groups.length,
+      groupMembers: groupMemberItems.length,
+      search: searchHits.length,
     });
-    return { conversations, groups };
+    return { conversations: mergedPeople, groups };
+
   },
 );
 
@@ -473,10 +686,20 @@ const sendShareMessage = onCall(
     }
 
     let messageId;
+    let resolvedDestId = destinationId;
 
     if (kind === "dm") {
       const otherUid = String(request.data?.otherUid || "").trim();
-      const convSnap = await db().collection("conversations").doc(destinationId).get();
+      let destId = destinationId;
+      let convSnap = await db().collection("conversations").doc(destId).get();
+      if (!convSnap.exists) {
+        const created = await findOrCreateDm(uid, otherUid, myData);
+        if (created.error || !created.conversationId) {
+          throw httpsError("permission-denied", "Not allowed.");
+        }
+        destId = created.conversationId;
+        convSnap = await db().collection("conversations").doc(destId).get();
+      }
       if (!convSnap.exists) {
         throw httpsError("permission-denied", "Not allowed.");
       }
@@ -501,9 +724,10 @@ const sendShareMessage = onCall(
         throw httpsError("permission-denied", "Not allowed.");
       }
 
+      resolvedDestId = destId;
       const msgRef = db()
         .collection("conversations")
-        .doc(destinationId)
+        .doc(destId)
         .collection("messages")
         .doc();
       messageId = msgRef.id;
@@ -535,7 +759,7 @@ const sendShareMessage = onCall(
           // Trigger sees this and does not +1 again.
           serverUnreadApplied: buildServerUnreadApplied(resolvedOther),
         });
-        const convRef = db().collection("conversations").doc(destinationId);
+        const convRef = db().collection("conversations").doc(destId);
         const updateArgs = [
           "lastMessage",
           parsed.text.slice(0, 200),
@@ -563,7 +787,7 @@ const sendShareMessage = onCall(
           clientNonce,
           messageId,
           kind: "dm",
-          destinationId,
+          destinationId: destId,
           createdAtMs: Date.now(),
           expiresAtMs: Date.now() + IDEMPOTENCY_TTL_MS,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -656,7 +880,7 @@ const sendShareMessage = onCall(
     if (httpsMatch && messageId) {
       const messagePath =
         kind === "dm"
-          ? `conversations/${destinationId}/messages/${messageId}`
+          ? `conversations/${resolvedDestId}/messages/${messageId}`
           : `groups/${destinationId}/messages/${messageId}`;
       const previewUrl = httpsMatch[0].replace(/[),.;]+$/g, "");
       setImmediate(() => {

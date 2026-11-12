@@ -87,12 +87,106 @@ function countryOf(userData = {}) {
   return String(raw).trim().toLowerCase();
 }
 
+// Espelho de RemdyLaunchAccess.peopleCountryCodes (BR, CA e PT
+// entre si). Premium continua a poder enviar para qualquer país.
+const PEOPLE_COUNTRY_CODES = Object.freeze(["br", "ca", "pt"]);
+const SHARE_PEOPLE_CAP = 50;
+
+function pairKey(a, b) {
+  return [String(a), String(b)].sort().join("_");
+}
+
 function canSendInternational(senderData, recipientData) {
   if (isPremiumUser(senderData)) return true;
   const a = countryOf(senderData);
   const b = countryOf(recipientData);
-  if (!a || !b) return true;
+  if (!a || !b) return false;
+  if (PEOPLE_COUNTRY_CODES.includes(a) && PEOPLE_COUNTRY_CODES.includes(b)) {
+    return true;
+  }
   return a === b;
+}
+
+function isHiddenOrBanned(userData = {}) {
+  if (accountBlocked(userData)) return true;
+  if (userData.hiddenFromLists === true) return true;
+  if (userData.isBanned === true) return true;
+  if (userData.status === "banned") return true;
+  return false;
+}
+
+/**
+ * Pessoa visível na lista da Share Extension.
+ * Contactos (DM já existente) podem ser exploreOnly; os outros não.
+ */
+function shouldIncludeSharePerson({
+  uid,
+  otherUid,
+  otherData = {},
+  isContact = false,
+  blocked = false,
+}) {
+  const id = String(otherUid || "").trim();
+  if (!id || id === uid) return false;
+  if (blocked) return false;
+  if (isHiddenOrBanned(otherData)) return false;
+  if (otherData.exploreOnly === true && !isContact) return false;
+  return true;
+}
+
+function collectGroupMemberUids(groups, uid) {
+  const out = [];
+  const seen = new Set();
+  for (const g of groups || []) {
+    const data = g && g.data ? g.data : g || {};
+    const raw = [
+      ...(Array.isArray(data.members) ? data.members : []),
+      data.ownerId,
+      ...(Array.isArray(data.admins) ? data.admins : []),
+    ];
+    for (const m of raw) {
+      const id = String(m == null ? "" : m).trim();
+      if (!id || id === uid || seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
+}
+
+/**
+ * DMs existentes primeiro, depois membros de grupos, depois busca.
+ * Dedup por otherUid (ou destinationId).
+ */
+function mergeSharePeople({
+  conversations = [],
+  groupMembers = [],
+  searchHits = [],
+  cap = SHARE_PEOPLE_CAP,
+} = {}) {
+  const seen = new Set();
+  const out = [];
+  const take = (list) => {
+    for (const item of list || []) {
+      if (out.length >= cap) return;
+      const key = String((item && (item.otherUid || item.destinationId)) || "").trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+    }
+  };
+  take(conversations);
+  take(groupMembers);
+  take(searchHits);
+  return out;
+}
+
+function tsMs(raw) {
+  if (raw == null) return 0;
+  if (typeof raw.toMillis === "function") return raw.toMillis();
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (raw._seconds != null) return Number(raw._seconds) * 1000;
+  return 0;
 }
 
 function containsPhone(text) {
@@ -196,6 +290,14 @@ module.exports = {
   isPremiumUser,
   countryOf,
   canSendInternational,
+  PEOPLE_COUNTRY_CODES,
+  SHARE_PEOPLE_CAP,
+  pairKey,
+  isHiddenOrBanned,
+  shouldIncludeSharePerson,
+  collectGroupMemberUids,
+  mergeSharePeople,
+  tsMs,
   containsPhone,
   normalizeShareText,
   publicDisplayName,

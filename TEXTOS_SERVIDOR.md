@@ -8,7 +8,9 @@ Campo de idioma em `users/{uid}`: **`appLanguageCode`**, com fallbacks `appLang`
 Sem valor: **pt-BR**. Código não reconhecido: **en**.
 Nas salas de áudio, se não houver idioma gravado e o país do utilizador for CA: **en** (padrão já existente).
 
-O app hoje grava o idioma só em SharedPreferences (`app_lang`). **Não escreve `appLanguageCode` no Firestore** (não foi adicionado aqui: exigiria escrita no perfil, não aprovada). Enquanto o campo não for gravado, os pushes usam o fallback.
+O app (commit local nesta branch) já grava `users/{uid}.appLanguageCode` no arranque/login e na troca de idioma. Enquanto as Functions da secção de pushes não forem implantadas, o texto no servidor em produção continua no fallback.
+
+**Lista única de deploy (pushes, callables, geo, lugares e Share Extension):** ver `DEPLOY_B44.md`. Nada foi implantado.
 
 ## Como o idioma é escolhido
 
@@ -17,6 +19,8 @@ O app hoje grava o idioma só em SharedPreferences (`app_lang`). **Não escreve 
 - **Página /l/{id}:** já usava `Accept-Language` e `?lang` (5 idiomas). Não foi alterada neste passo. O site de marketing (`landing/`, `public/index.html`) ficou de fora, como pedido.
 
 ## O que precisa de deploy (nada foi implantado)
+
+A lista completa e consolidada está em `DEPLOY_B44.md`. Resumo i18n abaixo. As Functions da Share Extension que mudaram depois deste inventário (`listShareDestinations`, `sendShareMessage`) também entram nessa lista.
 
 Pushes e avisos:
 

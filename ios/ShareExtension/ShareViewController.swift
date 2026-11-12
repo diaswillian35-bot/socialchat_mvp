@@ -9,7 +9,7 @@ import MobileCoreServices
 final class ShareViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate {
   /// Hard caps for extension memory budget (~jetsam around tens of MB).
   private let maxImages = 3
-  private let maxVisibleDestinations = 30
+  private let maxVisibleDestinations = 50
   private let jpegMaxDimension: CGFloat = 960
   private let jpegQuality: CGFloat = 0.55
 
@@ -19,6 +19,8 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
   private var intentId = UUID().uuidString
   private var dms: [ShareCallableClient.Destination] = []
   private var groups: [ShareCallableClient.Destination] = []
+  private var fullDms: [ShareCallableClient.Destination] = []
+  private var fullGroups: [ShareCallableClient.Destination] = []
   private var sendingId: String?
   /// Selected destination — tap selects only; send starts on Enviar.
   private var selectedDestination: ShareCallableClient.Destination?
@@ -202,6 +204,9 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     table.estimatedRowHeight = 64
     table.isScrollEnabled = true
     table.alwaysBounceVertical = true
+    if #available(iOS 15.0, *) {
+      table.sectionHeaderTopPadding = 0
+    }
     table.translatesAutoresizingMaskIntoConstraints = false
     // Critical: fixed height so UITableView scrolls instead of expanding (jetsam).
     let tableHeight = table.heightAnchor.constraint(equalToConstant: 280)
@@ -460,6 +465,10 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
   ) {
     dms = Array(rawDms.prefix(maxVisibleDestinations))
     groups = Array(rawGroups.prefix(maxVisibleDestinations))
+    if source != "search" {
+      fullDms = dms
+      fullGroups = groups
+    }
     ShareDiag.log("lists_ready", [
       "source": source,
       "dms": "\(dms.count)",
@@ -489,6 +498,11 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     return "—"
   }
 
+  private struct DestSection {
+    let title: String
+    let rows: [ShareCallableClient.Destination]
+  }
+
   private func currentRows() -> [ShareCallableClient.Destination] {
     let q = (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     let base = segment == 0 ? dms : groups
@@ -496,10 +510,47 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     return base.filter { $0.displayName.lowercased().contains(q) }
   }
 
+  private func isPeopleOrigin(_ origin: String) -> Bool {
+    origin == "group_member" || origin == "search"
+  }
+
+  private func visibleSections() -> [DestSection] {
+    if segment == 1 {
+      return [DestSection(title: "", rows: currentRows())]
+    }
+    let rows = currentRows()
+    let chats = rows.filter { !isPeopleOrigin($0.origin) }
+    let people = rows.filter { isPeopleOrigin($0.origin) }
+    var sections: [DestSection] = []
+    if !chats.isEmpty {
+      sections.append(DestSection(title: L("share_section_chats"), rows: chats))
+    }
+    if !people.isEmpty {
+      sections.append(DestSection(title: L("share_section_people"), rows: people))
+    }
+    return sections
+  }
+
+  private func destination(at indexPath: IndexPath) -> ShareCallableClient.Destination? {
+    let sections = visibleSections()
+    guard indexPath.section < sections.count else { return nil }
+    let rows = sections[indexPath.section].rows
+    guard indexPath.row < rows.count else { return nil }
+    return rows[indexPath.row]
+  }
+
   private func reloadTable() {
     table.reloadData()
     let rows = currentRows()
-    let emptyKey = segment == 0 ? "share_empty_chats" : "share_empty_groups"
+    let q = (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let emptyKey: String
+    if segment == 1 {
+      emptyKey = "share_empty_groups"
+    } else if !q.isEmpty {
+      emptyKey = "share_empty_search"
+    } else {
+      emptyKey = "share_empty_chats"
+    }
     emptyLabel.text = L(emptyKey)
     emptyLabel.isHidden = !(state == .ready && rows.isEmpty)
   }
@@ -589,10 +640,22 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
   }
 
   private func runSearch(_ q: String) async {
+    let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Restaurar a lista completa ao limpar a busca (não ficar com o resultado filtrado).
+    if trimmed.isEmpty {
+      await MainActor.run {
+        if !self.fullDms.isEmpty || !self.fullGroups.isEmpty {
+          self.applyLists(dms: self.fullDms, groups: self.fullGroups, source: "restore")
+        } else {
+          self.reloadTable()
+        }
+      }
+      return
+    }
     // Local filter first (already applied in currentRows). Remote only if session exists.
-    if let session = ShareSessionStore.load(), !q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    if let session = ShareSessionStore.load() {
       do {
-        let lists = try await ShareCallableClient.listDestinations(token: session.token, query: q)
+        let lists = try await ShareCallableClient.listDestinations(token: session.token, query: trimmed)
         if Task.isCancelled { return }
         await MainActor.run {
           self.applyLists(dms: lists.dms, groups: lists.groups, source: "search")
@@ -605,15 +668,46 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
     await MainActor.run { self.reloadTable() }
   }
 
+  func numberOfSections(in tableView: UITableView) -> Int {
+    let count = visibleSections().count
+    return count == 0 ? 1 : count
+  }
+
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-    currentRows().count
+    let sections = visibleSections()
+    guard section < sections.count else { return 0 }
+    return sections[section].rows.count
+  }
+
+  func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+    let sections = visibleSections()
+    guard section < sections.count, !sections[section].title.isEmpty else { return nil }
+    let header = UIView()
+    header.backgroundColor = ShareTheme.card
+    let label = UILabel()
+    label.translatesAutoresizingMaskIntoConstraints = false
+    label.text = sections[section].title
+    label.font = .systemFont(ofSize: 13, weight: .medium)
+    label.textColor = ShareTheme.muted
+    header.addSubview(label)
+    NSLayoutConstraint.activate([
+      label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 14),
+      label.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -14),
+      label.topAnchor.constraint(equalTo: header.topAnchor, constant: 8),
+      label.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -4),
+    ])
+    return header
+  }
+
+  func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+    let sections = visibleSections()
+    guard section < sections.count, !sections[section].title.isEmpty else { return 0 }
+    return 28
   }
 
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
     let cell = tableView.dequeueReusableCell(withIdentifier: ShareDestinationCell.reuseId, for: indexPath) as! ShareDestinationCell
-    let rows = currentRows()
-    guard indexPath.row < rows.count else { return cell }
-    let row = rows[indexPath.row]
+    guard let row = destination(at: indexPath) else { return cell }
     var members = ""
     if row.type == "group", row.memberCount > 0 {
       members = L("share_members").replacingOccurrences(of: "{n}", with: "\(row.memberCount)")
@@ -635,9 +729,7 @@ final class ShareViewController: UIViewController, UITableViewDataSource, UITabl
       tableView.deselectRow(at: indexPath, animated: true)
       return
     }
-    let rows = currentRows()
-    guard indexPath.row < rows.count else { return }
-    let row = rows[indexPath.row]
+    guard let row = destination(at: indexPath) else { return }
     guard row.allowed else {
       tableView.deselectRow(at: indexPath, animated: true)
       return

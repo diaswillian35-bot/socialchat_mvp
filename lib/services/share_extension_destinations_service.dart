@@ -7,6 +7,8 @@ import 'age_access_service.dart';
 import 'block_visibility.dart';
 import 'group_discovery_logic.dart';
 import 'international_chat_service.dart';
+import 'message_moderation.dart';
+import 'share_extension_destinations_logic.dart';
 
 /// Writes the logged-in user's chats/groups into the App Group for the
 /// iOS Share Extension (no tokens). Used when share callables are unavailable.
@@ -33,7 +35,7 @@ class ShareExtensionDestinationsService {
       final myData = mySnap.data() ?? {};
 
       // Keep Share Extension payload light (memory + App Group JSON).
-      const maxItems = 30;
+      const maxItems = ShareExtensionDestinationsLogic.peopleCap;
       final convSnap = await db
           .collection('conversations')
           .where('participants', arrayContains: uid)
@@ -86,14 +88,16 @@ class ShareExtensionDestinationsService {
           'online': false,
           'memberCount': 0,
           'lastMessageAtMs': _tsMs(last),
+          'origin': ShareExtensionDestinationsLogic.originConversation,
         });
       }
       dms.sort(
-        (a, b) => (_asInt(b['lastMessageAtMs'])).compareTo(_asInt(a['lastMessageAtMs'])),
+        (a, b) => (_asInt(b['lastMessageAtMs']))
+            .compareTo(_asInt(a['lastMessageAtMs'])),
       );
-      if (dms.length > maxItems) {
-        dms.removeRange(maxItems, dms.length);
-      }
+      final contactUids = {
+        for (final row in dms) (row['otherUid'] ?? '').toString(),
+      }..remove('');
 
       QuerySnapshot<Map<String, dynamic>> groupSnap;
       try {
@@ -112,6 +116,7 @@ class ShareExtensionDestinationsService {
 
       final groups = <Map<String, dynamic>>[];
       final seen = <String>{};
+      final activeGroupData = <Map<String, dynamic>>[];
       for (final doc in groupSnap.docs) {
         if (!seen.add(doc.id)) continue;
         final data = doc.data();
@@ -119,6 +124,7 @@ class ShareExtensionDestinationsService {
         if (!GroupDiscoveryLogic.isParticipating(data: data, uid: uid)) {
           continue;
         }
+        activeGroupData.add(data);
         final title =
             (data['name'] ?? data['title'] ?? 'Grupo').toString().trim();
         groups.add({
@@ -139,12 +145,76 @@ class ShareExtensionDestinationsService {
         groups.removeRange(maxItems, groups.length);
       }
 
+      final groupPeople = <Map<String, dynamic>>[];
+      final memberUids = ShareExtensionDestinationsLogic.collectGroupMemberUids(
+        groups: activeGroupData,
+        uid: uid,
+      );
+      for (final otherUid in memberUids) {
+        if (groupPeople.length + dms.length >= maxItems) break;
+        if (contactUids.contains(otherUid)) continue;
+        if (BlockVisibility.hidesUid(otherUid)) continue;
+        Map<String, dynamic> otherData = {};
+        var name = '';
+        try {
+          final other = await db.collection('users').doc(otherUid).get();
+          otherData = other.data() ?? {};
+          name = (otherData['name'] ?? otherData['displayName'] ?? '')
+              .toString()
+              .trim();
+        } catch (_) {}
+        if (otherData.isNotEmpty &&
+            !InternationalChatService.isActiveAccount(otherData)) {
+          continue;
+        }
+        if (!ShareExtensionDestinationsLogic.shouldIncludePerson(
+          uid: uid,
+          otherUid: otherUid,
+          otherData: otherData,
+          isContact: false,
+          hiddenFromLists: ModerationVisibility.isHiddenFromLists(otherData) ||
+              otherData['hiddenFromLists'] == true,
+          banned: otherData['isBanned'] == true,
+        )) {
+          continue;
+        }
+        if (name.isEmpty) name = 'Remdy';
+        var allowed = true;
+        try {
+          allowed = InternationalChatService.canSendMessage(
+            senderData: myData,
+            recipientData: otherData,
+          );
+        } catch (_) {}
+        groupPeople.add({
+          'destinationId':
+              ShareExtensionDestinationsLogic.pairKey(uid, otherUid),
+          'type': 'dm',
+          'otherUid': otherUid,
+          'displayName': name,
+          'photoUrl': '',
+          'location': '',
+          'allowed': allowed,
+          'blockedReason': allowed ? '' : 'blocked',
+          'online': false,
+          'memberCount': 0,
+          'lastMessageAtMs': 0,
+          'origin': ShareExtensionDestinationsLogic.originGroupMember,
+        });
+      }
+
+      final merged = ShareExtensionDestinationsLogic.mergePeople(
+        conversations: dms,
+        groupMembers: groupPeople,
+        cap: maxItems,
+      );
+
       await _channel.invokeMethod<dynamic>('saveDestinations', {
-        'conversations': dms,
+        'conversations': merged,
         'groups': groups,
       });
       debugPrint(
-        'ShareExtDestinations: published dms=${dms.length} groups=${groups.length}',
+        'ShareExtDestinations: published dms=${merged.length} groups=${groups.length}',
       );
     } catch (e) {
       debugPrint('ShareExtDestinations publish failed: ${e.runtimeType}');
