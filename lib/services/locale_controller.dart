@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_texts.dart';
 import 'package:flutter/widgets.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'app_language_sync.dart';
 
 class LocaleController extends ChangeNotifier {
   LocaleController._();
@@ -26,6 +29,8 @@ class LocaleController extends ChangeNotifier {
 
   Locale get locale => _locale;
 
+  StreamSubscription<User?>? _authSub;
+
 Future<void> load() async {
   final prefs = await SharedPreferences.getInstance();
   final saved = (prefs.getString(_kPrefKey) ?? '').trim();
@@ -41,7 +46,21 @@ Future<void> load() async {
 
   AppTexts.setLang(_langCode(_locale));
   notifyListeners();
+  _listenAuthAndSync();
 }
+
+  void _listenAuthAndSync() {
+    _authSub ??= FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        unawaited(AppLanguageSync.sync(_langCode(_locale)));
+      }
+    });
+  }
+
+  void _syncLanguageToUser() {
+    if (FirebaseAuth.instance.currentUser == null) return;
+    unawaited(AppLanguageSync.sync(_langCode(_locale)));
+  }
 
 
 
@@ -51,6 +70,8 @@ Future<void> load() async {
 
     if (_locale.languageCode == next.languageCode &&
         _locale.countryCode == next.countryCode) {
+      // Firestore pode ainda não ter o campo, mesmo com o locale local igual.
+      _syncLanguageToUser();
       return;
     }
 
@@ -62,6 +83,7 @@ Future<void> load() async {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kPrefKey, _langCode(next));
+    _syncLanguageToUser();
   }
 
 
