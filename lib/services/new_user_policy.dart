@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'message_moderation.dart';
+import '../l10n/app_texts.dart';
 
 /// "Novo" user eligibility — 7 days after profile completion.
 ///
@@ -18,8 +19,11 @@ class NewUserPolicy {
   static const recipientCooldownDays = 7;
 
   static const pushTitleKey = 'new_users_push_title';
-  static const pushBody =
-      'Novas pessoas chegaram à Remdy. Venha dar um oi!';
+  static const pushBodyKey = 'new_users_push_body';
+
+  /// Texto do push no idioma atual. O envio no servidor continua listado
+  /// em TEXTOS_SERVIDOR.md até haver um deploy com i18n.
+  static String get pushBody => AppTexts.t(pushBodyKey);
 
   /// Reference instant for "Novo" window.
   static DateTime? profileCompletedInstant(Map<String, dynamic> data) {

@@ -3332,7 +3332,7 @@ class _GroupChatPageState extends State<GroupChatPage>
                                                           ? RemdyLaunchAccess
                                                               .unavailableMessage(
                                                                   t)
-                                                          : 'Grupo de outro país é Premium')
+                                                          : t.get('group_other_country_premium'))
                                                       : t.get(
                                                           'group_cannot_send_in_this_group'))
                                                   : t.get('group_type_message'),

@@ -1999,7 +1999,7 @@ class _ChatPageState extends State<ChatPage>
     final file = File(localPath);
 
     if (!await file.exists()) {
-      throw Exception('Arquivo da imagem não existe.');
+      throw Exception(AppTexts.current.get('chat_image_file_missing'));
     }
 
     final fileName = 'remdy_img_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -4557,14 +4557,14 @@ class _ReplySearchPageState extends State<_ReplySearchPage> {
   String _messagePreviewText(Map<String, dynamic> d, String fallbackType) {
     final type = (d['type'] ?? fallbackType).toString();
 
-    if (d['deleted'] == true) return 'Mensagem apagada';
-    if (type == 'audio') return 'Áudio';
+    if (d['deleted'] == true) return AppTexts.current.get('chat_message_deleted');
+    if (type == 'audio') return AppTexts.current.get('chat_audio');
     if (type == 'image') return 'Foto';
 
     final text = (d['text'] ?? '').toString().trim();
     if (text.isNotEmpty) return text;
 
-    return 'Mensagem';
+    return AppTexts.current.get('chat_message_generic');
   }
 
   String _formatTime(Timestamp? ts) {
@@ -4723,7 +4723,7 @@ class _ReplySearchPageState extends State<_ReplySearchPage> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        '${isMe ? "Você" : widget.otherName}${timeText.isNotEmpty ? " • $timeText" : ""}',
+                        '${isMe ? AppTexts.current.get('chat_you') : widget.otherName}${timeText.isNotEmpty ? " • $timeText" : ""}',
                       ),
                       onTap: () {
                         Navigator.pop(

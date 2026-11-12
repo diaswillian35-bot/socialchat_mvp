@@ -1674,7 +1674,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                       builder: (context, userSnap) {
                         final userData = userSnap.data?.data() ?? {};
                         final userName =
-                            (userData['name'] ?? 'Usuário').toString().trim();
+                            (userData['name'] ?? AppTexts.current.get('user')).toString().trim();
                         final photoUrl =
                             (userData['photoUrl'] ?? '').toString().trim();
                         final avatarUrl =
@@ -1683,7 +1683,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                             photoUrl.isNotEmpty ? photoUrl : avatarUrl;
 
                         return GroupPendingRequestRow(
-                          userName: userName.isEmpty ? 'Usuário' : userName,
+                          userName: userName.isEmpty ? AppTexts.current.get('user') : userName,
                           avatar: ClipRRect(
                             borderRadius: BorderRadius.circular(999),
                             child: Container(

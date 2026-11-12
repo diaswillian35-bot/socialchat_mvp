@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../widgets/remdy_keyboard_caps.dart';
+import '../l10n/app_texts.dart';
 
 class CitySearchResult {
   final String cityName;
@@ -56,12 +57,9 @@ class CitySearchDialog {
         'https://maps.googleapis.com/maps/api/place/autocomplete/json'
         '?input=${Uri.encodeComponent(q)}'
         '&components=country:${countryCode.toUpperCase()}'
-        
-'&types=(cities)'
-'&language=pt-BR'
-'&key=$googleApiKey',
-
-
+        '&types=(cities)'
+        '&language=pt-BR'
+        '&key=$googleApiKey',
       );
 
       final res = await http.get(url);
@@ -70,22 +68,25 @@ class CitySearchDialog {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final predictions = (data['predictions'] as List<dynamic>? ?? []);
 
-      return predictions.map((p) {
-        final description = (p['description'] ?? '').toString();
-        final placeId = (p['place_id'] ?? '').toString();
+      return predictions
+          .map((p) {
+            final description = (p['description'] ?? '').toString();
+            final placeId = (p['place_id'] ?? '').toString();
 
-        final parts = description.split(',').map((e) => e.trim()).toList();
+            final parts = description.split(',').map((e) => e.trim()).toList();
 
-        final cityName = parts.isNotEmpty ? parts[0] : '';
-        final stateName = parts.length >= 2 ? parts[1] : '';
+            final cityName = parts.isNotEmpty ? parts[0] : '';
+            final stateName = parts.length >= 2 ? parts[1] : '';
 
-        return CitySearchResult(
-          cityName: cityName,
-          stateName: stateName,
-          displayLocation: description,
-          placeId: placeId,
-        );
-      }).where((e) => e.cityName.isNotEmpty).toList();
+            return CitySearchResult(
+              cityName: cityName,
+              stateName: stateName,
+              displayLocation: description,
+              placeId: placeId,
+            );
+          })
+          .where((e) => e.cityName.isNotEmpty)
+          .toList();
     }
 
     Future<CitySearchResult> loadDetails(CitySearchResult item) async {
@@ -143,6 +144,7 @@ class CitySearchDialog {
               });
             }
 
+            final t = AppTexts.current;
             return SafeArea(
               child: Container(
                 height: MediaQuery.of(context).size.height * 0.78,
@@ -172,9 +174,9 @@ class CitySearchDialog {
                     ),
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Escolha sua cidade',
+                            t.get('choose_city'),
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
@@ -195,7 +197,7 @@ class CitySearchDialog {
                       autofocus: true,
                       onChanged: runSearch,
                       decoration: InputDecoration(
-                        hintText: 'Buscar cidade',
+                        hintText: t.get('search_city'),
                         prefixIcon: const Icon(Icons.search),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -207,9 +209,9 @@ class CitySearchDialog {
                       child: loading
                           ? const Center(child: CircularProgressIndicator())
                           : results.isEmpty
-                              ? const Center(
+                              ? Center(
                                   child: Text(
-                                    'Digite pelo menos 2 letras da cidade',
+                                    t.get('type_2_letters_city'),
                                     style: TextStyle(
                                       color: Color(0xFF6B7280),
                                       fontWeight: FontWeight.w600,
@@ -224,8 +226,7 @@ class CitySearchDialog {
                                     return ListTile(
                                       title: Text(item.displayLocation),
                                       onTap: () async {
-                                        final full =
-                                            await loadDetails(item);
+                                        final full = await loadDetails(item);
 
                                         if (!context.mounted) return;
                                         Navigator.pop(context, full);

@@ -816,7 +816,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                   if (countrySnap.hasError) {
                     return Center(
-                        child: Text('Erro países: ${countrySnap.error}'));
+                        child: Text(t.get('home_countries_error')));
                   }
 
                   final countryDocs = countrySnap.data?.docs ?? [];
@@ -851,8 +851,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   });
 
                   if (sortedCountries.isEmpty) {
-                    return const Center(
-                      child: Text('Nenhum país disponível'),
+                    return Center(
+                      child: Text(t.get('home_countries_empty')),
                     );
                   }
 

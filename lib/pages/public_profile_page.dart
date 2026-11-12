@@ -25,14 +25,24 @@ class PublicProfilePage extends StatelessWidget {
       FirebaseFirestore.instance.collection('users').doc(uid);
 
   // ====== converte código/nome para rótulo bonito e consistente ======
-  static const Map<String, String> _langMap = {
-    'en': 'Inglês',
-    'fr': 'Francês',
-    'es': 'Espanhol',
-    'pt': 'Português',
-    'it': 'Italiano',
-    'de': 'Alemão',
-  };
+  String _langName(String code) {
+    switch (code) {
+      case 'en':
+        return AppTexts.current.get('language_name_en');
+      case 'fr':
+        return AppTexts.current.get('language_name_fr');
+      case 'es':
+        return AppTexts.current.get('language_name_es');
+      case 'pt':
+        return AppTexts.current.get('language_name_pt');
+      case 'it':
+        return AppTexts.current.get('language_name_it');
+      case 'de':
+        return AppTexts.current.get('language_name_de');
+      default:
+        return '';
+    }
+  }
 
   String _normalizeLang(dynamic raw) {
     final v = (raw ?? '').toString().trim();
@@ -40,17 +50,27 @@ class PublicProfilePage extends StatelessWidget {
 
     final lower = v.toLowerCase();
 
-    if (_langMap.containsKey(lower)) return _langMap[lower]!;
+    final fromCode = _langName(lower);
+    if (fromCode.isNotEmpty) return fromCode;
 
-    if (lower == 'portugues' || lower == 'português') return 'Português';
-    if (lower == 'ingles' || lower == 'inglês' || lower == 'english')
-      return 'Inglês';
-    if (lower == 'frances' || lower == 'francês' || lower == 'french')
-      return 'Francês';
-    if (lower == 'espanhol' || lower == 'spanish') return 'Espanhol';
-    if (lower == 'alemao' || lower == 'alemão' || lower == 'german')
-      return 'Alemão';
-    if (lower == 'italiano' || lower == 'italian') return 'Italiano';
+    if (lower == 'portugues' || lower == 'português' || lower == 'portuguese') {
+      return _langName('pt');
+    }
+    if (lower == 'ingles' || lower == 'inglês' || lower == 'english') {
+      return _langName('en');
+    }
+    if (lower == 'frances' || lower == 'francês' || lower == 'french') {
+      return _langName('fr');
+    }
+    if (lower == 'espanhol' || lower == 'spanish') {
+      return _langName('es');
+    }
+    if (lower == 'alemao' || lower == 'alemão' || lower == 'german') {
+      return _langName('de');
+    }
+    if (lower == 'italiano' || lower == 'italian') {
+      return _langName('it');
+    }
 
     return v;
   }
@@ -99,7 +119,7 @@ class PublicProfilePage extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao atualizar bloqueio: $e')),
+        SnackBar(content: Text(AppTexts.current.get('profile_block_error'))),
       );
     }
   }
@@ -138,7 +158,7 @@ class PublicProfilePage extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao enviar report: $e')),
+        SnackBar(content: Text(AppTexts.current.get('profile_report_error'))),
       );
     }
   }
@@ -452,8 +472,8 @@ class PublicProfilePage extends StatelessWidget {
                                       onPressed: null,
                                       icon: const Icon(
                                           Icons.check_circle_outline),
-                                      label: const Text(
-                                        'Você',
+                                      label: Text(
+                                        t.get('chat_you'),
                                         style: TextStyle(
                                             fontWeight: FontWeight.w900),
                                       ),
@@ -610,7 +630,7 @@ class PublicProfilePage extends StatelessWidget {
                           ),
                         const SizedBox(height: 8),
                         Text(
-                          'Toque para abrir.',
+                          t.get('tap_to_open'),
                           style: TextStyle(
                               fontSize: 12, color: Colors.grey.shade700),
                         ),
@@ -641,7 +661,7 @@ class PublicProfilePage extends StatelessWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.report),
-              title: Text('Reportar $name'),
+              title: Text(t.get('profile_report_user').replaceAll('{name}', name)),
             ),
             ListTile(
               title: Text(t.get(ReportCategory.childSafety.labelKey)),

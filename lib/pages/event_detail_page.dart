@@ -1273,7 +1273,7 @@ class _EventDetailPageState extends State<EventDetailPage>
                       final photoUrl =
                           (attendeeData['photoUrl'] ?? '').toString();
                       final name =
-                          (attendeeData['name'] ?? 'Usuário').toString();
+                          (attendeeData['name'] ?? AppTexts.current.get('user')).toString();
                       return GestureDetector(
                         onTap: () {
                           Navigator.push(

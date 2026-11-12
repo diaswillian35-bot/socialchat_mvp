@@ -3,6 +3,7 @@ import 'app_review_prompt.dart';
 import 'package:flutter/foundation.dart';
 
 import 'dm_reply_quota.dart';
+import '../l10n/app_texts.dart';
 
 class SendDmMessageResult {
   const SendDmMessageResult({
@@ -28,8 +29,8 @@ class SendDmMessageResult {
 /// Cliente da Callable [sendDmMessage] (franquia Free internacional).
 class SendDmMessageService {
   SendDmMessageService({FirebaseFunctions? functions})
-      : _functions = functions ??
-            FirebaseFunctions.instanceFor(region: 'us-central1');
+      : _functions =
+            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
 
   final FirebaseFunctions _functions;
 
@@ -75,7 +76,8 @@ class SendDmMessageService {
       );
     } on FirebaseFunctionsException catch (e) {
       if (kDebugMode) {
-        debugPrint('sendDmMessage CF error: ${e.code} ${e.message} ${e.details}');
+        debugPrint(
+            'sendDmMessage CF error: ${e.code} ${e.message} ${e.details}');
       }
       String? detailCode;
       DmReplyQuota? quota;
@@ -98,10 +100,10 @@ class SendDmMessageService {
       );
     } catch (e, st) {
       if (kDebugMode) debugPrint('sendDmMessage failed: $e\n$st');
-      return const SendDmMessageResult(
+      return SendDmMessageResult(
         ok: false,
         errorCode: 'internal',
-        errorMessage: 'Send failed',
+        errorMessage: AppTexts.t('dm_send_failed'),
       );
     }
   }

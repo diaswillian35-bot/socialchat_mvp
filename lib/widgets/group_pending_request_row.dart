@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_texts.dart';
 
 /// Layout de pedido pendente: nome na 1ª linha (máx. 2 + ellipsis);
 /// ações na 2ª linha com [Wrap] (não comprime o nome).
@@ -34,7 +35,7 @@ class GroupPendingRequestRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = userName.trim().isEmpty ? 'Usuário' : userName.trim();
+    final name = userName.trim().isEmpty ? AppTexts.t('user') : userName.trim();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),

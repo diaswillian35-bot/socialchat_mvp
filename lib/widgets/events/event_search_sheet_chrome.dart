@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../l10n/app_texts.dart';
 
 /// Chrome compartilhado das bottom sheets de busca de cidade/local
 /// no fluxo de Eventos (criar/editar).
@@ -18,13 +19,13 @@ class EventSearchSheetChrome extends StatelessWidget {
     required this.searchField,
     required this.body,
     this.title,
-    this.cancelLabel = 'Cancelar',
+    this.cancelLabel,
   });
 
   final Widget searchField;
   final Widget body;
   final String? title;
-  final String cancelLabel;
+  final String? cancelLabel;
 
   /// Espaço extra abaixo do inset físico (status / Dynamic Island).
   static const double topGap = 12;
@@ -60,11 +61,9 @@ class EventSearchSheetChrome extends StatelessWidget {
     final mq = MediaQuery.of(context);
     final keyboard = mq.viewInsets.bottom;
     final topInset = physicalTopInset(context);
-    final bottomInset =
-        keyboard > 0 ? keyboard : physicalBottomInset(context);
+    final bottomInset = keyboard > 0 ? keyboard : physicalBottomInset(context);
 
-    final usable =
-        mq.size.height - topInset - bottomInset - topGap - 16;
+    final usable = mq.size.height - topInset - bottomInset - topGap - 16;
     final preferred = mq.size.height * 0.72;
     final sheetHeight = math
         .min(preferred, usable)
@@ -92,7 +91,7 @@ class EventSearchSheetChrome extends StatelessWidget {
                     children: [
                       IconButton(
                         key: const Key('event_search_sheet_back'),
-                        tooltip: cancelLabel,
+                        tooltip: cancelLabel ?? AppTexts.t('cancel'),
                         icon: const Icon(Icons.arrow_back),
                         style: IconButton.styleFrom(
                           minimumSize: const Size(
@@ -123,7 +122,7 @@ class EventSearchSheetChrome extends StatelessWidget {
                           tapTargetSize: MaterialTapTargetSize.padded,
                         ),
                         onPressed: () => dismiss(context),
-                        child: Text(cancelLabel),
+                        child: Text(cancelLabel ?? AppTexts.t('cancel')),
                       ),
                     ],
                   ),

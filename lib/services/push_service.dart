@@ -29,6 +29,7 @@ import 'block_service.dart';
 import 'block_visibility.dart';
 import 'push_open_logic.dart';
 import 'push_token_sync.dart';
+import '../l10n/app_texts.dart';
 
 /// Snapshot of iOS notification authorization (no tokens / PII).
 class IosNotificationAuthSnapshot {
@@ -249,10 +250,10 @@ class PushService {
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(
-            const AndroidNotificationChannel(
+            AndroidNotificationChannel(
               _androidChannelId,
               _androidChannelName,
-              description: 'Notificações de chat, grupos e eventos',
+              description: AppTexts.t('push_channel_description'),
               importance: Importance.high,
             ),
           );
@@ -867,7 +868,7 @@ class PushService {
       android: AndroidNotificationDetails(
         _androidChannelId,
         _androidChannelName,
-        channelDescription: 'Notificações de chat, grupos e eventos',
+        channelDescription: AppTexts.t('push_channel_description'),
         importance: Importance.high,
         priority: Priority.high,
         styleInformation: styleInformation,

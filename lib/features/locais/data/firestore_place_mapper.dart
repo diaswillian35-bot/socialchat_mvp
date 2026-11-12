@@ -1,6 +1,7 @@
 import '../logic/place_hours_logic.dart';
 import '../models/place_description_translations.dart';
 import '../models/place_listing.dart';
+import '../../../l10n/app_texts.dart';
 
 /// Adaptador único entre `remdy.places.v1` (portal/Admin) e a apresentação do
 /// aplicativo. Nenhuma coleção paralela é criada pelo cliente.
@@ -115,7 +116,7 @@ class FirestorePlaceMapper {
     );
   }
 
-  static const String anonymousAuthor = 'Anônimo';
+  static String get anonymousAuthor => AppTexts.t('place_anonymous');
 
   /// Lê `{ "1": n, ..., "5": n }` (place.rating.stars ou summary.ratingCounts).
   static Map<int, int> ratingCountsOf(Object? raw) {

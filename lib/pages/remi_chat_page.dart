@@ -454,7 +454,7 @@ Image.asset(
         centerTitle: true,
         actions: [
   IconButton(
-    tooltip: _showPronunciation ? 'Pronunciation ON' : 'Pronunciation OFF',
+    tooltip: _showPronunciation ? AppTexts.current.get('remi_pronunciation_on') : AppTexts.current.get('remi_pronunciation_off'),
     onPressed: () {
       setState(() {
         _showPronunciation = !_showPronunciation;

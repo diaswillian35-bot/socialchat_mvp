@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../widgets/remdy_keyboard_caps.dart';
+import '../l10n/app_texts.dart';
 
 class PostUploaderPage extends StatefulWidget {
   const PostUploaderPage({super.key});
@@ -32,7 +33,7 @@ class _PostUploaderPageState extends State<PostUploaderPage> {
   Future<void> _pickAndUploadPost() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      _snack("Você precisa estar logado.");
+      _snack(AppTexts.current.get('you_need_to_be_logged_in'));
       return;
     }
 
@@ -48,7 +49,7 @@ class _PostUploaderPageState extends State<PostUploaderPage> {
     final fileName = "${DateTime.now().millisecondsSinceEpoch}.jpg";
 
     try {
-      _snack("Enviando foto...");
+      _snack(AppTexts.current.get('post_sending_photo'));
 
       final storageRef =
           FirebaseStorage.instance.ref().child("posts/$postId/$fileName");
@@ -74,10 +75,10 @@ class _PostUploaderPageState extends State<PostUploaderPage> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      _snack("Post publicado ✅");
+      _snack(AppTexts.current.get('post_published'));
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      _snack("Erro ao publicar: $e");
+      _snack(AppTexts.current.get('post_publish_error'));
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -92,7 +93,7 @@ class _PostUploaderPageState extends State<PostUploaderPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Novo post")),
+      appBar: AppBar(title: Text(AppTexts.current.get('post_new'))),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -100,8 +101,8 @@ class _PostUploaderPageState extends State<PostUploaderPage> {
             TextField(
               controller: _captionC,
               textCapitalization: RemdyKeyboardCaps.sentences,
-              decoration: const InputDecoration(
-                labelText: "Legenda (opcional)",
+              decoration: InputDecoration(
+                labelText: AppTexts.current.get('post_caption_optional'),
                 border: OutlineInputBorder(),
               ),
               minLines: 1,
@@ -113,7 +114,9 @@ class _PostUploaderPageState extends State<PostUploaderPage> {
               child: ElevatedButton.icon(
                 onPressed: _uploading ? null : _pickAndUploadPost,
                 icon: const Icon(Icons.photo_library),
-                label: Text(_uploading ? "Enviando..." : "Escolher foto e publicar"),
+                label: Text(_uploading
+                    ? AppTexts.current.get('chat_sending_message')
+                    : AppTexts.current.get('post_pick_and_publish')),
               ),
             ),
           ],

@@ -92,11 +92,12 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTexts.current;
     final user = FirebaseAuth.instance.currentUser;
     final displayName = user?.displayName?.trim();
     final userLabel = (displayName != null && displayName.isNotEmpty)
         ? displayName
-        : (user?.email ?? 'Sua conta Remdy');
+        : (user?.email ?? t.get('portal_qr_your_account'));
     final photoUrl = user?.photoURL?.trim();
     final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
     final initial = userLabel.isNotEmpty ? userLabel[0].toUpperCase() : '?';
@@ -108,8 +109,8 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
         foregroundColor: _primary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: const Text(
-          'Login no portal',
+        title: Text(
+          t.get('portal_qr_title'),
           style: TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 18,
@@ -123,9 +124,9 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 8),
-              const Center(
+              Center(
                 child: Text(
-                  'Remdy Events',
+                  t.get('portal_qr_brand'),
                   style: TextStyle(
                     color: _primary,
                     fontSize: 28,
@@ -135,9 +136,9 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
                 ),
               ),
               const SizedBox(height: 6),
-              const Center(
+              Center(
                 child: Text(
-                  'Autorizar acesso ao portal web',
+                  t.get('portal_qr_subtitle'),
                   style: TextStyle(
                     color: _muted,
                     fontSize: 14,
@@ -166,8 +167,8 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
               const SizedBox(height: 24),
               Text(
                 _completed
-                    ? 'Login autorizado'
-                    : 'Autorizar login no Remdy Events',
+                    ? t.get('portal_qr_authorized')
+                    : t.get('portal_qr_authorize_button'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 22,
@@ -179,8 +180,8 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
               const SizedBox(height: 12),
               Text(
                 _completed
-                    ? 'Portal autorizado com sucesso. Você já pode voltar ao computador.'
-                    : 'Confirme para entrar no portal web como:',
+                    ? t.get('portal_qr_success_body')
+                    : t.get('portal_qr_confirm_as'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 15,
@@ -230,8 +231,8 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const Text(
-                              'Conta Remdy',
+                            Text(
+                              t.get('portal_qr_account'),
                               style: TextStyle(
                                 color: _muted,
                                 fontSize: 12,
@@ -289,8 +290,8 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text(
-                            'Confirmar login',
+                        : Text(
+                            t.get('portal_qr_confirm'),
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -312,8 +313,8 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
-                      'Cancelar',
+                    child: Text(
+                      t.get('cancel'),
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -334,8 +335,8 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
-                      'Concluir',
+                    child: Text(
+                      t.get('portal_qr_done'),
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
