@@ -115,7 +115,7 @@
 
 
     <h1>Remdy</h1>
-    <div class="subtitle">
+    <div class="subtitle" data-i18n="web_invite_title">
       Você foi convidado para entrar no Remdy 🌍
     </div>
 
@@ -125,29 +125,29 @@
     </div>
 
 
-    <button class="copy-btn" onclick="copyCode()">
+    <button class="copy-btn" onclick="copyCode()" data-i18n="web_invite_copy">
       Copiar código
     </button>
 
 
-    <div class="success" id="copied">
+    <div class="success" id="copied" data-i18n="web_invite_copied">
       Copiado ✔
     </div>
 
 
    
 
-    <a class="btn secondary" id="android">
+    <a class="btn secondary" id="android" data-i18n="web_download_android">
       Baixar no Android
     </a>
 
 
-    <a class="btn secondary" id="ios">
+    <a class="btn secondary" id="ios" data-i18n="web_download_iphone">
       Baixar no iPhone
     </a>
 
 
-    <div class="small">
+    <div class="small" data-i18n="web_invite_install_help">
       Instale o app para conversar com pessoas perto de você.
     </div>
 
@@ -155,13 +155,38 @@
   </div>
 
 
+
+<script>
+(function(){
+  var I18N = {"pt-BR": {"web_portal_login_title": "Remdy — Login no portal", "web_portal_login_help": "Abra este link no app Remdy para autorizar o login no portal de eventos.", "web_portal_qr_help": "O QR Code deve ser confirmado no aplicativo Remdy com a sua conta. Se o app não abrir, instale-o nas lojas oficiais e escaneie o QR novamente com o Remdy já aberto e logado.", "web_open_remdy_app": "Abrir o app Remdy", "web_download_android": "Baixar no Android", "web_download_iphone": "Baixar no iPhone", "web_portal_web_label": "Portal web:", "web_invite_title": "Você foi convidado para entrar no Remdy 🌍", "web_invite_loading": "Carregando...", "web_invite_copy": "Copiar código", "web_invite_copied": "Copiado ✔", "web_invite_install_help": "Instale o app para conversar com pessoas perto de você.", "web_invite_code_missing": "Código não encontrado"}, "pt-PT": {"web_portal_login_title": "Remdy — Início de sessão no portal", "web_portal_login_help": "Abra este link na app Remdy para autorizar o início de sessão no portal de eventos.", "web_portal_qr_help": "O QR Code deve ser confirmado na aplicação Remdy com a sua conta. Se a app não abrir, instale-a nas lojas oficiais e leia o QR novamente com o Remdy já aberto e com sessão iniciada.", "web_open_remdy_app": "Abrir a app Remdy", "web_download_android": "Transferir no Android", "web_download_iphone": "Transferir no iPhone", "web_portal_web_label": "Portal web:", "web_invite_title": "Foi convidado para entrar no Remdy 🌍", "web_invite_loading": "A carregar...", "web_invite_copy": "Copiar código", "web_invite_copied": "Copiado ✔", "web_invite_install_help": "Instale a app para conversar com pessoas perto de si.", "web_invite_code_missing": "Código não encontrado"}, "en": {"web_portal_login_title": "Remdy — Portal sign-in", "web_portal_login_help": "Open this link in the Remdy app to authorize sign-in to the events portal.", "web_portal_qr_help": "The QR Code must be confirmed in the Remdy app with your account. If the app does not open, install it from the official stores and scan the QR again with Remdy already open and signed in.", "web_open_remdy_app": "Open the Remdy app", "web_download_android": "Download on Android", "web_download_iphone": "Download on iPhone", "web_portal_web_label": "Web portal:", "web_invite_title": "You have been invited to join Remdy 🌍", "web_invite_loading": "Loading...", "web_invite_copy": "Copy code", "web_invite_copied": "Copied ✔", "web_invite_install_help": "Install the app to chat with people near you.", "web_invite_code_missing": "Code not found"}, "es": {"web_portal_login_title": "Remdy — Inicio de sesión en el portal", "web_portal_login_help": "Abre este enlace en la app Remdy para autorizar el inicio de sesión en el portal de eventos.", "web_portal_qr_help": "El código QR debe confirmarse en la app Remdy con tu cuenta. Si la app no se abre, instálala en las tiendas oficiales y vuelve a escanear el QR con Remdy ya abierta e iniciada la sesión.", "web_open_remdy_app": "Abrir la app Remdy", "web_download_android": "Descargar en Android", "web_download_iphone": "Descargar en iPhone", "web_portal_web_label": "Portal web:", "web_invite_title": "Te invitaron a entrar en Remdy 🌍", "web_invite_loading": "Cargando...", "web_invite_copy": "Copiar código", "web_invite_copied": "Copiado ✔", "web_invite_install_help": "Instala la app para conversar con gente cerca de ti.", "web_invite_code_missing": "Código no encontrado"}, "fr": {"web_portal_login_title": "Remdy — Connexion au portail", "web_portal_login_help": "Ouvrez ce lien dans l’app Remdy pour autoriser la connexion au portail des événements.", "web_portal_qr_help": "Le QR Code doit être confirmé dans l’app Remdy avec votre compte. Si l’app ne s’ouvre pas, installez-la depuis les boutiques officielles et scannez à nouveau le QR avec Remdy déjà ouverte et connectée.", "web_open_remdy_app": "Ouvrir l’app Remdy", "web_download_android": "Télécharger sur Android", "web_download_iphone": "Télécharger sur iPhone", "web_portal_web_label": "Portail web :", "web_invite_title": "Vous avez été invité à rejoindre Remdy 🌍", "web_invite_loading": "Chargement...", "web_invite_copy": "Copier le code", "web_invite_copied": "Copié ✔", "web_invite_install_help": "Installez l’app pour discuter avec des personnes près de vous.", "web_invite_code_missing": "Code introuvable"}};
+  var lang = (navigator.language || navigator.userLanguage || 'pt-BR').toString();
+  var code = 'en';
+  var lower = lang.toLowerCase();
+  if (lower.indexOf('pt') === 0 && (lower.indexOf('pt-pt') === 0 || lower.indexOf('pt_pt') === 0)) code = 'pt-PT';
+  else if (lower.indexOf('pt') === 0) code = 'pt-BR';
+  else if (lower.indexOf('es') === 0) code = 'es';
+  else if (lower.indexOf('fr') === 0) code = 'fr';
+  var t = I18N[code] || I18N.en;
+  document.documentElement.lang = code;
+  document.querySelectorAll('[data-i18n]').forEach(function(el){
+    var key = el.getAttribute('data-i18n');
+    if (t[key]) el.textContent = t[key];
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(function(el){
+    var key = el.getAttribute('data-i18n-title');
+    if (t[key]) document.title = t[key];
+  });
+  window.REMDY_T = t;
+})();
+</script>
+
   <script>
   const params = new URLSearchParams(window.location.search);
   const ref = (params.get("ref") || "").trim();
 
 
   const inviteCode = document.getElementById("inviteCode");
-  inviteCode.textContent = ref ? ref : "Código não encontrado";
+  inviteCode.textContent = ref ? ref : ((window.REMDY_T && window.REMDY_T.web_invite_code_missing) || "Código não encontrado");
 
 
   document.getElementById("android").href =
