@@ -2,6 +2,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/app_texts.dart';
+import '../services/portal_qr_error_text.dart';
+
 class PortalQrLoginApprovePage extends StatefulWidget {
   const PortalQrLoginApprovePage({
     super.key,
@@ -35,8 +38,7 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       setState(() {
-        _errorMessage =
-            'Faça login no app Remdy antes de autorizar o portal.';
+        _errorMessage = AppTexts.current.get('portal_qr_need_login');
       });
       return;
     }
@@ -79,24 +81,13 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
 
       setState(() {
         _isSubmitting = false;
-        _errorMessage = 'Não foi possível autorizar o login.';
+        _errorMessage = AppTexts.current.get('portal_qr_generic');
       });
     }
   }
 
   String _messageForFunctionsError(FirebaseFunctionsException error) {
-    switch (error.code) {
-      case 'deadline-exceeded':
-        return 'QR Code expirado. Gere um novo no computador.';
-      case 'not-found':
-        return 'Sessão de login não encontrada.';
-      case 'failed-precondition':
-        return error.message ?? 'Este QR Code não está mais disponível.';
-      case 'unauthenticated':
-        return 'Faça login no app Remdy para continuar.';
-      default:
-        return error.message ?? 'Não foi possível autorizar o login.';
-    }
+    return portalQrErrorText(error);
   }
 
   @override
@@ -108,9 +99,7 @@ class _PortalQrLoginApprovePageState extends State<PortalQrLoginApprovePage> {
         : (user?.email ?? 'Sua conta Remdy');
     final photoUrl = user?.photoURL?.trim();
     final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
-    final initial = userLabel.isNotEmpty
-        ? userLabel[0].toUpperCase()
-        : '?';
+    final initial = userLabel.isNotEmpty ? userLabel[0].toUpperCase() : '?';
 
     return Scaffold(
       backgroundColor: Colors.white,

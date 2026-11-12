@@ -1884,5 +1884,16 @@
   "auth_error_facebook_account_exists": "Un compte existe déjà. Connectez-vous avec Google, Apple ou e-mail et mot de passe.",
   "auth_error_facebook_generic": "Erreur de connexion Facebook.",
   "auth_error_facebook_cancelled": "Connexion Facebook annulée.",
-  "auth_error_facebook_no_token": "Impossible d'obtenir le jeton Facebook."
+  "auth_error_facebook_no_token": "Impossible d'obtenir le jeton Facebook.",
+  "login_email_required": "Saisissez l’e-mail.",
+  "login_email_invalid": "Saisissez un e-mail valide.",
+  "login_password_min_length": "Le mot de passe doit contenir au moins 6 caractères.",
+  "login_passwords_mismatch": "Les mots de passe ne correspondent pas.",
+  "login_test_hint": "Astuce : créez l’utilisateur {email} dans Firebase Auth (e-mail/mot de passe).",
+  "portal_qr_need_login": "Connectez-vous à l’app Remdy avant d’autoriser le portail.",
+  "portal_qr_expired": "QR Code expiré. Générez-en un nouveau sur l’ordinateur.",
+  "portal_qr_session_not_found": "Session de connexion introuvable.",
+  "portal_qr_unavailable": "Ce QR Code n’est plus disponible.",
+  "portal_qr_unauthenticated": "Connectez-vous à l’app Remdy pour continuer.",
+  "portal_qr_generic": "Impossible d’autoriser la connexion."
 }

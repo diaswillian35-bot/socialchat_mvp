@@ -104,9 +104,8 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ],
         ),
-        backgroundColor: success
-            ? const Color(0xFF16A34A)
-            : const Color(0xFF313A5F),
+        backgroundColor:
+            success ? const Color(0xFF16A34A) : const Color(0xFF313A5F),
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -264,10 +263,14 @@ class _LoginPageState extends State<LoginPage> {
 
     if (_loading) return;
 
-    if (email.isEmpty) return _toast("Digite o e-mail.");
-    if (!_isValidEmail(email)) return _toast("Digite um e-mail válido.");
+    if (email.isEmpty) {
+      return _toast(AppTexts.current.get('login_email_required'));
+    }
+    if (!_isValidEmail(email)) {
+      return _toast(AppTexts.current.get('login_email_invalid'));
+    }
     if (pass.length < 6) {
-      return _toast("Senha precisa ter no mínimo 6 caracteres.");
+      return _toast(AppTexts.current.get('login_password_min_length'));
     }
 
     final termsReject = AuthTermsGate.rejectReason(
@@ -280,7 +283,7 @@ class _LoginPageState extends State<LoginPage> {
     if (!_isLogin) {
       final confirm = _confirmC.text;
       if (confirm.trim() != pass.trim()) {
-        return _toast("As senhas não conferem.");
+        return _toast(AppTexts.current.get('login_passwords_mismatch'));
       }
       final birth = _signupBirthDate;
       if (birth == null)
@@ -470,7 +473,9 @@ class _LoginPageState extends State<LoginPage> {
     } on FirebaseAuthException catch (e) {
       _toast(authErrorText(e, source: AuthErrorSource.password));
       _toast(
-        "Dica: crie o usuário $_testEmail no Firebase Auth (Email/Senha).",
+        AppTexts.current
+            .get('login_test_hint')
+            .replaceAll('{email}', _testEmail),
       );
     } catch (_) {
       _toast(AppTexts.current.get('auth_error_unexpected'));
@@ -598,9 +603,8 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
-    final title = _isLogin
-        ? t.get('login_title')
-        : t.get('create_account_title');
+    final title =
+        _isLogin ? t.get('login_title') : t.get('create_account_title');
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -659,9 +663,8 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _passC,
                     textCapitalization: RemdyKeyboardCaps.none,
                     obscureText: _hidePass,
-                    textInputAction: _isLogin
-                        ? TextInputAction.done
-                        : TextInputAction.next,
+                    textInputAction:
+                        _isLogin ? TextInputAction.done : TextInputAction.next,
                     onSubmitted: (_) {
                       if (_isLogin) dismissAppKeyboard();
                     },
@@ -707,12 +710,12 @@ class _LoginPageState extends State<LoginPage> {
                                 context: context,
                                 initialDate:
                                     AgeVerification.latestEligibleBirthDate(
-                                      now,
-                                    ),
+                                  now,
+                                ),
                                 firstDate:
                                     AgeVerification.earliestAllowedBirthDate(
-                                      now,
-                                    ),
+                                  now,
+                                ),
                                 lastDate: now,
                                 helpText: t.get('age_birth_date'),
                               );

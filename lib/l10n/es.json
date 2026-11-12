@@ -1884,5 +1884,16 @@
   "auth_error_facebook_account_exists": "Ya existe una cuenta. Entra con Google, Apple o correo y contraseña.",
   "auth_error_facebook_generic": "Error al iniciar sesión con Facebook.",
   "auth_error_facebook_cancelled": "Inicio de sesión con Facebook cancelado.",
-  "auth_error_facebook_no_token": "Error al obtener el token de Facebook."
+  "auth_error_facebook_no_token": "Error al obtener el token de Facebook.",
+  "login_email_required": "Escribe el correo.",
+  "login_email_invalid": "Escribe un correo válido.",
+  "login_password_min_length": "La contraseña debe tener al menos 6 caracteres.",
+  "login_passwords_mismatch": "Las contraseñas no coinciden.",
+  "login_test_hint": "Consejo: crea el usuario {email} en Firebase Auth (Email/Contraseña).",
+  "portal_qr_need_login": "Inicia sesión en la app Remdy antes de autorizar el portal.",
+  "portal_qr_expired": "El código QR ha caducado. Genera uno nuevo en el ordenador.",
+  "portal_qr_session_not_found": "No se encontró la sesión de inicio de sesión.",
+  "portal_qr_unavailable": "Este código QR ya no está disponible.",
+  "portal_qr_unauthenticated": "Inicia sesión en la app Remdy para continuar.",
+  "portal_qr_generic": "No se pudo autorizar el inicio de sesión."
 }
