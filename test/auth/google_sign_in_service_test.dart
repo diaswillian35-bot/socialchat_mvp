@@ -1,12 +1,22 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:socialchat_mvp/firebase_options.dart';
+import 'package:socialchat_mvp/l10n/app_texts.dart';
 import 'package:socialchat_mvp/services/google_sign_in_service.dart';
 import 'package:socialchat_mvp/services/ios_google_config.dart';
 
 void main() {
+  setUpAll(() {
+    final map =
+        jsonDecode(File('lib/l10n/pt-BR.json').readAsStringSync())
+            as Map<String, dynamic>;
+    AppTexts.loadFromMap(map, const Locale('pt', 'BR'));
+  });
+
   group('GoogleSignInService friendly errors', () {
     test('account already linked / different credential', () {
       final msg = GoogleSignInService.friendlyFirebaseAuthMessage(
@@ -37,8 +47,9 @@ void main() {
     });
 
     test('unknown error does not rethrow', () {
-      final msg =
-          GoogleSignInService.friendlyGenericMessage(StateError('boom'));
+      final msg = GoogleSignInService.friendlyGenericMessage(
+        StateError('boom'),
+      );
       expect(msg, contains('Erro no Google'));
     });
 
@@ -137,7 +148,10 @@ void main() {
     });
 
     test('no hyphenated GoogleService-Info-.plist in Runner', () {
-      expect(File('ios/Runner/GoogleService-Info-.plist').existsSync(), isFalse);
+      expect(
+        File('ios/Runner/GoogleService-Info-.plist').existsSync(),
+        isFalse,
+      );
       expect(File('ios/Runner/GoogleService-Info.plist').existsSync(), isTrue);
     });
 
@@ -145,7 +159,7 @@ void main() {
       final src = File('lib/pages/login_page.dart').readAsStringSync();
       expect(src.contains('GoogleSignInService'), isTrue);
       expect(src.contains('outcome.isCancelled'), isTrue);
-      expect(src.contains('Erro no Google. Tente novamente.'), isTrue);
+      expect(src.contains("auth_error_google_generic"), isTrue);
     });
 
     test('post-login navigation uses SplashPage then AuthGate', () {

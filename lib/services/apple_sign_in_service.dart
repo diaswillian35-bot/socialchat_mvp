@@ -6,11 +6,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
-enum AppleSignInResultKind {
-  success,
-  cancelled,
-  error,
-}
+import '../l10n/app_texts.dart';
+import 'auth_error_text.dart';
+
+enum AppleSignInResultKind { success, cancelled, error }
 
 class AppleSignInOutcome {
   const AppleSignInOutcome._({
@@ -20,16 +19,13 @@ class AppleSignInOutcome {
   });
 
   const AppleSignInOutcome.cancelled()
-      : this._(kind: AppleSignInResultKind.cancelled);
+    : this._(kind: AppleSignInResultKind.cancelled);
 
   const AppleSignInOutcome.error(String message)
-      : this._(kind: AppleSignInResultKind.error, userMessage: message);
+    : this._(kind: AppleSignInResultKind.error, userMessage: message);
 
   const AppleSignInOutcome.success(UserCredential credential)
-      : this._(
-          kind: AppleSignInResultKind.success,
-          userCredential: credential,
-        );
+    : this._(kind: AppleSignInResultKind.success, userCredential: credential);
 
   final AppleSignInResultKind kind;
   final UserCredential? userCredential;
@@ -43,7 +39,7 @@ class AppleSignInOutcome {
 /// (account-exists-with-different-credential) e login explícito no outro método.
 class AppleSignInService {
   AppleSignInService({FirebaseAuth? firebaseAuth})
-      : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
+    : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
 
   final FirebaseAuth _firebaseAuth;
 
@@ -91,10 +87,7 @@ class AppleSignInService {
     return AppleAuthProvider.credentialWithIDToken(
       idToken,
       rawNonce,
-      AppleFullPersonName(
-        givenName: givenName,
-        familyName: familyName,
-      ),
+      AppleFullPersonName(givenName: givenName, familyName: familyName),
     );
   }
 
@@ -105,12 +98,13 @@ class AppleSignInService {
         return const AppleSignInOutcome.cancelled();
       }
 
-      final userCredential =
-          await _firebaseAuth.signInWithCredential(oauth.credential);
+      final userCredential = await _firebaseAuth.signInWithCredential(
+        oauth.credential,
+      );
       final user = userCredential.user;
       if (user == null) {
-        return const AppleSignInOutcome.error(
-          'Erro: usuário da Apple veio vazio.',
+        return AppleSignInOutcome.error(
+          AppTexts.t('auth_error_apple_empty_user'),
         );
       }
 
@@ -123,8 +117,8 @@ class AppleSignInService {
       }
       return AppleSignInOutcome.error(friendlyAppleException(e));
     } on SignInWithAppleNotSupportedException {
-      return const AppleSignInOutcome.error(
-        'Entrar com Apple não está disponível neste dispositivo.',
+      return AppleSignInOutcome.error(
+        AppTexts.t('auth_error_apple_unavailable'),
       );
     } on FirebaseAuthException catch (e) {
       if (e.code == emptyIdentityTokenCode) {
@@ -163,8 +157,8 @@ class AppleSignInService {
       final linked = await user.linkWithCredential(pending);
       pendingLinkCredential = null;
       if (linked.user == null) {
-        return const AppleSignInOutcome.error(
-          'Não foi possível vincular a conta Apple.',
+        return AppleSignInOutcome.error(
+          AppTexts.t('auth_error_apple_link_failed'),
         );
       }
       return AppleSignInOutcome.success(linked);
@@ -217,10 +211,10 @@ class AppleSignInService {
     String? familyName,
   ) async {
     if ((user.displayName ?? '').trim().isNotEmpty) return;
-    final name = [givenName, familyName]
-        .map((p) => (p ?? '').trim())
-        .where((p) => p.isNotEmpty)
-        .join(' ');
+    final name = [
+      givenName,
+      familyName,
+    ].map((p) => (p ?? '').trim()).where((p) => p.isNotEmpty).join(' ');
     if (name.isEmpty) return;
     try {
       await user.updateDisplayName(name);
@@ -228,29 +222,7 @@ class AppleSignInService {
   }
 
   static String friendlyFirebaseAuthMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case emptyIdentityTokenCode:
-        return 'A Apple não devolveu o token de identidade. Tente novamente.';
-      case 'account-exists-with-different-credential':
-        return 'Já existe uma conta Remdy com este e-mail. '
-            'Entre com e-mail e senha, Google ou Facebook para vincular o Apple. '
-            'Não criamos nem unimos outra conta automaticamente.';
-      case 'credential-already-in-use':
-        return 'Esta conta Apple já está vinculada a outro perfil Remdy.';
-      case 'provider-already-linked':
-        return 'O Apple já está vinculado a esta conta.';
-      case 'operation-not-allowed':
-        return 'Login com Apple não está habilitado. Tente outro método.';
-      case 'user-disabled':
-        return 'Esta conta foi desativada.';
-      case 'invalid-credential':
-        return 'Credencial Apple inválida ou expirada. Tente novamente.';
-      case 'network-request-failed':
-        return 'Sem conexão. Verifique a internet e tente novamente.';
-      default:
-        final m = sanitizeAuthMessage(e.message);
-        return m.isNotEmpty ? m : 'Erro no Apple (${e.code}).';
-    }
+    return authErrorText(e, source: AuthErrorSource.apple);
   }
 
   static String friendlyAppleException(
@@ -260,14 +232,14 @@ class AppleSignInService {
       case AuthorizationErrorCode.canceled:
         return '';
       case AuthorizationErrorCode.failed:
-        return 'Login Apple falhou. Tente novamente.';
+        return AppTexts.t('auth_error_apple_failed');
       case AuthorizationErrorCode.invalidResponse:
-        return 'Resposta inválida da Apple. Tente novamente.';
+        return AppTexts.t('auth_error_apple_invalid_response');
       case AuthorizationErrorCode.notHandled:
       case AuthorizationErrorCode.notInteractive:
-        return 'Não foi possível concluir o login Apple neste momento.';
+        return AppTexts.t('auth_error_apple_not_completed');
       case AuthorizationErrorCode.unknown:
-        return 'Erro no Apple. Tente novamente.';
+        return AppTexts.t('auth_error_apple_generic');
     }
   }
 
@@ -275,9 +247,9 @@ class AppleSignInService {
     final msg = error.toString();
     if (msg.contains('SignInWithAppleNotSupportedException') ||
         msg.contains('not available')) {
-      return 'Entrar com Apple não está disponível neste dispositivo.';
+      return AppTexts.t('auth_error_apple_unavailable');
     }
-    return 'Erro no Apple. Tente novamente.';
+    return AppTexts.t('auth_error_apple_generic');
   }
 }
 

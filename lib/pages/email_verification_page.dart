@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../l10n/app_texts.dart';
+import '../services/auth_error_text.dart';
 
 import 'splash_page.dart';
 import 'login_page.dart';
@@ -78,9 +79,13 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 );
 
     } on FirebaseAuthException catch (e) {
-      _toast(e.message ?? 'Erro ao verificar e-mail.');
+      _toast(authErrorText(
+        e,
+        source: AuthErrorSource.emailAction,
+        fallbackKey: 'auth_error_verify_email',
+      ));
     } catch (_) {
-      _toast('Erro inesperado ao verificar e-mail.');
+      _toast(AppTexts.current.get('auth_error_verify_email_unexpected'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -117,9 +122,13 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 );
 
     } on FirebaseAuthException catch (e) {
-      _toast(e.message ?? 'Erro ao reenviar e-mail.');
+      _toast(authErrorText(
+        e,
+        source: AuthErrorSource.emailAction,
+        fallbackKey: 'auth_error_resend_email',
+      ));
     } catch (_) {
-      _toast('Erro inesperado ao reenviar e-mail.');
+      _toast(AppTexts.current.get('auth_error_resend_email_unexpected'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

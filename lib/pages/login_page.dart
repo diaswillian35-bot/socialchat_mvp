@@ -21,6 +21,7 @@ import 'terms_page.dart';
 import 'privacy_page.dart';
 import '../services/auth_terms_gate.dart';
 import '../services/pending_group_code.dart';
+import '../services/auth_error_text.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -103,13 +104,12 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ],
         ),
-        backgroundColor:
-            success ? const Color(0xFF16A34A) : const Color(0xFF313A5F),
+        backgroundColor: success
+            ? const Color(0xFF16A34A)
+            : const Color(0xFF313A5F),
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         duration: const Duration(seconds: 3),
       ),
     );
@@ -119,9 +119,7 @@ class _LoginPageState extends State<LoginPage> {
     final e = email.trim();
     if (e.isEmpty) return false;
 
-    final rx = RegExp(
-      r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$',
-    );
+    final rx = RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
     return rx.hasMatch(e);
   }
 
@@ -189,10 +187,7 @@ class _LoginPageState extends State<LoginPage> {
         // Manter ambos: cards leem photoUrl; Functions usam profilePhotoUrl.
         'photoUrl': profilePhotoUrl,
         'profilePhotoUrl': profilePhotoUrl,
-        'inviteCode': _generateInviteCode(
-          displayName,
-          user.uid,
-        ),
+        'inviteCode': _generateInviteCode(displayName, user.uid),
         'countryCode': '',
         'homeCountryCode': '',
         'countryLocked': false,
@@ -224,14 +219,11 @@ class _LoginPageState extends State<LoginPage> {
     if (d['homeCountryCode'] == null) patch['homeCountryCode'] = '';
     if (d['countryCode'] == null) patch['countryCode'] = '';
     if (d['countryLocked'] == null) patch['countryLocked'] = false;
-// isPremium é concedido somente pelo servidor (RevenueCat webhook/sync)
+    // isPremium é concedido somente pelo servidor (RevenueCat webhook/sync)
 
     final currentInviteCode = (d['inviteCode'] ?? '').toString().trim();
     if (currentInviteCode.isEmpty) {
-      patch['inviteCode'] = _generateInviteCode(
-        displayName,
-        user.uid,
-      );
+      patch['inviteCode'] = _generateInviteCode(displayName, user.uid);
     }
 
     await ref.set(patch, SetOptions(merge: true));
@@ -261,10 +253,7 @@ class _LoginPageState extends State<LoginPage> {
     }
     await PendingGroupCodeStore.save(code);
     if (announceSaved && mounted) {
-      _toast(
-        AppTexts.current.get('have_invite_code_saved'),
-        success: true,
-      );
+      _toast(AppTexts.current.get('have_invite_code_saved'), success: true);
     }
     return true;
   }
@@ -281,8 +270,9 @@ class _LoginPageState extends State<LoginPage> {
       return _toast("Senha precisa ter no mínimo 6 caracteres.");
     }
 
-    final termsReject =
-        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject = AuthTermsGate.rejectReason(
+      termsAccepted: _termsAccepted,
+    );
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
@@ -320,7 +310,7 @@ class _LoginPageState extends State<LoginPage> {
 
         final user = cred.user;
         if (user == null) {
-          _toast('Erro ao entrar.');
+          _toast(AppTexts.current.get('auth_error_login_failed'));
           return;
         }
 
@@ -337,7 +327,7 @@ class _LoginPageState extends State<LoginPage> {
 
         final user = cred.user;
         if (user == null) {
-          _toast('Erro ao criar conta.');
+          _toast(AppTexts.current.get('auth_error_signup_failed'));
           return;
         }
         await FirebaseAuth.instance.setLanguageCode(
@@ -364,9 +354,7 @@ class _LoginPageState extends State<LoginPage> {
 
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => const EmailVerificationPage(),
-          ),
+          MaterialPageRoute(builder: (_) => const EmailVerificationPage()),
         );
 
         return;
@@ -376,9 +364,9 @@ class _LoginPageState extends State<LoginPage> {
       await _goToApp();
       return;
     } on FirebaseAuthException catch (e) {
-      _toast(e.message ?? 'Erro ao autenticar.');
+      _toast(authErrorText(e, source: AuthErrorSource.password));
     } catch (_) {
-      _toast('Erro inesperado.');
+      _toast(AppTexts.current.get('auth_error_unexpected'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -401,8 +389,9 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginGoogle() async {
     if (_loading) return;
-    final termsReject =
-        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject = AuthTermsGate.rejectReason(
+      termsAccepted: _termsAccepted,
+    );
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
@@ -417,14 +406,17 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
       if (!outcome.isSuccess || outcome.userCredential == null) {
-        _toast(outcome.userMessage ?? 'Erro no Google.');
+        _toast(
+          outcome.userMessage ??
+              AppTexts.current.get('auth_error_google_generic'),
+        );
         return;
       }
 
       final cred = outcome.userCredential!;
       final user = cred.user;
       if (user == null) {
-        _toast('Erro: usuário do Google veio vazio.');
+        _toast(AppTexts.current.get('auth_error_google_empty_user'));
         return;
       }
 
@@ -441,7 +433,9 @@ class _LoginPageState extends State<LoginPage> {
       return;
     } catch (_) {
       // Nunca deixar o app fechar: qualquer falha vira toast.
-      if (mounted) _toast('Erro no Google. Tente novamente.');
+      if (mounted) {
+        _toast(AppTexts.current.get('auth_error_google_generic'));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -449,8 +443,9 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginTest() async {
     if (_loading) return;
-    final termsReject =
-        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject = AuthTermsGate.rejectReason(
+      termsAccepted: _termsAccepted,
+    );
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
@@ -473,11 +468,12 @@ class _LoginPageState extends State<LoginPage> {
       await _goToApp();
       return;
     } on FirebaseAuthException catch (e) {
-      _toast(e.message ?? "Erro ao entrar com Teste.");
+      _toast(authErrorText(e, source: AuthErrorSource.password));
       _toast(
-          "Dica: crie o usuário $_testEmail no Firebase Auth (Email/Senha).");
+        "Dica: crie o usuário $_testEmail no Firebase Auth (Email/Senha).",
+      );
     } catch (_) {
-      _toast("Erro inesperado no modo Teste.");
+      _toast(AppTexts.current.get('auth_error_unexpected'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -493,8 +489,9 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginApple() async {
     if (_loading) return;
-    final termsReject =
-        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject = AuthTermsGate.rejectReason(
+      termsAccepted: _termsAccepted,
+    );
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
@@ -509,14 +506,17 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
       if (!outcome.isSuccess || outcome.userCredential == null) {
-        _toast(outcome.userMessage ?? 'Erro no Apple.');
+        _toast(
+          outcome.userMessage ??
+              AppTexts.current.get('auth_error_apple_generic'),
+        );
         return;
       }
 
       final cred = outcome.userCredential!;
       final user = cred.user;
       if (user == null) {
-        _toast('Erro: usuário da Apple veio vazio.');
+        _toast(AppTexts.current.get('auth_error_apple_empty_user'));
         return;
       }
 
@@ -531,15 +531,18 @@ class _LoginPageState extends State<LoginPage> {
       await _goToApp();
       return;
     } catch (_) {
-      if (mounted) _toast('Erro no Apple. Tente novamente.');
+      if (mounted) {
+        _toast(AppTexts.current.get('auth_error_apple_generic'));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _loginFacebook() async {
-    final termsReject =
-        AuthTermsGate.rejectReason(termsAccepted: _termsAccepted);
+    final termsReject = AuthTermsGate.rejectReason(
+      termsAccepted: _termsAccepted,
+    );
     if (termsReject != null) {
       return _toast(AppTexts.current.get(termsReject));
     }
@@ -552,14 +555,14 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (result.status != LoginStatus.success) {
-        _toast('Login Facebook cancelado.');
+        _toast(AppTexts.current.get('auth_error_facebook_cancelled'));
         return;
       }
 
       final accessToken = result.accessToken;
 
       if (accessToken == null) {
-        _toast('Erro ao obter token do Facebook.');
+        _toast(AppTexts.current.get('auth_error_facebook_no_token'));
         return;
       }
 
@@ -584,16 +587,9 @@ class _LoginPageState extends State<LoginPage> {
 
       return;
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'account-exists-with-different-credential') {
-        _toast(
-          'Esta conta já existe. Entre usando Google, Apple ou e-mail e senha.',
-        );
-        return;
-      }
-
-      _toast(e.message ?? 'Erro no login Facebook.');
+      _toast(authErrorText(e, source: AuthErrorSource.facebook));
     } catch (e) {
-      _toast('Erro no login Facebook.');
+      _toast(AppTexts.current.get('auth_error_facebook_generic'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -602,8 +598,9 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final t = AppTexts.current;
-    final title =
-        _isLogin ? t.get('login_title') : t.get('create_account_title');
+    final title = _isLogin
+        ? t.get('login_title')
+        : t.get('create_account_title');
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -624,7 +621,7 @@ class _LoginPageState extends State<LoginPage> {
                     spreadRadius: 2,
                     offset: const Offset(0, 10),
                     color: Colors.black.withOpacity(0.06),
-                  )
+                  ),
                 ],
               ),
               child: Column(
@@ -662,8 +659,9 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _passC,
                     textCapitalization: RemdyKeyboardCaps.none,
                     obscureText: _hidePass,
-                    textInputAction:
-                        _isLogin ? TextInputAction.done : TextInputAction.next,
+                    textInputAction: _isLogin
+                        ? TextInputAction.done
+                        : TextInputAction.next,
                     onSubmitted: (_) {
                       if (_isLogin) dismissAppKeyboard();
                     },
@@ -709,10 +707,12 @@ class _LoginPageState extends State<LoginPage> {
                                 context: context,
                                 initialDate:
                                     AgeVerification.latestEligibleBirthDate(
-                                        now),
+                                      now,
+                                    ),
                                 firstDate:
                                     AgeVerification.earliestAllowedBirthDate(
-                                        now),
+                                      now,
+                                    ),
                                 lastDate: now,
                                 helpText: t.get('age_birth_date'),
                               );
@@ -723,10 +723,13 @@ class _LoginPageState extends State<LoginPage> {
                       icon: const Icon(Icons.calendar_month),
                       label: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(_signupBirthDate == null
-                            ? t.get('age_birth_date')
-                            : MaterialLocalizations.of(context)
-                                .formatMediumDate(_signupBirthDate!)),
+                        child: Text(
+                          _signupBirthDate == null
+                              ? t.get('age_birth_date')
+                              : MaterialLocalizations.of(
+                                  context,
+                                ).formatMediumDate(_signupBirthDate!),
+                        ),
                       ),
                     ),
                     Text(
@@ -764,24 +767,26 @@ class _LoginPageState extends State<LoginPage> {
                     value: _termsAccepted,
                     onChanged: _loading
                         ? null
-                        : (v) => setState(
-                              () => _termsAccepted = v == true,
-                            ),
+                        : (v) => setState(() => _termsAccepted = v == true),
                     title: Text(t.get('age_accept_terms')),
                     subtitle: Wrap(
                       children: [
                         TextButton(
                           onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const TermsPage())),
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TermsPage(),
+                            ),
+                          ),
                           child: Text(t.get('terms_of_use')),
                         ),
                         TextButton(
                           onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const PrivacyPage())),
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PrivacyPage(),
+                            ),
+                          ),
                           child: Text(t.get('privacy_policy')),
                         ),
                       ],
@@ -897,7 +902,9 @@ class _LoginPageState extends State<LoginPage> {
                         t.get('verify_email_notice'),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                            fontSize: 12, color: Colors.black54),
+                          fontSize: 12,
+                          color: Colors.black54,
+                        ),
                       ),
                     ),
                 ],

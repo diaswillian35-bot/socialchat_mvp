@@ -3,12 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../firebase_options.dart';
+import '../l10n/app_texts.dart';
+import 'auth_error_text.dart';
 
-enum GoogleSignInResultKind {
-  success,
-  cancelled,
-  error,
-}
+enum GoogleSignInResultKind { success, cancelled, error }
 
 class GoogleSignInOutcome {
   const GoogleSignInOutcome._({
@@ -18,16 +16,13 @@ class GoogleSignInOutcome {
   });
 
   const GoogleSignInOutcome.cancelled()
-      : this._(kind: GoogleSignInResultKind.cancelled);
+    : this._(kind: GoogleSignInResultKind.cancelled);
 
   const GoogleSignInOutcome.error(String message)
-      : this._(kind: GoogleSignInResultKind.error, userMessage: message);
+    : this._(kind: GoogleSignInResultKind.error, userMessage: message);
 
   const GoogleSignInOutcome.success(UserCredential credential)
-      : this._(
-          kind: GoogleSignInResultKind.success,
-          userCredential: credential,
-        );
+    : this._(kind: GoogleSignInResultKind.success, userCredential: credential);
 
   final GoogleSignInResultKind kind;
   final UserCredential? userCredential;
@@ -38,11 +33,9 @@ class GoogleSignInOutcome {
 }
 
 class GoogleSignInService {
-  GoogleSignInService({
-    GoogleSignIn? googleSignIn,
-    FirebaseAuth? firebaseAuth,
-  })  : _googleSignIn = googleSignIn ?? defaultGoogleSignIn(),
-        _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
+  GoogleSignInService({GoogleSignIn? googleSignIn, FirebaseAuth? firebaseAuth})
+    : _googleSignIn = googleSignIn ?? defaultGoogleSignIn(),
+      _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
 
   final GoogleSignIn _googleSignIn;
   final FirebaseAuth _firebaseAuth;
@@ -82,8 +75,8 @@ class GoogleSignInService {
       final googleAuth = await googleUser.authentication;
       if ((googleAuth.idToken ?? '').isEmpty &&
           (googleAuth.accessToken ?? '').isEmpty) {
-        return const GoogleSignInOutcome.error(
-          'Google Sign-In não retornou credenciais. Tente novamente.',
+        return GoogleSignInOutcome.error(
+          AppTexts.t('auth_error_google_missing_credential'),
         );
       }
 
@@ -92,11 +85,12 @@ class GoogleSignInService {
         idToken: googleAuth.idToken,
       );
 
-      final userCredential =
-          await _firebaseAuth.signInWithCredential(credential);
+      final userCredential = await _firebaseAuth.signInWithCredential(
+        credential,
+      );
       if (userCredential.user == null) {
-        return const GoogleSignInOutcome.error(
-          'Erro: usuário do Google veio vazio.',
+        return GoogleSignInOutcome.error(
+          AppTexts.t('auth_error_google_empty_user'),
         );
       }
 
@@ -109,24 +103,7 @@ class GoogleSignInService {
   }
 
   static String friendlyFirebaseAuthMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'account-exists-with-different-credential':
-        return 'Esta conta já existe. Entre com e-mail e senha, Apple ou Facebook '
-            'e vincule o Google nas configurações da conta.';
-      case 'credential-already-in-use':
-        return 'Esta conta Google já está vinculada a outro perfil Remdy.';
-      case 'operation-not-allowed':
-        return 'Login com Google não está habilitado. Tente outro método.';
-      case 'user-disabled':
-        return 'Esta conta foi desativada.';
-      case 'invalid-credential':
-        return 'Credencial Google inválida ou expirada. Tente novamente.';
-      case 'network-request-failed':
-        return 'Sem conexão. Verifique a internet e tente novamente.';
-      default:
-        final m = e.message?.trim() ?? '';
-        return m.isNotEmpty ? m : 'Erro no Google (${e.code}).';
-    }
+    return authErrorText(e, source: AuthErrorSource.google);
   }
 
   static String friendlyGenericMessage(Object error) {
@@ -134,10 +111,9 @@ class GoogleSignInService {
     if (msg.contains('ApiException: 10') ||
         msg.contains('DEVELOPER_ERROR') ||
         msg.contains('sign_in_failed')) {
-      return 'Google Sign-In falhou (configuração OAuth). '
-          'Verifique URL scheme e CLIENT_ID no iOS.';
+      return AppTexts.t('auth_error_google_oauth_config');
     }
-    return 'Erro no Google. Tente novamente.';
+    return AppTexts.t('auth_error_google_generic');
   }
 }
 

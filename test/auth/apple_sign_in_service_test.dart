@@ -1,14 +1,24 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:socialchat_mvp/firebase_options.dart';
+import 'package:socialchat_mvp/l10n/app_texts.dart';
 import 'package:socialchat_mvp/services/apple_sign_in_service.dart';
 import 'package:socialchat_mvp/services/ios_google_config.dart';
 
 void main() {
+  setUpAll(() {
+    final map =
+        jsonDecode(File('lib/l10n/pt-BR.json').readAsStringSync())
+            as Map<String, dynamic>;
+    AppTexts.loadFromMap(map, const Locale('pt', 'BR'));
+  });
+
   tearDown(() {
     AppleSignInService.pendingLinkCredential = null;
   });
@@ -129,8 +139,13 @@ void main() {
     });
 
     test('Release/Profile/Debug sign the Runner entitlements', () {
-      final pbx = File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
-      expect(pbx, contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements'));
+      final pbx = File(
+        'ios/Runner.xcodeproj/project.pbxproj',
+      ).readAsStringSync();
+      expect(
+        pbx,
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements'),
+      );
       expect(
         pbx,
         contains('CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements'),
@@ -150,13 +165,19 @@ void main() {
   group('login + deletion wiring', () {
     test('login uses AppleSignInService, terms gate, cancel, no stub', () {
       final login = File('lib/pages/login_page.dart').readAsStringSync();
-      expect(login, contains("import '../services/apple_sign_in_service.dart'"));
+      expect(
+        login,
+        contains("import '../services/apple_sign_in_service.dart'"),
+      );
       expect(login, contains('_appleSignInService.signIn()'));
       expect(login, contains('outcome.isCancelled'));
       expect(login.contains('deixei o botão'), isFalse);
       expect(login.contains('Depois configuramos'), isFalse);
       expect(
-        login.indexOf('AuthTermsGate.rejectReason', login.indexOf('_loginApple')),
+        login.indexOf(
+          'AuthTermsGate.rejectReason',
+          login.indexOf('_loginApple'),
+        ),
         greaterThan(login.indexOf('_loginApple')),
       );
       expect(login, contains('_maybeLinkPendingApple'));
@@ -164,16 +185,20 @@ void main() {
     });
 
     test('account deletion reauthenticates with AppleSignInService', () {
-      final deletion =
-          File('lib/services/account_deletion_service.dart').readAsStringSync();
+      final deletion = File(
+        'lib/services/account_deletion_service.dart',
+      ).readAsStringSync();
       expect(deletion, contains('AppleSignInService().reauthenticate'));
-      expect(deletion.contains('Apple re-authentication is not available yet'),
-          isFalse);
+      expect(
+        deletion.contains('Apple re-authentication is not available yet'),
+        isFalse,
+      );
     });
 
     test('service hashes nonce before requesting Apple and uses rawNonce', () {
-      final src =
-          File('lib/services/apple_sign_in_service.dart').readAsStringSync();
+      final src = File(
+        'lib/services/apple_sign_in_service.dart',
+      ).readAsStringSync();
       expect(src, contains('sha256Of(rawNonce)'));
       expect(src, contains('nonce: hashedNonce'));
       expect(src, contains('rawNonce: rawNonce'));
