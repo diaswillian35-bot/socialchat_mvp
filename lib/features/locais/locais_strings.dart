@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../../l10n/app_texts.dart';
 import 'models/place_listing.dart';
 
 class LocaisStrings {
@@ -561,66 +562,39 @@ class LocaisStrings {
   String get results =>
       _t(pt: 'Resultados', en: 'Results', es: 'Resultados', fr: 'Résultats');
 
+  /// Abreviações `weekday_short_*` (só exibição; o que vai gravado
+  /// em hoursNote continua a usar `_ptDay` no envio).
   String weekday(int weekday) {
-    const pt = [
-      'Segunda',
-      'Terça',
-      'Quarta',
-      'Quinta',
-      'Sexta',
-      'Sábado',
-      'Domingo',
-    ];
-    const ptPt = [
-      'Segunda',
-      'Terça',
-      'Quarta',
-      'Quinta',
-      'Sexta',
-      'Sábado',
-      'Domingo',
-    ];
-    const en = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const es = [
-      'Lunes',
-      'Martes',
-      'Miércoles',
-      'Jueves',
-      'Viernes',
-      'Sábado',
-      'Domingo',
-    ];
-    const fr = [
-      'Lundi',
-      'Mardi',
-      'Mercredi',
-      'Jeudi',
-      'Vendredi',
-      'Samedi',
-      'Dimanche',
-    ];
+    const short = {
+      'pt-BR': ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
+      'pt-PT': ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
+      'en': ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      'es': ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+      'fr': ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+    };
     final index = weekday - 1;
     if (index < 0 || index > 6) return '$weekday';
-    switch (code) {
-      case 'pt-PT':
-        return ptPt[index];
-      case 'pt':
-        return pt[index];
-      case 'es':
-        return es[index];
-      case 'fr':
-        return fr[index];
-      default:
-        return en[index];
-    }
+    final lang = code == 'pt' ? 'pt-BR' : code;
+    final key = 'weekday_short_$weekday';
+    try {
+      final cur = AppTexts.current;
+      final curLang = _langOf(cur.locale);
+      if (curLang == lang) {
+        final v = cur.get(key);
+        if (v != key && v.trim().isNotEmpty) return v;
+      }
+    } catch (_) {}
+    final list = short[lang] ?? short['en']!;
+    return list[index];
+  }
+
+  String _langOf(Locale locale) {
+    final lang = locale.languageCode.toLowerCase();
+    final country = (locale.countryCode ?? '').toUpperCase();
+    if (lang == 'pt' && country == 'PT') return 'pt-PT';
+    if (lang == 'pt') return 'pt-BR';
+    if (lang == 'es' || lang == 'fr') return lang;
+    return 'en';
   }
 
   String ratingLine(double rating, int count) {
