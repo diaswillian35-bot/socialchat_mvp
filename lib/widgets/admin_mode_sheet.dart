@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../features/locais/ui/place_submissions_page.dart';
+import '../features/locais/ui/place_discount_admin_page.dart';
 import '../data/country_names_l10n.dart';
 import '../l10n/app_texts.dart';
 import '../services/admin_access.dart';
@@ -70,6 +71,20 @@ class AdminModeSheet {
                     MaterialPageRoute(
                       builder: (_) =>
                           const PlaceSubmissionsPage(adminPending: true),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.sell_outlined),
+                title: Text(t.get('place_discount_admin_title')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PlaceDiscountAdminPage(),
                     ),
                   );
                 },

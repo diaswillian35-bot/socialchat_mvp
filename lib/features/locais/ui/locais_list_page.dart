@@ -13,6 +13,7 @@ import '../models/place_listing.dart';
 import 'locais_layout.dart';
 import 'locais_state_views.dart';
 import 'place_card.dart';
+import 'place_discount_promo_page.dart';
 import 'locais_detail_page.dart';
 
 /// Lista e mapa de Locais. Com a flag desligada não desenha conteúdo.
@@ -364,6 +365,8 @@ class _LocaisListPageState extends State<LocaisListPage> {
               strings: strings,
               open: place.isOpenAt(_now),
               onTap: () => _openDetail(place),
+              onDiscountTap: () =>
+                  PlaceDiscountPromoPage.openFromPlace(context, place),
             );
           },
         ),
@@ -391,6 +394,11 @@ class _LocaisListPageState extends State<LocaisListPage> {
                             open: visible[start + column].isOpenAt(_now),
                             vertical: true,
                             onTap: () => _openDetail(visible[start + column]),
+                            onDiscountTap: () =>
+                                PlaceDiscountPromoPage.openFromPlace(
+                              context,
+                              visible[start + column],
+                            ),
                           )
                         : const SizedBox.shrink(),
                   ),

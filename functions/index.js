@@ -252,6 +252,24 @@ exports.deletePlace = socialOnCall(
   placeSubmissions.deletePlaceHandler,
 );
 
+const placeDiscounts = require("./place_discounts");
+exports.setPlaceDiscount = socialOnCall(
+  { region: "us-central1" },
+  placeDiscounts.setPlaceDiscountHandler,
+);
+exports.setPlacePartnershipDiscount = socialOnCall(
+  { region: "us-central1" },
+  placeDiscounts.setPlacePartnershipDiscountHandler,
+);
+exports.issuePlaceDiscountCode = socialOnCall(
+  { region: "us-central1" },
+  placeDiscounts.issuePlaceDiscountCodeHandler,
+);
+exports.redeemPlaceDiscount = socialOnCall(
+  { region: "us-central1" },
+  placeDiscounts.redeemPlaceDiscountHandler,
+);
+
 const {
   assertUserCanUseRemi,
   validateMessageText: remiValidateMessageText,

@@ -65,6 +65,17 @@ O painel web admin (repositório `/Volumes/REMDY_SSD/admin_qr_work`, branch `fea
 firebase deploy --only functions:moderateAdminPlace
 ```
 
+
+## 7) Selo de desconto — SEM OK
+
+Quatro callables novas (exclusão lógica de códigos só no Admin SDK; o cliente só lê `places/{id}.discount`, já público). As Rules de `places` **não mudam** (`create`/`update`/`delete: if false`). Subcoleções `discountCodes`, `discountOpen` e `discountRedemptions` não têm regra nova: o cliente não acessa (deny por omissão); só as Functions (Admin SDK). Sem índice composto novo (gets por id de documento). Sem migração. Grátis no lançamento (sem gate Premium).
+
+```
+firebase deploy --only functions:setPlaceDiscount,functions:setPlacePartnershipDiscount,functions:issuePlaceDiscountCode,functions:redeemPlaceDiscount
+```
+
+O painel web admin (`/Volumes/REMDY_SSD/admin_qr_work`) **não foi alterado**. Se no futuro a parceria também for configurada lá, isso é um passo separado, com OK novo.
+
 ## Notas
 
 - O app local já grava `users/{uid}.appLanguageCode`. Os pushes só passam a honrar o idioma depois do deploy da secção 1.

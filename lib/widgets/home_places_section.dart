@@ -6,6 +6,7 @@ import '../features/locais/locais_strings.dart';
 import '../features/locais/models/place_listing.dart';
 import '../features/locais/ui/locais_detail_page.dart';
 import '../features/locais/ui/place_card.dart';
+import '../features/locais/ui/place_discount_promo_page.dart';
 import '../l10n/app_texts.dart';
 import '../features/locais/logic/place_country_access.dart';
 import '../services/admin_access.dart';
@@ -208,6 +209,8 @@ class HomePlacesCarousel extends StatelessWidget {
           open: place.isOpenAt(now),
           vertical: true,
           onTap: () => onTap(place),
+          onDiscountTap: () =>
+              PlaceDiscountPromoPage.openFromPlace(context, place),
         );
         if (!place.isFeatured) return card;
         return Stack(

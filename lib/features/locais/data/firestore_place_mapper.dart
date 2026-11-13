@@ -1,5 +1,6 @@
 import '../logic/place_hours_logic.dart';
 import '../models/place_description_translations.dart';
+import '../models/place_discount.dart';
 import '../models/place_listing.dart';
 import '../../../l10n/app_texts.dart';
 
@@ -83,6 +84,7 @@ class FirestorePlaceMapper {
         promotionScore: _promotionScore(data),
         descriptionTranslations:
             PlaceDescriptionTranslations.tryParse(data['descriptionI18n']),
+        discount: PlaceDiscount.tryParse(data['discount']),
       );
     } catch (_) {
       return null;

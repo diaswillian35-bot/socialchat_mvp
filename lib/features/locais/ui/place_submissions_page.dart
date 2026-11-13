@@ -6,6 +6,8 @@ import '../data/place_submission_service.dart';
 import '../locais_strings.dart';
 import '../models/place_listing.dart';
 import 'place_editor_page.dart';
+import 'place_discount_editor_page.dart';
+import 'place_discount_redeem_page.dart';
 
 /// "Meus locais" (dono) ou "Locais em análise" (Modo administrador).
 /// Reusa ListTile + folha de ações no mesmo padrão do Menu/denúncia.
@@ -127,6 +129,53 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
     }
   }
 
+  void _ownerActions(PlaceDraft p) {
+    final t = AppTexts.t;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.storefront),
+              title: Text(p.name),
+              subtitle: Text(p.cityDisplay),
+            ),
+            ListTile(
+              leading: const Icon(Icons.sell_outlined),
+              title: Text(t('place_discount_title')),
+              onTap: () {
+                Navigator.pop(sheet);
+                PlaceDiscountEditorPage.open(
+                  context,
+                  placeId: p.id,
+                  placeName: p.name,
+                  placeStatus: _statusLabel(p.status),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.qr_code_scanner_outlined),
+              title: Text(t('place_discount_redeem_title')),
+              onTap: () {
+                Navigator.pop(sheet);
+                PlaceDiscountRedeemPage.open(
+                  context,
+                  placeId: p.id,
+                  placeName: p.name,
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _actions(PlaceDraft p) {
     final t = AppTexts.t;
     showModalBottomSheet(
@@ -167,6 +216,20 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
               onTap: () {
                 Navigator.pop(sheet);
                 _moderate(p, approve: false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.sell_outlined),
+              title: Text(t('place_discount_admin_title')),
+              onTap: () {
+                Navigator.pop(sheet);
+                PlaceDiscountEditorPage.open(
+                  context,
+                  placeId: p.id,
+                  placeName: p.name,
+                  placeStatus: _statusLabel(p.status),
+                  partnership: true,
+                );
               },
             ),
             ListTile(
@@ -250,6 +313,13 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
                   subtitle: Text(
                     '$category · ${p.cityDisplay} · ${_statusLabel(p.status)}',
                   ),
+                  trailing: widget.adminPending
+                      ? null
+                      : IconButton(
+                          key: Key('place_discount_menu_${p.id}'),
+                          icon: const Icon(Icons.more_horiz),
+                          onPressed: () => _ownerActions(p),
+                        ),
                   onTap: () => widget.adminPending ? _actions(p) : _open(p),
                 );
               },

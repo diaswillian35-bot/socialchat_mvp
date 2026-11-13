@@ -5,6 +5,7 @@ import 'place_photo_viewer.dart';
 import '../locais_strings.dart';
 import '../models/place_listing.dart';
 import 'locais_layout.dart';
+import 'place_discount_badge.dart';
 
 IconData placeCategoryIcon(PlaceCategory category) {
   switch (category) {
@@ -197,6 +198,7 @@ class PlaceCard extends StatelessWidget {
     required this.open,
     required this.onTap,
     this.vertical = false,
+    this.onDiscountTap,
   });
 
   final PlaceListing place;
@@ -204,6 +206,7 @@ class PlaceCard extends StatelessWidget {
   final bool open;
   final VoidCallback onTap;
   final bool vertical;
+  final VoidCallback? onDiscountTap;
 
   @override
   Widget build(BuildContext context) {
@@ -238,6 +241,32 @@ class PlaceCard extends StatelessWidget {
     );
   }
 
+  Widget _coverWithBadge({double? width, double? height}) {
+    final cover = PlaceCover(
+      photo: place.cover,
+      category: place.category,
+      width: width,
+      height: height,
+    );
+    final discount = place.discount;
+    if (discount == null || !discount.isActiveAt(DateTime.now())) {
+      return cover;
+    }
+    return Stack(
+      children: [
+        cover,
+        Positioned(
+          top: 8,
+          left: 8,
+          child: PlaceDiscountBadge(
+            discount: discount,
+            onTap: onDiscountTap,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _horizontal() {
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 112),
@@ -248,12 +277,7 @@ class PlaceCard extends StatelessWidget {
             borderRadius: const BorderRadius.horizontal(
               left: Radius.circular(17),
             ),
-            child: PlaceCover(
-              photo: place.cover,
-              category: place.category,
-              width: 104,
-              height: 112,
-            ),
+            child: _coverWithBadge(width: 104, height: 112),
           ),
           Expanded(
             child: Padding(
@@ -272,11 +296,7 @@ class PlaceCard extends StatelessWidget {
       children: [
         ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(17)),
-          child: PlaceCover(
-            photo: place.cover,
-            category: place.category,
-            height: 112,
-          ),
+          child: _coverWithBadge(height: 112),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),

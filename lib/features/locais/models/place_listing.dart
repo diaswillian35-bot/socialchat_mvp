@@ -1,5 +1,6 @@
 import 'place_description_translations.dart';
 import '../logic/place_hours_logic.dart';
+import 'place_discount.dart';
 
 /// Contrato público `places.v1`, o mesmo documento que o portal web do
 /// comerciante passará a publicar. Esta etapa só lê JSON local; não há
@@ -400,6 +401,7 @@ class PlaceListing {
     this.hoursNote = '',
     this.promotionScore = 0,
     this.descriptionTranslations,
+    this.discount,
   });
 
   final String id;
@@ -410,6 +412,9 @@ class PlaceListing {
 
   /// Traduções da descrição gravadas pelo servidor na aprovação (build 44).
   final PlaceDescriptionTranslations? descriptionTranslations;
+
+  /// Selo de desconto público (campo `discount` do doc). Nulo = sem selo.
+  final PlaceDiscount? discount;
   final List<PlacePhoto> photos;
   final double rating;
   final int ratingCount;
@@ -465,6 +470,7 @@ class PlaceListing {
     int? ratingCount,
     Map<int, int>? ratingCounts,
     int? promotionScore,
+    PlaceDiscount? discount,
   }) =>
       PlaceListing(
         id: id,
@@ -489,6 +495,7 @@ class PlaceListing {
         hoursNote: hoursNote,
         promotionScore: promotionScore ?? this.promotionScore,
         descriptionTranslations: descriptionTranslations,
+        discount: discount ?? this.discount,
       );
 
   /// Aberto no fuso do local, contando a madrugada da faixa do dia anterior.

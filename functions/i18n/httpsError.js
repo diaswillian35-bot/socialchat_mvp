@@ -123,6 +123,16 @@ const MESSAGE_TO_KEY = Object.freeze({
   "App Check required.": "fn_error_app_check",
   "App Check required for share extension.": "fn_error_app_check",
   "Strong confirmation required.": "fn_error_strong_confirmation",
+  "Discount percent is invalid.": "fn_error_discount_percent",
+  "Discount end date is required.": "fn_error_discount_date_required",
+  "Discount cannot last more than 90 days.": "fn_error_discount_date_max",
+  "Discount end date is invalid.": "fn_error_discount_date_invalid",
+  "Discount is not active.": "fn_error_discount_inactive",
+  "Discount already used.": "fn_error_discount_used",
+  "Discount code expired.": "fn_error_discount_expired",
+  "Discount code is invalid.": "fn_error_discount_code_invalid",
+  "Discount coverage is invalid.": "fn_error_discount_coverage",
+  "Could not allocate discount code.": "fn_error_discount_allocate",
 });
 
 function looksMachineKey(message) {

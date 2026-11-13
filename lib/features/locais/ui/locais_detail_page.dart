@@ -16,6 +16,8 @@ import '../../../widgets/events/event_detail_light_header.dart';
 import 'locais_layout.dart';
 import 'locais_state_views.dart';
 import 'place_card.dart';
+import 'place_discount_badge.dart';
+import 'place_discount_promo_page.dart';
 import 'place_photo_viewer.dart';
 import 'place_description.dart';
 
@@ -236,6 +238,62 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
             ),
         ],
       ),
+      if (place.discount != null &&
+          place.discount!.isActiveAt(DateTime.now())) ...[
+        const SizedBox(height: 12),
+        _card(
+          key: const Key('locais_detail_discount'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionTitle(AppTexts.t('place_discount_detail_title')),
+              Text(
+                AppTexts.t('place_discount_detail_body')
+                    .replaceAll('{percent}', '${place.discount!.percent}'),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                  color: LocaisColors.text,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text.rich(
+                TextSpan(
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                    color: LocaisColors.text,
+                  ),
+                  children: [
+                    TextSpan(
+                        text:
+                            '${AppTexts.t('place_discount_condition_label')}: '),
+                    TextSpan(
+                      text: AppTexts.t('place_discount_condition_short'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    TextSpan(
+                        text: ' ${AppTexts.t('place_discount_at_counter')}'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                AppTexts.t('place_discount_detail_valid')
+                    .replaceAll('{date}', place.discount!.formatValidUntil())
+                    .replaceAll('{percent}', '${place.discount!.percent}'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: LocaisColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
       const SizedBox(height: 12),
       _card(
         key: const Key('locais_detail_description'),
@@ -446,6 +504,17 @@ class _LocaisDetailPageState extends State<LocaisDetailPage> {
             ),
           ),
         ),
+        if (place.discount != null &&
+            place.discount!.isActiveAt(DateTime.now()))
+          Positioned(
+            left: 16,
+            bottom: 16,
+            child: PlaceDiscountBadge(
+              discount: place.discount!,
+              compact: false,
+              onTap: () => PlaceDiscountPromoPage.openFromPlace(context, place),
+            ),
+          ),
         if (place.photos.length > 1)
           Positioned(
             left: 0,
