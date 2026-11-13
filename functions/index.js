@@ -247,6 +247,10 @@ exports.moderatePlace = socialOnCall(
   { region: "us-central1" },
   placeSubmissions.moderatePlaceHandler,
 );
+exports.deletePlace = socialOnCall(
+  { region: "us-central1" },
+  placeSubmissions.deletePlaceHandler,
+);
 
 const {
   assertUserCanUseRemi,

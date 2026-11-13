@@ -145,3 +145,54 @@ test("placeSummary devolve hours e timeZone", () => {
   assert.equal(old.hours, null);
   assert.equal(old.timeZone, "America/Toronto");
 });
+
+
+test("deletePlaceDecision: dono ok, admin ok, estranho recusado, idempotente", () => {
+  const owner = L.deletePlaceDecision({
+    uid: "u1",
+    placeData: { ownerId: "u1", deleted: false, active: true },
+    exists: true,
+  });
+  assert.equal(owner.ok, true);
+  assert.equal(owner.alreadyDeleted, false);
+  assert.deepEqual(owner.patch, { deleted: true, active: false, deletedBy: "u1" });
+
+  const viaAccess = L.deletePlaceDecision({
+    uid: "u2",
+    placeData: { ownerId: "other", active: true },
+    accessData: { ownerUid: "u2" },
+    exists: true,
+  });
+  assert.equal(viaAccess.ok, true);
+  assert.equal(viaAccess.patch.deletedBy, "u2");
+
+  const admin = L.deletePlaceDecision({
+    uid: "admin",
+    isSuperAdmin: true,
+    placeData: { ownerId: "u1", active: true },
+    exists: true,
+  });
+  assert.equal(admin.ok, true);
+  assert.equal(admin.patch.deletedBy, "admin");
+
+  const stranger = L.deletePlaceDecision({
+    uid: "x",
+    placeData: { ownerId: "u1" },
+    exists: true,
+  });
+  assert.equal(stranger.error.code, "permission-denied");
+  assert.equal(stranger.error.message, "Not the owner.");
+
+  const missing = L.deletePlaceDecision({ uid: "u1", exists: false });
+  assert.equal(missing.error.code, "not-found");
+  assert.equal(missing.error.message, "Place not found.");
+
+  const again = L.deletePlaceDecision({
+    uid: "u1",
+    placeData: { ownerId: "u1", deleted: true },
+    exists: true,
+  });
+  assert.equal(again.ok, true);
+  assert.equal(again.alreadyDeleted, true);
+  assert.equal(again.patch, undefined);
+});

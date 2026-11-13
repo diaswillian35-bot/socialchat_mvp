@@ -93,6 +93,40 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
     }
   }
 
+  Future<void> _delete(PlaceDraft p) async {
+    final t = AppTexts.t;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(t('place_delete')),
+        content: Text(t('place_delete_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(t('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t('delete')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await PlaceSubmissionService.deletePlace(p.id);
+      messenger.showSnackBar(
+        SnackBar(content: Text(t('place_deleted_snack'))),
+      );
+      if (mounted) setState(_reload);
+    } on FirebaseFunctionsException catch (_) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(t('place_submit_error'))),
+      );
+    }
+  }
+
   void _actions(PlaceDraft p) {
     final t = AppTexts.t;
     showModalBottomSheet(
@@ -133,6 +167,16 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
               onTap: () {
                 Navigator.pop(sheet);
                 _moderate(p, approve: false);
+              },
+            ),
+            ListTile(
+              key: const Key('place_delete'),
+              leading: const Icon(Icons.delete_outline_rounded,
+                  color: Color(0xFFB91C1C)),
+              title: Text(t('place_delete_action')),
+              onTap: () {
+                Navigator.pop(sheet);
+                _delete(p);
               },
             ),
           ],

@@ -2044,5 +2044,9 @@
   "fn_error_strong_confirmation": "Confirma esta acción.",
   "fn_error_generic": "No se pudo completar. Inténtalo de nuevo.",
   "fn_error_invalid_data": "Algunos datos no son válidos. Revísalos e inténtalo de nuevo.",
-  "fn_error_missing_data": "Falta información obligatoria."
+  "fn_error_missing_data": "Falta información obligatoria.",
+  "place_delete": "Eliminar lugar",
+  "place_delete_action": "Eliminar",
+  "place_delete_confirm": "¿Seguro que quieres eliminar este lugar? Dejará de aparecer en Lugares.",
+  "place_deleted_snack": "Lugar eliminado."
 }

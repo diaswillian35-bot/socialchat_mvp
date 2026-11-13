@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:socialchat_mvp/features/locais/data/place_submission_service.dart';
 import 'package:socialchat_mvp/features/locais/ui/place_editor_page.dart';
+import 'package:socialchat_mvp/features/locais/ui/place_submissions_page.dart';
 import 'package:socialchat_mvp/l10n/app_texts.dart';
 
 import 'locais_test_support.dart';
@@ -16,7 +17,8 @@ void main() {
     AppTexts.loadFromMap(map, const Locale('pt', 'BR'));
   });
 
-  testWidgets('aba Locais sem FAB; entrada só pelo card do topo', (tester) async {
+  testWidgets('aba Locais sem FAB; entrada só pelo card do topo',
+      (tester) async {
     await pumpLocais(tester, demoList());
     await tester.pumpAndSettle();
     expect(find.byType(FloatingActionButton), findsNothing);
@@ -28,7 +30,8 @@ void main() {
   ) async {
     await pumpLocais(tester, demoList());
     await tester.pumpAndSettle();
-    expect(find.text('Tem um negócio? Cadastre seu local grátis'), findsOneWidget);
+    expect(
+        find.text('Tem um negócio? Cadastre seu local grátis'), findsOneWidget);
     await tester.tap(find.byKey(const Key('locais_add_place_card')));
     await tester.pumpAndSettle();
     expect(find.byType(PlaceEditorPage), findsOneWidget);
@@ -59,7 +62,8 @@ void main() {
     ScaffoldMessenger.of(tester.element(find.byType(Scaffold).first))
         .removeCurrentSnackBar();
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('place_name_field')), 'Bar do Zé');
+    await tester.enterText(
+        find.byKey(const Key('place_name_field')), 'Bar do Zé');
     await tester.tap(find.byKey(const Key('place_next_button')));
     await tester.pumpAndSettle();
     expect(find.text('2/6'), findsOneWidget);
@@ -69,18 +73,80 @@ void main() {
   });
 
   test('rascunho envia só campos esperados e id hex de 32', () {
-    final d = PlaceDraft(name: ' X ', cityName: 'Toronto', latitude: 1, longitude: 2);
+    final d =
+        PlaceDraft(name: ' X ', cityName: 'Toronto', latitude: 1, longitude: 2);
     expect(d.hasCity, isTrue);
     expect(d.toFields()['name'], 'X');
     expect(d.toFields().containsKey('ownerId'), isFalse);
-    expect(RegExp(r'^[0-9a-f]{32}$').hasMatch(PlaceSubmissionService.randomHex32()), isTrue);
+    expect(
+        RegExp(r'^[0-9a-f]{32}$')
+            .hasMatch(PlaceSubmissionService.randomHex32()),
+        isTrue);
   });
 
   test('app não escreve places direto; só callables moderadas', () {
-    final src = File('lib/features/locais/data/place_submission_service.dart').readAsStringSync();
+    final src = File('lib/features/locais/data/place_submission_service.dart')
+        .readAsStringSync();
     expect(src, isNot(contains("collection('places')")));
-    for (final c in ['submitPlace', 'updateMyPlace', 'listPendingPlaces', 'moderatePlace']) {
+    for (final c in [
+      'submitPlace',
+      'updateMyPlace',
+      'listPendingPlaces',
+      'moderatePlace',
+      'deletePlace',
+    ]) {
       expect(src, contains("'$c'"));
     }
+  });
+
+  test('textos de excluir local nos 5 idiomas', () {
+    for (final l in ['pt-BR', 'pt-PT', 'en', 'es', 'fr']) {
+      final m = jsonDecode(File('lib/l10n/$l.json').readAsStringSync()) as Map;
+      for (final k in [
+        'place_delete',
+        'place_delete_action',
+        'place_delete_confirm',
+        'place_deleted_snack',
+      ]) {
+        expect((m[k] as String?)?.isNotEmpty, isTrue, reason: '$l $k');
+      }
+    }
+    final br =
+        jsonDecode(File('lib/l10n/pt-BR.json').readAsStringSync()) as Map;
+    expect(br['place_delete'], 'Excluir local');
+    expect(br['place_delete_action'], 'Excluir');
+  });
+
+  testWidgets('folha do admin oferece Excluir com confirmação', (tester) async {
+    await pumpLocais(
+      tester,
+      PlaceSubmissionsPage(
+        adminPending: true,
+        loader: () async => [
+          PlaceDraft(
+            id: 'p1',
+            name: 'Bar do Zé',
+            cityDisplay: 'Toronto',
+            status: 'pending',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Bar do Zé'), findsOneWidget);
+    await tester.tap(find.text('Bar do Zé'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('place_delete')), findsOneWidget);
+    expect(find.text('Excluir'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('place_delete')));
+    await tester.pumpAndSettle();
+    expect(find.text('Excluir local'), findsOneWidget);
+    expect(
+      find.text(
+        'Tem certeza de que deseja excluir este local? Ele deixará de aparecer em Locais.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Cancelar'), findsOneWidget);
   });
 }

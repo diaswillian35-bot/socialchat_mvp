@@ -247,6 +247,32 @@ function canEditPlace({ uid, isSuperAdmin, placeData, accessData }) {
   return Boolean(accessData && accessData.ownerUid === uid);
 }
 
+/**
+ * Decisão pura de exclusão lógica (testável sem Firestore).
+ * Dono (canEditPlace) ou admin total. Já excluído = idempotente.
+ */
+function deletePlaceDecision({ uid, isSuperAdmin, placeData, accessData, exists }) {
+  if (!exists) {
+    return { error: { code: "not-found", message: "Place not found." } };
+  }
+  if (!canEditPlace({ uid, isSuperAdmin, placeData, accessData })) {
+    return { error: { code: "permission-denied", message: "Not the owner." } };
+  }
+  const current = placeData || {};
+  if (current.deleted === true) {
+    return { ok: true, alreadyDeleted: true };
+  }
+  return {
+    ok: true,
+    alreadyDeleted: false,
+    patch: {
+      deleted: true,
+      active: false,
+      deletedBy: uid,
+    },
+  };
+}
+
 /** Patch de moderação (admin). */
 function moderationPatch(decision, reason) {
   if (decision === "approve") {
@@ -297,6 +323,7 @@ module.exports = {
   PLACE_CATEGORIES,
   parsePlaceInput,
   canEditPlace,
+  deletePlaceDecision,
   moderationPatch,
   placeSummary,
   isOwnStorageUrl,

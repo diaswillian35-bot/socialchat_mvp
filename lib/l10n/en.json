@@ -2044,5 +2044,9 @@
   "fn_error_strong_confirmation": "Please confirm this action.",
   "fn_error_generic": "Something went wrong. Please try again.",
   "fn_error_invalid_data": "Some of the details are invalid. Please review and try again.",
-  "fn_error_missing_data": "Required information is missing."
+  "fn_error_missing_data": "Required information is missing.",
+  "place_delete": "Delete place",
+  "place_delete_action": "Delete",
+  "place_delete_confirm": "Are you sure you want to delete this place? It will no longer appear in Places.",
+  "place_deleted_snack": "Place deleted."
 }

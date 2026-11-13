@@ -51,6 +51,20 @@ firebase deploy --only functions:listShareDestinations,functions:sendShareMessag
 
 Estão em `functions/share_extension.js` (junto de `issueShareExtensionSession` e `revokeShareExtensionSessions`, que não mudaram de regra).
 
+## 6) Excluir local
+
+Nova callable de exclusão lógica (`deleted: true`, `active: false`, `deletedAt`, `deletedBy`). Dono ou admin total. Idempotente. As Rules de `places` **não mudam** (`create`/`update`/`delete: if false`; a exclusão passa só pela Function).
+
+```
+firebase deploy --only functions:deletePlace
+```
+
+O painel web admin (repositório `/Volumes/REMDY_SSD/admin_qr_work`, branch `feat/b44-excluir-local`) altera `moderateAdminPlace` (ação `delete`). Esse deploy é do projeto/Functions do painel, e o hosting do painel, quando for aprovado:
+
+```
+firebase deploy --only functions:moderateAdminPlace
+```
+
 ## Notas
 
 - O app local já grava `users/{uid}.appLanguageCode`. Os pushes só passam a honrar o idioma depois do deploy da secção 1.

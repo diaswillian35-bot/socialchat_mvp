@@ -2044,5 +2044,9 @@
   "fn_error_strong_confirmation": "Veuillez confirmer cette action.",
   "fn_error_generic": "Impossible de terminer. Réessayez.",
   "fn_error_invalid_data": "Certaines informations sont invalides. Vérifiez et réessayez.",
-  "fn_error_missing_data": "Il manque des informations obligatoires."
+  "fn_error_missing_data": "Il manque des informations obligatoires.",
+  "place_delete": "Supprimer le lieu",
+  "place_delete_action": "Supprimer",
+  "place_delete_confirm": "Voulez-vous vraiment supprimer ce lieu ? Il n’apparaîtra plus dans Lieux.",
+  "place_deleted_snack": "Lieu supprimé."
 }

@@ -293,4 +293,7 @@ class PlaceSubmissionService {
         if (!approve && (reason ?? '').trim().isNotEmpty)
           'reason': reason!.trim(),
       });
+
+  static Future<void> deletePlace(String placeId) =>
+      _call('deletePlace', {'placeId': placeId});
 }

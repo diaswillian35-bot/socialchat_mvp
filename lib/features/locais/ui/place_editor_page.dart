@@ -726,6 +726,56 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
     );
   }
 
+  Future<void> _confirmDelete() async {
+    final t = AppTexts.t;
+    final id = widget.placeId ?? _draft.id;
+    if (id.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(t('place_delete')),
+        content: Text(t('place_delete_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(t('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t('delete')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _submitting = true);
+    try {
+      await PlaceSubmissionService.deletePlace(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t('place_deleted_snack'))),
+      );
+      Navigator.pop(context, true);
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      final key = e.message == 'Place not found.'
+          ? 'fn_error_place_not_found'
+          : (e.message == 'Not the owner.'
+              ? 'fn_error_not_owner'
+              : 'place_submit_error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t(key))),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t('place_submit_error'))),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   Widget _stepReview(LocaisStrings strings) {
     final t = AppTexts.t;
     _pull();
@@ -763,6 +813,29 @@ class _PlaceEditorPageState extends State<PlaceEditorPage> {
             fontSize: 12,
           ),
         ),
+        if (_isEdit) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: const Key('place_delete_button'),
+              onPressed: _submitting ? null : _confirmDelete,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFB91C1C),
+                side: const BorderSide(color: Color(0xFFFECACA)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              icon: const Icon(Icons.delete_outline_rounded),
+              label: Text(
+                t('place_delete'),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

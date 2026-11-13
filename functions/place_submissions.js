@@ -12,6 +12,7 @@ const { isSuperAdminAuth } = require("./super_admin");
 const {
   parsePlaceInput,
   canEditPlace,
+  deletePlaceDecision,
   moderationPatch,
   placeSummary,
 } = require("./place_submission_logic");
@@ -167,6 +168,53 @@ async function listPendingPlacesHandler(request) {
   };
 }
 
+async function deletePlaceHandler(request) {
+  const uid = requireAuth(request);
+  const placeId = placeIdOf(request.data);
+  const db = admin.firestore();
+  const ref = db.collection("places").doc(placeId);
+  const [snap, access] = await Promise.all([
+    ref.get(),
+    ref.collection("private").doc("access").get(),
+  ]);
+  const decision = deletePlaceDecision({
+    uid,
+    isSuperAdmin: isSuperAdminAuth(request.auth),
+    placeData: snap.exists ? snap.data() : null,
+    accessData: access.exists ? access.data() : null,
+    exists: snap.exists,
+  });
+  if (decision.error) {
+    throw httpsError(decision.error.code, decision.error.message);
+  }
+  if (decision.alreadyDeleted) {
+    return { placeId, deleted: true, alreadyDeleted: true };
+  }
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const patch = {
+    ...decision.patch,
+    deletedAt: now,
+    updatedAt: now,
+  };
+  const batch = db.batch();
+  batch.update(ref, patch);
+  // Espelho no record do painel admin, se existir (como suspend/rejeitar).
+  const recordRef = ref.collection("private").doc("record");
+  const recordSnap = await recordRef.get();
+  if (recordSnap.exists) {
+    batch.set(recordRef, {
+      deleted: true,
+      active: false,
+      deletedBy: uid,
+      deletedAtIso: new Date().toISOString(),
+      status: "deleted",
+      updatedAt: now,
+    }, { merge: true });
+  }
+  await batch.commit();
+  return { placeId, deleted: true, alreadyDeleted: false };
+}
+
 async function moderatePlaceHandler(request) {
   requireSuperAdmin(request);
   const placeId = placeIdOf(request.data);
@@ -198,4 +246,5 @@ module.exports = {
   listMyPlacesHandler,
   listPendingPlacesHandler,
   moderatePlaceHandler,
+  deletePlaceHandler,
 };
