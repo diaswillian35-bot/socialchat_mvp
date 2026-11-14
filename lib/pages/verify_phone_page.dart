@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_texts.dart';
 import '../widgets/remdy_keyboard_caps.dart';
+import '../services/phone_verify_feature_flag.dart';
 
 /// b44: selo de verificado por SMS (sem selfie).
 /// O telefone é vinculado no Firebase Auth e a callable markPhoneVerified lê o
@@ -26,7 +27,8 @@ class _VerifyPhonePageState extends State<VerifyPhonePage> {
   String? _verificationId;
   bool _busy = false;
 
-  FirebaseFunctions get _fn => FirebaseFunctions.instanceFor(region: 'us-central1');
+  FirebaseFunctions get _fn =>
+      FirebaseFunctions.instanceFor(region: 'us-central1');
 
   @override
   void dispose() {
@@ -79,7 +81,8 @@ class _VerifyPhonePageState extends State<VerifyPhonePage> {
     final id = _verificationId;
     final code = _codeC.text.trim();
     if (id == null || code.length < 4) return;
-    await _link(PhoneAuthProvider.credential(verificationId: id, smsCode: code));
+    await _link(
+        PhoneAuthProvider.credential(verificationId: id, smsCode: code));
   }
 
   Future<void> _link(PhoneAuthCredential cred) async {
@@ -98,7 +101,8 @@ class _VerifyPhonePageState extends State<VerifyPhonePage> {
       Navigator.of(context).maybePop();
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      _snack(e.code == 'credential-already-in-use' || e.code == 'provider-already-linked'
+      _snack(e.code == 'credential-already-in-use' ||
+              e.code == 'provider-already-linked'
           ? 'verify_phone_in_use'
           : 'verify_error');
     } on FirebaseFunctionsException catch (e) {
@@ -143,21 +147,40 @@ class _VerifyPhonePageState extends State<VerifyPhonePage> {
       body: uid.isEmpty
           ? const SizedBox.shrink()
           : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('publicUsers').doc(uid).snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('publicUsers')
+                  .doc(uid)
+                  .snapshots(),
               builder: (context, snap) {
                 final verified = snap.data?.data()?['verified'] == true;
+                final allowStart = PhoneVerifyFeatureFlag.isEnabled;
+                if (!allowStart && !verified) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      Navigator.of(context).maybePop();
+                    }
+                  });
+                  return const SizedBox.shrink();
+                }
                 return ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
                     Row(
                       children: [
-                        Icon(verified ? Icons.verified : Icons.verified_outlined,
-                            color: verified ? _primary : _muted, size: 22),
+                        Icon(
+                            verified ? Icons.verified : Icons.verified_outlined,
+                            color: verified ? _primary : _muted,
+                            size: 22),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            verified ? t.get('verified_badge_label') : t.get('verify_profile_title'),
-                            style: const TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 16),
+                            verified
+                                ? t.get('verified_badge_label')
+                                : t.get('verify_profile_title'),
+                            style: const TextStyle(
+                                color: _text,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16),
                           ),
                         ),
                       ],
@@ -165,7 +188,10 @@ class _VerifyPhonePageState extends State<VerifyPhonePage> {
                     const SizedBox(height: 10),
                     Text(
                       t.get('verify_profile_info'),
-                      style: const TextStyle(color: _muted, fontWeight: FontWeight.w600, height: 1.3),
+                      style: const TextStyle(
+                          color: _muted,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3),
                     ),
                     const SizedBox(height: 18),
                     if (verified)
@@ -205,8 +231,14 @@ class _VerifyPhonePageState extends State<VerifyPhonePage> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           key: const Key('verify_action'),
-                          onPressed: _busy ? null : (_verificationId == null ? _sendCode : _confirmCode),
-                          child: Text(_verificationId == null ? t.get('verify_send_code') : t.get('verify_confirm')),
+                          onPressed: _busy
+                              ? null
+                              : (_verificationId == null
+                                  ? _sendCode
+                                  : _confirmCode),
+                          child: Text(_verificationId == null
+                              ? t.get('verify_send_code')
+                              : t.get('verify_confirm')),
                         ),
                       ),
                     ],
