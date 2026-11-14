@@ -28,6 +28,8 @@ import '../services/welcome_choice.dart';
 import 'welcome_choice_page.dart';
 import 'edit_profile_page.dart';
 import '../services/profile_photo.dart';
+import '../features/locais/logic/pending_my_places.dart';
+import '../features/locais/ui/place_submissions_page.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -177,6 +179,17 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
+  void _applyPendingMyPlaces() {
+    if (!PendingMyPlaces.take()) return;
+    final nav = PushService.navKey.currentState;
+    if (nav == null) return;
+    nav.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const PlaceSubmissionsPage(adminPending: false),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -223,6 +236,7 @@ class _AuthGateState extends State<AuthGate> {
               ShareExtensionSessionService.ensureSession();
               ShareExtensionIncomingService.consumePendingJobs();
               PushService.flushPendingOpen();
+              _applyPendingMyPlaces();
               // Boas-vindas (1x): pop-up sobre a Home, depois do gate da
               // foto de perfil e do perfil completo.
               if (WelcomeChoice.needsChoice(userSnap.data?.data()) &&

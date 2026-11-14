@@ -5,6 +5,7 @@ import '../../../l10n/app_texts.dart';
 import '../data/place_submission_service.dart';
 import '../locais_strings.dart';
 import '../models/place_listing.dart';
+import 'locais_layout.dart';
 import 'place_editor_page.dart';
 import 'place_discount_editor_page.dart';
 import 'place_discount_redeem_page.dart';
@@ -70,6 +71,14 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
           adminReview: widget.adminPending,
         ),
       ),
+    );
+    if (changed == true && mounted) setState(_reload);
+  }
+
+  Future<void> _openNew() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const PlaceEditorPage()),
     );
     if (changed == true && mounted) setState(_reload);
   }
@@ -277,12 +286,29 @@ class _PlaceSubmissionsPageState extends State<PlaceSubmissionsPage> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(
-                  t(widget.adminPending
-                      ? 'place_pending_empty'
-                      : 'place_mine_empty'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: _muted),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      t(widget.adminPending
+                          ? 'place_pending_empty'
+                          : 'place_mine_empty'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: _muted),
+                    ),
+                    if (!widget.adminPending) ...[
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        key: const Key('place_mine_add'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: LocaisColors.navy,
+                          minimumSize: const Size(48, 48),
+                        ),
+                        onPressed: _openNew,
+                        child: Text(t('place_add_title')),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             );

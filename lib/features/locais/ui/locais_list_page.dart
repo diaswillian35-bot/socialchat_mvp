@@ -1,9 +1,13 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../../../widgets/publish_cta_card.dart';
 import '../../../l10n/app_texts.dart';
-import 'place_editor_page.dart';
+import '../../../pages/login_page.dart';
+import '../../../widgets/publish_cta_card.dart';
 import '../../../widgets/remdy_logo.dart';
+import '../logic/pending_my_places.dart';
+import 'place_editor_page.dart';
+import 'place_submissions_page.dart';
 import '../data/place_repository.dart';
 import '../locais_feature_flag.dart';
 import '../locais_strings.dart';
@@ -18,14 +22,30 @@ import 'locais_detail_page.dart';
 
 /// Lista e mapa de Locais. Com a flag desligada não desenha conteúdo.
 class LocaisListPage extends StatefulWidget {
-  const LocaisListPage(
-      {super.key, this.repository, this.clock, this.homeCountryLoader});
+  const LocaisListPage({
+    super.key,
+    this.repository,
+    this.clock,
+    this.homeCountryLoader,
+    this.isSignedIn,
+    this.loginPageBuilder,
+    this.myPlacesBuilder,
+  });
 
   final PlaceRepository? repository;
 
   /// País de casa da conta (testes injetam). Padrão: doc do usuário.
   final HomeCountryLoader? homeCountryLoader;
   final DateTime Function()? clock;
+
+  /// Testes injetam. Padrão: [FirebaseAuth.instance.currentUser] != null.
+  final bool Function()? isSignedIn;
+
+  /// Testes injetam a tela de login. Padrão: [LoginPage].
+  final WidgetBuilder? loginPageBuilder;
+
+  /// Testes injetam Meus locais (com loader falso). Padrão: [PlaceSubmissionsPage].
+  final WidgetBuilder? myPlacesBuilder;
 
   @override
   State<LocaisListPage> createState() => _LocaisListPageState();
@@ -194,13 +214,33 @@ class _LocaisListPageState extends State<LocaisListPage> {
         children: [
           const Center(child: RemdyLogo(height: 48)),
           const SizedBox(height: 8),
-          Text(
-            strings.title,
-            style: const TextStyle(
-              fontSize: 23,
-              fontWeight: FontWeight.w900,
-              color: LocaisColors.text,
-            ),
+          Row(
+            children: [
+              Text(
+                strings.title,
+                style: const TextStyle(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                  color: LocaisColors.text,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: const Key('locais_manage_places'),
+                    onPressed: _openMyPlaces,
+                    icon: const Icon(Icons.storefront_rounded),
+                    label: Text(
+                      AppTexts.t('place_cta_manage_title'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
           Text(
@@ -212,6 +252,42 @@ class _LocaisListPageState extends State<LocaisListPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  bool _signedIn() {
+    if (widget.isSignedIn != null) return widget.isSignedIn!();
+    try {
+      return FirebaseAuth.instance.currentUser != null;
+    } catch (_) {
+      // Testes sem Firebase: o AuthGate já exige login para chegar aqui.
+      return true;
+    }
+  }
+
+  Future<void> _openMyPlaces() async {
+    if (!_signedIn()) {
+      PendingMyPlaces.openAfterLogin = true;
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: widget.loginPageBuilder ?? (_) => const LoginPage(),
+        ),
+      );
+      // Sucesso no login troca a pilha (Splash/AuthGate) e desmonta esta
+      // página; a bandeira fica para o AuthGate abrir Meus locais. Voltar
+      // sem entrar cancela o destino pendente.
+      if (!mounted) return;
+      PendingMyPlaces.openAfterLogin = false;
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: widget.myPlacesBuilder ??
+            (_) => const PlaceSubmissionsPage(adminPending: false),
       ),
     );
   }
