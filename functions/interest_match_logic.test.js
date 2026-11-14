@@ -39,7 +39,7 @@ test("filtros: mín. 2 iguais, Só explorar, oculto, switch, bloqueio, país; ci
     { uid: "ok_city", data: { ...V, stateName: "Paraná", interests: MH } },
     { uid: "only_one", data: { ...V, interests: ["music"] } },
     { uid: "explore", data: { ...V, exploreOnly: true, interests: MH } },
-    { uid: "hidden", data: { ...V, nearbyEnabled: false, interests: MH } },
+    { uid: "hidden", data: { ...V, hideInCity: true, interests: MH } },
     { uid: "off", data: { ...V, interestPushEnabled: false, interests: MH } },
     { uid: "blk", data: { ...V, blocked: ["s"], interests: MH } },
     { uid: "ca", data: { ...V, homeCountryCode: "ca", interests: MH } },
@@ -51,7 +51,12 @@ test("filtros: mín. 2 iguais, Só explorar, oculto, switch, bloqueio, país; ci
   const many = Array.from({ length: 50 }, (_, i) => ({ uid: "u" + String(i).padStart(2, "0"), data: { ...V, interests: MH } }));
   assert.strictEqual(L.pickRecipients({ subjectUid: "s", subject, candidates: many }).length, L.MAX_RECIPIENTS_PER_TRIGGER);
   assert.ok(!L.isVisibleActive({ ...subject, exploreOnly: true }));
-  assert.ok(!L.isVisibleActive({ ...subject, nearbyEnabled: false }));
+  assert.ok(!L.isVisibleActive({ ...subject, hideInCity: true }));
+  assert.ok(L.isVisibleActive({ ...subject, nearbyEnabled: false }));
+  assert.ok(L.isVisibleActive({ ...subject, hideInCity: false }));
+  const noHide = { ...subject };
+  delete noHide.hideInCity;
+  assert.ok(L.isVisibleActive(noHide));
   assert.deepStrictEqual(
     L.pickRecipients({ subjectUid: "s", subject: { ...subject, blocked: ["ok_city"] }, candidates: cands }).map((x) => x.uid),
     ["same_state", "other_state"]);
@@ -64,4 +69,14 @@ test("1 por dia por destinatário", () => {
   assert.ok(!L.canReceive(d, now, now - 60 * 60 * 1000));
   assert.ok(L.canReceive(d, now, now - L.COOLDOWN_MS - 1));
   assert.ok(!L.canReceive({ ...d, interestPushEnabled: false }, now, undefined));
+});
+
+test("isVisibleActive: hideInCity ausente/false visível; true esconde; nearbyEnabled false não esconde", () => {
+  const base = { ...V };
+  delete base.hideInCity;
+  assert.ok(L.isVisibleActive(base));
+  assert.ok(L.isVisibleActive({ ...base, hideInCity: false, nearbyEnabled: false }));
+  assert.ok(!L.isVisibleActive({ ...base, hideInCity: true, nearbyEnabled: true }));
+  assert.ok(!L.isVisibleActive({ ...base, hiddenFromLists: true }));
+  assert.ok(!L.isVisibleActive({ ...base, isBanned: true }));
 });

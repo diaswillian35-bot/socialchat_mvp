@@ -182,7 +182,8 @@ function isVisibleActive(d) {
   if (!d) return false;
   if (d.exploreOnly === true) return false;
   if (d.hiddenFromLists === true) return false;
-  if (d.nearbyEnabled !== true) return false;
+  // hideInCity ausente/false = visível; não reutiliza nearbyEnabled (nasceu falso).
+  if (d.hideInCity === true) return false;
   if (d.isBanned === true || d.deleted === true || d.suspended === true) return false;
   if (d.ageVerificationStatus !== "verified") return false;
   if (d.profileComplete !== true) return false;
