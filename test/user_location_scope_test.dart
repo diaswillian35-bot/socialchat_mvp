@@ -51,6 +51,9 @@ void main() {
   const barracaoLng = -53.6330; // PR — fronteira, <110 km de Dionísio
   const torontoLat = 43.6532;
   const torontoLng = -79.3832;
+  // ~6,7 km ao norte do centro de Toronto (caso York vs Toronto).
+  const yorkLat = 43.7132;
+  const yorkLng = -79.3832;
 
   group('UserLocationScope geo radius 110 km', () {
     test('rejects missing city, country or coordinates', () {
@@ -168,8 +171,10 @@ void main() {
       final dFar = UserLocationScope.distanceKmBetweenUsers(viewer, far)!;
       expect(dNear, lessThan(UserLocationScope.regionRadiusKm));
       expect(dFar, greaterThan(UserLocationScope.regionRadiusKm));
-      expect(UserLocationScope.withinRegionRadiusFromUserData(viewer, near), isTrue);
-      expect(UserLocationScope.withinRegionRadiusFromUserData(viewer, far), isFalse);
+      expect(UserLocationScope.withinRegionRadiusFromUserData(viewer, near),
+          isTrue);
+      expect(UserLocationScope.withinRegionRadiusFromUserData(viewer, far),
+          isFalse);
 
       // Exatamente 110 km: ponto sintético ao norte do viewer.
       final exact = GroupGeo.destinationPoint(
@@ -211,7 +216,9 @@ void main() {
       );
     });
 
-    test('different UFs within 110 km appear in region; same state beyond does not', () {
+    test(
+        'different UFs within 110 km appear in region; same state beyond does not',
+        () {
       final scBorder = user(
         cityName: 'Dionísio Cerqueira',
         stateCode: 'SC',
@@ -232,7 +239,8 @@ void main() {
         UserLocationScope.withinRegionRadiusFromUserData(scBorder, prBorder),
         isTrue,
       );
-      expect(UserLocationScope.sameCityFromUserData(scBorder, prBorder), isFalse);
+      expect(
+          UserLocationScope.sameCityFromUserData(scBorder, prBorder), isFalse);
 
       // Mesmo estado, longe: Campo Mourão (PR) vs Curitiba (PR).
       final cm = user(
@@ -253,10 +261,12 @@ void main() {
         UserLocationScope.distanceKmBetweenUsers(cm, cwb)!,
         greaterThan(UserLocationScope.regionRadiusKm),
       );
-      expect(UserLocationScope.withinRegionRadiusFromUserData(cm, cwb), isFalse);
+      expect(
+          UserLocationScope.withinRegionRadiusFromUserData(cm, cwb), isFalse);
     });
 
-    test('COMCAM cities within 110 km match by distance, not admin grouping', () {
+    test('COMCAM cities within 110 km match by distance, not admin grouping',
+        () {
       final peabiruUser = user(
         cityName: 'Peabiru',
         stateCode: 'PR',
@@ -272,7 +282,8 @@ void main() {
         lng: campoMouraoLng,
       );
       expect(
-        UserLocationScope.withinRegionRadiusFromUserData(peabiruUser, campoUser),
+        UserLocationScope.withinRegionRadiusFromUserData(
+            peabiruUser, campoUser),
         isTrue,
       );
       // Curitiba (mesmo PR) fora do raio.
@@ -294,7 +305,8 @@ void main() {
       expect(scope, contains('GroupGeo.withinRegion'));
     });
 
-    test('BR and CA never match across countries even if coords close in tests', () {
+    test('BR and CA never match across countries even if coords close in tests',
+        () {
       final br = user(
         cityName: 'São Paulo',
         stateCode: 'SP',
@@ -330,6 +342,100 @@ void main() {
       expect(page, contains('matchesViewerRegion'));
       expect(page, contains('viewerLat'));
       expect(page, isNot(contains('strictCity: false')));
+    });
+  });
+
+  group('Home matchesViewerCity: país + raio 25 km, sem nome de cidade', () {
+    test('York vs Toronto a ~6,7 km aparece', () {
+      final d = GroupGeo.distanceKm(
+        lat1: yorkLat,
+        lng1: yorkLng,
+        lat2: torontoLat,
+        lng2: torontoLng,
+      );
+      expect(d, isNotNull);
+      expect(d, closeTo(6.7, 0.1));
+
+      final toronto = user(
+        cityName: 'Toronto',
+        stateName: 'Ontario',
+        homeCountryCode: 'ca',
+        lat: torontoLat,
+        lng: torontoLng,
+      );
+      expect(
+        UserLocationScope.matchesViewerCity(
+          otherData: toronto,
+          viewerCity: 'York',
+          viewerCountryCode: 'ca',
+          viewerLat: yorkLat,
+          viewerLng: yorkLng,
+        ),
+        isTrue,
+      );
+      // Mesmo nome ainda é exigido em sameCityFromUserData (outras listas).
+      expect(
+        UserLocationScope.sameCityFromUserData(
+          user(
+            cityName: 'York',
+            stateName: 'Ontario',
+            homeCountryCode: 'ca',
+            lat: yorkLat,
+            lng: yorkLng,
+          ),
+          toronto,
+        ),
+        isFalse,
+      );
+    });
+
+    test('mesma cidade a mais de 25 km não aparece', () {
+      const farLat = 43.9232; // ~30 km ao norte, mesmo nome Toronto
+      final d = GroupGeo.distanceKm(
+        lat1: torontoLat,
+        lng1: torontoLng,
+        lat2: farLat,
+        lng2: torontoLng,
+      );
+      expect(d, greaterThan(25));
+
+      final far = user(
+        cityName: 'Toronto',
+        stateName: 'Ontario',
+        homeCountryCode: 'ca',
+        lat: farLat,
+        lng: torontoLng,
+      );
+      expect(
+        UserLocationScope.matchesViewerCity(
+          otherData: far,
+          viewerCity: 'Toronto',
+          viewerCountryCode: 'ca',
+          viewerLat: torontoLat,
+          viewerLng: torontoLng,
+        ),
+        isFalse,
+      );
+    });
+
+    test('outro país não aparece mesmo com coords próximas', () {
+      final br = user(
+        cityName: 'Toronto',
+        stateCode: 'SP',
+        homeCountryCode: 'br',
+        lat: torontoLat,
+        lng: torontoLng,
+      );
+      expect(
+        UserLocationScope.matchesViewerCity(
+          otherData: br,
+          viewerCity: 'York',
+          viewerCountryCode: 'ca',
+          viewerLat: yorkLat,
+          viewerLng: yorkLng,
+        ),
+        isFalse,
+      );
     });
   });
 
@@ -371,7 +477,8 @@ void main() {
       );
     });
 
-    test('Home Em breve is relative to profile homeCountryCode (BR and CA)', () {
+    test('Home Em breve is relative to profile homeCountryCode (BR and CA)',
+        () {
       final home = source('lib/pages/home_page.dart');
       expect(home, contains('showsComingSoonOnHome'));
       expect(home, contains('userHomeCountryCode: homeCode'));

@@ -1,12 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'message_moderation.dart';
+import 'nearby_visibility.dart';
 import '../l10n/app_texts.dart';
 
 /// "Novo" user eligibility — 7 days after profile completion.
 ///
-/// Discoverable maps to `nearbyEnabled` (existing field). Legacy profiles
-/// without `profileCompletedAt` fall back safely.
+/// Discoverable maps to `hideInCity` (absent/false = visible). The legacy
+/// `nearbyEnabled` field is ignored here. Legacy profiles without
+/// `profileCompletedAt` fall back safely.
 class NewUserPolicy {
   NewUserPolicy._();
 
@@ -71,7 +73,8 @@ class NewUserPolicy {
     if (data['hiddenFromLists'] == true) return false;
     if (data['ageVerificationStatus'] != 'verified') return false;
     if (data['profileComplete'] != true) return false;
-    if (data['nearbyEnabled'] != true) return false;
+    // "Não aparecer na minha cidade": hideInCity == true esconde; ausente = visível.
+    if (NearbyVisibility.hideInCityFromData(data)) return false;
     if ((data['name'] ?? '').toString().trim().isEmpty) return false;
     return isWithinNewUserWindow(data, now: now);
   }
