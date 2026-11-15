@@ -1979,7 +1979,9 @@ class GroupsListPageState extends State<GroupsListPage>
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
         child: Text(
-          t.get(searching ? 'no_groups_found' : 'groups_empty_country'),
+          t.get(searching
+              ? 'no_groups_found'
+              : GroupDiscoveryLogic.emptyMessageKey(GroupDiscoveryTab.nearby)),
           textAlign: TextAlign.center,
           style: TextStyle(
             color: scheme.onSurfaceVariant,

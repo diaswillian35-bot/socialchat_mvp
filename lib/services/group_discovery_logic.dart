@@ -710,7 +710,7 @@ class GroupDiscoveryLogic {
   static String emptyMessageKey(GroupDiscoveryTab tab) {
     switch (tab) {
       case GroupDiscoveryTab.nearby:
-        return 'groups_empty_country';
+        return 'groups_empty_region';
       case GroupDiscoveryTab.mine:
         return 'groups_empty_mine';
       case GroupDiscoveryTab.city:
