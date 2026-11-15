@@ -6,7 +6,10 @@ CountryPerson p(String uid, String city, String state, double? lat, double? lng,
         {bool online = false,
         String hometown = '',
         String hometownState = '',
-        String country = 'br'}) =>
+        String country = 'br',
+        List<String> interests = const [],
+        String about = '',
+        String languages = ''}) =>
     CountryPerson(
       uid: uid,
       name: uid,
@@ -19,6 +22,9 @@ CountryPerson p(String uid, String city, String state, double? lat, double? lng,
       hometownCity: hometown,
       hometownSubdivision: hometownState,
       hometownCountryCode: hometown.isEmpty ? '' : 'br',
+      interests: interests,
+      about: about,
+      languages: languages,
     );
 
 final people = [
@@ -36,12 +42,17 @@ final people = [
   p('brasil', 'Algum lugar', 'Brasil', null, null),
 ];
 
-Map<String, dynamic> navegantesViewer({bool hometown = true}) => {
+Map<String, dynamic> navegantesViewer({
+  bool hometown = true,
+  List<String> interests = const [],
+}) =>
+    {
       'homeCountryCode': 'br',
       'cityName': 'Navegantes',
       'stateName': 'SC',
       'cityLat': -26.8989,
       'cityLng': -48.6542,
+      if (interests.isNotEmpty) 'interests': interests,
       if (hometown) ...{
         'hometownCity': 'Campo Mourão',
         'hometownState': 'PR',
@@ -63,34 +74,23 @@ void main() {
     expect(v.nearby.first.distanceKm, isNull); // mesma cidade: sem km
     expect(v.nearby[1].distanceKm!.round(), inInclusiveRange(1, 3));
     expect(v.ownStateLabel, 'Santa Catarina');
-    // floripa (mesma cidade natal) está em "Em comum" e não se repete.
-    expect(uids(v.ownStateRows), isEmpty);
+    // Sem interesses em comum, floripa fica no estado (não vai para Em comum).
+    expect(uids(v.ownStateRows), ['floripa']);
     expect(v.otherStates.map((s) => s.key).toList(),
         ['PR', 'SP', 'ES', PeopleCountryHierarchy.otherKey]);
     expect(v.otherStates.first.label, 'Paraná');
     expect(v.otherStates.first.initiallyOpen, isTrue);
     expect(v.otherStates.skip(1).every((s) => !s.initiallyOpen), isTrue);
-    expect(uids(v.otherStates.first.rows), ['cwb']);
+    expect(uids(v.otherStates.first.rows), ['cwb', 'cm']);
   });
 
-  test('cidade natal: tag e motivos reais em "Em comum com você"', () {
+  test('cidade natal e mesma cidade NÃO entram mais em Em comum', () {
     final v = CountryPeopleView.build(
         people: people, viewer: navegantesViewer(), countryCode: 'br');
-    // cm aparece em "Em comum" e não se repete nos estados.
-    expect(uids(v.otherStates.first.rows), isNot(contains('cm')));
-    expect(
-        v.otherStates.first.rows
-            .firstWhere((r) => r.person.uid == 'cwb')
-            .isViewerHometown,
-        isFalse);
-    final reasons = {for (final m in v.common) m.person.uid: m.reason};
-    expect(reasons['floripa'], CommonReason.sameHometown);
-    expect(reasons['cm'], CommonReason.livesInYourHometown);
-    // Mesma cidade completa "Em comum" e continua em "Perto de você".
-    expect(reasons['nav'], CommonReason.sameCity);
-    expect(uids(v.nearby).first, 'nav');
-    expect(reasons.containsKey('itj'), isFalse);
-    expect(v.common.first.person.uid, 'floripa');
+    expect(v.common, isEmpty);
+    expect(uids(v.otherStates.first.rows), containsAll(['cwb', 'cm']));
+    expect(uids(v.nearby), contains('nav'));
+    expect(uids(v.ownStateRows), contains('floripa'));
   });
 
   test('sem cidade natal e sem ninguém em comum: seção some', () {
@@ -140,15 +140,16 @@ void main() {
         'hometownCity': 'Campo Mourão',
         'hometownState': 'PR',
         'hometownCountryCode': 'br',
+        'interests': ['music'],
       },
       countryCode: 'br',
     );
     expect(v.hasReference, isTrue);
     expect(v.referenceIsHometown, isTrue);
     expect(v.referenceCity, 'Campo Mourão');
-    // cm mora na cidade natal: vai para "Em comum" e não se repete.
-    expect(v.common.map((m) => m.person.uid), contains('cm'));
-    expect(uids(v.nearby), isNot(contains('cm')));
+    // Chip de outro país: Em comum some, mesmo com interesses.
+    expect(v.common, isEmpty);
+    expect(uids(v.nearby), contains('cm'));
     expect(v.ownStateLabel, 'Paraná');
     expect(uids(v.ownStateRows), ['cwb']);
     expect(v.otherStates.first.key, 'SC');
@@ -217,5 +218,77 @@ void main() {
     expect(sameHometownPlace('br|PR|campo mourao', 'br||campo mourao'), isTrue);
     expect(
         sameHometownPlace('br|PR|campo mourao', 'br|SC|campo mourao'), isFalse);
+  });
+
+  test('Em comum no país da conta: só interesses reais, sem completar com cidade',
+      () {
+    final list = [
+      ...people,
+      p('ana', 'Curitiba', 'PR', -25.4284, -49.2733,
+          interests: ['music', 'tech'], about: 'Olá', languages: 'pt'),
+      p('bruno', 'Navegantes', 'SC', -26.8989, -48.6542,
+          interests: ['music']),
+    ];
+    final v = CountryPeopleView.build(
+      people: list,
+      viewer: navegantesViewer(interests: ['music', 'tech', 'bars']),
+      countryCode: 'br',
+    );
+    expect(v.common.map((m) => m.person.uid).toList(), ['ana', 'bruno']);
+    expect(v.common.every((m) => m.reason == CommonReason.sharedInterests),
+        isTrue);
+    // Quem está em Em comum não se repete abaixo (exceto mesma cidade? bruno é mesma cidade)
+    expect(uids(v.nearby), isNot(contains('bruno')));
+    expect(uids(v.otherStates.expand((s) => s.rows)), isNot(contains('ana')));
+    // vizinhos sem interesse comum continuam em Perto de você
+    expect(uids(v.nearby), containsAll(['nav', 'itj']));
+  });
+
+  test('Em comum prioriza quem tem bio e idioma', () {
+    final list = [
+      p('sem', 'Itajaí', 'SC', -26.9078, -48.6619,
+          interests: ['music', 'tech']),
+      p('com', 'Itajaí', 'SC', -26.9078, -48.6619,
+          interests: ['music'], about: 'Bio', languages: 'Português'),
+    ];
+    final v = CountryPeopleView.build(
+      people: list,
+      viewer: navegantesViewer(interests: ['music', 'tech']),
+      countryCode: 'br',
+    );
+    expect(v.common.map((m) => m.person.uid).toList(), ['com', 'sem']);
+    // Mesmo com menos interesses, quem tem bio+idioma vem primeiro.
+    expect(v.common.first.interests, ['music']);
+    expect(v.common.last.interests, ['music', 'tech']);
+  });
+
+  test('Em comum some no chip de outro país', () {
+    final list = [
+      p('ana', 'York', 'ON', 43.69, -79.48,
+          country: 'ca', interests: ['music'], about: 'Hi', languages: 'en'),
+    ];
+    final v = CountryPeopleView.build(
+      people: list,
+      viewer: {
+        'homeCountryCode': 'br',
+        'countryCode': 'br',
+        'cityName': 'Navegantes',
+        'stateName': 'SC',
+        'interests': ['music'],
+      },
+      countryCode: 'ca',
+    );
+    expect(v.common, isEmpty);
+  });
+
+  test('Em comum some quando ninguém compartilha interesse', () {
+    final v = CountryPeopleView.build(
+      people: [
+        p('ana', 'Curitiba', 'PR', -25.42, -49.27, interests: ['football']),
+      ],
+      viewer: navegantesViewer(interests: ['music']),
+      countryCode: 'br',
+    );
+    expect(v.common, isEmpty);
   });
 }
