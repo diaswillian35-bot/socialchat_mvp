@@ -77,7 +77,7 @@ void main() {
     g('floripa', cityKey: 'florianopolis', state: 'SC', at: floripa),
   ];
 
-  test('seções na ordem cidade > região > estado > nacionais > outros estados',
+  test('seções na ordem cidade > região; estado, nacionais e outros ficam fora',
       () {
     final sections = GroupNearbyLogic.sections(
       items: docs.map(item).toList(),
@@ -86,23 +86,15 @@ void main() {
     expect(sections.map((s) => s.kind).toList(), [
       NearbySectionKind.city,
       NearbySectionKind.region,
-      NearbySectionKind.state,
-      NearbySectionKind.national,
-      NearbySectionKind.otherState,
-      NearbySectionKind.otherState,
     ]);
     expect(sections[0].items.map((e) => e.id).toSet(),
         {'amigos-cm', 'eventos-cm'});
     expect(sections[1].items.single.id, 'boteco-maringa');
-    expect(sections[2].items.single.id, 'curitiba');
-    expect(sections[2].stateCode, 'PR');
-    expect(sections[3].items.single.id, 'nacional');
-    // SP (Campinas ~ 560 km) antes de SC (Florianópolis ~ 480 km?) — pela distância.
-    final dCampinas = GroupNearbyLogic.distanceToViewer(docs[5], viewer)!;
-    final dFloripa = GroupNearbyLogic.distanceToViewer(docs[6], viewer)!;
-    final firstOther = dCampinas < dFloripa ? 'br-sp' : 'br-sc';
-    expect(sections[4].stateKey, firstOther);
-    expect(sections[4].stateCode, firstOther.split('-').last.toUpperCase());
+    expect(
+        GroupNearbyLogic.classify(docs[3], viewer), isNull); // Curitiba ~350 km
+    expect(GroupNearbyLogic.classify(docs[4], viewer), isNull); // nacional
+    expect(GroupNearbyLogic.classify(docs[5], viewer), isNull); // Campinas-SP
+    expect(GroupNearbyLogic.classify(docs[6], viewer), isNull); // Floripa-SC
   });
 
   test('membro continua na seção, com isMember', () {
@@ -135,7 +127,8 @@ void main() {
     );
   });
 
-  test('sem coordenadas no perfil: cidade por cityKey, resto por estado', () {
+  test('sem coordenadas no perfil: só entra a mesma cidade (cityKey/placeId)',
+      () {
     const noPoint = NearbyViewer(
       countryCode: 'br',
       cityKey: 'campo mourao',
@@ -143,14 +136,8 @@ void main() {
       source: NearbyLocationSource.profile,
     );
     expect(GroupNearbyLogic.classify(docs[0], noPoint), NearbySectionKind.city);
-    expect(
-      GroupNearbyLogic.classify(docs[2], noPoint),
-      NearbySectionKind.state,
-    );
-    expect(
-      GroupNearbyLogic.classify(docs[5], noPoint),
-      NearbySectionKind.otherState,
-    );
+    expect(GroupNearbyLogic.classify(docs[2], noPoint), isNull);
+    expect(GroupNearbyLogic.classify(docs[5], noPoint), isNull);
   });
 
   test('outro país, apagado, oculto e opt-out ficam fora', () {
@@ -163,28 +150,151 @@ void main() {
     expect(ok(g('toronto', country: 'ca', state: 'ON', at: [43.65, -79.38])),
         isFalse);
     expect(ok(g('del', at: cm, extra: {'deleted': true})), isFalse);
-    expect(ok(g('hid', at: cm, extra: {'hiddenFor': ['me']})), isFalse);
+    expect(
+        ok(g('hid', at: cm, extra: {
+          'hiddenFor': ['me']
+        })),
+        isFalse);
     expect(ok(g('opt', at: cm, extra: {'discoverable': false})), isFalse);
     expect(ok({'id': 'legacy', 'countryCode': 'br'}), isFalse);
   });
 
-  test('grupo de cidade a mais de 110 km agora aparece (estado ou outros)', () {
-    // Antes do build 44 este grupo não aparecia em aba nenhuma.
-    expect(
-      GroupNearbyLogic.classify(docs[3], viewer),
-      NearbySectionKind.state,
-    );
+  test('grupo de cidade a mais de 110 km não entra em Perto de você', () {
+    expect(GroupNearbyLogic.classify(docs[3], viewer), isNull);
+    expect(GroupNearbyLogic.includedInNearby(docs[3], viewer), isFalse);
   });
 
   test('stateKey novo tem prioridade; sem ele deriva de stateName', () {
     expect(GroupStateCodes.groupStateKey({'stateKey': 'br-pr'}, 'br'), 'br-pr');
-    expect(GroupStateCodes.groupStateKey({'stateName': 'Paraná'}, 'br'),
-        'br-pr');
+    expect(
+        GroupStateCodes.groupStateKey({'stateName': 'Paraná'}, 'br'), 'br-pr');
     expect(GroupStateCodes.groupStateKey({'stateName': 'Araranguá - SC'}, 'br'),
         'br-sc');
     expect(GroupStateCodes.groupStateKey({'stateName': 'Brasil'}, 'br'), '');
     expect(GroupStateCodes.normalize('ca', 'Québec'), 'QC');
     expect(GroupStateCodes.normalize('br', 'State of São Paulo'), 'SP');
+  });
+
+  test('PR, Paraná e br-pr são o mesmo estado; HHA8NM só com stateName PR', () {
+    expect(GroupStateCodes.canonicalStateCode('br', stateName: 'PR'), 'PR');
+    expect(GroupStateCodes.canonicalStateCode('br', stateName: 'Paraná'), 'PR');
+    expect(GroupStateCodes.canonicalStateCode('br', stateKey: 'br-pr'), 'PR');
+    expect(GroupStateCodes.canonicalStateCode('br', stateKey: 'PR'), 'PR');
+    expect(GroupStateCodes.canonicalStateCode('br', stateCode: 'pr'), 'PR');
+    expect(
+      GroupStateCodes.canonicalStateCodeFromData({'stateName': 'PR'}, 'br'),
+      'PR',
+    );
+    expect(
+      GroupStateCodes.sameStateOrUndetermined(
+        countryCode: 'br',
+        groupData: {'stateName': 'PR'},
+        viewerStateCode: 'Paraná',
+      ),
+      isTrue,
+    );
+    expect(
+      GroupStateCodes.sameStateOrUndetermined(
+        countryCode: 'br',
+        groupData: {'stateKey': 'br-pr'},
+        viewerStateCode: 'PR',
+        viewerStateKey: 'br-pr',
+      ),
+      isTrue,
+    );
+    expect(
+      GroupStateCodes.sameStateOrUndetermined(
+        countryCode: 'br',
+        groupData: {'stateName': 'Santa Catarina'},
+        viewerStateCode: 'PR',
+      ),
+      isFalse,
+    );
+    // Estado indeterminado: não esconde.
+    expect(
+      GroupStateCodes.sameStateOrUndetermined(
+        countryCode: 'br',
+        groupData: {'stateName': ''},
+        viewerStateCode: 'PR',
+      ),
+      isTrue,
+    );
+  });
+
+  test('raio 110 km, mesmo estado e cidade sem coordenadas', () {
+    const origin = NearbyViewer(
+      countryCode: 'br',
+      cityKey: 'campo mourao',
+      latitude: -24.044,
+      longitude: -52.381,
+      stateCode: 'PR',
+      source: NearbyLocationSource.profile,
+    );
+
+    final bc = g(
+      'balneario',
+      cityKey: 'balneario camboriu',
+      state: 'SC',
+      at: [-26.998, -48.633],
+    );
+    expect(GroupNearbyLogic.distanceToViewer(bc, origin)!, closeTo(499, 8));
+    expect(GroupNearbyLogic.classify(bc, origin), isNull);
+
+    // ~80 km ao norte do centro de Campo Mourão.
+    const at80 = [-23.32518, -52.381];
+    final pr80 = g('pr80', cityKey: 'cidade 80', state: 'PR', at: at80);
+    expect(GroupNearbyLogic.distanceToViewer(pr80, origin)!, closeTo(80, 2));
+    expect(GroupNearbyLogic.classify(pr80, origin), NearbySectionKind.region);
+    expect(GroupNearbyLogic.includedInNearby(pr80, origin), isTrue);
+
+    final sc80 = g('sc80', cityKey: 'cidade sc 80', state: 'SC', at: at80);
+    expect(GroupNearbyLogic.distanceToViewer(sc80, origin)!, closeTo(80, 2));
+    expect(GroupNearbyLogic.classify(sc80, origin), isNull);
+
+    const at120 = [-22.96482, -52.381];
+    final pr120 = g('pr120', cityKey: 'cidade 120', state: 'PR', at: at120);
+    expect(GroupNearbyLogic.distanceToViewer(pr120, origin)!, closeTo(120, 2));
+    expect(GroupNearbyLogic.classify(pr120, origin), isNull);
+
+    final sameCityNoCoords = g(
+      'cm-sem-coords',
+      cityKey: 'campo mourao',
+      state: 'PR',
+    );
+    expect(
+      GroupNearbyLogic.classify(sameCityNoCoords, origin),
+      NearbySectionKind.city,
+    );
+
+    final otherNoCoords = g(
+      'cwb-sem-coords',
+      cityKey: 'curitiba',
+      state: 'PR',
+    );
+    expect(GroupNearbyLogic.classify(otherNoCoords, origin), isNull);
+
+    // Sem estado no grupo: usa só o raio de 110 km.
+    final noState80 = g('sem-uf-80', cityKey: 'x', state: '', at: at80);
+    expect(
+      GroupNearbyLogic.classify(noState80, origin),
+      NearbySectionKind.region,
+    );
+
+    // Nacional não entra, mesmo perto.
+    final nationalNear = g(
+      'nacional-perto',
+      scope: 'country',
+      state: '',
+      at: at80,
+    );
+    expect(GroupNearbyLogic.classify(nationalNear, origin), isNull);
+  });
+
+  test('vazio de Perto de você reutiliza o texto da região', () {
+    expect(
+      GroupDiscoveryLogic.emptyMessageKey(GroupDiscoveryTab.nearby),
+      'groups_empty_region',
+    );
   });
 
   test('nomes de estado e província nos idiomas', () {
@@ -327,7 +437,8 @@ void main() {
     expect(GroupDiscoveryLogic.tabLabelKey(GroupDiscoveryTab.nearby),
         'groups_tab_nearby');
     final page = File('lib/pages/groups_list_page.dart').readAsStringSync();
-    expect(page, contains('GroupDiscoveryTab _tab = GroupDiscoveryTab.nearby;'));
+    expect(
+        page, contains('GroupDiscoveryTab _tab = GroupDiscoveryTab.nearby;'));
     expect(
       GroupDiscoveryLogic.locationComplete(
         tab: GroupDiscoveryTab.nearby,

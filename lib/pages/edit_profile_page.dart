@@ -66,7 +66,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   double? _selectedLat;
   double? _selectedLng;
 
-  bool _nearbyEnabled = false;
   bool _hideInCity = false;
   bool _exploreOnly = false;
   List<String> _interests = const [];
@@ -157,7 +156,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ? savedLng.toDouble()
           : double.tryParse((savedLng ?? '').toString());
 
-      _nearbyEnabled = data['nearbyEnabled'] == true;
       _hideInCity = NearbyVisibility.hideInCityFromData(data);
       _exploreOnly = data['exploreOnly'] == true;
       _interests = UserInterests.fromUserData(data);
@@ -508,7 +506,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         // Não representam GPS atual nem endereço residencial.
         'cityLat': _selectedLat,
         'cityLng': _selectedLng,
-        'nearbyEnabled': _nearbyEnabled,
         ...NearbyVisibility.payloadForHide(_hideInCity),
         'exploreOnly': _exploreOnly,
         UserInterests.field: UserInterests.sanitize(_interests),
@@ -547,7 +544,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'lat': _selectedLat,
         'lng': _selectedLng,
         'location': _displayLocation,
-        'nearbyEnabled': _nearbyEnabled,
         ...NearbyVisibility.payloadForHide(_hideInCity),
         'exploreOnly': _exploreOnly,
         UserInterests.field: UserInterests.sanitize(_interests),

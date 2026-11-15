@@ -22,15 +22,41 @@ class GroupStateCodes {
 
   static const Map<String, List<String>> _caAliases = {
     'AB': ['Alberta'],
-    'BC': ['British Columbia', 'Colombie Britannique', 'Columbia Britanica', 'Colúmbia Britânica'],
+    'BC': [
+      'British Columbia',
+      'Colombie Britannique',
+      'Columbia Britanica',
+      'Colúmbia Britânica'
+    ],
     'MB': ['Manitoba'],
-    'NB': ['New Brunswick', 'Nouveau Brunswick', 'Nova Brunswick', 'Nuevo Brunswick'],
-    'NL': ['Newfoundland and Labrador', 'Terre Neuve et Labrador', 'Terra Nova e Labrador', 'Terranova y Labrador', 'Newfoundland'],
+    'NB': [
+      'New Brunswick',
+      'Nouveau Brunswick',
+      'Nova Brunswick',
+      'Nuevo Brunswick'
+    ],
+    'NL': [
+      'Newfoundland and Labrador',
+      'Terre Neuve et Labrador',
+      'Terra Nova e Labrador',
+      'Terranova y Labrador',
+      'Newfoundland'
+    ],
     'NS': ['Nova Scotia', 'Nouvelle Ecosse', 'Nova Escocia', 'Nueva Escocia'],
-    'NT': ['Northwest Territories', 'Territoires du Nord Ouest', 'Territorios do Noroeste', 'Territorios del Noroeste'],
+    'NT': [
+      'Northwest Territories',
+      'Territoires du Nord Ouest',
+      'Territorios do Noroeste',
+      'Territorios del Noroeste'
+    ],
     'NU': ['Nunavut'],
     'ON': ['Ontario', 'Ontário'],
-    'PE': ['Prince Edward Island', 'Ile du Prince Edouard', 'Ilha do Principe Eduardo', 'Isla del Principe Eduardo'],
+    'PE': [
+      'Prince Edward Island',
+      'Ile du Prince Edouard',
+      'Ilha do Principe Eduardo',
+      'Isla del Principe Eduardo'
+    ],
     'QC': ['Quebec', 'Québec'],
     'SK': ['Saskatchewan'],
     'YT': ['Yukon', 'Yukon Territory', 'Yukón'],
@@ -51,15 +77,55 @@ class GroupStateCodes {
   static const Map<String, Map<String, String>> _caNames = {
     'ON': {'pt': 'Ontário', 'en': 'Ontario', 'es': 'Ontario', 'fr': 'Ontario'},
     'QC': {'pt': 'Quebec', 'en': 'Quebec', 'es': 'Quebec', 'fr': 'Québec'},
-    'BC': {'pt': 'Colúmbia Britânica', 'en': 'British Columbia', 'es': 'Columbia Británica', 'fr': 'Colombie-Britannique'},
+    'BC': {
+      'pt': 'Colúmbia Britânica',
+      'en': 'British Columbia',
+      'es': 'Columbia Británica',
+      'fr': 'Colombie-Britannique'
+    },
     'AB': {'pt': 'Alberta', 'en': 'Alberta', 'es': 'Alberta', 'fr': 'Alberta'},
-    'MB': {'pt': 'Manitoba', 'en': 'Manitoba', 'es': 'Manitoba', 'fr': 'Manitoba'},
-    'SK': {'pt': 'Saskatchewan', 'en': 'Saskatchewan', 'es': 'Saskatchewan', 'fr': 'Saskatchewan'},
-    'NS': {'pt': 'Nova Escócia', 'en': 'Nova Scotia', 'es': 'Nueva Escocia', 'fr': 'Nouvelle-Écosse'},
-    'NB': {'pt': 'Nova Brunswick', 'en': 'New Brunswick', 'es': 'Nuevo Brunswick', 'fr': 'Nouveau-Brunswick'},
-    'PE': {'pt': 'Ilha do Príncipe Eduardo', 'en': 'Prince Edward Island', 'es': 'Isla del Príncipe Eduardo', 'fr': 'Île-du-Prince-Édouard'},
-    'NL': {'pt': 'Terra Nova e Labrador', 'en': 'Newfoundland and Labrador', 'es': 'Terranova y Labrador', 'fr': 'Terre-Neuve-et-Labrador'},
-    'NT': {'pt': 'Territórios do Noroeste', 'en': 'Northwest Territories', 'es': 'Territorios del Noroeste', 'fr': 'Territoires du Nord-Ouest'},
+    'MB': {
+      'pt': 'Manitoba',
+      'en': 'Manitoba',
+      'es': 'Manitoba',
+      'fr': 'Manitoba'
+    },
+    'SK': {
+      'pt': 'Saskatchewan',
+      'en': 'Saskatchewan',
+      'es': 'Saskatchewan',
+      'fr': 'Saskatchewan'
+    },
+    'NS': {
+      'pt': 'Nova Escócia',
+      'en': 'Nova Scotia',
+      'es': 'Nueva Escocia',
+      'fr': 'Nouvelle-Écosse'
+    },
+    'NB': {
+      'pt': 'Nova Brunswick',
+      'en': 'New Brunswick',
+      'es': 'Nuevo Brunswick',
+      'fr': 'Nouveau-Brunswick'
+    },
+    'PE': {
+      'pt': 'Ilha do Príncipe Eduardo',
+      'en': 'Prince Edward Island',
+      'es': 'Isla del Príncipe Eduardo',
+      'fr': 'Île-du-Prince-Édouard'
+    },
+    'NL': {
+      'pt': 'Terra Nova e Labrador',
+      'en': 'Newfoundland and Labrador',
+      'es': 'Terranova y Labrador',
+      'fr': 'Terre-Neuve-et-Labrador'
+    },
+    'NT': {
+      'pt': 'Territórios do Noroeste',
+      'en': 'Northwest Territories',
+      'es': 'Territorios del Noroeste',
+      'fr': 'Territoires du Nord-Ouest'
+    },
     'YT': {'pt': 'Yukon', 'en': 'Yukon', 'es': 'Yukón', 'fr': 'Yukon'},
     'NU': {'pt': 'Nunavut', 'en': 'Nunavut', 'es': 'Nunavut', 'fr': 'Nunavut'},
   };
@@ -74,8 +140,8 @@ class GroupStateCodes {
     var key = _fold(value);
     if (key.isEmpty) return '';
     if (cc == 'br') {
-      key = key
-          .replaceFirst(RegExp(r'^(state of|estado de|estado do|estado da) '), '');
+      key = key.replaceFirst(
+          RegExp(r'^(state of|estado de|estado do|estado da) '), '');
       final info = BrazilStates.resolve(key);
       return info?.uf ?? '';
     }
@@ -98,6 +164,66 @@ class GroupStateCodes {
     if (stored.isNotEmpty) return stored;
     final code = normalize(countryCode, data['stateCode'] ?? data['stateName']);
     return stateKey(countryCode, code);
+  }
+
+  /// Sigla canônica ("PR") a partir de stateKey, stateCode ou stateName.
+  /// Aceita "br-pr", "PR", "Paraná" e equivalentes, só no app (sem backfill).
+  static String canonicalStateCode(
+    String countryCode, {
+    String stateKey = '',
+    dynamic stateCode,
+    dynamic stateName,
+  }) {
+    final fromCode = normalize(countryCode, stateCode);
+    if (fromCode.isNotEmpty) return fromCode;
+    final fromName = normalize(countryCode, stateName);
+    if (fromName.isNotEmpty) return fromName;
+    return _canonicalFromStateKey(countryCode, stateKey);
+  }
+
+  static String _canonicalFromStateKey(String countryCode, String stateKey) {
+    final stored = stateKey.trim();
+    if (stored.isEmpty) return '';
+    final cc = countryCode.trim().toLowerCase();
+    final lower = stored.toLowerCase();
+    var candidate = stored;
+    if (cc.isNotEmpty &&
+        (lower.startsWith('$cc-') || lower.startsWith('${cc}_'))) {
+      candidate = stored.substring(cc.length + 1);
+    } else if (lower.contains('-')) {
+      candidate = stored.split('-').last;
+    }
+    return normalize(countryCode, candidate);
+  }
+
+  static String canonicalStateCodeFromData(
+    Map<String, dynamic> data,
+    String countryCode,
+  ) {
+    return canonicalStateCode(
+      countryCode,
+      stateKey: (data['stateKey'] ?? '').toString(),
+      stateCode: data['stateCode'],
+      stateName: data['stateName'],
+    );
+  }
+
+  /// Sem estado confiável no grupo ou no usuário: não exclui por estado.
+  /// Só retorna false quando os dois lados têm sigla e elas diferem.
+  static bool sameStateOrUndetermined({
+    required String countryCode,
+    required Map<String, dynamic> groupData,
+    required String viewerStateCode,
+    String viewerStateKey = '',
+  }) {
+    final g = canonicalStateCodeFromData(groupData, countryCode);
+    final v = canonicalStateCode(
+      countryCode,
+      stateKey: viewerStateKey,
+      stateCode: viewerStateCode,
+    );
+    if (g.isEmpty || v.isEmpty) return true;
+    return g == v;
   }
 
   /// Nome do estado para título de seção, no idioma do app.

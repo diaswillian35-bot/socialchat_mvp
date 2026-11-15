@@ -14,6 +14,9 @@ import '../widgets/admin_mode_sheet.dart';
 import '../l10n/app_texts.dart';
 import '../services/dm_block.dart';
 import '../pages/verify_phone_page.dart';
+import '../services/phone_verify_feature_flag.dart';
+import '../widgets/phone_verify_menu_gate.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../pages/system_inbox_page.dart';
 import '../pages/delete_account_page.dart';
 import '../pages/blocked_users_page.dart';
@@ -236,6 +239,52 @@ Stream<int> _unreadSystemCount() {
       .map((snap) => snap.docs.length);
 }
 
+  Widget _verifyProfileEntry(BuildContext context, AppTexts t) {
+    const preceding = Divider(height: 1);
+    Widget body({required bool alreadyVerified}) {
+      if (!PhoneVerifyFeatureFlag.showMenuEntry(
+          alreadyVerified: alreadyVerified)) {
+        return preceding;
+      }
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          preceding,
+          PhoneVerifyMenuGate(
+            key: const Key('menu_verify_profile'),
+            alreadyVerified: alreadyVerified,
+            child: _item(
+              context: context,
+              icon: Icons.verified_outlined,
+              title: t.get('verify_profile_title'),
+              onTap: () => _open(context, const VerifyPhonePage()),
+            ),
+          ),
+          const Divider(height: 1),
+        ],
+      );
+    }
+
+    final uid = _prefsUid;
+    try {
+      if (uid.isEmpty || Firebase.apps.isEmpty) {
+        return body(alreadyVerified: false);
+      }
+    } catch (_) {
+      return body(alreadyVerified: false);
+    }
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('publicUsers')
+          .doc(uid)
+          .snapshots(),
+      builder: (context, snap) {
+        final verified = snap.data?.data()?['verified'] == true;
+        return body(alreadyVerified: verified);
+      },
+    );
+  }
+
   Widget _item({
     required BuildContext context,
     required IconData icon,
@@ -439,14 +488,7 @@ Stream<int> _unreadSystemCount() {
                     onChanged: _savingPrefs ? null : _setDmAllowExisting,
                   ),
                 ],
-                const Divider(height: 1),
-                _item(
-                  context: context,
-                  icon: Icons.verified_outlined,
-                  title: t.get('verify_profile_title'),
-                  onTap: () => _open(context, const VerifyPhonePage()),
-                ),
-                const Divider(height: 1),
+                _verifyProfileEntry(context, t),
                 _item(
                   context: context,
                   icon: Icons.block_rounded,

@@ -153,6 +153,9 @@ class UserLocationScope {
     );
   }
 
+  /// Home "novos próximos": mesmo país e centros a ≤ [sameCityMaxDistanceKm].
+  /// Não exige o mesmo nome de cidade (ex.: York e Toronto a 6,7 km).
+  /// [viewerCity] permanece no contrato da Home, mas não entra no match.
   static bool matchesViewerCity({
     required Map<String, dynamic> otherData,
     required String viewerCity,
@@ -163,14 +166,11 @@ class UserLocationScope {
     if (!isDiscoverableProfile(otherData)) return false;
     if (!isValidCityCoordinate(viewerLat, viewerLng)) return false;
     final country = viewerCountryCode.trim().toLowerCase();
-    if (country.isEmpty ||
-        countryCodeFromUserData(otherData) != country) {
+    if (country.isEmpty || countryCodeFromUserData(otherData) != country) {
       return false;
     }
-    final vk = UserSearchNormalize.normalize(viewerCity);
-    final ok = UserSearchNormalize.normalize(cityNameFromUserData(otherData));
-    if (vk.isEmpty || vk != ok) return false;
-
+    // Nome da cidade não entra: evitaria pares próximos com rótulos
+    // diferentes (York vs Toronto). A distância já evita homônimos longínquos.
     final otherCoords = resolveCanonicalCoords(otherData)!;
     final d = GroupGeo.distanceKm(
       lat1: viewerLat,
@@ -192,8 +192,7 @@ class UserLocationScope {
     if (!isDiscoverableProfile(otherData)) return false;
     if (!isValidCityCoordinate(viewerLat, viewerLng)) return false;
     final country = viewerCountryCode.trim().toLowerCase();
-    if (country.isEmpty ||
-        countryCodeFromUserData(otherData) != country) {
+    if (country.isEmpty || countryCodeFromUserData(otherData) != country) {
       return false;
     }
     final otherCoords = resolveCanonicalCoords(otherData)!;

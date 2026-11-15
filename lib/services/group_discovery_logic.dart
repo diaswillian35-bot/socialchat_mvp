@@ -575,6 +575,8 @@ class GroupDiscoveryLogic {
     return items.take(limit).toList();
   }
 
+  /// Chip País: todos os grupos descobíveis do mesmo país (nacionais,
+  /// cidade e região de qualquer estado). Membros continuam só em Meus.
   static bool matchesCountryDiscovery({
     required Map<String, dynamic> data,
     required String uid,
@@ -584,7 +586,8 @@ class GroupDiscoveryLogic {
     if (isOptedOutOfDiscovery(data)) return false;
     if (isConcealedFromViewer(data, uid)) return false;
     if (isParticipating(data: data, uid: uid)) return false;
-    if (GroupLocationNormalize.scope(data['scope']) != 'country') return false;
+    final scope = GroupLocationNormalize.scope(data['scope']);
+    if (!isDiscoverableScope(scope)) return false;
 
     final gCountry = GroupLocationNormalize.countryCode(
       data['countryCode'] ?? data['country'],
@@ -710,7 +713,7 @@ class GroupDiscoveryLogic {
   static String emptyMessageKey(GroupDiscoveryTab tab) {
     switch (tab) {
       case GroupDiscoveryTab.nearby:
-        return 'groups_empty_country';
+        return 'groups_empty_region';
       case GroupDiscoveryTab.mine:
         return 'groups_empty_mine';
       case GroupDiscoveryTab.city:

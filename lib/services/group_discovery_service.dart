@@ -175,7 +175,8 @@ class GroupDiscoveryService {
         scope = 'region';
         break;
       case GroupDiscoveryTab.country:
-        scope = 'country';
+        // Chip País lista todos os scopes descobíveis; a query não filtra scope.
+        scope = '';
         break;
       case GroupDiscoveryTab.mine:
         throw StateError('use fetchMine');
@@ -196,6 +197,8 @@ class GroupDiscoveryService {
       );
     }
 
+    // País: deleted == false + countryCode + orderBy updatedAt desc (cursor
+    // único). Cidade/região continuam filtrando também por scope.
     return _fetchScopedDiscovery(
       tab: tab,
       scope: scope,
@@ -213,11 +216,13 @@ class GroupDiscoveryService {
   /// Limite por consulta de "Perto de você".
   static const int nearbyQueryLimit = 40;
 
-  /// "Perto de você": todos os grupos do país do usuário, ordenados depois no
-  /// cliente por [GroupNearbyLogic.sections]. Na primeira página, consultas
-  /// dirigidas (cidade, células geohash da região, estado) garantem que os
-  /// grupos próximos chegam mesmo quando o país tem muitos grupos. A consulta
-  /// do país é paginada pela rolagem.
+  /// "Perto de você": só cidade (≤25 km ou mesma cidade) e região (≤110 km
+  /// no mesmo estado). Na primeira página, consultas dirigidas (cidade,
+  /// células geohash da região, estado) garantem que os grupos próximos
+  /// chegam mesmo quando o país tem muitos grupos. A consulta do país é
+  /// paginada e filtrada no cliente: páginas extras são lidas até encher
+  /// o limite de visíveis ou acabar o orçamento, para o scroll não parar
+  /// numa página cheia de grupos fora do raio.
   ///
   /// Sem os índices novos (ou antes do backfill de stateKey/geohash3), as
   /// dirigidas falham em silêncio e o país cai para uma consulta só por
@@ -234,13 +239,34 @@ class GroupDiscoveryService {
       return const GroupDiscoveryPage(items: [], hasMore: false);
     }
     final firstPage = startAfter == null;
-    final docs = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    final seen = <String>{};
+    final items = <GroupDiscoveryItem>[];
+
+    void consider(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+      if (!seen.add(doc.id)) return;
+      final data = Map<String, dynamic>.from(doc.data());
+      data['id'] = doc.id;
+      if (!GroupNearbyLogic.eligible(
+        data: data,
+        uid: uid,
+        viewerCountryCode: cc,
+      )) {
+        return;
+      }
+      if (!GroupNearbyLogic.includedInNearby(data, viewer)) return;
+      items.add(GroupDiscoveryItem(
+        id: doc.id,
+        data: data,
+        isMember: GroupDiscoveryLogic.isParticipating(data: data, uid: uid),
+        isPending: pendingIds.contains(doc.id),
+      ));
+    }
 
     Future<void> boost(Query<Map<String, dynamic>> q) async {
       try {
         final snap = await q.get();
         for (final d in snap.docs) {
-          docs.putIfAbsent(d.id, () => d);
+          consider(d);
         }
       } catch (_) {
         // Índice ainda não publicado ou campo ausente: o país cobre.
@@ -282,48 +308,46 @@ class GroupDiscoveryService {
 
     DocumentSnapshot<Map<String, dynamic>>? last = startAfter?.document;
     var hasMore = false;
+    var docsRead = 0;
+    var rounds = 0;
+
     try {
-      Query<Map<String, dynamic>> q =
-          base.orderBy('updatedAt', descending: true).limit(limit);
-      if (last != null) q = q.startAfterDocument(last);
-      final snap = await q.get();
-      for (final d in snap.docs) {
-        docs.putIfAbsent(d.id, () => d);
+      while (rounds < maxContinueRounds && docsRead < maxDocsPerPageRequest) {
+        rounds++;
+        final remainingBudget = maxDocsPerPageRequest - docsRead;
+        final pageLimit = remainingBudget < limit ? remainingBudget : limit;
+        if (pageLimit <= 0) break;
+
+        Query<Map<String, dynamic>> q =
+            base.orderBy('updatedAt', descending: true).limit(pageLimit);
+        if (last != null) q = q.startAfterDocument(last);
+        final snap = await q.get();
+        docsRead += snap.docs.length;
+        for (final d in snap.docs) {
+          consider(d);
+        }
+        if (snap.docs.isNotEmpty) last = snap.docs.last;
+        hasMore = snap.docs.length >= pageLimit;
+        if (snap.docs.isEmpty || !hasMore) {
+          hasMore = false;
+          break;
+        }
+        if (items.length >= limit) break;
       }
-      if (snap.docs.isNotEmpty) last = snap.docs.last;
-      hasMore = snap.docs.length >= limit;
     } on FirebaseException catch (e) {
       if (e.code != 'failed-precondition' && e.code != 'invalid-argument') {
-        if (docs.isEmpty) rethrow;
+        if (items.isEmpty) rethrow;
       } else if (firstPage) {
         // Fallback sem índice composto: igualdade pura, sem paginação.
         final snap = await base.limit(maxDocsPerPageRequest).get();
         for (final d in snap.docs) {
-          docs.putIfAbsent(d.id, () => d);
+          consider(d);
         }
         last = null;
         hasMore = false;
       }
     }
 
-    final items = <GroupDiscoveryItem>[];
-    for (final doc in docs.values) {
-      final data = Map<String, dynamic>.from(doc.data());
-      data['id'] = doc.id;
-      if (!GroupNearbyLogic.eligible(
-        data: data,
-        uid: uid,
-        viewerCountryCode: cc,
-      )) {
-        continue;
-      }
-      items.add(GroupDiscoveryItem(
-        id: doc.id,
-        data: data,
-        isMember: GroupDiscoveryLogic.isParticipating(data: data, uid: uid),
-        isPending: pendingIds.contains(doc.id),
-      ));
-    }
     items.sort(
       (a, b) => GroupDiscoveryLogic.compareByRecentActivity(a.data, b.data),
     );
@@ -364,8 +388,10 @@ class GroupDiscoveryService {
 
       Query<Map<String, dynamic>> q = _groups
           .where('deleted', isEqualTo: false)
-          .where('countryCode', isEqualTo: countryCode)
-          .where('scope', isEqualTo: scope);
+          .where('countryCode', isEqualTo: countryCode);
+      if (scope.isNotEmpty) {
+        q = q.where('scope', isEqualTo: scope);
+      }
 
       if (tab == GroupDiscoveryTab.city && cityKey.isNotEmpty) {
         q = q.where('cityKey', isEqualTo: cityKey);
@@ -381,9 +407,11 @@ class GroupDiscoveryService {
         if (e.code == 'failed-precondition' || e.code == 'invalid-argument') {
           Query<Map<String, dynamic>> fallback = _groups
               .where('deleted', isEqualTo: false)
-              .where('countryCode', isEqualTo: countryCode)
-              .where('scope', isEqualTo: scope)
-              .limit(limit);
+              .where('countryCode', isEqualTo: countryCode);
+          if (scope.isNotEmpty) {
+            fallback = fallback.where('scope', isEqualTo: scope);
+          }
+          fallback = fallback.limit(limit);
           if (cursorDoc != null) {
             fallback = fallback.startAfterDocument(cursorDoc);
           }
@@ -468,7 +496,8 @@ class GroupDiscoveryService {
         nearbyCities: nearbyItems,
         limit: pageSize,
       );
-      final dropped = regional.items.length + nearbyItems.length > combined.length;
+      final dropped =
+          regional.items.length + nearbyItems.length > combined.length;
       return GroupDiscoveryPage(
         items: combined,
         hasMore: regional.hasMore || nearbyCapped || dropped,
@@ -507,7 +536,8 @@ class GroupDiscoveryService {
     final batchCursors = Map<int, DocumentSnapshot<Map<String, dynamic>>>.from(
       startAfter?.batchDocuments ?? const {},
     );
-    final exhausted = Map<int, bool>.from(startAfter?.batchExhausted ?? const {});
+    final exhausted =
+        Map<int, bool>.from(startAfter?.batchExhausted ?? const {});
     final seen = Set<String>.from(startAfter?.seenIds ?? const {});
     final visible = <GroupDiscoveryItem>[];
     var docsRead = 0;
