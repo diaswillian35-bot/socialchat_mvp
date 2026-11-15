@@ -10,6 +10,7 @@ import '../widgets/publish_cta_card.dart';
 import '../services/explore_only.dart';
 import '../services/dm_block.dart';
 import '../services/nearby_visibility.dart';
+import '../services/profile_about.dart';
 import '../services/user_interests.dart';
 import '../widgets/common_carousel.dart';
 import '../widgets/explore_only_bar.dart';
@@ -502,6 +503,10 @@ class _CountryPeoplePageState extends State<CountryPeoplePage>
       hometownCountryCode: (data['hometownCountryCode'] ?? '').toString(),
       interests: UserInterests.fromUserData(data),
       hideInCity: NearbyVisibility.hideInCityFromData(data),
+      about: ProfileAbout.clamp((data['about'] ?? '').toString()),
+      languages: ((data['languages'] ?? data['nativeLanguage'] ?? '')
+              .toString())
+          .trim(),
     );
   }
 

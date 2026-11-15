@@ -19,6 +19,8 @@ class CountryPerson {
     this.hometownCountryCode = '',
     this.interests = const [],
     this.hideInCity = false,
+    this.about = '',
+    this.languages = '',
   });
 
   final String uid;
@@ -40,6 +42,13 @@ class CountryPerson {
 
   /// "Não aparecer na minha cidade": some de "Perto de você"/mesma cidade.
   final bool hideInCity;
+
+  /// Bio (`about`) e idioma (`languages` / `nativeLanguage` já resolvidos).
+  final String about;
+  final String languages;
+
+  bool get hasBioAndLanguage =>
+      about.trim().isNotEmpty && languages.trim().isNotEmpty;
 }
 
 class CountryCityGroup {

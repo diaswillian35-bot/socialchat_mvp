@@ -232,7 +232,6 @@ class CountryPeopleView {
   static const int maxCommon = 12;
 
   /// Mínimo de pessoas em "Em comum" antes de completar com a mesma cidade.
-  static const int minCommonFill = 6;
   static const int abroadOpenStates = 2;
 
   static String stateKeyOf(CountryPerson p) =>
@@ -352,47 +351,23 @@ class CountryPeopleView {
       ));
     }
 
-    // Em comum com você: interesses marcados (lista fixa; "Sobre mim" não
-    // entra) de qualquer cidade do país, do maior nº de iguais ao menor.
-    // Depois, cidade natal. Quem aparece aqui não se repete abaixo.
+    // Em comum: só interesses de verdade, no país de residência de quem vê.
+    // Prioriza quem tem bio e idioma. Sem preenchimento por cidade natal
+    // ou mesma cidade. Seção some se a lista ficar vazia.
     final common = <CommonMatch>[];
-    if (!filteredSingle) {
+    final viewerCountry = UserLocationScope.countryCodeFromUserData(viewer);
+    final showCommon = viewerCountry.isNotEmpty && viewerCountry == cc;
+    if (!filteredSingle && showCommon) {
       final viewerInterests = UserInterests.fromUserData(viewer);
       final byInterest = <CommonMatch>[];
-      final byHometown = <CommonMatch>[];
-      final bySameCity = <CommonMatch>[];
-      final sameCityUids = {
-        for (final p in h.sameCity?.people ?? const <CountryPerson>[])
-          if (!p.hideInCity) p.uid
-      };
       for (final p in people) {
         final shared = UserInterests.common(viewerInterests, p.interests);
-        if (shared.isNotEmpty) {
-          byInterest.add(CommonMatch(
-              person: p,
-              reason: CommonReason.sharedInterests,
-              city: '',
-              interests: shared));
-          continue;
-        }
-        final pHome = HometownInfo.keyFor(
-            p.hometownCity, p.hometownSubdivision, p.hometownCountryCode);
-        if (sameHometownPlace(hometownKey, pHome)) {
-          byHometown.add(CommonMatch(
-              person: p,
-              reason: CommonReason.sameHometown,
-              city: hometown!.city));
-        } else if (livesInViewerHometown(p)) {
-          byHometown.add(CommonMatch(
-              person: p,
-              reason: CommonReason.livesInYourHometown,
-              city: hometown!.city));
-        } else if (sameCityUids.contains(p.uid)) {
-          bySameCity.add(CommonMatch(
-              person: p,
-              reason: CommonReason.sameCity,
-              city: PeopleCountryHierarchy.cleanCity(p.city, p.countryCode)));
-        }
+        if (shared.isEmpty) continue;
+        byInterest.add(CommonMatch(
+            person: p,
+            reason: CommonReason.sharedInterests,
+            city: '',
+            interests: shared));
       }
       int tie(CommonMatch a, CommonMatch b) {
         if (a.person.online != b.person.online) return a.person.online ? -1 : 1;
@@ -402,22 +377,13 @@ class CountryPeopleView {
       }
 
       byInterest.sort((a, b) {
+        final ap = a.person.hasBioAndLanguage ? 1 : 0;
+        final bp = b.person.hasBioAndLanguage ? 1 : 0;
+        if (ap != bp) return bp.compareTo(ap);
         final c = b.interests.length.compareTo(a.interests.length);
         return c != 0 ? c : tie(a, b);
       });
-      byHometown.sort((a, b) {
-        final r = a.reason.index.compareTo(b.reason.index);
-        return r != 0 ? r : tie(a, b);
-      });
-      common
-        ..addAll(byInterest)
-        ..addAll(byHometown);
-      // Depois, a mesma cidade (como antes do build 39), completando até
-      // [minCommonFill] para a seção nunca ficar vazia quando há alguém.
-      if (common.length < minCommonFill) {
-        bySameCity.sort(tie);
-        common.addAll(bySameCity.take(minCommonFill - common.length));
-      }
+      common.addAll(byInterest);
       if (common.length > maxCommon) {
         common.removeRange(maxCommon, common.length);
       }
