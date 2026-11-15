@@ -27,7 +27,8 @@ import '../services/google_sign_in_service.dart';
 import '../services/welcome_choice.dart';
 import 'welcome_choice_page.dart';
 import 'edit_profile_page.dart';
-import '../services/profile_photo.dart';
+import 'require_profile_completion_page.dart';
+import '../services/profile_completion.dart';
 import '../features/locais/logic/pending_my_places.dart';
 import '../features/locais/ui/place_submissions_page.dart';
 
@@ -160,7 +161,11 @@ class _AuthGateState extends State<AuthGate> {
         hasUser: true,
         needsEmailVerification: authRequiresEmailVerification(user),
         ageVerified: AgeVerification.isVerified(data),
-        needsProfilePhoto: ProfilePhoto.needsPhoto(data),
+        needsProfilePhoto: ProfileAccessGate.next(
+              ageVerified: AgeVerification.isVerified(data),
+              data: data,
+            ) !=
+            ProfileAccessStep.ready,
       );
       if (!mayOpen) return;
 
@@ -216,12 +221,19 @@ class _AuthGateState extends State<AuthGate> {
             if (userSnap.connectionState != ConnectionState.done) {
               return const SplashPage();
             }
-            if (!AgeVerification.isVerified(userSnap.data?.data())) {
+            final data = userSnap.data?.data();
+            final step = ProfileAccessGate.next(
+              ageVerified: AgeVerification.isVerified(data),
+              data: data,
+            );
+            if (step == ProfileAccessStep.age) {
               return const AgeVerificationPage();
             }
-            // Conta antiga sem foto: completar perfil antes da Home.
-            if (ProfilePhoto.needsPhoto(userSnap.data?.data())) {
-              return const EditProfilePage();
+            if (step == ProfileAccessStep.initialCompletion) {
+              return const EditProfilePage(blocking: true);
+            }
+            if (step == ProfileAccessStep.repairCompletion) {
+              return const RequireProfileCompletionPage();
             }
             BlockVisibility.attach(user.uid);
             WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/profile_photo.dart';
+import '../services/profile_completion.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'email_verification_page.dart';
@@ -7,6 +7,7 @@ import 'email_verification_page.dart';
 import 'main_shell_page.dart'; // contém MainShell (mantido)
 import 'login_page.dart';
 import 'edit_profile_page.dart';
+import 'require_profile_completion_page.dart';
 import 'auth_gate.dart';
 import 'age_verification_page.dart';
 import '../services/age_verification.dart';
@@ -73,21 +74,20 @@ class _SplashPageState extends State<SplashPage> {
       final locked = (data['countryLocked'] == true);
 
       if (!doc.exists || home.isEmpty || !locked) {
-        _replace(const EditProfilePage());
+        _replace(const EditProfilePage(blocking: true));
         return;
       }
 
-      final profileComplete = (data['profileComplete'] == true);
-
-      // Se não completou perfil => EditProfilePage
-      if (!profileComplete) {
-        _replace(const EditProfilePage());
+      final step = ProfileAccessGate.next(
+        ageVerified: true,
+        data: data,
+      );
+      if (step == ProfileAccessStep.initialCompletion) {
+        _replace(const EditProfilePage(blocking: true));
         return;
       }
-
-      // Foto de perfil obrigatória (inclusive contas antigas e admin).
-      if (ProfilePhoto.needsPhoto(data)) {
-        _replace(const EditProfilePage());
+      if (step == ProfileAccessStep.repairCompletion) {
+        _replace(const RequireProfileCompletionPage());
         return;
       }
 

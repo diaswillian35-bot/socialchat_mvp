@@ -2112,5 +2112,15 @@
   "place_discount_month_10": "oct.",
   "place_discount_month_11": "nov.",
   "place_discount_month_12": "déc.",
-  "place_cta_manage_title": "Gérer mes lieux"
+  "place_cta_manage_title": "Gérer mes lieux",
+  "profile_complete_title": "Complétez votre profil",
+  "profile_bio_required": "Ajoutez une bio pour continuer.",
+  "profile_interest_required": "Choisissez au moins un intérêt pour continuer.",
+  "profile_complete_body_all": "Pour continuer à utiliser Remdy, ajoutez une photo de profil, une bio et au moins un intérêt.",
+  "profile_complete_body_photo": "Pour continuer à utiliser Remdy, ajoutez une photo de profil.",
+  "profile_complete_body_bio": "Pour continuer à utiliser Remdy, ajoutez une bio.",
+  "profile_complete_body_interest": "Pour continuer à utiliser Remdy, ajoutez au moins un intérêt.",
+  "profile_complete_body_photo_bio": "Pour continuer à utiliser Remdy, ajoutez une photo de profil et une bio.",
+  "profile_complete_body_photo_interest": "Pour continuer à utiliser Remdy, ajoutez une photo de profil et au moins un intérêt.",
+  "profile_complete_body_bio_interest": "Pour continuer à utiliser Remdy, ajoutez une bio et au moins un intérêt."
 }

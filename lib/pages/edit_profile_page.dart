@@ -7,6 +7,7 @@ import '../services/explore_only.dart';
 import '../services/presence_service.dart';
 import '../services/user_interests.dart';
 import '../services/profile_about.dart';
+import '../services/profile_completion.dart';
 import '../services/profile_photo.dart';
 import '../widgets/profile_photo_picker.dart';
 import '../widgets/interest_chips.dart';
@@ -25,10 +26,14 @@ import '../services/people_country_view.dart' show HometownInfo;
 import '../widget/city_search_dialog.dart';
 
 import 'splash_page.dart';
+import 'delete_account_page.dart';
 import 'login_page.dart';
 
 class EditProfilePage extends StatefulWidget {
-  const EditProfilePage({super.key});
+  const EditProfilePage({super.key, this.blocking = false});
+
+  /// Completar perfil obrigatório: sem voltar, com Sair e Excluir conta.
+  final bool blocking;
 
   @override
   State<EditProfilePage> createState() => _EditProfilePageState();
@@ -161,9 +166,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
       _interests = UserInterests.fromUserData(data);
       _photoUrl = ProfilePhoto.urlFromData(data);
       if (_photoUrl.isEmpty) {
-        final authPhoto =
-            (FirebaseAuth.instance.currentUser?.photoURL ?? '').trim();
-        if (authPhoto.startsWith('http')) _photoUrl = authPhoto;
+        _photoUrl = ProfilePhoto.providerPhotoUrl(
+            FirebaseAuth.instance.currentUser);
       }
 
       final hometown = HometownInfo.fromUserData(data);
@@ -406,6 +410,52 @@ class _EditProfilePageState extends State<EditProfilePage> {
     });
   }
 
+
+  List<Widget> _blockingActions(AppTexts t) {
+    return [
+      IconButton(
+        key: const Key('edit_profile_logout'),
+        tooltip: t.get('logout'),
+        icon: const Icon(Icons.logout),
+        onPressed: () => FirebaseAuth.instance.signOut(),
+      ),
+      IconButton(
+        key: const Key('edit_profile_delete'),
+        tooltip: t.get('delete_my_account'),
+        icon: const Icon(Icons.delete_forever_outlined),
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const DeleteAccountPage()),
+          );
+        },
+      ),
+    ];
+  }
+
+  PreferredSizeWidget _appBar(AppTexts t) {
+    return AppBar(
+      backgroundColor: Colors.white,
+      foregroundColor: _text,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      automaticallyImplyLeading: !widget.blocking,
+      title: Text(
+        t.get('complete_profile'),
+        style: TextStyle(
+          color: _text,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      actions: widget.blocking ? _blockingActions(t) : null,
+    );
+  }
+
+  Widget _maybeBlockPop(Widget child) {
+    if (!widget.blocking) return child;
+    return PopScope(canPop: false, child: child);
+  }
+
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
@@ -429,12 +479,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       final authUser = FirebaseAuth.instance.currentUser;
       final email = authUser?.email ?? '';
-      // Foto de perfil obrigatória (cadastro e completar perfil).
+      // Foto, bio e pelo menos um interesse são obrigatórios.
       final photoUrl = _photoUrl.trim();
-      if (photoUrl.isEmpty) {
+      final missing = ProfileCompletion.validateForSave(
+        photoUrl: photoUrl,
+        about: about,
+        interests: _interests,
+      );
+      if (missing != null) {
         setState(() {
-          _photoMissing = true;
-          _err = AppTexts.current.get('profile_photo_required');
+          _photoMissing = missing == 'profile_photo_required';
+          _err = AppTexts.current.get(missing);
         });
         return;
       }
@@ -1187,42 +1242,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
 
     if (_loading) {
-      return Scaffold(
+      return _maybeBlockPop(Scaffold(
         backgroundColor: _bg,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          foregroundColor: _text,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          surfaceTintColor: Colors.transparent,
-          title: Text(
-            t.get('complete_profile'),
-            style: TextStyle(
-              color: _text,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-      );
+        appBar: _appBar(t),
+      ));
     }
 
-    return Scaffold(
+    return _maybeBlockPop(Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: _text,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: Text(
-          t.get('complete_profile'),
-          style: TextStyle(
-            color: _text,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
+      appBar: _appBar(t),
       body: KeyboardDismissOnTap(
         child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1346,7 +1375,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ],
         ),
       ),
-    );
+    ));
   }
 }
 

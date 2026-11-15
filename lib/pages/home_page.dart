@@ -481,7 +481,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             if (!mounted) return;
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => const EditProfilePage()),
+              MaterialPageRoute(builder: (_) => const EditProfilePage(blocking: true)),
             );
           });
           return const Scaffold(

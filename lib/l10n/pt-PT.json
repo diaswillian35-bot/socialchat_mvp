@@ -1812,5 +1812,15 @@
   "place_discount_month_10": "out.",
   "place_discount_month_11": "nov.",
   "place_discount_month_12": "dez.",
-  "place_cta_manage_title": "Gerir os meus locais"
+  "place_cta_manage_title": "Gerir os meus locais",
+  "profile_complete_title": "Complete o seu perfil",
+  "profile_bio_required": "Adicione uma biografia para continuar.",
+  "profile_interest_required": "Escolha pelo menos um interesse para continuar.",
+  "profile_complete_body_all": "Para continuar a usar o Remdy, adicione uma foto de perfil, uma biografia e pelo menos um interesse.",
+  "profile_complete_body_photo": "Para continuar a usar o Remdy, adicione uma foto de perfil.",
+  "profile_complete_body_bio": "Para continuar a usar o Remdy, adicione uma biografia.",
+  "profile_complete_body_interest": "Para continuar a usar o Remdy, adicione pelo menos um interesse.",
+  "profile_complete_body_photo_bio": "Para continuar a usar o Remdy, adicione uma foto de perfil e uma biografia.",
+  "profile_complete_body_photo_interest": "Para continuar a usar o Remdy, adicione uma foto de perfil e pelo menos um interesse.",
+  "profile_complete_body_bio_interest": "Para continuar a usar o Remdy, adicione uma biografia e pelo menos um interesse."
 }

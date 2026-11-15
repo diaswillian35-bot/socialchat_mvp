@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,6 +25,29 @@ class ProfilePhoto {
   /// todos, inclusive o admin).
   static bool needsPhoto(Map<String, dynamic>? data) =>
       data != null && data['profileComplete'] == true && !hasPhoto(data);
+
+  /// Foto do provedor (Google/Facebook/Apple) para pré-preencher o
+  /// Completar perfil. Não grava sozinha: só entra no Firestore no save.
+  static String providerPhotoUrlFrom({
+    String? photoURL,
+    Iterable<String?> providerPhotoURLs = const [],
+  }) {
+    final direct = (photoURL ?? '').trim();
+    if (direct.startsWith('http')) return direct;
+    for (final raw in providerPhotoURLs) {
+      final v = (raw ?? '').trim();
+      if (v.startsWith('http')) return v;
+    }
+    return '';
+  }
+
+  static String providerPhotoUrl(User? user) {
+    if (user == null) return '';
+    return providerPhotoUrlFrom(
+      photoURL: user.photoURL,
+      providerPhotoURLs: user.providerData.map((p) => p.photoURL),
+    );
+  }
 
   /// Mesmo fluxo do Menu > Perfil: galeria, qualidade 80,
   /// users/{uid}/profile/{uuid}.jpg. Null se cancelou.
