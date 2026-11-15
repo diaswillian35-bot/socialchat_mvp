@@ -44,7 +44,7 @@ void main() {
         userCityLongitude: lng,
       );
 
-  test('1 city aparece somente em Cidade', () {
+  test('1 city aparece em Cidade e também no chip País', () {
     final g = group(scope: 'city');
     expect(
       GroupDiscoveryLogic.matchesCityDiscovery(
@@ -62,11 +62,12 @@ void main() {
         uid: 'u1',
         userCountryCode: 'br',
       ),
-      isFalse,
+      isTrue,
     );
   });
 
-  test('2 regional dentro de 110 km aparece somente em Região', () {
+  test('2 regional dentro de 110 km aparece em Região e também no chip País',
+      () {
     final g = group(
       scope: 'region',
       centerLat: -26.9078,
@@ -89,7 +90,7 @@ void main() {
         uid: 'u1',
         userCountryCode: 'br',
       ),
-      isFalse,
+      isTrue,
     );
   });
 
@@ -133,6 +134,116 @@ void main() {
       isTrue,
     );
     expect(regionMatch(g, -26.9, -48.6), isFalse);
+    expect(
+      GroupDiscoveryLogic.matchesCityDiscovery(
+        data: g,
+        uid: 'u1',
+        userCountryCode: 'br',
+        userCityKey: 'itajai',
+      ),
+      isFalse,
+    );
+  });
+
+  test('chip País inclui cidade e região de qualquer estado do mesmo país', () {
+    final curitiba = group(scope: 'city', city: 'Curitiba');
+    expect(
+      GroupDiscoveryLogic.matchesCityDiscovery(
+        data: curitiba,
+        uid: 'u1',
+        userCountryCode: 'br',
+        userCityKey: 'navegantes',
+      ),
+      isFalse,
+    );
+    expect(
+      GroupDiscoveryLogic.matchesCountryDiscovery(
+        data: curitiba,
+        uid: 'u1',
+        userCountryCode: 'br',
+      ),
+      isTrue,
+    );
+
+    final farRegion = group(
+      scope: 'region',
+      centerLat: 0,
+      centerLng: 0,
+      centerCity: 'Centro',
+    );
+    expect(regionMatch(farRegion, 1.01, 0), isFalse);
+    expect(
+      GroupDiscoveryLogic.matchesCountryDiscovery(
+        data: farRegion,
+        uid: 'u1',
+        userCountryCode: 'br',
+      ),
+      isTrue,
+    );
+
+    final otherCountry =
+        group(scope: 'city', countryCode: 'ca', city: 'Toronto');
+    expect(
+      GroupDiscoveryLogic.matchesCountryDiscovery(
+        data: otherCountry,
+        uid: 'u1',
+        userCountryCode: 'br',
+      ),
+      isFalse,
+    );
+  });
+
+  test('chip País respeita elegibilidade e não inclui membro', () {
+    bool ok(Map<String, dynamic> data) =>
+        GroupDiscoveryLogic.matchesCountryDiscovery(
+          data: data,
+          uid: 'u1',
+          userCountryCode: 'br',
+        );
+    expect(ok(group(scope: 'country')), isTrue);
+    expect(ok({...group(scope: 'city'), 'deleted': true}), isFalse);
+    expect(ok({...group(scope: 'city'), 'isActive': false}), isFalse);
+    expect(ok({...group(scope: 'region'), 'discoverable': false}), isFalse);
+    expect(ok({...group(scope: 'city'), 'hiddenFromDiscovery': true}), isFalse);
+    expect(
+        ok({
+          ...group(scope: 'city'),
+          'hiddenFor': ['u1']
+        }),
+        isFalse);
+    expect(
+        ok({
+          ...group(scope: 'city'),
+          'members': ['u1']
+        }),
+        isFalse);
+    expect(ok({...group(scope: 'city'), 'scope': 'private'}), isFalse);
+    expect(ok({...group(scope: 'city'), 'scope': ''}), isFalse);
+  });
+
+  test('consulta do chip País não filtra scope e usa o índice existente', () {
+    final service =
+        File('lib/services/group_discovery_service.dart').readAsStringSync();
+    expect(service, contains("scope = '';"));
+    expect(service, contains('if (scope.isNotEmpty)'));
+    expect(service, contains("orderBy('updatedAt', descending: true)"));
+
+    final indexes =
+        jsonDecode(File('firestore.indexes.json').readAsStringSync())
+            as Map<String, dynamic>;
+    final found = (indexes['indexes'] as List).any((raw) {
+      final idx = raw as Map<String, dynamic>;
+      if (idx['collectionGroup'] != 'groups') return false;
+      final fields = [
+        for (final f in (idx['fields'] as List))
+          (f as Map)['fieldPath'] as String
+      ];
+      return fields.length == 3 &&
+          fields[0] == 'deleted' &&
+          fields[1] == 'countryCode' &&
+          fields[2] == 'updatedAt';
+    });
+    expect(found, isTrue);
   });
 
   test('6 membro vê somente em Meus grupos', () {
@@ -144,6 +255,14 @@ void main() {
         uid: 'u1',
         userCountryCode: 'br',
         userCityKey: 'navegantes',
+      ),
+      isFalse,
+    );
+    expect(
+      GroupDiscoveryLogic.matchesCountryDiscovery(
+        data: g,
+        uid: 'u1',
+        userCountryCode: 'br',
       ),
       isFalse,
     );

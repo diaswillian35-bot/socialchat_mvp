@@ -175,7 +175,8 @@ class GroupDiscoveryService {
         scope = 'region';
         break;
       case GroupDiscoveryTab.country:
-        scope = 'country';
+        // Chip País lista todos os scopes descobíveis; a query não filtra scope.
+        scope = '';
         break;
       case GroupDiscoveryTab.mine:
         throw StateError('use fetchMine');
@@ -196,6 +197,8 @@ class GroupDiscoveryService {
       );
     }
 
+    // País: deleted == false + countryCode + orderBy updatedAt desc (cursor
+    // único). Cidade/região continuam filtrando também por scope.
     return _fetchScopedDiscovery(
       tab: tab,
       scope: scope,
@@ -385,8 +388,10 @@ class GroupDiscoveryService {
 
       Query<Map<String, dynamic>> q = _groups
           .where('deleted', isEqualTo: false)
-          .where('countryCode', isEqualTo: countryCode)
-          .where('scope', isEqualTo: scope);
+          .where('countryCode', isEqualTo: countryCode);
+      if (scope.isNotEmpty) {
+        q = q.where('scope', isEqualTo: scope);
+      }
 
       if (tab == GroupDiscoveryTab.city && cityKey.isNotEmpty) {
         q = q.where('cityKey', isEqualTo: cityKey);
@@ -402,9 +407,11 @@ class GroupDiscoveryService {
         if (e.code == 'failed-precondition' || e.code == 'invalid-argument') {
           Query<Map<String, dynamic>> fallback = _groups
               .where('deleted', isEqualTo: false)
-              .where('countryCode', isEqualTo: countryCode)
-              .where('scope', isEqualTo: scope)
-              .limit(limit);
+              .where('countryCode', isEqualTo: countryCode);
+          if (scope.isNotEmpty) {
+            fallback = fallback.where('scope', isEqualTo: scope);
+          }
+          fallback = fallback.limit(limit);
           if (cursorDoc != null) {
             fallback = fallback.startAfterDocument(cursorDoc);
           }
