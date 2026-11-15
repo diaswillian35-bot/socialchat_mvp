@@ -7,6 +7,9 @@ const {
   POLICY_VERSION,
   validateAdultDate,
 } = require("./age_verification_logic");
+const {
+  notifyOpsAdminOfNewVerifiedUser,
+} = require("./ops_new_user_notify");
 
 async function confirmAdultAgeHandler(request) {
   const uid = request.auth && request.auth.uid;
@@ -20,10 +23,14 @@ async function confirmAdultAgeHandler(request) {
 
   const ref = admin.firestore().collection("users").doc(uid);
   const timestamp = admin.firestore.Timestamp.fromDate(result.dateOfBirth);
+  let priorStatus = "";
+  let newlyAdultVerified = false;
+  let userDataAfter = null;
+
   await admin.firestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const current = snap.data() || {};
-    const priorStatus = current.ageVerificationStatus;
+    priorStatus = (current.ageVerificationStatus || "").toString().trim();
     const priorBirth = current.dateOfBirth;
     if (priorStatus === "verified" || priorStatus === "rejected") {
       const sameBirth = priorBirth && priorBirth.toMillis &&
@@ -35,11 +42,13 @@ async function confirmAdultAgeHandler(request) {
       if (priorStatus === "rejected") {
         throw httpsError("permission-denied", "Remdy is only for adults.");
       }
+      userDataAfter = current;
+      newlyAdultVerified = false;
       return;
     }
 
     const now = admin.firestore.FieldValue.serverTimestamp();
-    tx.set(ref, {
+    const patch = {
       uid,
       dateOfBirth: timestamp,
       ageVerificationStatus: result.adult ? "verified" : "rejected",
@@ -48,11 +57,34 @@ async function confirmAdultAgeHandler(request) {
       ageVerifiedAt: result.adult ? now : null,
       ageVerificationCheckedAt: now,
       updatedAt: now,
-    }, { merge: true });
+    };
+    tx.set(ref, patch, { merge: true });
+    newlyAdultVerified = result.adult === true;
+    userDataAfter = { ...current, ...patch, homeCountryCode: current.homeCountryCode };
   });
   if (!result.adult) {
     throw httpsError("permission-denied", "Remdy is only for adults.");
   }
+
+  if (newlyAdultVerified) {
+    try {
+      await notifyOpsAdminOfNewVerifiedUser({
+        newUid: uid,
+        userData: userDataAfter || {},
+        priorStatus,
+        newlyAdultVerified: true,
+      });
+    } catch (e) {
+      console.warn(
+        JSON.stringify({
+          action: "ops_new_user_notify_error",
+          uid,
+          message: (e && e.message) || "unknown",
+        }),
+      );
+    }
+  }
+
   return { verified: true, policyVersion: POLICY_VERSION };
 }
 
